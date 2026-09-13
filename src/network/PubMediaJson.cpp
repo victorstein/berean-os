@@ -1,12 +1,20 @@
 #include "PubMediaJson.h"
 
+#include <Utf8.h>
+
 #include <cstdlib>
 #include <cstring>
 
 namespace {
 
 void safeCopy(char* dst, const size_t dstSize, const char* src, const size_t srcLen) {
-  const size_t n = srcLen < dstSize - 1 ? srcLen : dstSize - 1;
+  const size_t capacity = dstSize - 1;
+  size_t n = srcLen;
+  if (n > capacity) {
+    // A byte-wise cut can land mid-sequence, and the dangling lead byte reaches
+    // SdFat as an invalid UTF-8 filename under USE_UTF8_LONG_NAMES.
+    n = static_cast<size_t>(utf8SafeTruncateBuffer(src, static_cast<int>(capacity)));
+  }
   memcpy(dst, src, n);
   dst[n] = '\0';
 }
@@ -26,6 +34,7 @@ void PubMediaJsonParser::reset() {
   pendingKey_[0] = '\0';
   url_[0] = '\0';
   checksum_[0] = '\0';
+  pubName_[0] = '\0';
   filesize_ = 0;
 }
 
@@ -88,6 +97,8 @@ void PubMediaJsonParser::sOnString(void* ctx, const char* value, const size_t le
     } else if (self->keyIs("checksum")) {
       safeCopy(self->checksum_, sizeof(self->checksum_), value, len);
     }
+  } else if (self->currentNode() == Node::Root && self->keyIs("pubName")) {
+    safeCopy(self->pubName_, sizeof(self->pubName_), value, len);
   }
   self->valueComplete();
 }
