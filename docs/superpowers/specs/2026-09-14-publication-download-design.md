@@ -1,7 +1,13 @@
 # SD storage reporting, and downloading a publication by symbol
 
+> **Parked 2026-09-14.** The blocking unknown is resolved and the two open design decisions are
+> settled below, so this can be picked up without re-deriving anything. Nothing is implemented.
+> **Part 1 (storage reporting) is independently useful and could ship on its own** — it has no
+> dependency on the download feature and answers "will this fit?" and "how full is the card?"
+> remotely, neither of which is possible today.
+
 **Date:** 2026-09-14
-**Status:** Design v2 (feasibility confirmed on device)
+**Status:** PARKED — feasibility confirmed, two decisions recorded, not scheduled
 **Target:** CrossPoint Reader firmware, `x4pro` build target (ESP32-S3, 8MB PSRAM)
 **Delivery:** `origin` (victorstein/crosspoint-x4pro), branch `feature/publication-download`
 **Builds on:** the meeting downloader (#7, #11) — reuses its transport, parser and download loop
@@ -148,8 +154,10 @@ produces a strictly worse artifact than the path that already exists. Three dire
 | Accept the raw archive, document it | Free. Justified by the measurement above — the raw file reads fine — but wastes card space and download time on images the panel cannot show in colour. |
 | Restrict to text-heavy publications | Avoids the problem by refusing the case that motivated the feature. |
 
-The decision belongs with whoever has read on the device with the raw images: if legibility and page
-turns are unaffected, "accept raw" is the honest answer and the optimizer stays a web-UI nicety.
+**Decided: accept the raw archive.** Confirmed by reading `lff` un-optimized on the device —
+legibility and page turns are unaffected. The web-UI optimizer stays available for when it is wanted;
+the downloader does not try to reproduce it. This costs card space and transfer time on colour data a
+monochrome panel cannot use, which is an acceptable trade against 16 GB and a ~4-minute transfer.
 
 ## Deferred: discovery
 
@@ -161,8 +169,10 @@ Three approaches were considered and none is in scope here:
 | Host-built index shipped to SD | Real search, but needs a periodic off-device refresh step |
 | Curated in-firmware list | No typing, but needs a firmware change to extend |
 
-Symbol entry is the smallest thing that works and unblocks the actual need. Discovery gets its own
-design once we know whether large publications are readable at all.
+**Decided: a curated in-firmware list is the preferred UX** — no typing, no index to refresh, and it
+covers the publications actually in use. Its cost is that extending the list needs a firmware change,
+which is acceptable for a set that changes rarely. Symbol entry remains the fallback for anything not
+on the list, and the host-built index is the escape hatch if the curated set stops being enough.
 
 ## Testing
 
