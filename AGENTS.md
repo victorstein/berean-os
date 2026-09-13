@@ -921,6 +921,33 @@ build_flags =
 | Release Publish | `.github/workflows/release-publish.yml`   | Builds and attaches release firmware; dispatched by release-please |
 | RC Build      | `.github/workflows/release_candidate.yml`   | Release candidates     |
 
+### Releases and flashing
+
+**Releases are automated — never push a tag by hand.** `release-please` (managed by stein-infra,
+not by files in this repo) watches conventional commits on `main`, opens a `chore(main): release
+X.Y.Z` PR, self-merges it, cuts a `vX.Y.Z` tag and creates the release. That fires
+`release-publish.yml`, which builds all four boards and attaches the binaries. A manually pushed tag
+is filtered out and does nothing.
+
+Consequences worth holding onto:
+
+- **The PR title is the release input.** A non-conventional title contributes nothing to the
+  changelog and may skip the version bump.
+- **`[crosspoint] version` in `platformio.ini` is bumped for you**, via release-please `extra-files`
+  and the block-form `x-release-please-start-version` markers. Do not edit it by hand, and do not
+  convert those markers to the inline form — `scripts/git_branch.py` reads that key with a parser
+  that keeps inline comments, which would put the comment inside `CROSSPOINT_VERSION`.
+- **Do not hand-create** `release-please-config.json`, `.release-please-manifest.json`,
+  `version.txt` or `.github/workflows/release-please.yml`. They are pushed by stein-infra's tofu.
+
+**Flashing: OTA is the default path.** The device updates itself from this repo's releases over
+WiFi (Settings → check for updates). Reach for a cable only when you need a **dev** build — OTA
+installs `x4pro-gh_release`, which has `LOG_LEVEL=0` and no serial logging.
+
+Cable-free side-load of a dev build, when you do need logs: `POST /upload?path=/` the `firmware.bin`
+to the device web server, then *Settings → SD firmware update*. Suppress `Expect: 100-continue`
+(`curl -H "Expect:"`) or the transfer hangs — the ESP32 web server never answers it.
+
 **Rules**:
 
 - **Fix CI failures BEFORE** requesting review
@@ -935,8 +962,13 @@ build_flags =
 ### Serial Monitor Options
 
 1. **Enhanced**: `python3 scripts/debugging_monitor.py` (color-coded, recommended)
-2. **Standard**: `pio device monitor` (basic, no colors)
+2. **Plain read**: `cat /dev/cu.usbmodemXXXXX > serial.log` — background it and tail the file
 3. **VS Code**: Monitor (🔌) button (IDE-integrated)
+
+**`pio device monitor` does not work on the X4 Pro.** Its native USB-JTAG/serial bridge
+(`303A:1001`) has no line settings, so the monitor dies setting a baud rate:
+`termios.error: (19, 'Operation not supported by device')`. Never pass a baud rate to this
+transport in any tool — `esptool` corrupts large transfers the same way.
 
 ### Live Debugging Patterns
 
