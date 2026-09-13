@@ -90,3 +90,5 @@ add_subdirectory(bible_book_join)
 add_subdirectory(bible_chapter_number)
 
 add_subdirectory(number_grid)
+
+add_subdirectory(ota_version)
