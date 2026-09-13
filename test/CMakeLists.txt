@@ -82,3 +82,6 @@ add_subdirectory(wol_week_scan)
 add_subdirectory(month_name_map)
 
 add_subdirectory(pub_media_json)
+
+add_subdirectory(bible_nav_scanner)
+add_subdirectory(bible_book_join)
