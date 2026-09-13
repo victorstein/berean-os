@@ -76,3 +76,9 @@ add_subdirectory(verse_anchors)
 add_subdirectory(tag_rows)
 
 add_subdirectory(return_stack)
+
+add_subdirectory(wol_week_scan)
+
+add_subdirectory(month_name_map)
+
+add_subdirectory(pub_media_json)
