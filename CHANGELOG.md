@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.0](https://github.com/victorstein/berean-os/compare/v1.0.1...v1.1.0) (2026-09-14)
+
+
+### Features
+
+* add an atomic, budgeted save path for persisted stores ([97aa782](https://github.com/victorstein/berean-os/commit/97aa782a808130e91ab38eda1a4a31cd08f5e492))
+
+
+### Refactor
+
+* drop KOReader sync ([7380e02](https://github.com/victorstein/berean-os/commit/7380e026cdb56fe726613f74b0b19a2ba5fefe25))
+* drop the dictionary ([d11a4c9](https://github.com/victorstein/berean-os/commit/d11a4c9f13b4f6eccf9f933ab8298c48043b7daa))
+* drop the OPDS browser ([0d9285e](https://github.com/victorstein/berean-os/commit/0d9285ebe18a43e554b6f4c97aa4dbb98b53d668))
+* drop the TXT and XTC readers ([a65c57d](https://github.com/victorstein/berean-os/commit/a65c57d80a7a75ded19ffd334eaff807b110d8d1))
+
+
+### Documentation
+
+* add five scoped agent definitions ([aa21618](https://github.com/victorstein/berean-os/commit/aa21618589779b15e7265a2828e4d52f7fcf8ae3))
+* prune the agent guide to this device ([64c75b5](https://github.com/victorstein/berean-os/commit/64c75b589aeb00d0554fd8a9c6796b488dbed4c2))
+
 ## [1.0.1](https://github.com/victorstein/berean-os/compare/v1.0.0...v1.0.1) (2026-09-14)
 
 
