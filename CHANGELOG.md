@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.3](https://github.com/victorstein/berean-os/compare/v1.1.2...v1.1.3) (2026-09-14)
+
+
+### Bug Fixes
+
+* remove the break statements the deleted cases left behind ([626cadb](https://github.com/victorstein/berean-os/commit/626cadbfbbe55d3317e2633845cc31b06d33ba0c))
+
 ## [1.1.2](https://github.com/victorstein/berean-os/compare/v1.1.1...v1.1.2) (2026-09-14)
 
 
