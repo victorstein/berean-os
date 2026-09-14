@@ -88,7 +88,7 @@ void MeetingsActivity::loop() {
     // fetches and scrapes a page with no progress or cancel hook, so whatever
     // is on screen when it starts is what the user looks at until it returns.
     requestUpdateAndWait();
-    startDownload();
+    startDownload(/*force=*/false);
     return;
   }
   UiListActivity::loop();
@@ -122,22 +122,28 @@ void MeetingsActivity::buildScreen(UiScreen& screen) {
 }
 
 void MeetingsActivity::activateIndex(const int index) {
-  if (index < 0 || index >= static_cast<int>(rows_.size())) return;
-  const Row& row = rows_[static_cast<size_t>(index)];
+  if (index < 0 || index > static_cast<int>(rows_.size())) return;
 
+  if (index == static_cast<int>(rows_.size())) {
+    startDownload(/*force=*/true);
+    return;
+  }
+
+  const Row& row = rows_[static_cast<size_t>(index)];
   if (!row.path.empty()) {
     activityManager.goToReader(row.path);
     return;
   }
   // Nothing to open and nothing known to fetch: the week itself is what is
   // missing, so resolving is the only useful thing this row can do.
-  startDownload();
+  startDownload(/*force=*/false);
 }
 
-void MeetingsActivity::startDownload() {
+void MeetingsActivity::startDownload(const bool force) {
   resolveAttempted_ = true;
-  startActivityForResult(std::make_unique<MeetingDownloadActivity>(renderer, mappedInput), [this](const ActivityResult&) {
-    refresh();
-    requestUpdate();
-  });
+  startActivityForResult(std::make_unique<MeetingDownloadActivity>(renderer, mappedInput, force),
+                         [this](const ActivityResult&) {
+                           refresh();
+                           requestUpdate();
+                         });
 }

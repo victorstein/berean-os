@@ -39,7 +39,8 @@ class MeetingsActivity final : public UiListActivity {
     std::string subtitle;
   };
 
-  int listCount() const override { return static_cast<int>(rows_.size()); }
+  // The two publications plus the refresh row beneath them.
+  int listCount() const override { return static_cast<int>(rowItems_.size()); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   const char* headerTitle() const override;
@@ -47,10 +48,10 @@ class MeetingsActivity final : public UiListActivity {
   // Rebuilds the rows from the week cache and the card. Cheap enough to run on
   // every return from a download.
   void refresh();
-  void startDownload();
+  void startDownload(bool force);
 
   std::array<Row, 2> rows_;
-  std::array<freeink::ui::ListItem, 2> rowItems_{};
+  std::array<freeink::ui::ListItem, 3> rowItems_{};
 
   // Set when the cache does not cover the current ISO week. Consumed by the
   // first loop() pass, after the cached rows have been forced onto the panel.

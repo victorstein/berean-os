@@ -179,7 +179,7 @@ Result download(const Request& request, const Hooks& hooks, std::string& outPath
   if (hooks.onResolved) hooks.onResolved(hooks.ctx, filename.c_str());
 
   if (!Storage.exists(outPath.c_str())) migrateCdnNamedCopy(request.folder, media->url(), outPath, hooks);
-  if (alreadyOnCard(outPath, media->filesize())) {
+  if (!request.force && alreadyOnCard(outPath, media->filesize())) {
     LOG_INF(MODULE, "Skipping %s, already on the card", outPath.c_str());
     // The identity is recorded even on the skip path: the file may predate the
     // registry, and an unregistered publication loses its tags when it moves.
@@ -195,23 +195,42 @@ Result download(const Request& request, const Hooks& hooks, std::string& outPath
     };
   }
 
-  const auto result = HttpDownloader::downloadToFile(media->url(), outPath, progress, hooks.cancelFlag);
+  // downloadToFile writes straight to the path it is given, so replacing a copy
+  // already on the card is staged: a transfer that dies halfway would otherwise
+  // leave a truncated file where a working publication used to be. A first
+  // download has nothing to lose and writes in place.
+  const bool replacing = Storage.exists(outPath.c_str());
+  const std::string writePath = replacing ? outPath + ".part" : outPath;
+
+  const auto result = HttpDownloader::downloadToFile(media->url(), writePath, progress, hooks.cancelFlag);
   if (result == HttpDownloader::ABORTED) {
     LOG_INF(MODULE, "Download cancelled");
+    if (replacing) Storage.remove(writePath.c_str());
     return Result::Cancelled;
   }
   if (result != HttpDownloader::OK) {
     LOG_ERR(MODULE, "Download failed: %d", static_cast<int>(result));
+    if (replacing) Storage.remove(writePath.c_str());
     return Result::DownloadFailed;
   }
 
   // These transfers run over unverified TLS (the wolfSSL transport has no CA
   // bundle wired up, so setInsecure() is unconditional), which makes the MD5 the
   // API publishes the only integrity check available.
-  if (!matchesChecksum(outPath, media->checksum())) {
-    LOG_ERR(MODULE, "Checksum mismatch for %s", outPath.c_str());
-    Storage.remove(outPath.c_str());
+  if (!matchesChecksum(writePath, media->checksum())) {
+    LOG_ERR(MODULE, "Checksum mismatch for %s", writePath.c_str());
+    Storage.remove(writePath.c_str());
     return Result::ChecksumMismatch;
+  }
+
+  // Only now, with the replacement downloaded and its checksum verified, is the
+  // existing copy given up.
+  if (replacing) {
+    Storage.remove(outPath.c_str());
+    if (!Storage.rename(writePath.c_str(), outPath.c_str())) {
+      LOG_ERR(MODULE, "Could not put %s in place", outPath.c_str());
+      return Result::DownloadFailed;
+    }
   }
 
   // The reading cache is keyed on the path hash and book.bin records no size or

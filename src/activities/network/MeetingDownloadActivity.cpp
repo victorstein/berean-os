@@ -32,8 +32,9 @@ constexpr const char* DOWNLOAD_LANGUAGE = "S";
 constexpr MeetingPub PUBLICATION_ORDER[] = {MeetingPub::Watchtower, MeetingPub::Workbook};
 }  // namespace
 
-MeetingDownloadActivity::MeetingDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : Activity("MeetingDownload", renderer, mappedInput), UiAppHost(renderer) {}
+MeetingDownloadActivity::MeetingDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                                 const bool forceRedownload)
+    : Activity("MeetingDownload", renderer, mappedInput), UiAppHost(renderer), forceRedownload(forceRedownload) {}
 
 void MeetingDownloadActivity::onEnter() {
   Activity::onEnter();
@@ -239,6 +240,7 @@ bool MeetingDownloadActivity::downloadPublication(const MeetingPub pub, const ch
   request.issue = issue;
   request.language = DOWNLOAD_LANGUAGE;
   request.folder = downloadFolder;
+  request.force = forceRedownload;
 
   publication::Hooks hooks;
   hooks.ctx = this;

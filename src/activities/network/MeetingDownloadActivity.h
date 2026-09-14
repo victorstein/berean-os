@@ -21,7 +21,10 @@ class MeetingDownloadActivity final : public Activity, private UiAppHost {
  public:
   enum class State { WIFI_SELECTION, RESOLVING, DOWNLOADING, FINISHED, FAILED };
 
-  explicit MeetingDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  // forceRedownload fetches this week's publications even when byte-identical
+  // copies are already on the card, for the refresh the meetings screen offers.
+  explicit MeetingDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                   bool forceRedownload = false);
 
   void onEnter() override;
   void onExit() override;
@@ -51,6 +54,8 @@ class MeetingDownloadActivity final : public Activity, private UiAppHost {
 
   // "" when no folder is configured or it could not be created, meaning SD root.
   std::string downloadFolder;
+
+  const bool forceRedownload;
 
   State state = State::RESOLVING;
   // Set once the screen has been painted, so the blocking resolve/download work

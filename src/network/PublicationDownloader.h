@@ -30,6 +30,9 @@ struct Request {
   const char* issue = "";  // empty for a non-periodical
   const char* language = "S";
   std::string folder;  // "" means the SD root
+  // Fetch even when the card already holds a byte-identical copy. The refresh
+  // path uses this; the routine path must not, or every visit re-downloads.
+  bool force = false;
 };
 
 // Context-carrying function pointers rather than std::function: both callers
