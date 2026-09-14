@@ -1,3 +1,118 @@
+# bereanOS
+
+A study firmware for the **Xteink X4 Pro**, hard-forked from `crosspoint-x4pro` on
+2026-09-13. Design: `docs/superpowers/specs/2026-09-13-berean-os-design.md`.
+Workflow: `docs/contributing/development-workflow.md`.
+
+The Bible at the centre, the two weekly meeting publications, catalog browsing,
+and tagged passages with global tags. No notes, no JW Library interop, no
+on-device full-text search.
+
+---
+
+## Read this before the CrossPoint guide below
+
+Everything after the separator is inherited from CrossPoint and is being stripped
+in Phase 0. Where it conflicts with this section, **this section wins.** The
+inherited text is kept because most of it — HAL rules, memory safety, SdFat
+threading, cache versioning — is still correct and hard-won.
+
+### One device, and it is not a C3
+
+The inherited guide opens with "380KB RAM is the hard ceiling" for the ESP32-C3.
+**This project targets only the X4 Pro: ESP32-S3, dual core, 8 MB PSRAM, 16 MB
+flash** (`platformio.ini:239,250`). Multi-board support is out of scope.
+
+That is a licence to use PSRAM deliberately, not a licence to stop budgeting. S3
+PSRAM is on an external SPI bus: roughly an order of magnitude slower than internal
+SRAM, unusable from an ISR, unusable while the flash cache is suspended, and
+DMA-constrained.
+
+| Lives in PSRAM | Lives in internal SRAM |
+|---|---|
+| Catalog index while Buscar is open (~217 KB) | Framebuffer (48 KB) |
+| Unit index pages being built or queried | Selection geometry, render hot path |
+| Download and inflate buffers | ISR state, anything `IRAM_ATTR` touches |
+
+Internal SRAM is still the same ~380 KB-class resource the inherited guide
+disciplines you about. Every rule below about stack size, heap fragmentation,
+`constexpr`, and string policy still applies to it.
+
+### The input hardware, as confirmed on the bench
+
+`freeink-sdk/docs/xteink-x4pro-support.md`, section "Input — digital buttons +
+capacitive Home":
+
+- **Left** nav button — GPIO0 (also a boot-strap pin; fine unless held at reset)
+- **Right** nav button — GPIO7
+- **Power** — GPIO3
+- **Home** — a capacitive key bit on the GT911 (`0x814E & 0x10`), **not a GPIO**
+- GT911 capacitive touchscreen
+
+**There is no Back button and no Confirm button.** The inherited "Logical Button
+Mapping" section models four remappable front buttons plus two side buttons; most
+of that describes hardware this device does not have.
+
+`MappedInputManager` cannot simply be deleted — it is in the `Activity` base-class
+constructor (`src/activities/Activity.h:22,28-29`), spans 418 references across 121
+files, and *implements* this device's Back via a left-edge swipe
+(`src/MappedInputManager.cpp:266,301`). It may only be removed in the same change
+that lands its replacement.
+
+### Storage discipline — the rule that protects the only irreplaceable data
+
+`SDCardManager::readFile` (`freeink-sdk/.../SDCardManager.cpp:202`) hard-caps reads
+at `constexpr size_t maxSize = 50000` and returns a **silently truncated** string.
+`PersistableStore::saveToFile` uses the **non-atomic** `writeDocToFile`
+(`lib/Serialization/PersistableStore.cpp:11`); `writeDocToFileAtomic` sits beside
+it and must be opted into.
+
+Left alone, that chain is: a store grows past ~45 KB, saves fine because nothing
+checks, reads back truncated mid-token, fails to parse, initialises empty, and the
+next save overwrites the real file with `{}`. The repo already carries the scar —
+`src/util/HighlightFile.h:40-42`, `SAVE_BYTE_BUDGET = 45000`.
+
+**Every store this project introduces must:**
+
+1. Write through `writeDocToFileAtomic`. Never `writeDocToFile`.
+2. Check an explicit serialised-byte budget *before* writing. Refuse and report;
+   never truncate.
+3. Stream, not `Storage.readFile`, if it can exceed ~40 KB.
+4. Carry a format version a future build **refuses** rather than reinterprets.
+5. Name its owning task and hold `storageMutex` on write. This firmware has a web
+   server and background downloads, so it has more concurrent writers than the
+   model it replaces.
+
+### Evidence rules
+
+The inherited "Anti-Hallucination" rule stands and is sharpened: **a claim about
+this codebase needs a file and a line, and the line must have been read.** The two
+claims most likely to be wrong and most expensive to discover late are "this
+already exists" and "this is already tested."
+
+Specifically do not repeat these, all of which were asserted and disproven during
+design:
+
+- `sdkconfig.x4pro`'s `CONFIG_BT_NIMBLE_*` lines do **not** mean BLE is compiled
+  in. Zero NimBLE objects link; `lib_deps` has no BLE library. The stack's flash
+  cost is entirely unpaid.
+- `data-pnum` is **not** the addressable unit in JW publications. It is the printed
+  paragraph number on a `<span class="parNum">`. The structural address is
+  `data-pid` on the block element.
+- `VerseAnchors` does **not** generalise to other markers. It hardcodes the `id`
+  attribute and a `chapter%u_verse%u` grammar (`VerseAnchors.cpp:30-41`).
+
+### Scope
+
+Out, deliberately: notes, `.jwlibrary` interop, on-device full-text search, and
+everything CrossPoint carries that is not JW study (OPDS, KOSync, dictionary, TXT
+and XTC readers, other board targets).
+
+The inherited `SCOPE.md` describes CrossPoint's product, not this one. It is kept
+for the reasoning, not the rules.
+
+---
+
 # CrossPoint Reader Development Guide
 
 Project: Open-source e-reader firmware for Xteink X4 (ESP32-C3)
