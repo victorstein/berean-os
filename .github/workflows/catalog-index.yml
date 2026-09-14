@@ -78,8 +78,16 @@ jobs:
                  --title "Publication catalog index" \
                  --notes "Slim per-language index built from JW Library's published catalog. Symbols, issue codes, years and titles only. Rebuilt weekly; replaced in place, so the download URL is stable." \
                  --latest=false
+          # The device fetches the .gz: 18 KB over the wire against 217 KB, and
+          # it already carries a deflate decoder. The plain .txt stays published
+          # because the next run diffs against it, and because a device whose
+          # inflate fails can still read it.
           for f in catalog-S.txt catalog-E.txt; do
-            [ -f "$f" ] && gh release upload catalog "$f" --repo "${{ github.repository }}" --clobber
+            [ -f "$f" ] || continue
+            # -n omits the timestamp and original name, so an unchanged index
+            # compresses to the same bytes every week.
+            gzip -9 -n -c "$f" > "$f.gz"
+            gh release upload catalog "$f" "$f.gz" --repo "${{ github.repository }}" --clobber
           done
 
       - name: Fail loudly on a real error

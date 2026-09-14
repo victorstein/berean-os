@@ -68,13 +68,23 @@ std::string meetingsPageUrl(const IsoWeek& week) {
   return buf;
 }
 
-std::string pubMediaUrl(const MeetingPub pub, const char* issue, const char* languageKey) {
-  char buf[160];
-  snprintf(buf, sizeof(buf),
-           "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=%s&langwritten=%s&fileformat=EPUB&"
-           "issue=%s",
-           pub == MeetingPub::Watchtower ? "w" : "mwb", languageKey, issue);
+std::string pubMediaUrlForSymbol(const char* symbol, const char* issue, const char* languageKey) {
+  char buf[200];
+  if (issue == nullptr || issue[0] == '\0') {
+    snprintf(buf, sizeof(buf),
+             "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=%s&langwritten=%s&fileformat=EPUB",
+             symbol, languageKey);
+  } else {
+    snprintf(buf, sizeof(buf),
+             "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=%s&langwritten=%s&fileformat=EPUB&"
+             "issue=%s",
+             symbol, languageKey, issue);
+  }
   return buf;
+}
+
+std::string pubMediaUrl(const MeetingPub pub, const char* issue, const char* languageKey) {
+  return pubMediaUrlForSymbol(pub == MeetingPub::Watchtower ? "w" : "mwb", issue, languageKey);
 }
 
 std::string filenameFromUrl(const std::string& url) {

@@ -28,6 +28,12 @@ uint8_t monthNumberFromName(const char* name, size_t len);
 bool isoWeekFromUtcDate(uint16_t year, uint8_t month, uint8_t day, IsoWeek& out);
 
 std::string meetingsPageUrl(const IsoWeek& week);
+
+// GETPUBMEDIALINKS for any publication symbol. A null or empty `issue` omits the
+// issue parameter entirely: the API answers a non-periodical ("lff") only when
+// the parameter is absent, and answers it with an empty issue as not found.
+std::string pubMediaUrlForSymbol(const char* symbol, const char* issue, const char* languageKey);
+
 std::string pubMediaUrl(MeetingPub pub, const char* issue, const char* languageKey);
 
 // Filename the CDN serves a publication under: the last path segment of its

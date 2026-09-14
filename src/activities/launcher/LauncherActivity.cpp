@@ -17,6 +17,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "activities/catalog/CatalogSearchActivity.h"
 #include "activities/network/MeetingDownloadActivity.h"
 #include "components/UITheme.h"
 #include "components/icons/book.h"
@@ -430,7 +431,8 @@ void LauncherActivity::render(RenderLock&&) {
   drawCoverTile(rects[1], meetingsCoverPath, tr(STR_MEETINGS),
                 meetingsSubtitle.empty() ? nullptr : meetingsSubtitle.c_str(), LibraryIcon, selected == 1,
                 MAGAZINE_MASTHEAD_BAND);
-  drawTile(rects[2], tr(STR_SEARCH), tr(STR_COMING_SOON), selected == 2, false, {}, SearchIcon);
+  // Buscar has landed, so the tile no longer carries a "coming soon" subtitle.
+  drawTile(rects[2], tr(STR_SEARCH), nullptr, selected == 2, false, {}, SearchIcon);
   drawTile(rects[3], tr(STR_TAGS_AND_SETTINGS), nullptr, selected == 3, false, {}, Settings2Icon);
 
   // The resume strip is deliberately a one-line label over its book's title:
@@ -452,8 +454,7 @@ void LauncherActivity::activate(const Tile tile) {
       openMeetings();
       break;
     case Tile::Search:
-      // Buscar lands in phase 3. The tile is drawn rather than hidden so the
-      // shape of the device is honest about what is coming.
+      openSearch();
       break;
     case Tile::TagsAndSettings:
       openTagsAndSettings();
@@ -479,6 +480,14 @@ void LauncherActivity::openBible() {
 void LauncherActivity::openMeetings() {
   startActivityForResult(std::make_unique<MeetingDownloadActivity>(renderer, mappedInput),
                          [this](const ActivityResult&) { requestUpdate(); });
+}
+
+void LauncherActivity::openSearch() {
+  startActivityForResult(std::make_unique<CatalogSearchActivity>(renderer, mappedInput), [this](const ActivityResult&) {
+    // A download changes what the Bible and resume tiles can offer.
+    resolveTargets();
+    requestUpdate();
+  });
 }
 
 void LauncherActivity::openTagsAndSettings() { activityManager.goToSettings(); }
