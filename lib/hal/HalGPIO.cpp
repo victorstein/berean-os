@@ -160,44 +160,83 @@ void HalGPIO::update() {
 
 bool HalGPIO::wasUsbStateChanged() const { return usbStateChanged; }
 
-// A key that has become a hold is hidden entirely -- press, release and state.
-// ButtonNavigator starts continuous list scrolling at 500 ms off isPressed
-// while Back lands at 850, so leaving the raw key visible would make one hold
-// scroll the list AND then go back.
+// The nav keys resolve on RELEASE, and exactly one synthetic press+release pair
+// is emitted for each: a page turn if the key was tapped, Back or Confirm if it
+// was held.
 //
-// Recovery mode is unaffected: it holds the key from boot, so NavKeyGestures
-// marks it stale, a stale key never synthesises, and it is therefore never
-// suppressed. The screenshot combo latches on the first tick both keys are
-// down, long before the threshold.
+// Deciding mid-hold cannot work here. The reader pages on wasPressed by default
+// (ReaderUtils.h:53), so the page turn fires the instant the key goes down --
+// 850 ms before any hold could be detected. And getHeldTime() is global, timing
+// the whole press (InputManager.cpp:482-489), so a held key's release reports a
+// long press to the nine sites that branch on it: the file browser's delete
+// prompt at 1000, the reader's back destination at 1000, bookmark-vs-menu at
+// 400, delete mode at 700. Every one of them would fire on an ordinary Back.
+//
+// This is the model InputManager's own updateDigitalTwoButton uses
+// (InputManager.cpp:400-407), implemented here so it does not also blank
+// isPressed and take recovery firmware mode with it.
 bool HalGPIO::isPressed(uint8_t buttonIndex) const {
-  if (buttonIndex == BTN_BACK) return navGestures.backHeld();
-  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmHeld();
-  if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
-  if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+  // Nothing holds a synthesised button: it exists only as a one-tick pair.
+  if (buttonIndex == BTN_BACK || buttonIndex == BTN_CONFIRM) return false;
+  if (buttonIndex == BTN_UP && navGestures.suppressState(input::NavKey::Left)) return false;
+  if (buttonIndex == BTN_DOWN && navGestures.suppressState(input::NavKey::Right)) return false;
   return inputMgr.isPressed(buttonIndex);
 }
 
+bool HalGPIO::synthesisedEdge(const uint8_t buttonIndex) const {
+  using input::NavEvent;
+  using input::NavKey;
+
+  const NavEvent left = navGestures.eventFor(NavKey::Left);
+  const NavEvent right = navGestures.eventFor(NavKey::Right);
+
+  switch (buttonIndex) {
+    case BTN_BACK:
+      return left == NavEvent::Synth;
+    case BTN_CONFIRM:
+      return right == NavEvent::Synth;
+    case BTN_UP:
+      return left == NavEvent::Page;
+    case BTN_DOWN:
+      return right == NavEvent::Page;
+    default:
+      return false;
+  }
+}
+
+// Both edges of the synthetic pair land on the same tick. Consumers read either
+// wasPressed or wasReleased depending on the screen, and a key press that
+// produced only one of them would work on half the device.
 bool HalGPIO::wasPressed(uint8_t buttonIndex) const {
-  if (buttonIndex == BTN_BACK) return navGestures.backPressedThisTick();
-  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmPressedThisTick();
-  if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
-  if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+  if (buttonIndex == BTN_BACK || buttonIndex == BTN_CONFIRM) return synthesisedEdge(buttonIndex);
+  // The raw edges never reach anyone: the release decides what the press meant,
+  // and re-emits it.
+  if (buttonIndex == BTN_UP || buttonIndex == BTN_DOWN) return synthesisedEdge(buttonIndex);
   return inputMgr.wasPressed(buttonIndex);
 }
 
 bool HalGPIO::wasAnyPressed() const { return inputMgr.wasAnyPressed(); }
 
 bool HalGPIO::wasReleased(uint8_t buttonIndex) const {
-  if (buttonIndex == BTN_BACK) return navGestures.backReleasedThisTick();
-  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmReleasedThisTick();
-  if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
-  if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+  if (buttonIndex == BTN_BACK || buttonIndex == BTN_CONFIRM || buttonIndex == BTN_UP || buttonIndex == BTN_DOWN) {
+    return synthesisedEdge(buttonIndex);
+  }
   return inputMgr.wasReleased(buttonIndex);
 }
 
 bool HalGPIO::wasAnyReleased() const { return inputMgr.wasAnyReleased(); }
 
-unsigned long HalGPIO::getHeldTime() const { return inputMgr.getHeldTime(); }
+// A synthesised event must read as an ordinary press. getHeldTime() is global
+// -- it times from the first key down to all released (InputManager.cpp:482-489)
+// -- so without this substitution a Back held for 900 ms arrives at every site
+// that branches on duration as a long press: the file browser's delete prompt
+// and go-to-root at 1000, the reader's back destination at 1000, bookmark
+// instead of the reader menu at 400, delete mode instead of activation at 700.
+// The hold is how the button was PRODUCED; it is not what the button means.
+unsigned long HalGPIO::getHeldTime() const {
+  if (navGestures.reportingSyntheticHeldTime()) return input::NavKeyGestures::SYNTHETIC_HELD_MS;
+  return inputMgr.getHeldTime();
+}
 
 unsigned long HalGPIO::getPowerButtonHeldTime() const { return inputMgr.getPowerButtonHeldTime(); }
 

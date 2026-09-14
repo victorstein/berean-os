@@ -4,15 +4,14 @@ namespace input {
 namespace {
 
 // Unsigned subtraction, so a millis() wrap yields the true short interval
-// rather than ~49 days. Reading a wrap as "held forever" would assert Back on
-// the first key touched after 49 days of uptime.
+// rather than ~49 days.
 uint32_t elapsed(const uint32_t from, const uint32_t now) { return now - from; }
 
 }  // namespace
 
 void NavKeyGestures::updateKey(Key& key, const bool pressed, const uint32_t nowMs) {
-  key.pressedEdge = false;
-  key.releasedEdge = false;
+  key.event = NavEvent::None;
+  key.lastSeenMs = nowMs;
 
   if (pressed && !key.down) {
     key.down = true;
@@ -22,17 +21,13 @@ void NavKeyGestures::updateKey(Key& key, const bool pressed, const uint32_t nowM
 
   if (!pressed && key.down) {
     key.down = false;
-    key.stale = false;  // a real release clears staleness; the next press is genuine
-    if (key.synthesised) {
-      key.synthesised = false;
-      key.releasedEdge = true;
+    const bool wasStale = key.stale;
+    key.stale = false;
+    // A key that was already down when we started looking resolves to nothing:
+    // it was held through boot or a wake, and its press was never ours to read.
+    if (!wasStale) {
+      key.event = elapsed(key.downAtMs, nowMs) >= HOLD_MS ? NavEvent::Synth : NavEvent::Page;
     }
-    return;
-  }
-
-  if (pressed && key.down && !key.stale && !key.synthesised && elapsed(key.downAtMs, nowMs) >= HOLD_MS) {
-    key.synthesised = true;
-    key.pressedEdge = true;
   }
 }
 
@@ -46,14 +41,24 @@ void NavKeyGestures::beginWithKeysDown(const bool leftPressed, const bool rightP
   right_ = Key{};
   left_.down = leftPressed;
   left_.stale = leftPressed;
-  left_.downAtMs = nowMs;
+  if (leftPressed) left_.downAtMs = nowMs;
   right_.down = rightPressed;
   right_.stale = rightPressed;
-  right_.downAtMs = nowMs;
+  if (rightPressed) right_.downAtMs = nowMs;
 }
 
-bool NavKeyGestures::suppressRaw(const NavKey key) const {
-  return key == NavKey::Left ? left_.synthesised : right_.synthesised;
+NavEvent NavKeyGestures::eventFor(const NavKey key) const { return keyRef(key).event; }
+
+bool NavKeyGestures::suppressState(const NavKey key) const {
+  const Key& k = keyRef(key);
+  if (!k.down || k.stale) return false;
+  // Not from the first tick: the screenshot combo latches the instant POWER and
+  // the right key are both down (main.cpp:653), and that must keep working.
+  return elapsed(k.downAtMs, k.lastSeenMs) >= HOLD_STATE_SUPPRESS_MS;
+}
+
+bool NavKeyGestures::reportingSyntheticHeldTime() const {
+  return left_.event != NavEvent::None || right_.event != NavEvent::None;
 }
 
 }  // namespace input

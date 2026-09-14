@@ -62,6 +62,9 @@ class HalGPIO {
   input::NavKeyGestures navGestures;
   bool navGesturesPrimed = false;
 
+  // True on the one tick a nav key's release resolved to this button.
+  bool synthesisedEdge(uint8_t buttonIndex) const;
+
  public:
   HalGPIO() = default;
 

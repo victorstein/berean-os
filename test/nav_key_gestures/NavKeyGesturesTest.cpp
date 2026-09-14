@@ -4,129 +4,143 @@
 
 namespace {
 
+using input::NavEvent;
 using input::NavKey;
 using input::NavKeyGestures;
 
-// Drives the machine at a fixed key state, like the firmware loop. 50 ms is the
-// tick once the device has been idle three seconds (HalPowerManager.h:33) --
-// the common case, not the fast one.
+// 50 ms is the loop tick once the device has been idle three seconds
+// (IDLE_POWER_SAVING_MS = 3000, main.cpp's delay(50)) -- the common case.
 void run(NavKeyGestures& g, const bool left, const bool right, const uint32_t from, const uint32_t until,
          const uint32_t tickMs = 50) {
   for (uint32_t t = from; t <= until; t += tickMs) g.update(left, right, t);
 }
 
-TEST(NavKeyGestures, AShortPressSynthesisesNothing) {
+TEST(NavKeyGestures, ATapResolvesToAPageTurnOnRelease) {
+  NavKeyGestures g;
+  run(g, true, false, 0, 200);
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::None) << "nothing may fire while the key is still down";
+  g.update(false, false, 250);
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::Page);
+}
+
+TEST(NavKeyGestures, AHeldLeftKeyResolvesToBackOnRelease) {
+  NavKeyGestures g;
+  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::None) << "the decision belongs to the release edge";
+  g.update(false, false, NavKeyGestures::HOLD_MS + 150);
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::Synth);
+}
+
+TEST(NavKeyGestures, AHeldRightKeyResolvesToConfirmOnRelease) {
+  NavKeyGestures g;
+  run(g, false, true, 0, NavKeyGestures::HOLD_MS + 100);
+  g.update(false, false, NavKeyGestures::HOLD_MS + 150);
+  EXPECT_EQ(g.eventFor(NavKey::Right), NavEvent::Synth);
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::None);
+}
+
+// The whole point of deciding on release: exactly one thing happens per press,
+// so a hold can never also have turned a page on the way.
+TEST(NavKeyGestures, AHoldNeverAlsoProducesAPage) {
+  NavKeyGestures g;
+  int pages = 0;
+  int synths = 0;
+  for (uint32_t t = 0; t <= NavKeyGestures::HOLD_MS + 200; t += 50) {
+    g.update(t <= NavKeyGestures::HOLD_MS + 100, false, t);
+    if (g.eventFor(NavKey::Left) == NavEvent::Page) pages++;
+    if (g.eventFor(NavKey::Left) == NavEvent::Synth) synths++;
+  }
+  EXPECT_EQ(pages, 0);
+  EXPECT_EQ(synths, 1);
+}
+
+TEST(NavKeyGestures, AnEventIsReportedForExactlyOneTick) {
   NavKeyGestures g;
   run(g, true, false, 0, 200);
   g.update(false, false, 250);
-  EXPECT_FALSE(g.backHeld());
-  EXPECT_FALSE(g.confirmHeld());
-  EXPECT_FALSE(g.backReleasedThisTick());
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::Page);
+  g.update(false, false, 300);
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::None) << "an edge that repeats is acted on twice";
 }
 
-TEST(NavKeyGestures, AHeldLeftKeyBecomesBack) {
+// The screenshot combo latches the instant POWER and the right key are both
+// down, so the raw held state must survive the first ticks.
+TEST(NavKeyGestures, RawStateSurvivesLongEnoughForTheScreenshotCombo) {
   NavKeyGestures g;
-  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
-  EXPECT_TRUE(g.backHeld()) << "Back asserts WHILE held, so the user sees it without lifting";
-  EXPECT_FALSE(g.confirmHeld());
+  g.update(false, true, 0);
+  EXPECT_FALSE(g.suppressState(NavKey::Right));
+  g.update(false, true, NavKeyGestures::HOLD_STATE_SUPPRESS_MS - 50);
+  EXPECT_FALSE(g.suppressState(NavKey::Right));
 }
 
-TEST(NavKeyGestures, AHeldRightKeyBecomesConfirm) {
+// ...but is withheld before continuous list scrolling could start at 500 ms,
+// which would otherwise scroll the list and then activate a row on the release.
+TEST(NavKeyGestures, RawStateIsWithheldBeforeContinuousScrollCouldStart) {
   NavKeyGestures g;
-  run(g, false, true, 0, NavKeyGestures::HOLD_MS + 100);
-  EXPECT_TRUE(g.confirmHeld());
-  EXPECT_FALSE(g.backHeld());
+  run(g, false, true, 0, NavKeyGestures::HOLD_STATE_SUPPRESS_MS + 50);
+  EXPECT_TRUE(g.suppressState(NavKey::Right));
+  EXPECT_LT(NavKeyGestures::HOLD_STATE_SUPPRESS_MS, 500u) << "must precede ButtonNavigator's continuousStartMs";
 }
 
-TEST(NavKeyGestures, ReleasingAHeldKeyReportsTheReleaseExactlyOnce) {
+TEST(NavKeyGestures, SuppressionClearsOnRelease) {
   NavKeyGestures g;
-  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
-  g.update(false, false, NavKeyGestures::HOLD_MS + 150);
-  EXPECT_TRUE(g.backReleasedThisTick());
-  EXPECT_FALSE(g.backHeld());
-
-  g.update(false, false, NavKeyGestures::HOLD_MS + 200);
-  EXPECT_FALSE(g.backReleasedThisTick()) << "an edge that repeats is an edge a caller will act on twice";
+  run(g, true, false, 0, NavKeyGestures::HOLD_MS);
+  EXPECT_TRUE(g.suppressState(NavKey::Left));
+  g.update(false, false, NavKeyGestures::HOLD_MS + 50);
+  EXPECT_FALSE(g.suppressState(NavKey::Left));
 }
 
-TEST(NavKeyGestures, TheSynthesisedPressEdgeFiresExactlyOnce) {
-  NavKeyGestures g;
-  run(g, true, false, 0, NavKeyGestures::HOLD_MS - 50);
-  EXPECT_FALSE(g.backPressedThisTick());
-  g.update(true, false, NavKeyGestures::HOLD_MS + 10);
-  EXPECT_TRUE(g.backPressedThisTick());
-  g.update(true, false, NavKeyGestures::HOLD_MS + 60);
-  EXPECT_FALSE(g.backPressedThisTick());
-}
-
-// The load-bearing one. ButtonNavigator starts continuous list scrolling at
-// 500 ms (ButtonNavigator.h:20) while Back lands at 850 -- so without
-// suppression a single hold scrolls the list AND then goes back. The caller
-// hides the raw key entirely once it has become a hold.
-TEST(NavKeyGestures, AKeyThatBecameAHoldIsSuppressedEntirely) {
-  NavKeyGestures g;
-  g.update(true, false, 0);
-  EXPECT_FALSE(g.suppressRaw(NavKey::Left)) << "not yet a hold; short presses and scrolling must work";
-  run(g, true, false, 50, NavKeyGestures::HOLD_MS + 100);
-  EXPECT_TRUE(g.suppressRaw(NavKey::Left));
-}
-
-TEST(NavKeyGestures, SuppressionClearsOnceTheKeyIsReleased) {
-  NavKeyGestures g;
-  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
-  g.update(false, false, NavKeyGestures::HOLD_MS + 150);
-  EXPECT_FALSE(g.suppressRaw(NavKey::Left)) << "the next press must page normally";
-}
-
-TEST(NavKeyGestures, HoldingOneKeyDoesNotSuppressTheOther) {
-  NavKeyGestures g;
-  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
-  EXPECT_TRUE(g.suppressRaw(NavKey::Left));
-  EXPECT_FALSE(g.suppressRaw(NavKey::Right));
-}
-
-TEST(NavKeyGestures, TheTwoKeysAreIndependent) {
-  NavKeyGestures g;
-  run(g, true, true, 0, NavKeyGestures::HOLD_MS + 100);
-  EXPECT_TRUE(g.backHeld());
-  EXPECT_TRUE(g.confirmHeld()) << "holding both is not special; each key means what it means";
-}
-
-// millis() wraps after ~49 days. A signed or naive subtraction reads the wrap as
-// a huge elapsed time and asserts Back on the very first touch of a key.
-TEST(NavKeyGestures, SurvivesAClockWrap) {
-  NavKeyGestures g;
-  g.update(true, false, UINT32_MAX - 20);
-  g.update(true, false, 10);  // wrapped: 30 ms elapsed, nowhere near HOLD_MS
-  EXPECT_FALSE(g.backHeld()) << "a wrap must read as a short interval, not as held-forever";
-}
-
-TEST(NavKeyGestures, AKeyHeldFromTheVeryFirstTickNeverSynthesises) {
-  // Recovery firmware mode holds the right key through startup (main.cpp:387),
-  // and boot deliberately absorbs an already-held key (main.cpp:562-569). Such
-  // a key must never become a Confirm, and must never be suppressed -- recovery
-  // reads isPressed on it.
+TEST(NavKeyGestures, AKeyHeldFromTheVeryFirstTickResolvesToNothingAndIsNeverSuppressed) {
+  // Recovery firmware mode holds the right key through startup (main.cpp:387)
+  // and reads isPressed on it directly.
   NavKeyGestures g;
   g.beginWithKeysDown(false, true, 0);
   run(g, false, true, 50, NavKeyGestures::HOLD_MS * 2);
-  EXPECT_FALSE(g.confirmHeld());
-  EXPECT_FALSE(g.suppressRaw(NavKey::Right));
+  EXPECT_FALSE(g.suppressState(NavKey::Right)) << "recovery reads the raw state and must still see it";
+  g.update(false, false, NavKeyGestures::HOLD_MS * 2 + 50);
+  EXPECT_EQ(g.eventFor(NavKey::Right), NavEvent::None) << "a key held through boot was never our press";
 }
 
 TEST(NavKeyGestures, AFreshPressAfterAStaleOneWorksNormally) {
   NavKeyGestures g;
   g.beginWithKeysDown(false, true, 0);
-  run(g, false, true, 50, NavKeyGestures::HOLD_MS * 2);
-  g.update(false, false, NavKeyGestures::HOLD_MS * 2 + 50);
-  run(g, false, true, NavKeyGestures::HOLD_MS * 2 + 100, NavKeyGestures::HOLD_MS * 3 + 200);
-  EXPECT_TRUE(g.confirmHeld()) << "staleness must clear on release, or the key is dead forever";
+  run(g, false, true, 50, 400);
+  g.update(false, false, 450);
+  run(g, false, true, 500, 600);
+  g.update(false, false, 650);
+  EXPECT_EQ(g.eventFor(NavKey::Right), NavEvent::Page) << "staleness must clear, or the key is dead forever";
 }
 
-TEST(NavKeyGestures, HoldThresholdClearsTheReadersOwnHolds) {
-  // ReaderUtils.h:18-19 -- SKIP_HOLD_MS 700 and BOOKMARK_HOLD_MS 400 both fire
-  // off the raw key, and GO_BACK_OR_HOME_MS is 1000.
-  EXPECT_GT(NavKeyGestures::HOLD_MS, 700u);
-  EXPECT_LT(NavKeyGestures::HOLD_MS, 1000u);
+TEST(NavKeyGestures, TheTwoKeysAreIndependent) {
+  NavKeyGestures g;
+  run(g, true, true, 0, NavKeyGestures::HOLD_MS + 100);
+  g.update(false, false, NavKeyGestures::HOLD_MS + 150);
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::Synth);
+  EXPECT_EQ(g.eventFor(NavKey::Right), NavEvent::Synth) << "holding both is not special";
+}
+
+TEST(NavKeyGestures, SurvivesAClockWrap) {
+  NavKeyGestures g;
+  g.update(true, false, UINT32_MAX - 20);
+  g.update(false, false, 10);  // wrapped: 30 ms elapsed
+  EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::Page) << "a wrap must read as a short press, not a hold";
+}
+
+// Every downstream branch on getHeldTime -- delete prompts at 700, go-home at
+// 1000, bookmark at 400 -- must see a synthesised Back or Confirm as an
+// ordinary press.
+TEST(NavKeyGestures, ASynthesisedEventReportsAShortHeldTime) {
+  NavKeyGestures g;
+  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
+  EXPECT_FALSE(g.reportingSyntheticHeldTime());
+  g.update(false, false, NavKeyGestures::HOLD_MS + 150);
+  EXPECT_TRUE(g.reportingSyntheticHeldTime());
+  EXPECT_LT(NavKeyGestures::SYNTHETIC_HELD_MS, 400u) << "must clear BOOKMARK_HOLD_MS, the lowest branch";
+}
+
+TEST(NavKeyGestures, ThresholdsSitBetweenTheReadersOwnHolds) {
+  EXPECT_GT(NavKeyGestures::HOLD_MS, 700u) << "above SKIP_HOLD_MS";
+  EXPECT_LT(NavKeyGestures::HOLD_MS, 1000u) << "below GO_BACK_OR_HOME_MS";
 }
 
 }  // namespace
