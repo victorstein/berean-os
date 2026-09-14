@@ -1,36 +1,43 @@
 ## Summary
 
-* **What is the goal of this PR?** (e.g., Implements the new feature for file uploading.)
-* **What changes are included?**
+* **What does this change, and why?**
+* **What did you verify, and how?**
 
-## Scope Check
+## Scope check
 
-CrossPoint is intentionally narrow. See [SCOPE.md](../blob/master/SCOPE.md) and [ROADMAP.md](../blob/master/ROADMAP.md).
-Please confirm:
+bereanOS is a study device, not a general e-reader. See [SCOPE.md](https://github.com/victorstein/berean-os/blob/main/SCOPE.md) and
+[ROADMAP.md](https://github.com/victorstein/berean-os/blob/main/ROADMAP.md).
 
 - [ ] I have read SCOPE.md and ROADMAP.md.
-- [ ] This PR is **not** a new built-in theme (themes are temporarily closed pending the move to SD-loaded themes).
-- [ ] This PR is **not** a new external network connector (sync engine, cloud storage, remote file access, etc.).
-- [ ] This PR is **not** an interactive app, writing tool, RSS/news/browser, media playback, or PDF feature.
-- [ ] The stock firmware does not already handle this well, **and** no other popular CrossPoint fork already does
-      (or, if one does, I explain why CrossPoint still needs it below).
-- [ ] If this PR touches `freeink-sdk/`, `lib/hal/`, the bootloader, OTA, or recovery code, I have coordinated with
-      the relevant maintainer.
+- [ ] This is not notes, JW Library interop, on-device full-text search, or a return of the general
+      e-reader features the fork removed.
+- [ ] This is not an interactive app, an active-connectivity feature, or PDF rendering.
+- [ ] This does not add support for a board other than the Xteink X4 Pro.
+- [ ] If it belongs to a later phase, I say below why it is landing now.
 
-**If this PR was opened against the previous (broader) scope and was already in flight under Phase 0, link the
-relevant Discussion or issue so reviewers can see the history.**
+## Verification
 
-## Additional Context
+- [ ] `./bin/clang-format-fix` over the whole tree (what CI checks; `-g` misses new files).
+- [ ] `pio run -e x4pro` builds, and `pio check` passes.
+- [ ] The host suite under `test/` passes.
+- [ ] Tested on hardware, or marked clearly as untested.
 
-* Add any other information that might be helpful for the reviewer (e.g., performance implications, potential risks,
-  specific areas to focus on).
-* Memory / flash impact, if known.
+If this touches a persisted format — settings, the highlight store, a cache file — say which format
+version moved and what an older build does when it meets the new file.
+
+If it touches `freeink-sdk/`, `lib/hal/`, OTA, or the input layer, say so explicitly: those are the
+places a mistake is not recoverable from the device.
+
+## Cost
+
+* Memory, flash, or extra panel refreshes, if known.
+* Anything a reviewer should look at first.
 
 ---
 
-### AI Usage
+### AI usage
 
-While CrossPoint doesn't have restrictions on AI tools in contributing, please be transparent about their usage as it
-helps set the right context for reviewers.
+No restriction on AI tools here, but please say how they were used — it sets the right context for
+review.
 
 Did you use AI tools to help write this code? _**< YES | PARTIALLY | NO >**_

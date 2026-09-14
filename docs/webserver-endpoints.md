@@ -1,15 +1,16 @@
 # Webserver Endpoints
 
 This document describes the HTTP, WebSocket, WebDAV, and discovery endpoints
-available while CrossPoint Reader is in File Transfer or Calibre Wireless mode.
+available while the device is in File Transfer or Calibre Wireless mode.
 
 - HTTP server: port 80
 - WebSocket upload server: port 81
 - UDP discovery listener: port 8134
 - WebDAV: port 80, handled by the same HTTP server
 
-Examples use `crosspoint.local`. If mDNS does not resolve on your network, use
-the IP address shown on the device screen.
+Examples use `berean.local`, which is the mDNS name the firmware still
+advertises; it is an inherited string, not a different device. If mDNS does not
+resolve on your network, use the IP address shown on the device screen.
 
 ## HTTP Pages
 
@@ -26,7 +27,7 @@ the IP address shown on the device screen.
 ### `GET /api/status`
 
 ```bash
-curl http://crosspoint.local/api/status
+curl http://berean.local/api/status
 ```
 
 Response:
@@ -60,7 +61,7 @@ Response:
 Lists files and folders under a directory.
 
 ```bash
-curl "http://crosspoint.local/api/files?path=/Books"
+curl "http://berean.local/api/files?path=/Books"
 ```
 
 Query parameters:
@@ -86,7 +87,7 @@ enabled. `System Volume Information` and `XTCache` are always hidden/protected.
 Downloads a file from the SD card.
 
 ```bash
-curl -OJ "http://crosspoint.local/download?path=/Books/MyBook.epub"
+curl -OJ "http://berean.local/download?path=/Books/MyBook.epub"
 ```
 
 Query parameters:
@@ -104,7 +105,7 @@ downloaded. EPUB files are served as `application/epub+zip`; other files use
 Uploads a file with HTTP multipart form data.
 
 ```bash
-curl -X POST -F "file=@mybook.epub" "http://crosspoint.local/upload?path=/Books"
+curl -X POST -F "file=@mybook.epub" "http://berean.local/upload?path=/Books"
 ```
 
 Query parameters:
@@ -130,7 +131,7 @@ Notes:
 Creates a folder.
 
 ```bash
-curl -X POST -d "name=NewFolder&path=/" http://crosspoint.local/mkdir
+curl -X POST -d "name=NewFolder&path=/" http://berean.local/mkdir
 ```
 
 Form parameters:
@@ -145,7 +146,7 @@ Form parameters:
 Renames a file.
 
 ```bash
-curl -X POST -d "path=/Books/old.epub&name=new.epub" http://crosspoint.local/rename
+curl -X POST -d "path=/Books/old.epub&name=new.epub" http://berean.local/rename
 ```
 
 Form parameters:
@@ -163,7 +164,7 @@ cleared before the rename.
 Moves a file into an existing folder.
 
 ```bash
-curl -X POST -d "path=/Books/mybook.epub&dest=/Read" http://crosspoint.local/move
+curl -X POST -d "path=/Books/mybook.epub&dest=/Read" http://berean.local/move
 ```
 
 Form parameters:
@@ -181,8 +182,8 @@ cleared before the move.
 Deletes one or more files or empty folders.
 
 ```bash
-curl -X POST -d "path=/Books/mybook.epub" http://crosspoint.local/delete
-curl -X POST -d 'paths=["/Books/old.epub","/OldFolder"]' http://crosspoint.local/delete
+curl -X POST -d "path=/Books/mybook.epub" http://berean.local/delete
+curl -X POST -d 'paths=["/Books/old.epub","/OldFolder"]' http://berean.local/delete
 ```
 
 Form parameters:
@@ -203,7 +204,7 @@ Returns a streamed JSON array of editable settings. Each item contains common
 fields plus type-specific fields.
 
 ```bash
-curl http://crosspoint.local/api/settings
+curl http://berean.local/api/settings
 ```
 
 Example item:
@@ -222,8 +223,12 @@ Example item:
 `value` is always an index into `options`, never the option's text. `fontSize`
 is one of the settings whose `options` are built at request time — they are the
 point sizes the selected font family actually ships, so a family installed at
-10/12/14 offers three options. (`fontFamily` and `dictionaryName` vary the same
-way, from the SD card contents.)
+10/12/14 offers three options. `fontFamily` varies the same way, from the SD
+card contents.
+
+A few settings are exposed here but hidden from the on-device Settings screen,
+because another surface owns them: `downloadFolder` (where meeting publications
+are written), and the frontlight state the swipe panel edits.
 
 Types:
 
@@ -244,7 +249,7 @@ Applies a partial settings update from a JSON object.
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"fontSize":2,"showHiddenFiles":1}' \
-  http://crosspoint.local/api/settings
+  http://berean.local/api/settings
 ```
 
 Successful response:
@@ -260,7 +265,7 @@ Applied 2 setting(s)
 Lists installed SD-card font families.
 
 ```bash
-curl http://crosspoint.local/api/fonts
+curl http://berean.local/api/fonts
 ```
 
 Response:
@@ -288,7 +293,7 @@ Uploads one `.cpfont` file into a family folder.
 curl -X POST \
   -F "family=Literata" \
   -F "file=@Literata_12.cpfont" \
-  http://crosspoint.local/api/fonts/upload
+  http://berean.local/api/fonts/upload
 ```
 
 The handler validates the family name, `.cpfont` filename, and `CPFONT` magic
@@ -308,60 +313,13 @@ Deletes an installed font family.
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"family":"Literata"}' \
-  http://crosspoint.local/api/fonts/delete
+  http://berean.local/api/fonts/delete
 ```
 
 Successful response:
 
 ```json
 {"ok":true}
-```
-
-## OPDS Server API
-
-### `GET /api/opds`
-
-Lists saved OPDS servers. Passwords are never returned.
-
-```bash
-curl http://crosspoint.local/api/opds
-```
-
-Response:
-
-```json
-[
-  {
-    "index": 0,
-    "name": "My Catalog",
-    "url": "http://calibre.local:8080/opds",
-    "username": "reader",
-    "hasPassword": true
-  }
-]
-```
-
-### `POST /api/opds`
-
-Adds or updates an OPDS server. Include `index` to update an existing entry.
-If `password` is omitted during an update, the existing password is preserved.
-
-```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"name":"My Catalog","url":"http://calibre.local:8080/opds","username":"reader","password":"secret"}' \
-  http://crosspoint.local/api/opds
-```
-
-### `POST /api/opds/delete`
-
-Deletes an OPDS server by index.
-
-```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"index":0}' \
-  http://crosspoint.local/api/opds/delete
 ```
 
 ## Wi-Fi Credential API
@@ -371,7 +329,7 @@ curl -X POST \
 Lists saved Wi-Fi networks. Passwords are never returned.
 
 ```bash
-curl http://crosspoint.local/api/wifi
+curl http://berean.local/api/wifi
 ```
 
 Response:
@@ -397,7 +355,7 @@ preserved.
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"ssid":"HomeWiFi","password":"secret"}' \
-  http://crosspoint.local/api/wifi
+  http://berean.local/api/wifi
 ```
 
 ### `POST /api/wifi/delete`
@@ -408,7 +366,7 @@ Deletes a saved Wi-Fi network by index.
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"index":0}' \
-  http://crosspoint.local/api/wifi/delete
+  http://berean.local/api/wifi/delete
 ```
 
 ## WebSocket Upload
@@ -421,7 +379,7 @@ Calibre plugin workflows.
 Connection:
 
 ```text
-ws://crosspoint.local:81/
+ws://berean.local:81/
 ```
 
 Protocol:
@@ -490,12 +448,12 @@ The final field is the WebSocket upload port.
 ### Station Mode (STA)
 
 - Device joins an existing 2.4 GHz Wi-Fi network.
-- `crosspoint.local` is advertised with mDNS when available.
+- `berean.local` is advertised with mDNS when available.
 - `/api/status` returns `"mode": "STA"` and RSSI in dBm.
 
 ### Access Point Mode (AP)
 
-- Device creates an open hotspot named `CrossPoint-Reader`.
+- Device creates an open hotspot named `bereanOS`.
 - The device shows a Wi-Fi QR code and URL QR code.
 - The fallback IP is typically `192.168.4.1`.
 - `/api/status` returns `"mode": "AP"` and `"rssi": 0`.

@@ -6,49 +6,55 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report this bug! Please fill out the details below.
+        bereanOS runs on one board, the Xteink X4 Pro. Please include the firmware version and,
+        where a publication is involved, which one — the markup differs enough between publication
+        types that it is usually the first thing to check.
 
   - type: input
     id: version
     attributes:
-      label: Affected Version
-      description: What version of the project/library are you using? (e.g., v1.2.3, master branch commit SHA)
-      placeholder: Ex. v1.2.3
+      label: Firmware version
+      description: From Settings, or the release tag. For a local build, the branch and short SHA the build prints at boot.
+      placeholder: e.g. v1.2.3, or main@1a2b3c4
     validations:
       required: true
 
   - type: textarea
     id: bug-description
     attributes:
-      label: Describe the Bug
-      description: A clear and concise description of what the bug is.
-      placeholder:
+      label: Describe the bug
+      description: What happened, and what you expected instead.
     validations:
       required: true
 
   - type: textarea
     id: steps-to-reproduce
     attributes:
-      label: Steps to Reproduce
-      description: Clearly list the steps necessary to reproduce the unexpected behavior.
+      label: Steps to reproduce
+      description: The exact sequence. Include which publication, and whether the cache was fresh.
       placeholder: |
-        1. Go to '...'
-        2. Select '...'
-        3. Crash
+        1. Open '...'
+        2. Tap '...'
+        3. The screen '...'
     validations:
       required: true
 
-  - type: textarea
-    id: expected-behavior
+  - type: input
+    id: publication
     attributes:
-      label: Expected Behavior
-      description: A clear and concise description of what you expected to happen.
+      label: Publication
+      description: Symbol, issue and language, if the problem involves a specific publication.
+      placeholder: e.g. mwb_S_202601, nwt_S
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: logs
     attributes:
-      label: Relevant Log Output/Screenshots
-      description: If applicable, error messages, or log output to help explain your problem. You can drag and drop images here.
+      label: Logs, crash report, screenshots
+      description: |
+        After a crash the firmware writes a report to the root of the SD card — attach it. For a
+        serial log, run `python3 scripts/debugging_monitor.py`. Images can be dragged in here.
       render: shell
+    validations:
+      required: false

@@ -1,10 +1,12 @@
 # Touch and UI Development
 
-CrossPoint runs on touch devices (Seeed Sticky, M5Paper, M5Stack PaperMono, LilyGo T5, Xteink X4 Pro) alongside the button-only Xteink X3/X4. Every screen must work with both input styles.
+bereanOS runs on one board, the Xteink X4 Pro: a touchscreen, a capacitive Home key, and Left / Right / Power. There is no physical Back or Confirm, so every screen must be fully operable by touch, and must leave via the Back gesture.
 
 **There is one supported way to build a new screen: FreeInkUI, hosted through the firmware base classes below.** Touch hit-testing, tap highlighting, long-press, swipe scrolling, and button focus navigation all come from the shared stack; you never hand-roll coordinate math.
 
 The old bridge helpers (`rowTouch`, `colTouch`, `wasTapInRect`, manual rect `contains()` checks) are legacy. They survive only for the two remaining hand-rolled surfaces (the theme-driven home screen and the reader page) and must not appear in new code. PRs that add new uses will be asked to convert.
+
+The whole input layer below is replaced in Phase 2, `MappedInputManager` included. Until then it is the only supported way to read input, and it is what implements this device's Back.
 
 ---
 
@@ -82,7 +84,7 @@ See [`FileBrowserActivity`](../../src/activities/home/FileBrowserActivity.cpp)'s
 - Handlers that leave the current screen call `app.clearTapFlash()` first.
 - Theme tokens are shared and bound by `resetUi()`; never call `app.setTheme` yourself. Metrics flow from the active UITheme through [`UIThemeTokens.h`](../../src/components/UIThemeTokens.h), including the per-board bezel insets that keep scrollbars visible.
 - `TextStyle.maxLines` defaults to 1 and truncates with an ellipsis. Set `maxLines` explicitly on any dialog headline or message that can wrap.
-- Everything stays allocation-free in steady state. A local `std::vector` inside `buildScreen()` is **not** allocation-free even with `reserve()` first: it starts at zero capacity on every call, `reserve()` allocates, and the destructor frees that storage before the call returns — real allocator work and fragmentation risk on every repaint (cursor move, tap flash, ...), not just on data changes. Build `ListItem` rows into activity-owned storage instead, reserved once when the underlying data loads (`onEnter()`/a `load*()` — see the skeleton above and `FileBrowserActivity::rebuildRowItems()`), and reused unchanged by every `buildScreen()` call. Use a fixed-capacity array (e.g. `ListItem rows[MAX]`, as `OptionPopup` and `KOReaderSyncActivity`'s action rows do) when the count is small and bounded. Do not hold FUI `props` across renders — only the row storage they point into.
+- Everything stays allocation-free in steady state. A local `std::vector` inside `buildScreen()` is **not** allocation-free even with `reserve()` first: it starts at zero capacity on every call, `reserve()` allocates, and the destructor frees that storage before the call returns — real allocator work and fragmentation risk on every repaint (cursor move, tap flash, ...), not just on data changes. Build `ListItem` rows into activity-owned storage instead, reserved once when the underlying data loads (`onEnter()`/a `load*()` — see the skeleton above and `FileBrowserActivity::rebuildRowItems()`), and reused unchanged by every `buildScreen()` call. Use a fixed-capacity array (e.g. `ListItem rows[MAX]`, as `OptionPopup` does) when the count is small and bounded. Do not hold FUI `props` across renders — only the row storage they point into.
 
 ### Component inventory
 
@@ -109,10 +111,13 @@ Three gestures are handled once, for every screen. Activities must not add their
 | Gesture | Trigger | Where it is handled |
 |---|---|---|
 | Back | Right-swipe starting in the left 25% of the screen | Folded into `Button::Back`, so the existing `wasPressed(Button::Back)` in your activity already fires |
-| Home | Up-swipe starting in the bottom 14% | `ActivityManager::loop()`; pops to Home (activities can override via `handleHomeGesture()`) |
-| Menu | Down-swipe starting in the top 14% | Activities that have a menu check `wasMenuGesture()` themselves (the reader does this) |
+| Home | A tap of the capacitive Home key (an up-swipe from the bottom 14% on boards without one) | `ActivityManager::loop()`; pops to Home (activities can override via `handleHomeGesture()`) |
+| Frontlight panel | Down-swipe starting in the top 14% | `ActivityManager::loop()`, because this board has a frontlight — it takes the gesture before the activity sees it |
+| Menu | The same top-edge down-swipe, on boards with no frontlight | Activities that have a menu check `wasMenuGesture()` themselves |
 
 Because the back gesture arrives as `Button::Back`, most button-era activities gain back-swipe support with zero changes.
+
+Two consequences specific to this board. The frontlight owns the top edge, so the reader menu is reached by a centre-third tap or a Home-key hold, not by a swipe. And `handleHomeGesture()` is the only way a screen with no other confirm affordance can accept one — `PassageSelectActivity` and `TagPickerActivity` both repurpose the Home tap that way, and both document why.
 
 ---
 
@@ -134,69 +139,19 @@ As with all input: never call the SDK `InputManager` or read GPIO directly. The 
 
 ---
 
-## Building and testing on non-Xteink devices
+## Building and testing
 
-Each MCU family is its own binary: X3/X4 are ESP32-C3, Sticky and LilyGo T5 are ESP32-S3, M5Paper v1.1 is a classic ESP32. The Sticky env ships in `platformio.ini` (`pio run -e sticky`). Envs for other devices go in **`platformio.local.ini`**, a gitignored file that PlatformIO merges over `platformio.ini` (see `extra_configs`). Create it next to `platformio.ini`; personal envs, ports, and debug flags live there and never get committed.
-
-Both envs below extend the repo's `[base]`, so they build against the `freeink-sdk` submodule with all the normal deps and scripts.
-
-### M5Paper v1.1 (classic ESP32, IT8951 panel)
-
-```ini
-[env:m5paper_v11]
-extends = base
-board = esp32dev
-board_build.mcu = esp32
-board_build.flash_mode = qio
-; CP2104 UART bridge: 921600 drops out on macOS after the stub baud switch
-upload_speed = 460800
-build_unflags =
-  ${base.build_unflags}
-  ; classic ESP32 has UART serial, not USB CDC; Logging.h keys off these
-  -DARDUINO_USB_MODE=1
-  -DARDUINO_USB_CDC_ON_BOOT=1
-build_flags =
-  ${base.build_flags}
-  -DFREEINK_DEVICE_M5PAPER=1
-  ; the 63KB 540x960 framebuffer lives in PSRAM (FREEINK_FB_PSRAM auto-on)
-  -DBOARD_HAS_PSRAM
-  -DCROSSPOINT_VERSION=\"${crosspoint.version}-m5paper\"
-  -DENABLE_SERIAL_LOG
-  -DLOG_LEVEL=2
-  ; touch-first device: hide front-button hint labels
-  -DCROSSPOINT_SHOW_BUTTON_HINTS=0
-  ; archive-scan-order workaround: without these a full relink drops Wire's i2c symbols
-  -Wl,-u,i2cInit
-  -Wl,-u,i2cSlaveInit
+```bash
+pio run            # x4pro is the default env
+pio run -t upload
 ```
 
-### LilyGo T5 S3 (ESP32-S3, controller-less panel via LovyanGFX)
+There is one board env, `x4pro`, plus `x4pro-gh_release` for what CI publishes. Personal envs,
+serial ports and debug flags belong in **`platformio.local.ini`**, a gitignored file PlatformIO
+merges over `platformio.ini` (see `extra_configs`). Everything device-specific — pins, panel driver,
+touch controller — comes from `-DFREEINK_DEVICE_X4PRO=1` selecting a profile out of the SDK's
+`BoardConfig`.
 
-```ini
-[env:lilygo_t5s3]
-extends = base
-board = esp32-s3-devkitc1-n16r8
-board_build.mcu = esp32s3
-build_flags =
-  ${base.build_flags}
-  -DFREEINK_DEVICE_LILYGO=1
-  ; board injects the parallel-bus pins + PMIC power hooks (BoardT5S3)
-  -DFREEINK_LGFX_EPD_CONFIG=lilygoT5S3LgfxConfig
-  -DCROSSPOINT_VERSION=\"${crosspoint.version}-lilygo\"
-  -DENABLE_SERIAL_LOG
-  -DLOG_LEVEL=2
-  -DCROSSPOINT_SHOW_BUTTON_HINTS=0
-lib_deps =
-  ${base.lib_deps}
-  ; LgfxEpdConfig for the T5 S3 (pins, PCA9535/TPS65185 power sequence)
-  BoardT5S3=symlink://freeink-sdk/libs/hardware/BoardT5S3
-  ; LovyanGFX Panel_EPD drives the controller-less ED047TC1 panel
-  m5stack/M5GFX @ 0.2.20
-```
-
-Then `pio run -e m5paper_v11 -t upload` (or `-e lilygo_t5s3`). Gotchas worth knowing:
-
-- **Flash mode matters.** The M5Paper is `qio`; the X4-family standalone envs need `dio`. A wrong flash-mode header boots into a `partition 0 invalid magic number 0xffff` loop even though esptool verified the write.
-- **One `FREEINK_DEVICE_*` flag per env** selects the board profile (pins, panel, touch controller) from the SDK's `BoardConfig`. See `freeink-sdk/platformio.sample.ini` for reference envs of every supported device.
-- **Serial logs:** `[base]` does not enable logging; without `-DENABLE_SERIAL_LOG` a non-default env prints nothing.
-- No touch hardware on your desk? The X4 build still exercises the same code paths through buttons; touch-specific behavior (tap zones, gestures) needs a real device.
+Touch behaviour — tap zones, gestures, the capacitive Home key — needs the real device. The panel
+controller also varies by production batch (SSD1677 or UC8179) and is detected at boot, so a
+rendering bug that reproduces on one unit may not reproduce on another; say which you tested on.

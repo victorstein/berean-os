@@ -1,88 +1,117 @@
-# CrossPoint Reader Roadmap
+# Roadmap
 
-This roadmap describes how CrossPoint is moving through the tighter scope defined in [SCOPE.md](SCOPE.md). It is
-intentionally phased: Phase 0 closed out the commitments already in flight before locking down to the stricter
-"fill gaps the stock firmware leaves" delineator.
+Four phases, in order. Each one has its own implementation plan under
+`docs/superpowers/plans/`, because they share no execution shape: Phase 0 is a deletion, Phase 1 a
+data migration, Phase 2 a UI rewrite, Phase 3 a network subsystem with a CI half.
 
-Phases are sequential. We do not start the next phase until the prior one is wrapped or explicitly carried over.
-
----
-
-## Phase 0 - Close Out Legacy Scope Items — **COMPLETE**
-
-**Goal:** Land the work that was already in motion under the prior, broader scope so contributors are not left
-hanging, and so we enter the stricter phases with a clean slate.
-
-**Landed in Phase 0:**
-
-* **RTL support PRs.** The in-flight right-to-left work was reviewed, iterated, and merged.
-* **Dictionary PR.** The offline dictionary lookup work was reviewed and merged.
-* **Bookmarks** feature. First-class navigation markers in EPUBs.
-* ~~**Transparent sleep screens.**~~ Shelved; not picked back up under the stricter phases.
-
-Phase 0 is closed. The tighter scope in [SCOPE.md](SCOPE.md) is now fully enforced. "But it was on the old roadmap"
-is not a valid argument for accepting a PR.
+The product these phases build towards is described in
+[docs/superpowers/specs/2026-09-13-berean-os-design.md](./docs/superpowers/specs/2026-09-13-berean-os-design.md).
+[SCOPE.md](./SCOPE.md) is the gate everything passes through first.
 
 ---
 
-## Phase 1 - Consolidation, Footprint, and Multi-Device Support — **IN PROGRESS**
+## Phase 0 — Fork and strip — **IN PROGRESS**
 
-**Goal:** Reduce memory and flash usage, clean up the codebase, and land the SDK / HAL generalization work so
-CrossPoint runs cleanly on ESP32-based e-reader hardware beyond Xteink (X3 / X4), including ESP32-S3 class devices.
+**Goal:** reduce the inherited CrossPoint fork to a single-board bereanOS skeleton that builds,
+flashes and updates itself from its own releases, with everything that remains behaving exactly as it
+does today.
 
-**Focus areas:**
+- Rename to bereanOS, and point OTA at this repository. A device that can reach CrossPoint's
+  releases will flash them over itself, and an upstream image would remove the features this fork
+  exists for.
+- Hand release state to release-please; build one board.
+- Delete the TXT and XTC readers, the dictionary, KOReader sync, and the OPDS browser.
+- Land the storage-discipline helper the later phases depend on.
+- Rewrite the project documents.
 
-* DRAM and heap fragmentation reduction across the reader core.
-* Flash footprint reduction (dead code, redundant strings, oversized tables).
-* Refactors that tighten the HAL / SDK boundary.
-* Pluggable per-device SDK layers (display, input, storage, battery) and per-device build configuration without
-  forking the reader core.
-* Documentation for adding a new ESP32 e-reader target.
-* E-ink driver refinement (ghosting, partial update behavior).
+**The input layer is not touched in this phase.** `MappedInputManager` sits in the `Activity`
+base-class constructor and *implements* this device's Back gesture. Removing it here would leave the
+device with no Back for the whole of Phase 1. It goes in Phase 2, in the same change that lands its
+replacement.
 
-**Closed during this phase:** new themes built into firmware, new external network connectors (sync engines, cloud
-storage, remote file access).
-
----
-
-## Phase 2 - Languages, Fonts, and Themes
-
-**Goal:** With the codebase smaller and portable, make reading great in every language: multi-language support,
-better font support with custom fonts, UI translations, and themes loaded from the SD card instead of consuming
-flash.
-
-**Focus areas:**
-
-* Multi-language reading support (underserved languages, complex script support where realistic on ESP32 hardware).
-* Better font support and custom fonts.
-* UI languages and localization.
-* Moving themes off-firmware to SD-loaded assets (see SCOPE.md Section 6).
-* **Moving hyphenation files off-firmware.** Hyphenation rules vary per language and the files are large (German
-  alone is ~200KB). Today these eat flash budget that should be available for the reader core. The plan is to build
-  a downloader analogous to the existing font downloader and store the dictionaries on SD / SPIFFS, loading on
-  demand. This unlocks better hyphenation for long-word languages (German, Finnish, Norwegian, etc.) without paying
-  the flash cost up front.
-
-This phase depends on Phase 1 cleanup landing first; otherwise we generalize a moving target.
+**Acceptance:** a release build queried against its own repository finds no CrossPoint release; the
+binary shrinks by 200-230 KB; `pio run`, `pio check` and the host suite are green; and every
+remaining screen is entered and exited once on hardware.
 
 ---
 
-## Out of Roadmap
+## Phase 1 — The study data model
 
-The following are explicitly *not* on the roadmap. They may live in other CrossPoint forks; they will not be picked
-up here:
+**Goal:** stop addressing a marked passage by a position inside one file, and start addressing it by
+what it actually is.
 
-* Interactive apps (games, calculators, notepads).
-* Writing / authoring tools.
-* Active connectivity features (RSS, news, browsers).
-* PDF rendering as a first-class format.
+- A unified `Unit` address: verse, numbered paragraph, or a document offset where a publication has
+  neither. The existing highlight model is the degenerate third case, not a separate system.
+- A `data-pid` scanner for numbered paragraphs, beside the verse scanner that already exists. They
+  are two scanners, not one: the grammars differ.
+- A per-publication unit index, built lazily per document on first use, with a content hash in the
+  header so a re-downloaded publication invalidates itself.
+- A global tag store, a reverse index for "everything tagged X", and passages keyed on publication
+  identity rather than file path — so a re-download or a rename keeps your marks.
+- A migration from the per-book highlight files, resumable and idempotent, that never deletes the old
+  store.
 
-See [SCOPE.md](SCOPE.md) for the full rationale.
+**Acceptance:** `/.berean/migration-report.json`, served over the existing web server, shows
+per source file what went in, what came out, and why anything was dropped. The old store is still
+there.
 
 ---
 
-## How This Roadmap Changes
+## Phase 2 — The product shape
 
-* Phase boundaries are decided by maintainers, not by individual PRs.
-* If a phase needs to be extended or an item carried over, that is documented here with a short note.
-* Proposals for new phases or reordering should go through a Discussion first.
+**Goal:** the device stops looking like a general e-reader.
+
+- A launcher home screen: four tiles — Biblia, Reuniones, Buscar, Etiquetas y ajustes — and a resume
+  strip. The common case, waking the device to carry on reading, is one tap and never touches the
+  tiles.
+- The new input model: long-press Right to confirm, Left+Right as a hard-bound Back that routes
+  through GPIO and survives the touch controller failing, Home short for back and long for the
+  launcher.
+- Two-tap passage selection: long-press a word to anchor, tap another to finish, then choose tags.
+- `MappedInputManager` and the button-remap screen are deleted here, with their replacement.
+
+Two decisions this phase has to make first: the `ReturnStack` capacity, which is 3 today and evicts
+the oldest silently, before it becomes the primary Back; and portrait-only, which follows from a fixed
+Left/Right mapping.
+
+**Acceptance:** the UX, diffable against the layer it replaces.
+
+---
+
+## Phase 3 — Buscar
+
+**Goal:** any publication in the jw.org catalog, on the device, without a computer.
+
+- A CI job that builds a slim per-language index from the published catalog and hosts it as a static
+  file, fetched with `ETag`/`If-Modified-Since`. It is not a firmware release asset: an 18 KB data
+  change must not cost a 5.6 MB OTA.
+- The index inflated once into PSRAM while search is open, with a debounce sized to the e-ink
+  refresh rather than to the scan.
+- Visible staleness. A user told "not found" must be able to tell "not published yet" from "your
+  index is six months old" from "the fetch failed".
+- Typing a symbol directly stays available, and works with no index at all.
+
+**Acceptance:** any publication, downloaded on device.
+
+---
+
+## After Phase 3
+
+A BLE keyboard, once there is a flash budget for the NimBLE stack. See [SCOPE.md](./SCOPE.md)
+section 4.
+
+---
+
+## Open questions
+
+Carried from the design, to be closed in the phase that needs them:
+
+- Whether a document filename inside a publication survives a corrected reissue. The spine-index
+  fallback in the passage record stands on this being uncertain. Phase 1.
+- `ReturnStack` capacity and whether Back and Return need to be visibly different. Phase 2.
+- Which languages CI builds catalog indexes for. Spanish is required; English is nearly free.
+- Whether Buscar defaults to non-periodicals, with periodicals behind a filter. Reuniones already
+  covers periodicals, which argues for the filter.
+- Retention policy for downloaded publications on a 16 GB card.
+- Whether a passage can exist with zero tags — mark it now, label it later — or whether untagging to
+  zero deletes the record, as it does today.

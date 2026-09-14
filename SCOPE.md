@@ -1,100 +1,96 @@
-# Project Vision & Scope: CrossPoint Reader
+# Scope
 
-The goal of CrossPoint Reader is to create an efficient, open-source reading experience for ESP32-based e-reader devices. Xteink hardware (X3, X4) is where the project started and remains a primary target, but CrossPoint is explicitly broadening to support the wider ecosystem of small ESP32 e-ink readers. We believe a dedicated e-reader should do one thing exceptionally well: **facilitate focused reading.**
+bereanOS is a study device, not a general e-reader and not a tablet. It exists to make the Bible and
+the JW study publications fast to reach, fast to read, and trustworthy to mark up on hardware with
+one panel, three buttons and a slow refresh.
 
-## 1. Core Mission
+Every decision below follows from that. This document is the gate: if a proposal is not in section 2,
+it needs an argument against section 3, not enthusiasm.
 
-To provide a lightweight, high-performance firmware that maximizes the potential of ESP32-based e-reader hardware, prioritizing legibility, performance, and usability over "swiss-army-knife" functionality.
+## 1. The device
 
-CrossPoint is **not** a kitchen-sink firmware, and it is **not** Xteink-only. We want clean, maintainable code that the community can build on, and that runs across the range of ESP32 e-reader devices (ESP32-C3, ESP32-S3, and adjacent variants). Every accepted change should make that goal easier, not harder. Device-specific code should live behind the HAL / SDK boundary so the reader core stays portable.
+One board: the Xteink X4 Pro. ESP32-S3, 8 MB PSRAM, 16 MB flash, an 800x480 one-bit e-ink panel with
+no grayscale, GT911 touch, and Left / Right / Power plus a capacitive Home key.
 
-## 2. Guiding Principle: Fill Gaps the Stock Firmware Leaves
+That is the whole target. Portability to other ESP32 e-readers is not a goal; the fork gave that up
+deliberately, and code that only exists to keep another board buildable is dead weight.
 
-CrossPoint exists to do the things the stock firmware does poorly or not at all. New work is evaluated against that delineator:
+## 2. In scope
 
-* **Does the stock firmware already do this well?** We should hit that bar or surpass it 
-* **Is another popular CrossPoint fork already solving this well?** If yes, we generally defer to that fork if it's not part of the core reading experience. e.g. stats
-* **Does this directly improve the reading experience or the firmware's long-term maintainability?** If no, it is out of scope.
+- **The Bible as the centre of the device.** Book, chapter and verse navigation, cross-references,
+  and returning to where you jumped from.
+- **The two weekly meeting publications**, downloaded automatically.
+- **Browsing and downloading any publication from the jw.org catalog.**
+- **Tagging passages, and managing tags globally.** A tag lives at the device level, not inside one
+  publication, and "show me everything tagged X" is a first-class query.
+- **Reading quality** on this panel: typography, hyphenation, pagination, refresh behaviour,
+  legibility.
+- **Settings** for the choices that genuinely differ between readers.
+- **Memory, flash and code quality.** A refactor that reduces resource use or removes a class of bug
+  is in scope with no user-visible feature attached.
 
-## 3. Current Focus
+## 3. Out of scope
 
-We are intentionally narrowing scope to consolidate the codebase as we open it up to more ESP32 e-reader devices.
+Each of these was considered and rejected. The reason matters more than the verdict, because it is
+what a future proposal has to argue against.
 
-During this period, the priorities are:
+- **Notes.** Typed notes need a keyboard this device does not have and a synchronisation story it
+  does not want. Excluding them means the only text ever typed is a tag name and a Wi-Fi password,
+  which the existing soft keyboard already handles.
+- **JW Library interop.** The device is standalone and is the source of truth for its own study
+  data. Tracking a third-party schema as it moves would put every mark a user makes at the mercy of
+  someone else's release.
+- **On-device full-text search.** Search means the publication catalog, not publication content.
+  Indexing the content of a 100 MB publication on this hardware costs minutes of SD I/O and a format
+  nobody can rebuild if it corrupts.
+- **A general e-reader.** The OPDS browser, KOReader sync, the dictionary, and the TXT and XTC
+  readers were removed in the fork and are not coming back. If you want those, CrossPoint still
+  exists and is better at them.
+- **Interactive apps.** No games, calculators, notepads, timers or mini-apps.
+- **Active connectivity.** No RSS, no news, no browser, no background polling. Wi-Fi comes up for a
+  download or an update, and goes away again.
+- **PDF rendering.** Fixed-layout pages mean panning and zooming, which is a poor reading experience
+  on e-ink at any price.
+- **Portability to other boards.** See section 1.
 
-* **Memory footprint:** Reducing DRAM usage and heap fragmentation. The ESP32-C3 is the tightest target and sets the ceiling, but the gains benefit every ESP32 variant we run on. 
-* **Flash footprint:** Trimming binary size to leave room for additional device targets and features. 
-* **Code cleanup:** Refactoring, removing dead code, tightening abstractions, and improving readability. 
-* **Reading experience:** EPUB parsing and rendering, typography, hyphenation, line spacing, font handling, and legibility improvements.
+## 4. Deferred, not rejected
 
-### Temporarily Closed Areas
+- **BLE keyboard.** Wanted, but a NimBLE stack plus controller is a flash cost nothing has budgeted
+  yet. It needs a measured budget before it needs a design.
+- **Drag-to-select.** This unit's panel is one-bit with no windowed update, so the only drag feedback
+  available is full-frame inversion — several hundred milliseconds behind the finger. Long-press to
+  anchor plus a tap to finish pays two refreshes instead of one per finger sample. Revisit if
+  windowed update lands.
 
-PRs in the following areas will be closed until this notice is lifted. Adding these now makes the cleanup and multi-device work materially harder:
+## 5. Constraints that decide the borderline cases
 
-* **New themes.** The existing theming surface is frozen. 
-* **New external network connectors.** This includes sync engines, cloud storage clients, OPDS extensions beyond what exists, remote file access, and any new "talk to a server" feature. We now have our own CrossPoint KOSync server which gives us a way to sync to 3rd party systems like Hardcover at an API level instead of bloating the firmware. If you're interested in helping here, the sync server is also open source.
+**PSRAM is a licence to budget differently, not to stop budgeting.** The S3's PSRAM is on an external
+SPI bus: roughly an order of magnitude slower than internal SRAM, unusable from an ISR, unusable
+while the flash cache is suspended, and DMA-constrained.
 
-If you are unsure whether your idea falls into one of these categories, open a Discussion first.
+| Belongs in PSRAM | Belongs in internal SRAM |
+|---|---|
+| The catalog index while search is open | The framebuffer |
+| Unit index pages being built or queried | Selection geometry and the render hot path |
+| Download and inflate buffers | ISR state, anything `IRAM_ATTR` touches |
 
-## 4. Scope
+Internal SRAM stays the ~380 KB-class resource CrossPoint treated it as.
 
-### In-Scope
+**Study data is the only thing on this device that cannot be re-downloaded.** Every store this
+project adds writes atomically, checks an explicit serialised-byte budget before writing rather than
+truncating, refuses a format version it does not understand rather than reinterpreting it, and
+streams anything that can exceed ~40 KB instead of reading it whole. A feature that cannot meet that
+bar does not ship.
 
-*Features that directly improve the core reading experience or the firmware's maintainability.*
+**Every screen costs a full panel refresh.** A flow that adds a screen to a common path is more
+expensive than it looks, and an interaction that repaints per finger sample is not available.
 
-* **EPUB Rendering & Optimization:** Improvements to the rendering engine, CSS/image handling, and parsing performance. 
-* **Typography & Legibility:** Custom font support, hyphenation, line and paragraph spacing, margins. 
-* **E-Ink Driver Refinement:** Reducing full-screen flashes (ghosting management) and improving general rendering. 
-* **Reading UX:** Bookmarks, progress tracking, button mapping, page navigation, and other in-reader interactions. 
-* **Library Management:** Simple, intuitive ways to organize and navigate a local book collection. 
-* **Memory, Flash, and Code Quality:** Refactors and cleanups that reduce resource use or improve maintainability, even without a user-visible feature.
+**A new setting is not free.** It is a field to persist, migrate, validate, translate and render,
+plus the combinations every future change has to keep working. Add one when readers genuinely differ;
+otherwise pick a good default.
 
-### Out-of-Scope
+## 6. Proposing something
 
-*Rejected because they compromise the device's stability, maintainability, or core mission.*
-
-* **Interactive Apps:** No notepads, calculators, or games. These belong in other forks and are not part of CrossPoint's focus. 
-* **Writing / Authoring Tools:** No typed notes, journals, or editors. Input hardware and RAM are wrong for this, and other forks already explore this space. 
-* **Active Connectivity:** No RSS readers, news aggregators, or web browsers. Background Wi-Fi drains the battery and complicates the single-core CPU. 
-* **PDF Rendering:** PDFs are fixed-layout documents, so rendering them requires displaying pages as images rather than reflowable text, resulting in constant panning and zooming that makes for a poor reading experience on e-ink. Out of scope on the current hardware class.
-
-## 5. Calls to Action
-
-These are the areas where contributor help is most valuable right now. If you want to take one of these on, open a Discussion or issue first so we can coordinate.
-
-### Theme System: Move Themes Off-Firmware
-
-We want to abstract themes out of the firmware entirely so they no longer consume flash, and instead load from the SD card. This directly supports the current focus on flash footprint and code cleanup.
-
-* **Status:** [@itsthisjustin](https://github.com/itsthisjustin) plans to take this on eventually but is very open to someone else claiming it sooner. 
-* **Why it matters:** Every built-in theme costs flash that we would rather spend on rendering, fonts, or future device support. SD-loaded themes also let users customize without rebuilding firmware. It also leads to SD font loading for better language support in the UI. 
-* **How to claim:** Comment on the relevant Discussion (or open one) before starting.
-
-### Identifying Other Stock-Firmware Gaps
-
-We want help cataloguing things the stock firmware (and other popular CrossPoint forks) handle poorly or not at all, so future work has a clear target list. Particularly interested in:
-
-* **RTL (right-to-left) text support:** Arabic, Hebrew, Persian, and similar scripts. 
-* **Languages with poor stock and fork coverage:** Especially those that need shaping, complex layout, or non-Latin font work that nobody is handling well today. 
-* **Other gaps:** Rendering edge cases, accessibility issues, input quirks, anything stock does badly and existing forks have not fixed.
-
-If you can read or use the device in one of these languages, your feedback (even without code) is genuinely useful. Open a Discussion with concrete examples (screenshots, sample EPUBs, expected vs actual behavior) and we will prioritize from there.
-
-## 6. Funding and Contributor Sustainability
-
-CrossPoint uses [Royalty.dev](https://royalty.dev) (yes, a product built by [@itsthisjustin](https://github.com/itsthisjustin)) to fund contributors. There has been some tension in the community around this, so the intent is being clarified here directly.
-
-**Why we do this:**
-
-* To maintain long-term interest from contributors and maintainers, in direct response to substantial community requests for a way to give back. 
-* To motivate contributors to invest in the *core* project rather than spinning up competing forks. 
-* To help pay for new ESP32 devices so we can port CrossPoint to additional hardware. 
-* To give the project a credible long-term path to sustainability.
-
-**How it works:**
-
-* Funds are distributed automatically to contributors based on impact to the codebase and tenure on the project. 
-* Over **$600** was raised in the first few hours after opening up funding, which is a signal the demand is real. 
-* The exact scoring methodology is published at <https://app.royalty.dev/transparency>.
-
-**This is not fixed in stone.** The weighting, eligibility, and distribution rules can be tweaked as we learn what works for this project. If you have concerns or suggestions about how funds are allocated, open a Discussion. The goal is a system that fairly recognizes the people doing the work, not a perfect one on day one.
+Say what reading or study problem it solves, why an existing screen or setting cannot, and what it
+costs in RAM, flash and refreshes. "Don't know" is an acceptable answer to the cost question; not
+asking it is not.

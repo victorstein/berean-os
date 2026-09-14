@@ -1,4 +1,4 @@
-# CrossPoint Reader: project skills
+# bereanOS: project skills
 
 On-demand Agent Skills for this repository. Compatible agents load one when the
 task matches its `description`; you do not invoke them by hand. They encode how

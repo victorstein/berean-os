@@ -1,54 +1,48 @@
 name: Feature Request
-description: Propose a new feature, enhancement, or change to CrossPoint
+description: Propose a feature, enhancement, or change to bereanOS
 title: "Short, descriptive title of the request"
 labels: ["enhancement", "needs-scope-review"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to propose a change to CrossPoint!
+        **Read [SCOPE.md](https://github.com/victorstein/berean-os/blob/main/SCOPE.md) and [ROADMAP.md](https://github.com/victorstein/berean-os/blob/main/ROADMAP.md) first.**
 
-        **Before you continue, please read [SCOPE.md](../blob/master/SCOPE.md) and [ROADMAP.md](../blob/master/ROADMAP.md).**
-
-        CrossPoint is intentionally narrow. Most rejected proposals are rejected for scope reasons that are already
-        documented. The checklist below exists to save both of us time.
-
-        If you are not sure whether your idea fits, open a [Discussion](../../discussions) first instead of filing
-        this issue.
+        bereanOS is a study device, not a general e-reader and not a tablet. Most rejected proposals
+        are rejected for a reason already written down, and SCOPE.md gives the reasoning rather than
+        just the verdict — so a proposal that argues against the reasoning has somewhere to start.
 
   - type: checkboxes
     id: scope-check
     attributes:
-      label: Scope Self-Check (required)
-      description: Please confirm each of the following. If any are unchecked, your issue will likely be closed.
+      label: Scope self-check (required)
+      description: Confirm each of these. If any is unchecked, say why in the request itself.
       options:
         - label: I have read SCOPE.md and ROADMAP.md.
           required: true
-        - label: This is **not** a new theme or theming change (themes are temporarily closed pending the move to SD-loaded themes).
+        - label: This is **not** notes, JW Library interop, on-device full-text search, or a return of the general e-reader features the fork removed (OPDS, KOReader sync, dictionary, TXT/XTC).
           required: true
-        - label: This is **not** a new external network connector (sync engine, cloud storage, remote file access, OPDS extensions beyond what exists, or any new "talk to a server" feature).
+        - label: This is **not** an interactive app, an active-connectivity feature (RSS, news, browser, background polling), or PDF rendering.
           required: true
-        - label: This is **not** an interactive app (game, calculator, notepad), writing/authoring tool, RSS/news/browser feature, media playback feature, or PDF rendering.
+        - label: This is **not** support for a board other than the Xteink X4 Pro.
           required: true
-        - label: The stock firmware does **not** already handle this well.
-          required: true
-        - label: No other popular CrossPoint fork already handles this well (or, if one does, I explain below why CrossPoint still needs it).
+        - label: It is not already on the roadmap for a later phase.
           required: true
 
   - type: textarea
     id: problem
     attributes:
       label: Problem this solves
-      description: What user-facing problem or reading-experience gap does this address? Be concrete.
-      placeholder: e.g., "When reading in landscape, paragraph breaks are inconsistent because..."
+      description: What reading or study problem does this address? Be concrete about when it happens.
+      placeholder: e.g. "Returning to the verse a cross-reference came from takes four presses because..."
     validations:
       required: true
 
   - type: textarea
-    id: stock-gap
+    id: alternatives
     attributes:
-      label: Why the stock firmware (and other forks) do not already solve this
-      description: Explain which existing solutions you checked and why they fall short. This is the core scope filter.
+      label: Why an existing screen or setting cannot do this
+      description: Which of the screens that already exist you tried, and where they fall short.
     validations:
       required: true
 
@@ -56,18 +50,19 @@ body:
     id: proposal
     attributes:
       label: Proposed change
-      description: A short description of what you would build or change. Focus on user impact; implementation details can come later.
+      description: What you would build. User impact first; implementation can come later.
     validations:
       required: true
 
   - type: textarea
-    id: tradeoffs
+    id: cost
     attributes:
-      label: Memory / flash / complexity cost
+      label: Cost in memory, flash, and refreshes
       description: |
-        CrossPoint runs on 380KB of RAM. Roughly how much DRAM, flash, or code complexity does this add?
-        "Don't know" is a valid answer, but please attempt an estimate.
-      placeholder: e.g., "Adds ~2KB flash for the new font tables, no DRAM impact at runtime."
+        Internal SRAM is the tight resource (~380 KB class); PSRAM is plentiful but an order of
+        magnitude slower and unusable from an ISR. Every screen costs a full panel refresh. Roughly
+        what does this add, and where does it live?
+      placeholder: e.g. "~4 KB of flash for the lookup table; the index stays in PSRAM; adds no screen to the reading path."
     validations:
       required: false
 
@@ -75,6 +70,6 @@ body:
     id: additional-context
     attributes:
       label: Additional context
-      description: Anything else relevant (links, screenshots, related discussions).
+      description: Anything else relevant — screenshots, a sample publication, a related issue.
     validations:
       required: false

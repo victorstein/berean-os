@@ -1,9 +1,8 @@
 name: Publish Release Firmware
 
-# Builds every board's release firmware and attaches it to the release
-# release-please has already cut, with the .bin named exactly as OtaUpdater
-# requests it from the GitHub release: plain firmware.bin for the C3 X4/X3
-# binary, firmware-<board>.bin for every other board.
+# Builds the release firmware and attaches it to the release release-please has
+# already cut, with the .bin named exactly as OtaUpdater requests it from the
+# GitHub release: firmware-x4pro.bin, matching the compiled board tag.
 #
 # Dispatch-only, never tag-triggered: release-please cuts its tag with
 # GITHUB_TOKEN, and a GITHUB_TOKEN-created tag does not trigger workflows.
@@ -78,7 +77,7 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
           restore-keys: pio-${{ runner.os }}-
 
-      - name: Build CrossPoint
+      - name: Build firmware
         run: pio run -e ${{ matrix.pio_env }} -j1
 
       - name: Name release asset

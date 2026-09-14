@@ -1,6 +1,8 @@
 # Architecture Overview
 
-CrossPoint is firmware for the Xteink X4 (unaffiliated with Xteink), built with PlatformIO targeting the ESP32-C3 microcontroller.
+bereanOS is firmware for the Xteink X4 Pro, built with PlatformIO targeting the ESP32-S3. It is a
+hard fork of CrossPoint Reader, so most of the structure below is inherited; several class and
+directory names still carry the old product name.
 
 At a high level, it is firmware that uses an activity-driven application architecture loop with persistent settings/state, SD-card-first caching, and a rendering pipeline optimized for e-ink constraints.
 
@@ -8,7 +10,7 @@ At a high level, it is firmware that uses an activity-driven application archite
 
 ```mermaid
 graph TD
-    A[Hardware: ESP32-C3 + SD + E-ink + Buttons] --> B[freeink-sdk]
+    A[Hardware: ESP32-S3 + SD + E-ink + Touch + Buttons] --> B[freeink-sdk]
     B --> C[lib/hal wrappers]
     C --> D[src/main.cpp runtime loop]
     D --> E[Activities layer]
@@ -57,23 +59,20 @@ Some flows use `src/activities/ActivityWithSubactivity.h` to host nested activit
 Top-level activity groups:
 
 - `src/activities/home/`: home and library navigation
-- `src/activities/reader/`: EPUB/XTC/TXT reading flows
+- `src/activities/reader/`: EPUB reading flows, Bible navigation, highlights and tags
 - `src/activities/settings/`: settings menus and configuration
-- `src/activities/network/`: Wi-Fi selection, AP/STA mode, file transfer server
+- `src/activities/network/`: Wi-Fi selection, AP/STA mode, file transfer server, meeting publication downloads
 - `src/activities/boot_sleep/`: boot and sleep transitions
 
 ## Reader and content pipeline
 
-Reader orchestration starts in `src/activities/reader/ReaderActivity.h` and dispatches to format-specific readers.
-EPUB processing is implemented in `lib/Epub/`.
+Reader orchestration starts in `src/activities/reader/ReaderActivity.h`. EPUB is the only book
+format; processing is implemented in `lib/Epub/`.
 
 ```mermaid
 flowchart LR
     A[Select book] --> B[ReaderActivity]
-    B --> C{Format}
-    C -->|EPUB| D[lib/Epub/Epub]
-    C -->|XTC| E[lib/Xtc reader]
-    C -->|TXT| F[lib/Txt reader]
+    B --> D[lib/Epub/Epub]
     D --> G[Parse OPF/TOC and collect CSS refs]
     G --> H[Build/load book.bin and css_rules.cache]
     H --> I[Layout pages/sections]
@@ -83,7 +82,7 @@ flowchart LR
 
 Why caching matters:
 
-- RAM is limited on ESP32-C3, so expensive parsed/layout data is persisted to SD
+- internal SRAM is the tight resource, so expensive parsed/layout data is persisted to SD
 - repeat opens/page navigation can reuse cached data instead of full reparsing
 
 ## Reader internals call graph
@@ -92,9 +91,7 @@ This diagram zooms into the EPUB path to show the main control and data flow fro
 
 ```mermaid
 flowchart TD
-    A[ReaderActivity onEnter] --> B{File type}
-    B -->|EPUB| C[Create Epub object]
-    B -->|XTC/TXT| Z[Use format-specific reader]
+    A[ReaderActivity onEnter] --> C[Create Epub object]
 
     C --> D[Epub load]
     D --> E[Locate container and OPF]
@@ -156,9 +153,13 @@ Typical persisted areas on SD:
 
 `sections/*.bin` contains rendered pages plus anchor, paragraph, list-item, and
 page-start visible-text-offset lookup tables. The offset table makes reading
-positions content-based: KOReader XPaths resolve to an exact chapter offset,
-and the current layout derives the corresponding page. For binary cache
-formats, see `docs/file-formats.md`.
+positions content-based, so a position survives a re-pagination after a font or
+margin change. Highlights live beside the caches in `/.crosspoint/highlights/`.
+For binary cache formats, see `docs/file-formats.md`.
+
+Phase 1 replaces the path-hashed `epub_<hash>` identity and the per-book
+highlight files with publication-keyed stores under `/.berean/`; see
+`docs/superpowers/specs/2026-09-13-berean-os-design.md`.
 
 ## Networking architecture
 
@@ -169,6 +170,7 @@ Modes:
 - STA: join existing Wi-Fi network
 - AP: create hotspot
 - Calibre Wireless: STA flow specialized for Calibre plugin uploads
+- Meeting publications: STA flow that resolves and downloads the week's publications, without starting the server
 
 Server behavior:
 
@@ -177,7 +179,7 @@ Server behavior:
 - WebDAV handler on the HTTP server
 - UDP discovery listener for upload clients
 - file operations backed by SD storage
-- browser APIs for file management, settings, fonts, OPDS servers, and saved Wi-Fi networks
+- browser APIs for file management, settings, fonts, and saved Wi-Fi networks
 - activity requests faster loop responsiveness while server is running
 
 Endpoint reference: `docs/webserver-endpoints.md`.
@@ -205,7 +207,8 @@ When editing related source assets, regenerate via normal build steps/scripts.
 
 ## Embedded constraints that shape design
 
-- constrained RAM drives SD-first caching and careful allocations
+- constrained internal SRAM drives SD-first caching and careful allocations; PSRAM is plentiful but
+  an order of magnitude slower, unusable from an ISR, and unusable while the flash cache is suspended
 - e-ink refresh cost drives render/update batching choices
 - main loop responsiveness matters for input, power handling, and watchdog safety
 - background/network flows must cooperate with sleep and loop timing logic
@@ -215,4 +218,4 @@ When editing related source assets, regenerate via normal build steps/scripts.
 Before implementing larger ideas, check:
 
 - [SCOPE.md](../../SCOPE.md)
-- [GOVERNANCE.md](../../GOVERNANCE.md)
+- [ROADMAP.md](../../ROADMAP.md)
