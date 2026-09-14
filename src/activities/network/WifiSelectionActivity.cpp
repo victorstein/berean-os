@@ -486,11 +486,37 @@ void WifiSelectionActivity::attemptConnection() {
     LOG_ERR("WIFI", "Failed to read station MAC for hostname (err=%d)", static_cast<int>(macResult));
   }
 
+  networkReadyDeadlineMs = 0;
   if (selectedRequiresPassword && !enteredPassword.empty()) {
     WiFi.begin(selectedSSID.c_str(), enteredPassword.c_str());
   } else {
     WiFi.begin(selectedSSID.c_str());
   }
+}
+
+// WL_CONNECTED means associated, not usable. The DHCP lease that carries the
+// address and the resolver can still be in flight, and everything this screen
+// hands off to resolves a hostname immediately: the NTP sync below, the catalog
+// fetch, the meeting downloads. Reporting success too early produced exactly
+// that -- a request fired 0.6s after association, failing DNS on a link with
+// -26 dBm signal.
+//
+// The wait is bounded. A network that never hands out a resolver is still worth
+// trying on, and the caller reports the failure far better than this screen
+// silently spinning would.
+bool WifiSelectionActivity::networkReady() {
+  const IPAddress unset(0, 0, 0, 0);
+  if (WiFi.localIP() != unset && WiFi.dnsIP() != unset) return true;
+
+  if (networkReadyDeadlineMs == 0) {
+    networkReadyDeadlineMs = millis() + NETWORK_READY_TIMEOUT_MS;
+    return false;
+  }
+  if (millis() < networkReadyDeadlineMs) return false;
+
+  LOG_ERR("WIFI", "Associated but no %s after %u ms; continuing anyway",
+          WiFi.localIP() == unset ? "address" : "resolver", static_cast<unsigned>(NETWORK_READY_TIMEOUT_MS));
+  return true;
 }
 
 void WifiSelectionActivity::checkConnectionStatus() {
@@ -501,7 +527,9 @@ void WifiSelectionActivity::checkConnectionStatus() {
   const wl_status_t status = WiFi.status();
 
   if (status == WL_CONNECTED) {
-    // Successfully connected
+    // Still polling until the link can actually resolve a name.
+    if (!networkReady()) return;
+
     IPAddress ip = WiFi.localIP();
     char ipStr[16];
     snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);

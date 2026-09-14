@@ -67,6 +67,8 @@ class LauncherActivity final : public Activity {
   static std::string coverThumbFor(const std::string& bookPath, int height, bool& generatedAny);
   // Finds a meeting publication the registry does not know about, for downloads
   // that predate it. Keyed on the downloader's own filename convention.
+  // This week's publication, from the cache the meetings screen fills.
+  static std::optional<std::string> thisWeeksMeetingPublication();
   static std::optional<std::string> findMeetingPublicationOnCard();
   // Height of a tile's text block, so computeLayout can size a tile around its
   // contents and drawTile can centre the same block inside it.
