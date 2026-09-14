@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.3.0](https://github.com/victorstein/berean-os/compare/v1.2.0...v1.3.0) (2026-09-14)
+
+
+### Features
+
+* add the global tag palette with retired-id tombstones ([d2a4e5c](https://github.com/victorstein/berean-os/commit/d2a4e5c746f37cd72a8b85aa8de58f802d776f8e))
+* add the study store over atomic, streamed files ([f8147de](https://github.com/victorstein/berean-os/commit/f8147def92bdbb8c68f04f163da47edb89c6c26c))
+* add the tagged passage record and its budgeted document ([cf1faa1](https://github.com/victorstein/berean-os/commit/cf1faa1111706e2e8f04f120de9bf426432f138f))
+* add the Unit address type ([121e1e2](https://github.com/victorstein/berean-os/commit/121e1e2f79f4117ae180c5c071b54bdaee16246b))
+* cache a publication's units lazily, one document at a time ([0b5fc91](https://github.com/victorstein/berean-os/commit/0b5fc91476a387a0648154560cc51ed1125d15ad))
+* define the unit index on-disk format ([881fa0a](https://github.com/victorstein/berean-os/commit/881fa0ae64acb9a55e0db6601ea6b0a250394362))
+* fingerprint a unit, and extract its visible text from one place ([4511379](https://github.com/victorstein/berean-os/commit/451137967fd8c210e805c606c5950fb7a99782f9))
+* migrate the legacy highlight store, leaving it intact ([610b993](https://github.com/victorstein/berean-os/commit/610b993f343c918fb58bda9675ab7fa6854059bc))
+* plan a legacy highlight's migration, and gate it on real data ([ca3f301](https://github.com/victorstein/berean-os/commit/ca3f30164008688ca57b32c1b9fbd289bc760a27))
+* record a publication's symbol when the downloader knows it ([071259c](https://github.com/victorstein/berean-os/commit/071259ce3bdbe32fdbe0d773d5f1f7406befa773))
+* recover a book path from a flattened store filename ([f89c61d](https://github.com/victorstein/berean-os/commit/f89c61d432fba07f146e40e168ca09bf3cea4efe))
+* resolve a document offset to a unit, verse first ([d6b8cd7](https://github.com/victorstein/berean-os/commit/d6b8cd77a8f44577ced602ef2f23561d86ca749b))
+* scan data-pid paragraph anchors ([78276af](https://github.com/victorstein/berean-os/commit/78276afc28f4ec9b4936928e939753bc389f7ca7))
+
+
+### Bug Fixes
+
+* run the study migration after the display is initialised ([7749daa](https://github.com/victorstein/berean-os/commit/7749daa4d1b84c4f6c4165f7ed8fb0da1c3deee1))
+
+
+### Refactor
+
+* point the reader activities at the study store ([0d586f6](https://github.com/victorstein/berean-os/commit/0d586f62a4d7062d4027d4bfe18af58bacf5fdb0))
+
+
+### Documentation
+
+* plan phase 1, the study store and tag migration ([b06296e](https://github.com/victorstein/berean-os/commit/b06296e3e5e9191b03b884754da0c0035bd5af8d))
+* revise the phase 1 plan after adversarial review ([f5313f1](https://github.com/victorstein/berean-os/commit/f5313f1a624cfb7007b959fb68e7da5306b8f55d))
+
 ## [1.2.0](https://github.com/victorstein/berean-os/compare/v1.1.4...v1.2.0) (2026-09-14)
 
 
