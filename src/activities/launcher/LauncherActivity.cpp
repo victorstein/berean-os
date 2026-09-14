@@ -11,6 +11,8 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cctype>
+#include <optional>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -38,10 +40,12 @@ constexpr int TILE_ICON_SIZE = 32;
 // thumbnail this many times the tile's width in height clears the tile's width
 // for anything in that range; a narrower cover is declined rather than blown up.
 constexpr float NARROWEST_COVER_ASPECT = 0.6f;
-// Where a cover's title sits, as a fraction of its height. Covers are designed
-// with the title high, so this is what the tile aims at rather than the cover's
-// geometric middle.
-constexpr float COVER_TITLE_BAND_CENTRE = 0.25f;
+// Where a cover's identifying mark sits, as a fraction of its height -- what the
+// crop aims to put in the middle of the visible artwork. A book prints its title
+// a little below the top edge; a magazine's masthead runs right along the top,
+// so it wants 0 and the crop simply starts at the first row.
+constexpr float BOOK_TITLE_BAND = 0.25f;
+constexpr float MAGAZINE_MASTHEAD_BAND = 0.0f;
 // Below this a cover is a smudge and an icon is cramped, so the tile drops its
 // art and centres the label instead.
 constexpr int MIN_ART_HEIGHT = TILE_ICON_SIZE + 4;
@@ -88,23 +92,25 @@ void LauncherActivity::resolveTargets() {
   if (found != recents.end()) {
     biblePath = found->path;
     bibleSubtitle = utf8SafeSummary(found->title, 40);
-    bibleCoverPath = coverThumbFor(*found, bibleCoverHeight(), generatedAny);
+    bibleCoverPath = coverThumbFor(found->path, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
   }
 
-  // The meeting tile shows the cover of whichever weekly publication is on the
-  // card. The symbol comes from the registry the downloader writes, not from the
-  // filename: meetingPublicationFilename names the file after the publication's
-  // own title ("La Atalaya (estudio) 2026-09.epub"), so there is no symbol in it
-  // to match on. w = Watchtower study edition, mwb = Meeting Workbook.
-  const auto looksLikeAMeetingPub = [](const RecentBook& book) {
-    const auto registered = PubKeyRegistry::lookup(book.path);
-    return registered && (registered->symbol == "w" || registered->symbol == "mwb");
-  };
-  const auto meeting = std::find_if(recents.begin(), recents.end(), looksLikeAMeetingPub);
-  if (meeting != recents.end()) {
-    meetingsSubtitle = utf8SafeSummary(meeting->title, 30);
+  // The meeting tile shows whichever weekly publication is on the card: w = the
+  // Watchtower study edition, mwb = the Meeting Workbook. This asks the registry
+  // rather than the recents list, because recents only holds books that have
+  // been OPENED -- a publication downloaded and not yet read is precisely the
+  // case this tile exists to advertise. The symbol is not in the filename
+  // either: meetingPublicationFilename names the file after the publication's
+  // own title ("La Atalaya (estudio) 2026-09.epub").
+  auto meetingPath = PubKeyRegistry::findBySymbol({"w", "mwb"});
+  if (!meetingPath) meetingPath = findMeetingPublicationOnCard();
+  LOG_INF(MODULE, "Meeting publication: %s", meetingPath ? meetingPath->c_str() : "(none found)");
+  if (meetingPath) {
     meetingsCoverPath =
-        coverThumbFor(*meeting, tileArtHeight(rects[static_cast<size_t>(Tile::Meetings)], true), generatedAny);
+        coverThumbFor(*meetingPath, coverFillHeight(rects[static_cast<size_t>(Tile::Meetings)]), generatedAny);
+    const auto opened =
+        std::find_if(recents.begin(), recents.end(), [&](const RecentBook& book) { return book.path == *meetingPath; });
+    if (opened != recents.end()) meetingsSubtitle = utf8SafeSummary(opened->title, 30);
   }
 
   // Building a thumbnail leaves the popup's pixels in the framebuffer, and the
@@ -113,25 +119,80 @@ void LauncherActivity::resolveTargets() {
   if (generatedAny) LOG_INF(MODULE, "Generated a missing cover thumbnail");
 }
 
+// The " YYYY-MM" that meetingPublicationFilename appends to every meeting
+// download, or empty. This is our own naming convention rather than a guess at
+// JW's: the CDN name is discarded and the file is named after the publication's
+// title plus its issue, so the issue suffix is what marks a file as one of ours.
+std::string LauncherActivity::meetingIssueOf(const std::string& filename) {
+  constexpr size_t SUFFIX = 13;  // " YYYY-MM.epub"
+  if (filename.size() < SUFFIX) return {};
+  const std::string tail = filename.substr(filename.size() - SUFFIX);
+  if (tail[0] != ' ' || tail[5] != '-' || tail.compare(8, 5, ".epub") != 0) return {};
+  for (const size_t digit : {1u, 2u, 3u, 4u, 6u, 7u}) {
+    if (!std::isdigit(static_cast<unsigned char>(tail[digit]))) return {};
+  }
+  return tail.substr(1, 7);
+}
+
+// Publications downloaded before PubKeyRegistry existed carry no symbol entry,
+// so the card itself is the fallback. The Watchtower outranks the workbook
+// outright rather than on issue date: it is the publication the meeting tile is
+// recognisable as, and a newer workbook should not displace it.
+std::optional<std::string> LauncherActivity::findMeetingPublicationOnCard() {
+  std::string folder = SETTINGS.downloadFolder[0] != '\0' ? SETTINGS.downloadFolder : "/";
+  while (folder.size() > 1 && folder.back() == '/') folder.pop_back();
+  // Epub derives its cache directory from a hash of the path, so a stray double
+  // slash here would key a DIFFERENT cache than the reader uses for the same
+  // file -- the thumbnail would be built somewhere nothing else looks.
+  const std::string prefix = folder == "/" ? "/" : folder + "/";
+
+  std::string bestPath;
+  std::string bestIssue;
+  bool bestIsWatchtower = false;
+  for (const String& entry : Storage.listFiles(folder.c_str(), 200)) {
+    const std::string name = entry.c_str();
+    const std::string issue = meetingIssueOf(name);
+    if (issue.empty()) continue;
+
+    const bool isWatchtower = name.find("talaya") != std::string::npos || name.find("atchtower") != std::string::npos;
+    const bool better = bestPath.empty() || (isWatchtower && !bestIsWatchtower) ||
+                        (isWatchtower == bestIsWatchtower && issue > bestIssue);
+    if (!better) continue;
+
+    bestIssue = issue;
+    bestIsWatchtower = isWatchtower;
+    bestPath = name.find('/') == std::string::npos ? prefix + name : name;
+  }
+
+  if (bestPath.empty()) return std::nullopt;
+  return bestPath;
+}
+
 // The thumbnail is requested at exactly the height it will be drawn at, and is
 // never resampled afterwards. generateThumbBmp emits a DITHERED 1-bit image,
 // and drawBitmap1Bit rescales by point-sampling -- picking every Nth pixel out
 // of a pattern whose whole meaning is the local density of its pixels, which
 // turns a cover into uniform static. Matching the sizes is the only way to
 // render one honestly on a 1-bit panel.
-std::string LauncherActivity::coverThumbFor(const RecentBook& book, const int height, bool& generatedAny) {
-  if (book.coverBmpPath.empty() || height <= 0) return {};
-  std::string path = UITheme::getCoverThumbPath(book.coverBmpPath, height);
+//
+// Keyed on the book path rather than a recents entry: Epub derives its cache
+// path from the path alone, so this works for a publication that has been
+// downloaded but never opened.
+std::string LauncherActivity::coverThumbFor(const std::string& bookPath, const int height, bool& generatedAny) {
+  if (bookPath.empty() || height <= 0 || !FsHelpers::hasEpubExtension(bookPath)) return {};
+
+  Epub epub(bookPath, "/.crosspoint");
+  const std::string path = epub.getThumbBmpPath(height);
   if (Storage.exists(path.c_str())) return path;
 
-  if (!FsHelpers::hasEpubExtension(book.path)) return {};
   generatedAny = true;
-  Epub epub(book.path, "/.crosspoint");
-  epub.load(false, true);
+  // buildIfMissing, not the cached-only load the old home screen could rely on:
+  // that one only ever saw books that had been opened, and this one has to cope
+  // with a publication downloaded and never read, whose metadata cache does not
+  // exist yet. Without it generateThumbBmp fails with "cache not loaded".
+  epub.load(true, true);
   if (!epub.generateThumbBmp(height)) {
-    // Drop the cover reference so the next visit falls straight through to the
-    // icon instead of reopening the book to fail the same way.
-    RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
+    LOG_DBG(MODULE, "No cover thumbnail for %s", bookPath.c_str());
     return {};
   }
   return Storage.exists(path.c_str()) ? path : std::string{};
@@ -145,12 +206,10 @@ int LauncherActivity::tileArtHeight(const TileRect& rect, const bool hasSubtitle
 // The Bible tile puts its cover beside the label rather than above it, so the
 // cover gets the tile's full height instead of the third left over under a
 // centred caption.
-// The cover is the Bible tile's background, so the thumbnail must cover the tile
-// on both axes before anything is cropped away. The tile's WIDTH is what binds:
-// covers are portrait, so a thumbnail tall enough to fill the height is still
-// far too narrow to fill the width.
-int LauncherActivity::bibleCoverHeight() const {
-  const TileRect& tile = rects[static_cast<size_t>(Tile::Bible)];
+// A cover used as a tile background must cover the tile on both axes before
+// anything is cropped away. The tile's WIDTH is what binds: covers are portrait,
+// so a thumbnail tall enough to fill the height is still far too narrow.
+int LauncherActivity::coverFillHeight(const TileRect& tile) {
   return std::max(tile.h, static_cast<int>(static_cast<float>(tile.w) / NARROWEST_COVER_ASPECT));
 }
 
@@ -240,8 +299,8 @@ void LauncherActivity::drawTileArt(const int x, const int y, const int w, const 
 // GfxRenderer has no clip region and drawBitmap only ever scales DOWN, so the
 // row walk is done here. Resampling is deliberately absent -- these thumbnails
 // are dithered 1-bit and any resampling turns them into static.
-bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const TileRect& rect,
-                                        const int visibleHeight) const {
+bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const TileRect& rect, const int visibleHeight,
+                                        const float focusBand) const {
   if (coverPath.empty()) return false;
   HalFile file;
   if (!Storage.openFileForRead(MODULE, coverPath, file)) return false;
@@ -265,8 +324,8 @@ bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const Tile
   // the crop and anchoring at the top strands it down against the plate;
   // centring the title band on the artwork that is actually visible -- the tile
   // less the caption plate covering its foot -- keeps it where the eye lands.
-  const int titleBandCentre = static_cast<int>(static_cast<float>(height) * COVER_TITLE_BAND_CENTRE);
-  const int yOffset = std::clamp(titleBandCentre - visibleHeight / 2, 0, height - rect.h);
+  const int focusRow = static_cast<int>(static_cast<float>(height) * focusBand);
+  const int yOffset = std::clamp(focusRow - visibleHeight / 2, 0, height - rect.h);
 
   for (int row = 0; row < height; ++row) {
     if (bitmap.readNextRow(packedRow.get(), rowScratch.get()) != BmpReaderError::Ok) return false;
@@ -288,22 +347,23 @@ bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const Tile
 // Cover as the tile's background with the label over it. Drawing order is the
 // z-order here, so the caption plate and its text simply go down last; the
 // plate is opaque because a dithered cover underneath would otherwise shred the
-// glyphs on a 1-bit panel.
-void LauncherActivity::drawBibleTile(const TileRect& rect, const bool selected) const {
-  const int plateHeight = tileTextHeight(UI_10_FONT_ID, true) + 2 * TILE_PADDING;
-  const bool filled = drawCoverFilling(bibleCoverPath, rect, rect.h - plateHeight);
+// glyphs on a 1-bit panel. Falls back to the stacked icon-over-label tile when
+// the card has no cover large enough to fill this one.
+void LauncherActivity::drawCoverTile(const TileRect& rect, const std::string& coverPath, const char* title,
+                                     const char* subtitle, const uint8_t* icon, const bool selected,
+                                     const float focusBand) const {
+  const bool hasSubtitle = subtitle != nullptr && subtitle[0] != '\0';
+  const int plateHeight = tileTextHeight(UI_10_FONT_ID, hasSubtitle) + 2 * TILE_PADDING;
 
-  if (!filled) {
-    drawTileArt(rect.x, rect.y + TILE_PADDING, rect.w, tileArtHeight(rect, true), {}, BookIcon);
-    const int stackedTop = rect.y + rect.h - tileTextHeight(UI_10_FONT_ID, true) - TILE_PADDING;
-    drawCenteredIn(rect.x, rect.w, stackedTop, tr(STR_BIBLE), bibleSubtitle.c_str());
-  } else {
-    const int plateTop = rect.y + rect.h - plateHeight;
-    renderer.fillRect(rect.x, plateTop, rect.w, plateHeight, false);
-    renderer.drawLine(rect.x, plateTop, rect.x + rect.w - 1, plateTop, true);
-    drawCenteredIn(rect.x, rect.w, plateTop + TILE_PADDING, tr(STR_BIBLE), bibleSubtitle.c_str());
+  if (!drawCoverFilling(coverPath, rect, rect.h - plateHeight, focusBand)) {
+    drawTile(rect, title, subtitle, selected, /*emphasised=*/true, {}, icon);
+    return;
   }
 
+  const int plateTop = rect.y + rect.h - plateHeight;
+  renderer.fillRect(rect.x, plateTop, rect.w, plateHeight, false);
+  renderer.drawLine(rect.x, plateTop, rect.x + rect.w - 1, plateTop, true);
+  drawCenteredIn(rect.x, rect.w, plateTop + TILE_PADDING, title, subtitle);
   renderer.drawRect(rect.x, rect.y, rect.w, rect.h, selected ? 3 : 1, true);
 }
 
@@ -365,9 +425,11 @@ void LauncherActivity::render(RenderLock&&) {
   renderer.clearScreen();
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_BEREAN));
 
-  drawBibleTile(rects[0], selected == 0);
-  drawTile(rects[1], tr(STR_MEETINGS), meetingsSubtitle.empty() ? nullptr : meetingsSubtitle.c_str(), selected == 1,
-           false, meetingsCoverPath, LibraryIcon);
+  drawCoverTile(rects[0], bibleCoverPath, tr(STR_BIBLE), bibleSubtitle.c_str(), BookIcon, selected == 0,
+                BOOK_TITLE_BAND);
+  drawCoverTile(rects[1], meetingsCoverPath, tr(STR_MEETINGS),
+                meetingsSubtitle.empty() ? nullptr : meetingsSubtitle.c_str(), LibraryIcon, selected == 1,
+                MAGAZINE_MASTHEAD_BAND);
   drawTile(rects[2], tr(STR_SEARCH), tr(STR_COMING_SOON), selected == 2, false, {}, SearchIcon);
   drawTile(rects[3], tr(STR_TAGS_AND_SETTINGS), nullptr, selected == 3, false, {}, Settings2Icon);
 
