@@ -3,29 +3,18 @@
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
-#include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
-#include <MD5Builder.h>
-#include <Memory.h>
 #include <WiFi.h>
-#include <strings.h>
 
-#include <cstring>
+#include <cstdio>
 
-#include "CrossPointSettings.h"
-#include "CrossPointState.h"
 #include "MappedInputManager.h"
-#include "RecentBooksStore.h"
 #include "SilentRestart.h"
 #include "WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "network/HttpDownloader.h"
-#include "network/MeetingFilename.h"
-#include "network/PubMediaJson.h"
-#include "study/PubKeyRegistry.h"
-#include "util/BookCacheUtils.h"
-#include "util/TaskWatchdog.h"
+#include "network/PublicationDownloader.h"
 
 namespace fui = freeink::ui;
 
@@ -39,29 +28,7 @@ constexpr unsigned long DOWNLOAD_PROGRESS_MIN_UPDATE_MS = 5000;
 // mapping is language-independent, so the meetings page stays English.
 constexpr const char* DOWNLOAD_LANGUAGE = "S";
 
-constexpr size_t HASH_CHUNK_BYTES = 2048;
-// Hashing several MB off the SD card runs well past the task watchdog window.
-constexpr int HASH_CHUNKS_PER_WATCHDOG_RESET = 64;
-
 constexpr MeetingPub PUBLICATION_ORDER[] = {MeetingPub::Watchtower, MeetingPub::Workbook};
-
-// Matches Epub's own key derivation (Epub.h:48): the cache directory is the hash
-// of the full path as passed in, so it moves whenever the file is renamed.
-std::string bookCachePath(const std::string& bookPath) {
-  return "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(bookPath));
-}
-
-// The configured download folder, created on demand,
-// falling back to the SD root so a download is never lost to a failed mkdir.
-std::string resolveDownloadFolder() {
-  const char* folder = SETTINGS.downloadFolder;
-  if (folder[0] == '\0') return {};
-  if (!Storage.exists(folder) && !Storage.mkdir(folder)) {
-    LOG_ERR("MEET", "mkdir failed for %s, using SD root", folder);
-    return {};
-  }
-  return folder;
-}
 }  // namespace
 
 MeetingDownloadActivity::MeetingDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -174,7 +141,7 @@ void MeetingDownloadActivity::runSequence() {
           static_cast<unsigned>(today.month), static_cast<unsigned>(today.day), static_cast<unsigned>(week.year),
           static_cast<unsigned>(week.week));
 
-  downloadFolder = resolveDownloadFolder();
+  downloadFolder = publication::resolveDownloadFolder();
 
   WolWeekScanner scanner;
   if (!scanWeek(week, scanner)) return;
@@ -219,90 +186,74 @@ bool MeetingDownloadActivity::scanWeek(const IsoWeek& week, WolWeekScanner& scan
   return true;
 }
 
+void MeetingDownloadActivity::onDownloadPhase(void* ctx, const char* message) {
+  static_cast<MeetingDownloadActivity*>(ctx)->reportPhase(message);
+}
+
+void MeetingDownloadActivity::onDownloadResolved(void* ctx, const char* filename) {
+  auto* self = static_cast<MeetingDownloadActivity*>(ctx);
+  self->currentFilename = filename;
+}
+
+void MeetingDownloadActivity::onDownloadProgress(void* ctx, const size_t downloaded, const size_t total) {
+  auto* self = static_cast<MeetingDownloadActivity*>(ctx);
+  self->downloadProgress = downloaded;
+  self->downloadTotal = total;
+
+  // The loop task is blocked for the whole transfer; pump input here so Cancel,
+  // Back and the home gesture still work.
+  self->mappedInput.update();
+  if (self->mappedInput.wasReleased(MappedInputManager::Button::Back)) self->cancelDownload = true;
+  if (self->mappedInput.wasHomeGesture()) {
+    self->cancelDownload = true;
+    self->goHomeAfterCancel = true;
+  }
+  self->routeTouch(self->mappedInput);
+
+  const int percent = total > 0 ? static_cast<int>(static_cast<uint64_t>(downloaded) * 100 / total) : 0;
+  const unsigned long now = millis();
+  if (percent >= 100 || self->lastRenderedPercent < 0 ||
+      percent >= self->lastRenderedPercent + DOWNLOAD_PROGRESS_STEP_PERCENT ||
+      now - self->lastProgressUpdateMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS) {
+    self->lastRenderedPercent = percent;
+    self->lastProgressUpdateMs = now;
+    self->requestUpdate(true);
+  }
+}
+
 bool MeetingDownloadActivity::downloadPublication(const MeetingPub pub, const char* issue) {
   state = State::RESOLVING;
   statusMessage = tr(STR_RESOLVING_WEEK);
   currentFilename.clear();
   requestUpdateAndWait();
 
-  // ~900 bytes between the tokenizer's buffer and the extracted fields: too much
-  // to put on the loop task's stack.
-  auto media = makeUniqueNoThrow<PubMediaJsonParser>(DOWNLOAD_LANGUAGE);
-  if (!media) {
-    LOG_ERR("MEET", "OOM: pub-media parser");
-    fail(tr(STR_DOWNLOAD_FAILED));
-    return false;
-  }
+  publication::Request request;
+  request.symbol = pub == MeetingPub::Watchtower ? "w" : "mwb";
+  request.issue = issue;
+  request.language = DOWNLOAD_LANGUAGE;
+  request.folder = downloadFolder;
 
-  const std::string mediaUrl = pubMediaUrl(pub, issue, DOWNLOAD_LANGUAGE);
-  const bool fetched = HttpDownloader::fetchUrl(mediaUrl, [&media](const uint8_t* data, const size_t len) {
-    media->feed(reinterpret_cast<const char*>(data), len);
-    return true;
-  });
-  if (!fetched || !media->found()) {
-    LOG_ERR("MEET", "No EPUB link for issue %s (%s)", issue, DOWNLOAD_LANGUAGE);
-    fail(tr(STR_DOWNLOAD_FAILED));
-    return false;
-  }
+  publication::Hooks hooks;
+  hooks.ctx = this;
+  hooks.onPhase = &MeetingDownloadActivity::onDownloadPhase;
+  hooks.onResolved = &MeetingDownloadActivity::onDownloadResolved;
+  hooks.onProgress = &MeetingDownloadActivity::onDownloadProgress;
+  hooks.cancelFlag = &cancelDownload;
 
-  const std::string filename = meetingPublicationFilename(media->pubName(), issue, media->url());
-  if (filename.empty()) {
-    LOG_ERR("MEET", "Unusable media url: %s", media->url());
-    fail(tr(STR_DOWNLOAD_FAILED));
-    return false;
-  }
-
-  std::string destPath;
-  destPath.reserve(downloadFolder.size() + filename.size() + 1);
-  destPath += downloadFolder;
-  destPath += '/';
-  destPath += filename;
-
-  currentFilename = filename;
-
-  if (!Storage.exists(destPath.c_str())) migrateCdnNamedCopy(media->url(), destPath);
-  if (alreadyOnCard(destPath, media->filesize())) {
-    LOG_INF("MEET", "Skipping %s, already on the card", destPath.c_str());
-    reportPhase(tr(STR_ALREADY_DOWNLOADED));
-    return true;
-  }
-
+  // The resolve happens inside publication::download, so the DOWNLOADING screen
+  // is armed first and onDownloadProgress repaints into it once bytes arrive.
   state = State::DOWNLOADING;
   statusMessage = tr(STR_DOWNLOADING);
   downloadProgress = 0;
   downloadTotal = 0;
+  lastRenderedPercent = -1;
+  lastProgressUpdateMs = 0;
   requestUpdateAndWait();
 
-  int lastRenderedPercent = -1;
-  unsigned long lastProgressUpdateMs = 0;
-  const auto result = HttpDownloader::downloadToFile(
-      media->url(), destPath,
-      [this, &lastRenderedPercent, &lastProgressUpdateMs](const size_t downloaded, const size_t total) {
-        downloadProgress = downloaded;
-        downloadTotal = total;
-        // The loop task is blocked for the whole transfer; pump input here so
-        // Cancel, Back and the home gesture still work.
-        mappedInput.update();
-        if (mappedInput.wasReleased(MappedInputManager::Button::Back)) cancelDownload = true;
-        if (mappedInput.wasHomeGesture()) {
-          cancelDownload = true;
-          goHomeAfterCancel = true;
-        }
-        routeTouch(mappedInput);
-        const int percent = total > 0 ? static_cast<int>(static_cast<uint64_t>(downloaded) * 100 / total) : 0;
-        const unsigned long now = millis();
-        if (percent >= 100 || lastRenderedPercent < 0 ||
-            percent >= lastRenderedPercent + DOWNLOAD_PROGRESS_STEP_PERCENT ||
-            now - lastProgressUpdateMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS) {
-          lastRenderedPercent = percent;
-          lastProgressUpdateMs = now;
-          requestUpdate(true);
-        }
-      },
-      &cancelDownload);
+  std::string destPath;
+  const auto result = publication::download(request, hooks, destPath);
 
-  if (result == HttpDownloader::ABORTED) {
-    LOG_INF("MEET", "Download cancelled");
+  if (result == publication::Result::Cancelled) {
     if (goHomeAfterCancel) {
       onGoHome();
     } else {
@@ -310,128 +261,16 @@ bool MeetingDownloadActivity::downloadPublication(const MeetingPub pub, const ch
     }
     return false;
   }
-  if (result != HttpDownloader::OK) {
-    LOG_ERR("MEET", "Download failed: %d", static_cast<int>(result));
-    fail(tr(STR_DOWNLOAD_FAILED));
-    return false;
-  }
-
-  // These transfers run over unverified TLS (the wolfSSL transport has no CA
-  // bundle wired up, so setInsecure() is unconditional), which makes the MD5 the
-  // API publishes the only integrity check available.
-  if (!matchesChecksum(destPath, media->checksum())) {
-    LOG_ERR("MEET", "Checksum mismatch for %s", destPath.c_str());
-    Storage.remove(destPath.c_str());
-    fail(tr(STR_CHECKSUM_MISMATCH));
-    return false;
-  }
-
-  // The reading cache is keyed on the path hash and book.bin records no size or
-  // mtime, so a revised issue downloaded over an existing copy would otherwise
-  // be rendered from the previous issue's sections.
-  clearBookCache(destPath);
-
-  // Record what only the downloader knows. The EPUB itself carries no symbol --
-  // its dc:identifier is a random urn:uuid -- so without this the study store
-  // falls back to a path-derived key that dies when the file moves and would
-  // change again once the catalog lands, orphaning every tag on the issue.
-  PubKeyRegistry::record(destPath,
-                         study::RegisteredPub{pub == MeetingPub::Watchtower ? "w" : "mwb", issue, DOWNLOAD_LANGUAGE});
-
-  LOG_INF("MEET", "Saved %s (%llu bytes advertised)", destPath.c_str(),
-          static_cast<unsigned long long>(media->filesize()));
-  return true;
-}
-
-bool MeetingDownloadActivity::matchesChecksum(const std::string& path, const char* expectedMd5) const {
-  if (!expectedMd5 || expectedMd5[0] == '\0') {
-    LOG_INF("MEET", "No checksum published for %s", path.c_str());
+  if (result == publication::Result::AlreadyOnCard) {
+    reportPhase(tr(STR_ALREADY_DOWNLOADED));
     return true;
   }
-
-  HalFile file;
-  if (!Storage.openFileForRead("MEET", path, file)) return false;
-
-  auto buffer = makeUniqueNoThrow<uint8_t[]>(HASH_CHUNK_BYTES);
-  if (!buffer) {
-    LOG_ERR("MEET", "OOM: %u byte hash buffer", static_cast<unsigned>(HASH_CHUNK_BYTES));
+  if (result != publication::Result::Ok) {
+    fail(publication::failureMessage(result));
     return false;
   }
-
-  MD5Builder md5;
-  md5.begin();
-  int chunks = 0;
-  while (true) {
-    const int read = file.read(buffer.get(), HASH_CHUNK_BYTES);
-    if (read < 0) {
-      LOG_ERR("MEET", "Read error while hashing %s", path.c_str());
-      return false;
-    }
-    if (read == 0) break;
-    md5.add(buffer.get(), static_cast<size_t>(read));
-    if (++chunks % HASH_CHUNKS_PER_WATCHDOG_RESET == 0) resetTaskWatchdogIfSubscribed();
-  }
-  md5.calculate();
-
-  char actual[33];
-  md5.getChars(actual);
-  return strcasecmp(actual, expectedMd5) == 0;
+  return true;
 }
-
-bool MeetingDownloadActivity::alreadyOnCard(const std::string& path, const uint64_t advertisedSize) const {
-  // filesize is absent from some responses and reads back as 0, which a 0-byte
-  // file on the card would match forever with no way to repair itself.
-  if (advertisedSize == 0 || !Storage.exists(path.c_str())) return false;
-
-  HalFile file;
-  if (!Storage.openFileForRead("MEET", path, file)) return false;
-  const auto actualSize = static_cast<uint64_t>(file.fileSize());
-  // The caller renames or downloads over this path next, and SdFat needs it
-  // closed for either.
-  file.close();
-
-  if (actualSize == advertisedSize) return true;
-  LOG_INF("MEET", "%s is %llu bytes, expected %llu: downloading again", path.c_str(),
-          static_cast<unsigned long long>(actualSize), static_cast<unsigned long long>(advertisedSize));
-  return false;
-}
-
-void MeetingDownloadActivity::migrateCdnNamedCopy(const std::string& url, const std::string& destPath) {
-  const std::string cdnName = filenameFromUrl(url);
-  if (cdnName.empty()) return;
-  const std::string srcPath = downloadFolder + "/" + cdnName;
-  if (srcPath == destPath || !Storage.exists(srcPath.c_str())) return;
-
-  if (!Storage.rename(srcPath.c_str(), destPath.c_str())) {
-    LOG_ERR("MEET", "Rename %s -> %s failed, downloading under the new name", srcPath.c_str(), destPath.c_str());
-    return;
-  }
-
-  // Anything already keyed to the new path belongs to an earlier file of the
-  // same name — one deleted over the web server or WebDAV, neither of which
-  // clears the cache the way the file browser does. Clearing it before the cache
-  // directory moves in both frees the destination for the rename and stops the
-  // migrated book rendering from another issue's sections.
-  clearBookCache(destPath);
-
-  const std::string oldCachePath = bookCachePath(srcPath);
-  const std::string newCachePath = bookCachePath(destPath);
-  // Moving the directory carries progress.bin with it, so reading position and
-  // the cover survive the rename.
-  if (Storage.exists(oldCachePath.c_str()) && !Storage.rename(oldCachePath.c_str(), newCachePath.c_str())) {
-    LOG_ERR("MEET", "Failed to rename cache dir %s -> %s (non-fatal)", oldCachePath.c_str(), newCachePath.c_str());
-  }
-
-  RECENT_BOOKS.updatePath(srcPath, destPath, oldCachePath, newCachePath);
-  if (APP_STATE.openEpubPath == srcPath) {
-    APP_STATE.openEpubPath = destPath;
-    APP_STATE.saveToFile();
-  }
-
-  LOG_INF("MEET", "Renamed %s -> %s", srcPath.c_str(), destPath.c_str());
-  reportPhase(tr(STR_RENAMED_EXISTING));
-}
-
 void MeetingDownloadActivity::rootScreen(UiScreen& screen, void* user) {
   auto* self = static_cast<MeetingDownloadActivity*>(user);
   self->screenHeader(screen);

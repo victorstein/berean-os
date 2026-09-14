@@ -40,11 +40,14 @@ class MeetingDownloadActivity final : public Activity, private UiAppHost {
   void runSequence();
   bool scanWeek(const IsoWeek& week, WolWeekScanner& scanner);
   bool downloadPublication(MeetingPub pub, const char* issue);
-  bool matchesChecksum(const std::string& path, const char* expectedMd5) const;
-  bool alreadyOnCard(const std::string& path, uint64_t advertisedSize) const;
-  void migrateCdnNamedCopy(const std::string& url, const std::string& destPath);
   void reportPhase(const char* message);
   void fail(const char* message);
+
+  // publication::Hooks trampolines. The transfer blocks the loop task for its
+  // whole duration, so the progress hook is also where input is pumped.
+  static void onDownloadPhase(void* ctx, const char* message);
+  static void onDownloadResolved(void* ctx, const char* filename);
+  static void onDownloadProgress(void* ctx, size_t downloaded, size_t total);
 
   // "" when no folder is configured or it could not be created, meaning SD root.
   std::string downloadFolder;
@@ -64,6 +67,10 @@ class MeetingDownloadActivity final : public Activity, private UiAppHost {
   bool workbookUnavailable = false;
   size_t downloadProgress = 0;
   size_t downloadTotal = 0;
+  // Repaint throttle for the progress hook: a full e-ink refresh per chunk would
+  // cost more than the transfer.
+  int lastRenderedPercent = -1;
+  unsigned long lastProgressUpdateMs = 0;
 
   // Read by HttpDownloader between chunks; set by the Cancel button or a Back
   // press, both pumped from the download's own progress callback.
