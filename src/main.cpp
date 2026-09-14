@@ -29,6 +29,7 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "study/MigrationRunner.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
@@ -412,6 +413,21 @@ void setup() {
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
+
+  // Study-data migration. Runs before any activity, reads through the legacy
+  // store and writes beside it -- /.crosspoint/highlights/ is never renamed or
+  // deleted, so an OTA rollback to a pre-Phase-1 build still finds the data.
+  if (MigrationRunner::pending()) {
+    LOG_INF("MAIN", "Migrating study data...");
+    MigrationRunner::Summary migration;
+    if (!MigrationRunner::runIfPending(migration, renderer)) {
+      LOG_ERR("MAIN", "Migration incomplete; legacy store untouched");
+    }
+    LOG_INF("MAIN", "read=%u written=%u verse=%u para=%u docoff=%u mismatch=%u pending=%u dropped=%u tags=%u",
+            migration.highlightsRead, migration.passagesWritten, migration.addressedVerse,
+            migration.addressedParagraph, migration.addressedDocumentOffset, migration.referenceMismatches,
+            migration.pendingUpgrade, migration.dropped, migration.tagsAdopted);
+  }
 
   // Brightness and warmth are always restored. A normal wake starts with the
   // light off unless Restore Light on Wake is enabled; silent maintenance

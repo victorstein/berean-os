@@ -1,5 +1,7 @@
 #include "CrossPointWebServer.h"
 
+#include "study/MigrationRunner.h"
+
 #include <ArduinoJson.h>
 #include <BoardConfig.h>
 #include <FsHelpers.h>
@@ -146,6 +148,7 @@ void CrossPointWebServer::begin() {
   server->on("/api/status", HTTP_GET, [this] { handleStatus(); });
   server->on("/api/files", HTTP_GET, [this] { handleFileListData(); });
   server->on("/download", HTTP_GET, [this] { handleDownload(); });
+  server->on("/migration", HTTP_GET, [this] { handleMigrationReport(); });
 
   // Upload endpoint with special handling for multipart form data
   server->on("/upload", HTTP_POST, [this] { handleUploadPost(upload); }, [this] { handleUpload(upload); });
@@ -1852,4 +1855,38 @@ void CrossPointWebServer::handleFontDelete() {
     server->send(500, "application/json", "{\"error\":\"Delete failed\"}");
     LOG_ERR("WEB", "Failed to delete font family: %s", familyName);
   }
+}
+
+// The study migration's own report. Served by name rather than left to
+// /download?path=... so the user has one URL to check after an update, and so
+// "no migration has run" is distinguishable from "the file is missing".
+void CrossPointWebServer::handleMigrationReport() const {
+  if (!Storage.exists(MigrationRunner::REPORT_PATH)) {
+    server->send(404, "application/json", "{\"status\":\"no migration has run\"}");
+    return;
+  }
+
+  HalFile file;
+  if (!Storage.openFileForRead("WEB", MigrationRunner::REPORT_PATH, file)) {
+    server->send(500, "application/json", "{\"status\":\"report unreadable\"}");
+    return;
+  }
+
+  server->setContentLength(file.size());
+  server->send(200, "application/json", "");
+
+  NetworkClient client = server->client();
+  uint8_t buffer[1024];
+  while (file.available()) {
+    const int got = file.read(buffer, sizeof(buffer));
+    if (got <= 0) break;
+    size_t written = 0;
+    while (written < static_cast<size_t>(got)) {
+      resetTaskWatchdogIfSubscribed();
+      const size_t wrote = client.write(buffer + written, static_cast<size_t>(got) - written);
+      if (wrote == 0) break;
+      written += wrote;
+    }
+  }
+  client.clear();
 }

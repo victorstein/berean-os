@@ -64,4 +64,13 @@ Unit resolve(const DocumentUnits& units, uint32_t documentOffset);
 // onto the page. Returns nullopt when the unit is not in this document.
 std::optional<uint32_t> documentOffsetOf(const DocumentUnits& units, const Unit& unit);
 
+// Index of the anchor addressing `unit`, or SIZE_MAX. Anchors are ascending by
+// OFFSET, never by address -- data-pid runs out of document order -- so this is
+// a linear match on (major, minor), not a search.
+size_t anchorIndexOf(const DocumentUnits& units, const Unit& unit);
+
+// Where the unit at `anchorIndex` ends: the next anchor's offset, or UINT32_MAX
+// for the last one. Relies on the list being ascending by offset.
+uint32_t unitEndOffset(const DocumentUnits& units, size_t anchorIndex);
+
 }  // namespace study

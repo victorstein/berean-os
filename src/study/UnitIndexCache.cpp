@@ -321,22 +321,11 @@ uint8_t UnitIndexCache::bookFor(const uint16_t spineIndex) {
 
 std::string UnitIndexCache::unitText(const uint16_t spineIndex, const study::Unit& unit) {
   const study::DocumentUnits& units = unitsFor(spineIndex);
-  const study::UnitAnchor* anchor = nullptr;
-  for (const auto& a : units.anchors) {
-    if (a.major == unit.major && a.minor == unit.minor) {
-      anchor = &a;
-      break;
-    }
-  }
-  if (!anchor) return {};
-
-  uint32_t next = UINT32_MAX;
-  for (const auto& a : units.anchors) {
-    if (a.offset > anchor->offset && a.offset < next) next = a.offset;
-  }
+  const size_t index = study::anchorIndexOf(units, unit);
+  if (index == SIZE_MAX) return {};
 
   TextContext ctx;
-  ctx.scanner.setRange(anchor->offset, next);
+  ctx.scanner.setRange(units.anchors[index].offset, study::unitEndOffset(units, index));
   if (!ctx.scanner.valid()) return {};
   if (!SpineHtmlStream::stream(epub_, spineIndex, renderer_, feedText, &ctx)) return {};
   return ctx.scanner.take();

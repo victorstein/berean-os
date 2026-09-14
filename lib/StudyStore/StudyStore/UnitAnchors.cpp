@@ -1,5 +1,6 @@
 #include "StudyStore/UnitAnchors.h"
 
+#include <cstdint>
 #include <new>
 
 #include "Epub/ParagraphAnchors.h"
@@ -97,14 +98,25 @@ Unit resolve(const DocumentUnits& units, const uint32_t documentOffset) {
   return Unit{units.kind, book, best->major, best->minor, documentOffset - best->offset};
 }
 
+size_t anchorIndexOf(const DocumentUnits& units, const Unit& unit) {
+  for (size_t i = 0; i < units.anchors.size(); ++i) {
+    if (units.anchors[i].major == unit.major && units.anchors[i].minor == unit.minor) return i;
+  }
+  return SIZE_MAX;
+}
+
+uint32_t unitEndOffset(const DocumentUnits& units, const size_t anchorIndex) {
+  if (anchorIndex + 1 < units.anchors.size()) return units.anchors[anchorIndex + 1].offset;
+  return UINT32_MAX;
+}
+
 std::optional<uint32_t> documentOffsetOf(const DocumentUnits& units, const Unit& unit) {
   if (unit.kind == UnitKind::DocumentOffset) return unit.offset;
   if (unit.kind != units.kind) return std::nullopt;
   if (unit.kind == UnitKind::Verse && unit.book != units.book) return std::nullopt;
-  for (const auto& a : units.anchors) {
-    if (a.major == unit.major && a.minor == unit.minor) return a.offset + unit.offset;
-  }
-  return std::nullopt;
+  const size_t index = anchorIndexOf(units, unit);
+  if (index == SIZE_MAX) return std::nullopt;
+  return units.anchors[index].offset + unit.offset;
 }
 
 }  // namespace study

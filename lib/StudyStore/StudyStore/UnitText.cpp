@@ -135,11 +135,15 @@ std::string extractUnitText(const char* xhtml, const size_t length, const Docume
                             const UnitAnchor& anchor) {
   if (units.anchors.empty()) return {};
 
-  uint32_t next = UINT32_MAX;
-  for (const auto& a : units.anchors) {
-    if (a.offset > anchor.offset && a.offset < next) next = a.offset;
+  size_t index = SIZE_MAX;
+  for (size_t i = 0; i < units.anchors.size(); ++i) {
+    if (units.anchors[i].offset == anchor.offset) {
+      index = i;
+      break;
+    }
   }
-  return extractRangeText(xhtml, length, anchor.offset, next);
+  if (index == SIZE_MAX) return {};
+  return extractRangeText(xhtml, length, anchor.offset, unitEndOffset(units, index));
 }
 
 uint32_t documentVisibleCrc(const char* xhtml, const size_t length) {

@@ -3473,12 +3473,21 @@ git commit -m "feat: recover a book path from a flattened store filename"
 
 ---
 
-## Task 14: Rewire the five activities — before the migration runs
+## Task 14: Rewire the five activities
 
-**Reordered.** The first draft migrated at Task 12 and rewired at Task 13, so any
-build flashed between them read through `HighlightFile` after the sources had
-been consumed — reporting `Empty`, which means "safe to save over", so one new
-highlight would write a fresh file over the migrated-away data.
+**Ordering, revised again during implementation.** Review moved the rewire ahead
+of the migration because the migration consumed its sources by renaming them.
+Dropping the rename for a ledger removed that hazard and inverted the argument:
+
+- **Migrate, then rewire** — the legacy store stays intact and the activities go
+  on reading it, so the device behaves exactly as today while the new store fills
+  up beside it. Nothing is ever broken.
+- **Rewire, then migrate** — the activities read an empty new store, so every
+  highlight appears to have vanished until the migration lands.
+
+So the migration (Task 15) is implemented first and this task second. The
+reviewer's concern was real; the fix that answered it also answered the
+ordering.
 
 | File | What changes |
 |---|---|
