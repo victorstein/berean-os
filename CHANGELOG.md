@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/victorstein/berean-os/compare/v1.3.0...v1.3.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* resolve a tagged passage by address, not by its spine hint ([36d4e24](https://github.com/victorstein/berean-os/commit/36d4e246898fc934dee3d2676d25b638b8c6c7ad))
+
 ## [1.3.0](https://github.com/victorstein/berean-os/compare/v1.2.0...v1.3.0) (2026-09-14)
 
 
