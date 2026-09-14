@@ -8,6 +8,46 @@
 
 **Tech Stack:** C++20, expat (`XML_GE=0`), ArduinoJson v7, GoogleTest on the host, PlatformIO/ESP-IDF on the device.
 
+> **Revision note — 2026-09-14, after adversarial review.**
+> Two independent reviewers found nine blocker-class defects in the first draft.
+> The ones that changed the design rather than the code:
+>
+> - **The acceptance checks passed on a failed migration.** The plan claimed a
+>   book path was recoverable from a flattened highlight filename. It is not —
+>   `pathflatten::toCacheName` is lossy three ways and says so in its own header.
+>   A migration that could not find the EPUB wrote every passage as a raw
+>   document offset, which paints identically to today, so all four device checks
+>   passed while the phase achieved nothing. Task 14 now recovers the path by
+>   walking the card, and the report and checklist break results down **by unit
+>   kind** so "migrated" and "actually addressed" cannot be confused.
+> - **Deleting a tag deleted passages.** `TagFilterActivity` already has a
+>   long-press delete. With a global palette and a `removeTagEverywhere` that
+>   erased zero-tag passages, one tidy-up gesture destroyed every passage that
+>   carried only that tag. Palette deletion is now **retire-only**; no palette
+>   operation can remove a passage.
+> - **Sharding by Bible book was wrong.** It cut the highlights browser down to
+>   the open book's marks, and it did not even work: 2,595 NWT documents carry no
+>   verse, so every one of their passages landed in a single unsharded
+>   `bible-0.json` with the same ceiling. Sharding is gone; the passages file is
+>   **streamed** instead, which is what the spec asked for in the first place.
+> - **The `.migrated` rename voided the rollback the spec calls non-negotiable.**
+>   A Phase 0 build resolves the original filename and would have found nothing.
+>   Migration progress now lives in a separate ledger and the old files are not
+>   touched at all.
+> - **The fingerprint had no producer.** Nothing in the plan extracted a unit's
+>   visible text, and the repo's two candidate mechanisms are known to disagree
+>   about U+202F/U+00A0. One shared extractor is now Task 4, used by both the
+>   migration and the paint path so they cannot drift.
+> - **The dry run proved less than the first draft claimed.** The `ref` strings
+>   were written by the device using `VerseAnchors` against the same offsets the
+>   dry run re-resolves with `VerseAnchors`, so 63/63 agreement mostly shows the
+>   host reproduces the device on identical bytes. It is kept as a regression
+>   gate, moved before the code that depends on it, and re-pointed at a copy
+>   pulled off the card rather than a desktop unzip.
+>
+> The reverse index moved to Phase 3: at 63 passages it costs more than the scan
+> it replaces, which the first draft admitted and then scheduled anyway.
+
 ---
 
 ## What the real data says
@@ -82,7 +122,9 @@ Measured across 180 documents of `w_S_202601` and `lff_S`:
   So the anchors are a flat sequence and "greatest anchor at or below offset"
   resolves correctly, exactly as `VerseAnchors::find` already does.
 - **`data-pid` is unique within a document.** 0 duplicates. It is a valid address.
-- **`data-pid` order is not document order.** In 40 of 180 documents the values
+- **`data-pid` order is not document order.** In 40 of 180 documents — and in 40
+  of the **87** that carry `data-pid` at all, i.e. 46% of the documents where a
+  pid search could even run — the values
   run e.g. `1,2,3,4,5,6,40,7,42,8` — study-question `<div class="gen-field">`
   boxes are interleaved with body paragraphs at high pid values. **Anchors sort
   by offset; the pid is the address, never the sort key.** A binary search on pid
@@ -95,37 +137,54 @@ Measured across 180 documents of `w_S_202601` and `lff_S`:
 
 ## File structure
 
+> **Directory layout is load-bearing.** PlatformIO puts `lib/<Name>` on the
+> include path, never `lib` itself, so `#include "StudyStore/Unit.h"` only
+> resolves if the headers sit at `lib/StudyStore/StudyStore/`. This mirrors
+> `lib/Epub/Epub/HighlightDoc.h`, which is included as `"Epub/HighlightDoc.h"`
+> for exactly this reason. The host suite puts `${REPO_ROOT}/lib` on the include
+> path and so hides the mistake until the first `pio run`.
+
 **New, host-testable, no Arduino and no HalStorage** — these are the units that
 carry the correctness risk, so every one of them is pure:
 
 | File | Responsibility |
 |---|---|
-| `lib/StudyStore/Unit.h` / `.cpp` | The `Unit` value type, ordering, and its JSON encoding |
-| `lib/StudyStore/UnitAnchors.h` / `.cpp` | Façade: run the right scanner(s) for a document, apply precedence |
+| `lib/StudyStore/StudyStore/Unit.h` / `.cpp` | The `Unit` value type, ordering, and its JSON encoding |
+| `lib/StudyStore/StudyStore/UnitAnchors.h` / `.cpp` | Façade: run the right scanner(s) for a document, apply precedence |
 | `lib/Epub/Epub/ParagraphAnchors.h` / `.cpp` | The `data-pid` expat scanner |
-| `lib/StudyStore/UnitFingerprint.h` / `.cpp` | Length + CRC32 over a unit's visible codepoints |
-| `lib/StudyStore/TaggedPassage.h` | The record |
-| `lib/StudyStore/PassageDoc.h` / `.cpp` | Format rules for one publication's passages: parse, validate, serialise, budget |
-| `lib/StudyStore/TagPalette.h` / `.cpp` | Global tags: ids, names, tombstones, `nextTagId` |
-| `lib/StudyStore/PubKey.h` / `.cpp` | The pubkey resolution ladder |
-| `lib/StudyStore/UnitIndexFormat.h` / `.cpp` | The on-disk unit-index header and document table |
-| `lib/StudyStore/MigrationPlanner.h` / `.cpp` | Pure: old doc + anchors → passages + report rows |
+| `lib/StudyStore/StudyStore/UnitText.h` / `.cpp` | Extract one unit's visible codepoints — the single producer for fingerprints |
+| `lib/StudyStore/StudyStore/UnitFingerprint.h` / `.cpp` | Length + CRC32 over a unit's visible codepoints |
+| `lib/StudyStore/StudyStore/TaggedPassage.h` | The record |
+| `lib/StudyStore/StudyStore/PassageDoc.h` / `.cpp` | Format rules for one publication's passages: parse, validate, serialise, budget |
+| `lib/StudyStore/StudyStore/TagPalette.h` / `.cpp` | Global tags: ids, names, tombstones, `nextTagId` |
+| `lib/StudyStore/StudyStore/PubKey.h` / `.cpp` | The pubkey resolution ladder |
+| `lib/StudyStore/StudyStore/UnitIndexFormat.h` / `.cpp` | The on-disk unit-index header and document table |
+| `lib/StudyStore/StudyStore/MigrationPlanner.h` / `.cpp` | Pure: old doc + anchors → passages + report rows |
 
 **New, firmware-only** — thin storage and lifecycle shells over the above:
 
 | File | Responsibility |
 |---|---|
-| `src/study/PassageFile.{h,cpp}` | Atomic, budgeted read/write of `/.berean/passages/<pubkey>.json` |
+| `src/study/PassageFile.{h,cpp}` | Atomic, budgeted, **streamed** read/write of `/.berean/passages/<pubkey>.json` |
 | `src/study/TagPaletteFile.{h,cpp}` | Same for `/.berean/tags.json` |
 | `src/study/UnitIndexCache.{h,cpp}` | Lazy per-document build, invalidation, `/.berean/units/<pubkey>.bin` |
-| `src/study/TagIndexFile.{h,cpp}` | The reverse index, rebuildable from the passages files |
 | `src/study/StudyStore.{h,cpp}` | The one object the activities talk to |
-| `src/study/MigrationRunner.{h,cpp}` | Drives the migration, writes `migration-report.json` |
+| `src/study/MigrationRunner.{h,cpp}` | Drives the migration, keeps the ledger, writes `migration-report.json` |
+| `src/study/BookPathIndex.{h,cpp}` | Recovers a book path from a flattened store filename by walking the card |
+
+**Moved:** `src/util/PathFlatten.{h,cpp}` → `lib/PathFlatten/`. `lib/StudyStore/StudyStore/PubKey.cpp`
+needs it, and PlatformIO compiles `lib/` into a static library that `src/` links —
+a library translation unit cannot include from `src/`. No file under `lib/` in this
+repo does. `test/path_flatten/CMakeLists.txt` and `src/util/HighlightFile.cpp`
+update to the new path.
 
 **Modified:** the five activities that speak `HighlightDoc` today
 (`EpubReaderActivity`, `HighlightsActivity`, `PassageSelectActivity`,
-`TagFilterActivity`, `TagPickerActivity`), plus `CrossPointWebServer.cpp` for the
-report route and `main.cpp` for the boot-time migration call.
+`TagFilterActivity`, `TagPickerActivity`), **plus `src/activities/ActivityResult.h`**,
+whose `ChapterResult`/tag payload carries "indices into `HighlightDoc::tags()`" —
+those become allocated ids, not indices, and it is the sixth file referencing the
+old model. Also `CrossPointWebServer.cpp` for the report route and `main.cpp` for
+the boot-time migration call.
 
 **Untouched:** `lib/Epub/Epub/HighlightDoc.*`, `src/util/HighlightFile.*`. They
 stay compiled and working — they are what reads the old store during migration,
@@ -167,25 +226,29 @@ Nothing is ever dropped for want of a file, and the migration never blocks on
 storage that may not be there. On the user's actual device all 63 will resolve
 immediately — Pending is the safety net, not the expected path.
 
-### 2. The reverse index is derived, and rebuilt rather than repaired
+### 2. The reverse index is not in this phase
 
-`/.berean/tagindex/<tagid>.bin` is a cache of a question the passages files can
-always answer. Treating it as authoritative creates a consistency problem with
-no transaction to solve it — and `POST /delete` on the web server can remove a
-passages file behind its back. So the index header carries a generation counter
-that every passages write bumps; on mismatch the index is **rebuilt from the
-passages files**, not patched. A corrupt or stale index is a slow query, never
-wrong data.
+The spec puts `/.berean/tagindex/<tagid>.bin` in Phase 1 so that "show me
+everything tagged X" does not open every passages file. Its own justification is
+"at 100 publications". Phase 1 has **one**.
 
-At today's scale (one publication, 63 passages) the rebuild is milliseconds. The
-index earns its place when Buscar lands in Phase 3.
+At this scale the index is net-negative. Its entries address passages
+positionally, so any edit that reorders or removes one invalidates the whole
+file and forces a rebuild — which opens every passages file, the exact cost it
+was introduced to avoid. Even on a hit it must open each passages file to
+materialise a result. The query it replaces is currently zero I/O against an
+in-memory document.
+
+It moves to Phase 3, alongside Buscar, which is what actually creates a hundred
+publications. Until then `passagesWithTag` is a scan, and the interface it sits
+behind does not change when the index arrives.
 
 ---
 
 ## Task 1: The `Unit` value type
 
 **Files:**
-- Create: `lib/StudyStore/Unit.h`, `lib/StudyStore/Unit.cpp`
+- Create: `lib/StudyStore/StudyStore/Unit.h`, `lib/StudyStore/StudyStore/Unit.cpp`
 - Create: `test/unit_type/UnitTest.cpp`, `test/unit_type/CMakeLists.txt`
 - Modify: `test/CMakeLists.txt`
 
@@ -267,7 +330,7 @@ cd test && cmake -S . -B build && cmake --build build --target UnitTest
 
 Expected: FAIL — `StudyStore/Unit.h: No such file or directory`.
 
-- [ ] **Step 3: Write `lib/StudyStore/Unit.h`**
+- [ ] **Step 3: Write `lib/StudyStore/StudyStore/Unit.h`**
 
 ```cpp
 #pragma once
@@ -321,7 +384,7 @@ std::optional<Unit> unitFromCompact(const std::string& s);
 }  // namespace study
 ```
 
-- [ ] **Step 4: Write `lib/StudyStore/Unit.cpp`**
+- [ ] **Step 4: Write `lib/StudyStore/StudyStore/Unit.cpp`**
 
 ```cpp
 #include "StudyStore/Unit.h"
@@ -356,7 +419,16 @@ bool orderableByAddress(const Unit& a, const Unit& b) {
 }
 
 bool operator<(const Unit& a, const Unit& b) {
+  // Kind first, so the ordering is a strict weak ordering consistent with the
+  // defaulted operator==. Without it a DocumentOffset and a Verse unit compare
+  // mutually non-less yet unequal, which is silently wrong in a std::set or
+  // std::map even though std::sort tolerates it.
+  if (a.kind != b.kind) return a.kind < b.kind;
   if (a.book != b.book) return a.book < b.book;
+  // Paragraph units carry no positional meaning in `minor` -- data-pid runs out
+  // of document order in 46% of the documents that have it -- so they order by
+  // pid only to be deterministic, never to mean "earlier in the document".
+  // Callers needing document order must use the anchor list's offsets.
   if (a.major != b.major) return a.major < b.major;
   if (a.minor != b.minor) return a.minor < b.minor;
   return a.offset < b.offset;
@@ -391,7 +463,7 @@ std::optional<Unit> unitFromCompact(const std::string& s) {
 ```cmake
 add_executable(UnitTest
   UnitTest.cpp
-  ${REPO_ROOT}/lib/StudyStore/Unit.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
 )
 
 target_include_directories(UnitTest PRIVATE ${REPO_ROOT}/lib)
@@ -422,7 +494,7 @@ Expected: `[  PASSED  ] 8 tests.`
 
 ```bash
 ./bin/clang-format-fix -g
-git add lib/StudyStore/Unit.h lib/StudyStore/Unit.cpp test/unit_type test/CMakeLists.txt
+git add lib/StudyStore/StudyStore/Unit.h lib/StudyStore/StudyStore/Unit.cpp test/unit_type test/CMakeLists.txt
 git commit -m "feat: add the Unit address type"
 ```
 
@@ -657,7 +729,11 @@ void XMLCALL onDefault(void* userData, const XML_Char* s, const int len) {
 Scanner::Scanner() {
   auto* state = new (std::nothrow) State();
   if (!state) return;
-  state->anchors.reserve(64);  // the densest measured document carries 58
+  // Measured over 180 real documents: median 55, p95 111, max 413 (a lff_S
+  // page of 321 gen-field boxes plus 66 legends). Sized for the p95 rather
+  // than the max -- 448 entries would be 3.5 KB of DRAM held per scan for a
+  // case that occurs twice in 180 documents.
+  state->anchors.reserve(112);
 
   XML_Parser parser = XML_ParserCreate(nullptr);
   if (!parser) {
@@ -775,7 +851,7 @@ carry `data-pid`, so without this every Bible passage could be addressed two
 ways and the migration would pick whichever scanner ran last.
 
 **Files:**
-- Create: `lib/StudyStore/UnitAnchors.h`, `lib/StudyStore/UnitAnchors.cpp`
+- Create: `lib/StudyStore/StudyStore/UnitAnchors.h`, `lib/StudyStore/StudyStore/UnitAnchors.cpp`
 - Create: `test/unit_anchors/UnitAnchorsTest.cpp`, `test/unit_anchors/CMakeLists.txt`
 - Modify: `test/CMakeLists.txt`
 
@@ -821,6 +897,14 @@ TEST(UnitAnchorsKind, ParagraphWhereOnlyPidExists) {
   ASSERT_EQ(a.anchors.size(), 2u);
   EXPECT_EQ(a.anchors[0].major, 0);
   EXPECT_EQ(a.anchors[0].minor, 6);
+}
+
+TEST(UnitAnchorsResolve, DoesNotStampABookOntoAParagraphUnit) {
+  auto a = study::scanUnits(kArticleDoc, strlen(kArticleDoc));
+  a.book = 19;  // a Bible document that has pids but no verse markers
+  const study::Unit u = study::resolve(a, a.anchors[0].offset + 1);
+  EXPECT_EQ(u.kind, study::UnitKind::Paragraph);
+  EXPECT_EQ(u.book, 0) << "Unit.h promises book is 0 for anything but a Verse";
 }
 
 TEST(UnitAnchorsKind, DocumentOffsetWhereNeitherExists) {
@@ -879,7 +963,7 @@ cd test && cmake -S . -B build && cmake --build build --target UnitAnchorsTest
 
 Expected: FAIL — `StudyStore/UnitAnchors.h: No such file or directory`.
 
-- [ ] **Step 3: Write `lib/StudyStore/UnitAnchors.h`**
+- [ ] **Step 3: Write `lib/StudyStore/StudyStore/UnitAnchors.h`**
 
 ```cpp
 #pragma once
@@ -929,7 +1013,7 @@ std::optional<uint32_t> documentOffsetOf(const DocumentUnits& units, const Unit&
 }  // namespace study
 ```
 
-- [ ] **Step 4: Write `lib/StudyStore/UnitAnchors.cpp`**
+- [ ] **Step 4: Write `lib/StudyStore/StudyStore/UnitAnchors.cpp`**
 
 ```cpp
 #include "StudyStore/UnitAnchors.h"
@@ -968,7 +1052,11 @@ Unit resolve(const DocumentUnits& units, const uint32_t documentOffset) {
     best = &a;
   }
   if (!best) return Unit{UnitKind::DocumentOffset, 0, 0, 0, documentOffset};
-  return Unit{units.kind, units.book, best->major, best->minor, documentOffset - best->offset};
+  // `book` is meaningful only for a Verse unit -- Unit.h says "0 otherwise", and
+  // stamping it on a Paragraph would also change which file the passage is
+  // filed under.
+  const uint8_t book = units.kind == UnitKind::Verse ? units.book : 0;
+  return Unit{units.kind, book, best->major, best->minor, documentOffset - best->offset};
 }
 
 std::optional<uint32_t> documentOffsetOf(const DocumentUnits& units, const Unit& unit) {
@@ -991,8 +1079,8 @@ std::optional<uint32_t> documentOffsetOf(const DocumentUnits& units, const Unit&
 ```cmake
 add_executable(UnitAnchorsTest
   UnitAnchorsTest.cpp
-  ${REPO_ROOT}/lib/StudyStore/Unit.cpp
-  ${REPO_ROOT}/lib/StudyStore/UnitAnchors.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitAnchors.cpp
   ${REPO_ROOT}/lib/Epub/Epub/VerseAnchors.cpp
   ${REPO_ROOT}/lib/Epub/Epub/ParagraphAnchors.cpp
   ${REPO_ROOT}/lib/Epub/Epub/htmlEntities.cpp
@@ -1030,19 +1118,192 @@ add_subdirectory(unit_anchors)
 cd test && cmake -S . -B build && cmake --build build --target UnitAnchorsTest && ./build/unit_anchors/UnitAnchorsTest
 ```
 
-Expected: `[  PASSED  ] 7 tests.`
+Expected: `[  PASSED  ] 8 tests.`
 
 - [ ] **Step 7: Commit**
 
 ```bash
 ./bin/clang-format-fix -g
-git add lib/StudyStore/UnitAnchors.h lib/StudyStore/UnitAnchors.cpp test/unit_anchors test/CMakeLists.txt
+git add lib/StudyStore/StudyStore/UnitAnchors.h lib/StudyStore/StudyStore/UnitAnchors.cpp test/unit_anchors test/CMakeLists.txt
 git commit -m "feat: resolve a document offset to a unit, verse first"
 ```
 
 ---
 
-## Task 4: The pubkey resolution ladder
+## Task 4: Unit text extraction — the fingerprint's only producer
+
+The first draft had no producer for "a unit's visible text" and three consumers
+of it: the migration's fingerprint, the paint-time fingerprint check, and the
+unit index's content CRC. Worse, the repo already contains two mechanisms that
+*could* supply it and they are known to disagree —
+`PassageSelectActivity::selectionLabel` joins laid-out word boxes with a plain
+`' '`, while an XHTML character walk preserves the U+202F and U+00A0 the Spanish
+NWT puts between a verse number and its text.
+
+If the migration fingerprints one way and the paint path checks the other, every
+fingerprint differs, the degradation rule fires, and **all 63 marks silently stop
+painting**. One extractor, used by both, is the only way that cannot happen.
+
+**Files:**
+- Create: `lib/StudyStore/StudyStore/UnitText.h`, `lib/StudyStore/StudyStore/UnitText.cpp`
+- Create: `test/unit_text/UnitTextTest.cpp`, `test/unit_text/CMakeLists.txt`
+- Modify: `test/CMakeLists.txt`
+
+- [ ] **Step 1: Write the failing test**
+
+`test/unit_text/UnitTextTest.cpp`:
+
+```cpp
+#include <gtest/gtest.h>
+
+#include <cstring>
+
+#include "StudyStore/UnitText.h"
+
+namespace {
+
+// The Spanish NWT's real shape: a marker span, the verse number in sup, then a
+// NARROW NO-BREAK SPACE (U+202F) before the text.
+const char* kDoc =
+    "<html><head><title>skipme</title></head><body>"
+    "<p id=\"p3\" data-pid=\"3\">"
+    "<span id=\"chapter1_verse7\"></span><strong><sup>7</sup></strong> alpha bravo "
+    "<span id=\"chapter1_verse8\"></span><strong><sup>8</sup></strong> charlie delta"
+    "</p></body></html>";
+
+TEST(UnitText, ExtractsExactlyTheTextOfOneVerse) {
+  const auto units = study::scanUnits(kDoc, strlen(kDoc));
+  ASSERT_EQ(units.anchors.size(), 2u);
+  const std::string text = study::extractUnitText(kDoc, strlen(kDoc), units, units.anchors[0]);
+  EXPECT_NE(text.find("alpha bravo"), std::string::npos);
+  EXPECT_EQ(text.find("charlie"), std::string::npos) << "a unit stops where the next one starts";
+}
+
+TEST(UnitText, ExtractsTheLastUnitToTheEndOfTheDocument) {
+  const auto units = study::scanUnits(kDoc, strlen(kDoc));
+  const std::string text = study::extractUnitText(kDoc, strlen(kDoc), units, units.anchors[1]);
+  EXPECT_NE(text.find("charlie delta"), std::string::npos);
+}
+
+// The load-bearing one. The count must agree with VisibleOffsetCounter, which
+// is what produced the anchor offsets in the first place.
+TEST(UnitText, CodepointCountAgreesWithTheOffsetsThatDelimitIt) {
+  const auto units = study::scanUnits(kDoc, strlen(kDoc));
+  ASSERT_EQ(units.anchors.size(), 2u);
+  const uint32_t span = units.anchors[1].offset - units.anchors[0].offset;
+  const std::string text = study::extractUnitText(kDoc, strlen(kDoc), units, units.anchors[0]);
+
+  uint32_t codepoints = 0;
+  for (const unsigned char c : text) {
+    if ((c & 0xC0u) != 0x80u) ++codepoints;
+  }
+  EXPECT_EQ(codepoints, span) << "if these disagree, every stored offset is wrong by the difference";
+}
+
+TEST(UnitText, PreservesANarrowNoBreakSpaceRatherThanNormalisingIt) {
+  const auto units = study::scanUnits(kDoc, strlen(kDoc));
+  const std::string text = study::extractUnitText(kDoc, strlen(kDoc), units, units.anchors[0]);
+  EXPECT_NE(text.find(" "), std::string::npos)
+      << "normalising here but not in the offset counter shifts every later offset";
+}
+
+TEST(UnitText, ExpandsAKnownEntityToOneCodepoint) {
+  const char* doc =
+      "<!DOCTYPE html SYSTEM \"about:legacy-compat\">"
+      "<html><body><p data-pid=\"1\">alpha&nbsp;bravo</p></body></html>";
+  const auto units = study::scanUnits(doc, strlen(doc));
+  ASSERT_EQ(units.anchors.size(), 1u);
+  const std::string text = study::extractUnitText(doc, strlen(doc), units, units.anchors[0]);
+  EXPECT_EQ(text.find("&nbsp;"), std::string::npos) << "the entity must be expanded, not carried literally";
+}
+
+TEST(UnitText, ReturnsEmptyForADocumentWithNoUnits) {
+  const char* doc = "<html><body><p>alpha</p></body></html>";
+  const auto units = study::scanUnits(doc, strlen(doc));
+  EXPECT_TRUE(study::extractUnitText(doc, strlen(doc), units, study::UnitAnchor{0, 0, 0}).empty());
+}
+
+TEST(UnitText, DocumentCrcIsStableAndChangesWithAWord) {
+  const char* other =
+      "<html><body><p data-pid=\"1\">alpha bravo charlie</p></body></html>";
+  const char* changed =
+      "<html><body><p data-pid=\"1\">alpha bravo charlee</p></body></html>";
+  EXPECT_EQ(study::documentVisibleCrc(other, strlen(other)), study::documentVisibleCrc(other, strlen(other)));
+  EXPECT_NE(study::documentVisibleCrc(other, strlen(other)), study::documentVisibleCrc(changed, strlen(changed)));
+}
+
+}  // namespace
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+cd test && cmake -S . -B build && cmake --build build --target UnitTextTest
+```
+
+Expected: FAIL — `StudyStore/UnitText.h: No such file or directory`.
+
+- [ ] **Step 3: Write `lib/StudyStore/StudyStore/UnitText.h`**
+
+```cpp
+#pragma once
+
+#include <cstddef>
+#include <string>
+
+#include "StudyStore/UnitAnchors.h"
+
+// The ONE producer of "a unit's visible text". Both the fingerprint written at
+// migration time and the fingerprint checked at paint time must come from here,
+// or they will disagree: the repo's other candidate, selectionLabel, joins
+// laid-out word boxes with a plain space and loses the U+202F the Spanish NWT
+// puts before verse text. A disagreement makes every fingerprint mismatch, and
+// the degradation rule then refuses to paint any mark at all.
+//
+// Counting is VisibleOffsetCounter's, unmodified, so the extracted text's
+// codepoint count equals the distance between consecutive anchor offsets. That
+// invariant is what ties a stored offset to real text; UnitTextTest asserts it.
+namespace study {
+
+// Visible text of the unit starting at `anchor`, up to the next anchor or the
+// end of the body. Empty when the document has no units.
+std::string extractUnitText(const char* xhtml, size_t length, const DocumentUnits& units, const UnitAnchor& anchor);
+
+// CRC32 over the whole document's visible codepoints, for unit-index
+// invalidation. Same traversal, so it cannot drift from the offsets.
+uint32_t documentVisibleCrc(const char* xhtml, size_t length);
+
+}  // namespace study
+```
+
+- [ ] **Step 4: Implement `UnitText.cpp`.** Register the same four expat handlers
+      `VerseAnchors.cpp` uses — `onStart`/`onEnd` driving `VisibleOffsetCounter`,
+      `onText`, and `XML_SetDefaultHandlerExpand` for entities. Accumulate into a
+      `std::string` only while `counter.offset` is within `[anchor.offset,
+      nextAnchor.offset)`. **Do not normalise, trim, or collapse whitespace** —
+      any transform here breaks the codepoint-count invariant the third test
+      asserts. `documentVisibleCrc` runs the same traversal accumulating a CRC
+      instead of a string, reusing the nibble-wise `crc32` from Task 7.
+
+- [ ] **Step 5: Register the test** — sources are `UnitText.cpp`, `UnitAnchors.cpp`,
+      `Unit.cpp`, `UnitFingerprint.cpp`, `VerseAnchors.cpp`, `ParagraphAnchors.cpp`,
+      `htmlEntities.cpp` plus the three expat `.c` files, with
+      `XML_GE=0 XML_CONTEXT_BYTES=1024`; include dirs as in Task 3. Append
+      `add_subdirectory(unit_text)` to `test/CMakeLists.txt`.
+
+- [ ] **Step 6: Run and watch it pass.** Expected: `[  PASSED  ] 7 tests.`
+
+- [ ] **Step 7: Commit**
+
+```bash
+./bin/clang-format-fix -g
+git add lib/StudyStore/StudyStore/UnitText.h lib/StudyStore/StudyStore/UnitText.cpp test/unit_text test/CMakeLists.txt
+git commit -m "feat: extract a unit's visible text from one place only"
+```
+
+---
+
+## Task 5: The pubkey resolution ladder
 
 The spec derives a pubkey from symbol, issue and language. **That derivation has
 no source on disk.** The OPF of `w_S_202601` carries
@@ -1053,7 +1314,7 @@ no source on disk.** The OPF of `w_S_202601` carries
 Hence a ladder, and a registry the downloader writes.
 
 **Files:**
-- Create: `lib/StudyStore/PubKey.h`, `lib/StudyStore/PubKey.cpp`
+- Create: `lib/StudyStore/StudyStore/PubKey.h`, `lib/StudyStore/StudyStore/PubKey.cpp`
 - Create: `test/pub_key/PubKeyTest.cpp`, `test/pub_key/CMakeLists.txt`
 - Modify: `test/CMakeLists.txt`
 
@@ -1071,10 +1332,12 @@ namespace {
 TEST(PubKeyLadder, ABibleIsAlwaysTheSameKeyRegardlessOfLanguageOrPath) {
   study::PubKeyInputs es{};
   es.isBible = true;
+  es.canonVerified = true;
   es.bookPath = "/books/Traduccion del Nuevo Mundo (nwt-S).epub";
 
   study::PubKeyInputs en{};
   en.isBible = true;
+  en.canonVerified = true;
   en.bookPath = "/books/New World Translation (nwt-E).epub";
 
   EXPECT_EQ(study::resolvePubKey(es), "bible");
@@ -1099,9 +1362,20 @@ TEST(PubKeyLadder, ARegisteredPublicationWithNoIssueOmitsIt) {
 TEST(PubKeyLadder, TheBibleFlagOutranksTheRegistry) {
   study::PubKeyInputs in{};
   in.isBible = true;
+  in.canonVerified = true;
   in.registered = study::RegisteredPub{"nwt", "", "S"};
   in.bookPath = "/books/nwt.epub";
   EXPECT_EQ(study::resolvePubKey(in), "bible");
+}
+
+TEST(PubKeyLadder, ABibleWithAnUnverifiedCanonDoesNotShareTheGlobalKey) {
+  study::PubKeyInputs in{};
+  in.isBible = true;
+  in.canonVerified = false;
+  in.registered = study::RegisteredPub{"byz", "", "E"};
+  in.bookPath = "/books/other.epub";
+  EXPECT_NE(study::resolvePubKey(in), "bible")
+      << "a different canon shifts every book number and lands marks in the wrong book";
 }
 
 TEST(PubKeyLadder, AnUnregisteredBookFallsBackToItsFlattenedPath) {
@@ -1118,6 +1392,7 @@ TEST(PubKeyLadder, AFallbackKeyIsAnnouncedAsUnstable) {
 
   study::PubKeyInputs bible{};
   bible.isBible = true;
+  bible.canonVerified = true;
   EXPECT_TRUE(study::pubKeyIsStable(study::resolvePubKey(bible)));
 }
 
@@ -1140,7 +1415,7 @@ cd test && cmake -S . -B build && cmake --build build --target PubKeyTest
 
 Expected: FAIL — `StudyStore/PubKey.h: No such file or directory`.
 
-- [ ] **Step 3: Write `lib/StudyStore/PubKey.h`**
+- [ ] **Step 3: Write `lib/StudyStore/StudyStore/PubKey.h`**
 
 ```cpp
 #pragma once
@@ -1166,6 +1441,12 @@ struct RegisteredPub {
 
 struct PubKeyInputs {
   bool isBible = false;  // Epub::getBibleBookNavSpineIndex() >= 0
+  // The book-nav page listed exactly 66 books. The shared `bible` key means a
+  // mark made in one translation resolves in another, which is only safe if the
+  // canon and its ordering match -- a Bible with extra or reordered books would
+  // shift every book number and land marks in the wrong book. Anything
+  // unverified gets a per-publication key instead.
+  bool canonVerified = false;
   std::optional<RegisteredPub> registered;
   std::string bookPath;
 };
@@ -1183,7 +1464,7 @@ bool pubKeyIsStable(const std::string& key);
 }  // namespace study
 ```
 
-- [ ] **Step 4: Write `lib/StudyStore/PubKey.cpp`**
+- [ ] **Step 4: Write `lib/StudyStore/StudyStore/PubKey.cpp`**
 
 ```cpp
 #include "StudyStore/PubKey.h"
@@ -1210,7 +1491,7 @@ std::string sanitise(const std::string& in) {
 }  // namespace
 
 std::string resolvePubKey(const PubKeyInputs& in) {
-  if (in.isBible) return BIBLE_PUB_KEY;
+  if (in.isBible && in.canonVerified) return BIBLE_PUB_KEY;
 
   if (in.registered && !in.registered->symbol.empty()) {
     std::string key = sanitise(in.registered->symbol);
@@ -1234,13 +1515,13 @@ bool pubKeyIsStable(const std::string& key) { return key.rfind(LOCAL_PREFIX, 0) 
 ```cmake
 add_executable(PubKeyTest
   PubKeyTest.cpp
-  ${REPO_ROOT}/lib/StudyStore/PubKey.cpp
-  ${REPO_ROOT}/src/util/PathFlatten.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/PubKey.cpp
+  ${REPO_ROOT}/lib/PathFlatten/PathFlatten.cpp
 )
 
 target_include_directories(PubKeyTest PRIVATE
   ${REPO_ROOT}/lib
-  ${REPO_ROOT}/src/util
+  ${REPO_ROOT}/lib/PathFlatten
 )
 
 target_link_libraries(PubKeyTest PRIVATE
@@ -1257,8 +1538,9 @@ Append to `test/CMakeLists.txt`:
 add_subdirectory(pub_key)
 ```
 
-> Confirm `PathFlatten.cpp`'s path before building — `test/path_flatten/CMakeLists.txt`
-> already references it and is the authority.
+> `PathFlatten` moves from `src/util/` to `lib/PathFlatten/` as part of this task
+> — a `lib/` translation unit cannot include from `src/`. Update
+> `test/path_flatten/CMakeLists.txt` and `src/util/HighlightFile.cpp` to match.
 
 - [ ] **Step 6: Run and watch it pass**
 
@@ -1266,19 +1548,19 @@ add_subdirectory(pub_key)
 cd test && cmake -S . -B build && cmake --build build --target PubKeyTest && ./build/pub_key/PubKeyTest
 ```
 
-Expected: `[  PASSED  ] 7 tests.`
+Expected: `[  PASSED  ] 8 tests.`
 
 - [ ] **Step 7: Commit**
 
 ```bash
 ./bin/clang-format-fix -g
-git add lib/StudyStore/PubKey.h lib/StudyStore/PubKey.cpp test/pub_key test/CMakeLists.txt
+git add lib/StudyStore/StudyStore/PubKey.h lib/PathFlatten lib/StudyStore/StudyStore/PubKey.cpp test/pub_key test/CMakeLists.txt
 git commit -m "feat: resolve publication identity for the study store"
 ```
 
 ---
 
-## Task 5: The global tag palette
+## Task 6: The global tag palette
 
 Tag ids are allocated once and never reused; deleting retires an id. `nextTagId`
 is persisted explicitly and retired ids are kept as tombstones, because the
@@ -1292,7 +1574,7 @@ They are vocabulary the user chose; silently dropping them is a loss they would
 discover months later.
 
 **Files:**
-- Create: `lib/StudyStore/TagPalette.h`, `lib/StudyStore/TagPalette.cpp`
+- Create: `lib/StudyStore/StudyStore/TagPalette.h`, `lib/StudyStore/StudyStore/TagPalette.cpp`
 - Create: `test/tag_palette/TagPaletteTest.cpp`, `test/tag_palette/CMakeLists.txt`
 - Modify: `test/CMakeLists.txt`
 
@@ -1374,7 +1656,10 @@ TEST(TagPaletteRoundTrip, PreservesIdsNamesTombstonesAndNextId) {
   EXPECT_EQ(q.name(*gone), "temporal");
   EXPECT_FALSE(q.isActive(*gone));
   EXPECT_EQ(q.name(*after), "esperanza");
-  EXPECT_EQ(q.add("nueva"), study::TagId{*after + 1}) << "nextTagId must survive the round trip";
+  const auto next = q.add("nueva");
+  ASSERT_TRUE(next.has_value());
+  EXPECT_EQ(static_cast<uint16_t>(*next), static_cast<uint16_t>(*after) + 1)
+      << "nextTagId must survive the round trip";
 }
 
 TEST(TagPaletteRoundTrip, RejectsAFutureFormatVersion) {
@@ -1419,7 +1704,7 @@ cd test && cmake -S . -B build && cmake --build build --target TagPaletteTest
 
 Expected: FAIL — `StudyStore/TagPalette.h: No such file or directory`.
 
-- [ ] **Step 3: Write `lib/StudyStore/TagPalette.h`**
+- [ ] **Step 3: Write `lib/StudyStore/StudyStore/TagPalette.h`**
 
 ```cpp
 #pragma once
@@ -1440,7 +1725,15 @@ Expected: FAIL — `StudyStore/TagPalette.h: No such file or directory`.
 // than a blank chip or -- far worse -- some later tag's name.
 namespace study {
 
-using TagId = uint16_t;
+// A scoped enum, not a bare uint16_t, because the model it replaces used
+// POSITIONAL INDICES into a per-book vector and the two are not
+// interchangeable. TagPickerActivity's selection today is
+// std::vector<uint16_t> of indices; with a bare alias every mis-wiring of
+// index to id compiles silently and lands the wrong tag on a real passage.
+enum class TagId : uint16_t {};
+
+constexpr uint16_t toRaw(const TagId id) { return static_cast<uint16_t>(id); }
+constexpr TagId toTagId(const uint16_t raw) { return static_cast<TagId>(raw); }
 
 class TagPalette {
  public:
@@ -1484,16 +1777,18 @@ class TagPalette {
   };
 
   std::vector<Entry> entries_;
-  TagId nextId_ = 1;  // 0 is reserved; see the spec's open item on untagged passages
+  uint16_t nextRaw_ = 1;  // 0 is reserved; see the spec's open item on untagged passages
 };
 
 }  // namespace study
 ```
 
-- [ ] **Step 4: Write `lib/StudyStore/TagPalette.cpp`**
+- [ ] **Step 4: Write `lib/StudyStore/StudyStore/TagPalette.cpp`**
 
 ```cpp
 #include "StudyStore/TagPalette.h"
+
+#include <algorithm>
 
 namespace study {
 namespace {
@@ -1510,9 +1805,9 @@ std::optional<TagId> TagPalette::add(const std::string& name) {
   }
 
   if (activeCount() >= MAX_ACTIVE_TAGS) return std::nullopt;
-  if (nextId_ == UINT16_MAX) return std::nullopt;
+  if (nextRaw_ == UINT16_MAX) return std::nullopt;
 
-  const TagId id = nextId_++;
+  const TagId id = toTagId(nextRaw_++);
   entries_.push_back({id, name, true});
   return id;
 }
@@ -1556,11 +1851,11 @@ std::vector<TagId> TagPalette::activeIds() const {
 
 void TagPalette::toJson(JsonDocument& doc) const {
   doc["v"] = FORMAT_VERSION;
-  doc["n"] = nextId_;
+  doc["n"] = nextRaw_;
   const auto tags = doc["t"].to<JsonArray>();
   for (const auto& e : entries_) {
     const auto row = tags.add<JsonObject>();
-    row["i"] = e.id;
+    row["i"] = toRaw(e.id);
     row["n"] = e.name;
     if (!e.active) row["r"] = true;
   }
@@ -1572,7 +1867,7 @@ bool TagPalette::fromJson(const JsonVariantConst doc) {
   if (version <= 0 || version > FORMAT_VERSION) return false;
 
   entries_.clear();
-  TagId highest = 0;
+  uint16_t highest = 0;
 
   for (const JsonVariantConst v : doc["t"].as<JsonArrayConst>()) {
     const uint32_t id = v["i"] | 0u;
@@ -1582,17 +1877,17 @@ bool TagPalette::fromJson(const JsonVariantConst doc) {
     std::string text(name);
     if (text.size() > MAX_TAG_NAME_BYTES) text.resize(MAX_TAG_NAME_BYTES);
 
-    const TagId tagId = static_cast<TagId>(id);
+    const TagId tagId = toTagId(static_cast<uint16_t>(id));
     bool duplicate = false;
     for (const auto& e : entries_) duplicate = duplicate || e.id == tagId;
     if (duplicate) continue;
 
     entries_.push_back({tagId, std::move(text), !(v["r"] | false)});
-    highest = std::max(highest, tagId);
+    highest = std::max(highest, static_cast<uint16_t>(id));
   }
 
   const uint32_t stored = doc["n"] | 0u;
-  nextId_ = static_cast<TagId>(std::max<uint32_t>(stored, highest + 1u));
+  nextRaw_ = static_cast<uint16_t>(std::max<uint32_t>(stored, highest + 1u));
   return true;
 }
 
@@ -1606,7 +1901,7 @@ bool TagPalette::fromJson(const JsonVariantConst doc) {
 ```cmake
 add_executable(TagPaletteTest
   TagPaletteTest.cpp
-  ${REPO_ROOT}/lib/StudyStore/TagPalette.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
 )
 
 target_include_directories(TagPaletteTest PRIVATE ${REPO_ROOT}/lib)
@@ -1641,13 +1936,13 @@ Expected: `[  PASSED  ] 10 tests.`
 
 ```bash
 ./bin/clang-format-fix -g
-git add lib/StudyStore/TagPalette.h lib/StudyStore/TagPalette.cpp test/tag_palette test/CMakeLists.txt
+git add lib/StudyStore/StudyStore/TagPalette.h lib/StudyStore/StudyStore/TagPalette.cpp test/tag_palette test/CMakeLists.txt
 git commit -m "feat: add the global tag palette with retired-id tombstones"
 ```
 
 ---
 
-## Task 6: The unit fingerprint
+## Task 7: The unit fingerprint
 
 What tells a reopened passage whether the text it was attached to is still the
 text that is there. Length plus CRC32 over the unit's **visible** codepoints —
@@ -1655,7 +1950,7 @@ the same codepoints `VisibleOffsetCounter` counts, so markup changes that do not
 change what the reader sees do not invalidate a mark.
 
 **Files:**
-- Create: `lib/StudyStore/UnitFingerprint.h`, `lib/StudyStore/UnitFingerprint.cpp`
+- Create: `lib/StudyStore/StudyStore/UnitFingerprint.h`, `lib/StudyStore/StudyStore/UnitFingerprint.cpp`
 - Create: `test/unit_fingerprint/UnitFingerprintTest.cpp`, `test/unit_fingerprint/CMakeLists.txt`
 - Modify: `test/CMakeLists.txt`
 
@@ -1711,7 +2006,7 @@ cd test && cmake -S . -B build && cmake --build build --target UnitFingerprintTe
 
 Expected: FAIL — `StudyStore/UnitFingerprint.h: No such file or directory`.
 
-- [ ] **Step 3: Write `lib/StudyStore/UnitFingerprint.h`**
+- [ ] **Step 3: Write `lib/StudyStore/StudyStore/UnitFingerprint.h`**
 
 ```cpp
 #pragma once
@@ -1746,7 +2041,7 @@ std::optional<Fingerprint> fingerprintFromCompact(const std::string& s);
 }  // namespace study
 ```
 
-- [ ] **Step 4: Write `lib/StudyStore/UnitFingerprint.cpp`**
+- [ ] **Step 4: Write `lib/StudyStore/StudyStore/UnitFingerprint.cpp`**
 
 ```cpp
 #include "StudyStore/UnitFingerprint.h"
@@ -1811,7 +2106,7 @@ std::optional<Fingerprint> fingerprintFromCompact(const std::string& s) {
 ```cmake
 add_executable(UnitFingerprintTest
   UnitFingerprintTest.cpp
-  ${REPO_ROOT}/lib/StudyStore/UnitFingerprint.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitFingerprint.cpp
 )
 
 target_include_directories(UnitFingerprintTest PRIVATE ${REPO_ROOT}/lib)
@@ -1842,33 +2137,44 @@ Expected: `[  PASSED  ] 6 tests.`
 
 ```bash
 ./bin/clang-format-fix -g
-git add lib/StudyStore/UnitFingerprint.h lib/StudyStore/UnitFingerprint.cpp test/unit_fingerprint test/CMakeLists.txt
+git add lib/StudyStore/StudyStore/UnitFingerprint.h lib/StudyStore/StudyStore/UnitFingerprint.cpp test/unit_fingerprint test/CMakeLists.txt
 git commit -m "feat: fingerprint a unit's visible text"
 ```
 
 ---
 
-## Task 7: The passage record and its per-publication document
+## Task 8: The passage record and its per-publication document
 
-### Why the Bible's passages are sharded by book
+### One file per publication, read by streaming
 
-`bible` is a single pubkey, so every Bible passage the user ever makes would
-land in one file. At ~300 serialised bytes per passage and a 45,000-byte budget
-that ceiling is ~150 passages — and the user already has 63 after one book of
-study. A Bible student hits that inside a year, and the failure mode when they
-do is a refused save, which is recoverable but alarming.
+`bible` is a single pubkey, so every Bible passage the user ever makes lands in
+one file. At ~300 serialised bytes per passage, `SDCardManager::readFile`'s
+50,000-byte silent truncation caps that at roughly 150 passages — and the user
+has 63 after one book of study.
 
-So a passages file is addressed by `(pubkey, segment)`. For the Bible the
-segment is the canonical book number, which `Unit::book` now carries; for
-everything else it is 0 and the layout is unchanged. This also makes reading
-Psalms load only Psalms' marks instead of the whole Bible's.
+The first draft sharded by canonical Bible book to escape that. Review killed it
+on two counts. It cut `HighlightsActivity` — documented as showing "this ONE
+book's" marks — down to the open *Bible* book's marks, roughly 3 instead of 63,
+which contradicts this phase's own rule that no screen changes. And it did not
+even work: `Unit::book` is 0 for every `DocumentOffset` unit, which in the NWT is
+2,595 documents of front matter, appendices, concordance and study notes, so all
+of their passages landed in one unsharded `bible-0.json` with the identical
+ceiling.
+
+**The passages file is therefore one file per pubkey, and it is streamed.** This
+is what the spec asked for and the first draft skipped: *"Anything that can exceed
+~40 KB does not use `Storage.readFile` at all. Stream it."* `lib/JsonParser`
+already provides the streaming reader, and `test/streaming_json_parser` already
+tests it. `SAVE_BYTE_BUDGET` still bounds the write — a file too big to write is
+still refused rather than truncated — but it is raised to a figure the read path
+can actually honour, because the read no longer goes through the 50,000-byte cap.
 
 **Files:**
-- Create: `lib/StudyStore/TaggedPassage.h`, `lib/StudyStore/PassageDoc.h`, `lib/StudyStore/PassageDoc.cpp`
+- Create: `lib/StudyStore/StudyStore/TaggedPassage.h`, `lib/StudyStore/StudyStore/PassageDoc.h`, `lib/StudyStore/StudyStore/PassageDoc.cpp`
 - Create: `test/passage_doc/PassageDocTest.cpp`, `test/passage_doc/CMakeLists.txt`
 - Modify: `test/CMakeLists.txt`
 
-- [ ] **Step 1: Write `lib/StudyStore/TaggedPassage.h`** (no test of its own — it is a
+- [ ] **Step 1: Write `lib/StudyStore/StudyStore/TaggedPassage.h`** (no test of its own — it is a
       plain aggregate, exercised by `PassageDocTest`)
 
 ```cpp
@@ -1912,6 +2218,8 @@ struct TaggedPassage {
 
 #include <ArduinoJson.h>
 
+#include <algorithm>
+
 #include "StudyStore/PassageDoc.h"
 
 namespace {
@@ -1925,7 +2233,7 @@ study::TaggedPassage samplePassage() {
   p.documentSpine = 198;
   p.snippet = "Te he llamado con todo el corazon";
   p.reference = "Salmos 119:145";
-  p.tags = {3, 17};
+  p.tags = {study::toTagId(3), study::toTagId(17)};
   return p;
 }
 
@@ -1971,24 +2279,37 @@ TEST(PassageDocRoundTrip, DropsAPassageWhoseStartUnitIsUnparseable) {
   EXPECT_TRUE(doc.passages().empty()) << "an unaddressable passage cannot be painted or listed";
 }
 
-TEST(PassageDocValidation, TruncatesAnOverlongSnippetAndReference) {
+TEST(PassageDocValidation, TruncatesAnOverlongSnippetWithoutSplittingACodepoint) {
   study::TaggedPassage p = samplePassage();
-  p.snippet = std::string(500, 'x');
-  p.reference = std::string(200, 'y');
+  // Accented Spanish, so a raw byte cut lands mid-sequence. An ASCII fixture
+  // here cannot fail and so proves nothing -- the first draft used one.
+  std::string accented;
+  while (accented.size() < 400) accented += "transformación ";
+  p.snippet = accented;
+  p.reference = std::string("Génesis 1:1 ") + accented;
+
   study::PassageDoc doc;
   ASSERT_TRUE(doc.add(p));
-  EXPECT_LE(doc.passages()[0].snippet.size(), study::PassageDoc::MAX_SNIPPET_BYTES);
-  EXPECT_LE(doc.passages()[0].reference.size(), study::PassageDoc::MAX_REFERENCE_BYTES);
+  const auto& stored = doc.passages()[0];
+  EXPECT_LE(stored.snippet.size(), study::PassageDoc::MAX_SNIPPET_BYTES);
+  EXPECT_LE(stored.reference.size(), study::PassageDoc::MAX_REFERENCE_BYTES);
+
+  for (const std::string& text : {stored.snippet, stored.reference}) {
+    ASSERT_FALSE(text.empty());
+    const unsigned char last = static_cast<unsigned char>(text.back());
+    EXPECT_FALSE((last & 0xC0u) == 0x80u) << "truncation left a dangling continuation byte";
+    EXPECT_FALSE((last & 0xE0u) == 0xC0u) << "truncation left a lead byte with no continuation";
+  }
 }
 
 TEST(PassageDocValidation, DedupesAndCapsTags) {
   study::TaggedPassage p = samplePassage();
-  p.tags = {5, 5, 5, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12};
+  for (const uint16_t raw : {5, 5, 5, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12}) p.tags.push_back(study::toTagId(raw));
   study::PassageDoc doc;
   ASSERT_TRUE(doc.add(p));
   const auto& tags = doc.passages()[0].tags;
   EXPECT_LE(tags.size(), study::PassageDoc::MAX_TAGS_PER_PASSAGE);
-  EXPECT_EQ(std::count(tags.begin(), tags.end(), 5), 1);
+  EXPECT_EQ(std::count(tags.begin(), tags.end(), study::toTagId(5)), 1);
 }
 
 TEST(PassageDocValidation, RefusesAPassageWithNoTags) {
@@ -1998,29 +2319,69 @@ TEST(PassageDocValidation, RefusesAPassageWithNoTags) {
   EXPECT_FALSE(doc.add(p)) << "a highlight exists only to carry tags; all 63 of the user's do";
 }
 
-TEST(PassageDocRemove, DropsTheTagEverywhereAndThenThePassage) {
+TEST(PassageDocRemove, RemovingTheLastTagKeepsThePassage) {
   study::TaggedPassage p = samplePassage();  // tags {3, 17}
   study::PassageDoc doc;
   ASSERT_TRUE(doc.add(p));
 
-  doc.removeTagEverywhere(3);
+  doc.removeTagEverywhere(study::toTagId(3));
   ASSERT_EQ(doc.passages().size(), 1u);
-  EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{17}));
+  EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::toTagId(17)}));
 
-  doc.removeTagEverywhere(17);
-  EXPECT_TRUE(doc.passages().empty()) << "untagging to zero removes the passage; there is nothing left to carry";
+  doc.removeTagEverywhere(study::toTagId(17));
+  ASSERT_EQ(doc.passages().size(), 1u)
+      << "a palette edit must never destroy a passage: TagFilterActivity deletes a tag on a long-press";
+  EXPECT_EQ(doc.untaggedCount(), 1u);
 }
 
-TEST(PassageDocBudget, MeasuresSerialisedBytesAndRefusesOverBudget) {
+TEST(PassageDocSetTags, LeavesThePassageUntouchedWhenTheNewListIsEmpty) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  EXPECT_FALSE(doc.setTags(0, {}));
+  ASSERT_EQ(doc.passages().size(), 1u) << "a refused setTags must not consume the passage";
+  EXPECT_EQ(doc.passages()[0].tags.size(), 2u);
+}
+
+TEST(PassageDocSetTags, DoesNotReorderTheDocument) {
+  study::PassageDoc doc;
+  study::TaggedPassage first = samplePassage();
+  study::TaggedPassage second = samplePassage();
+  second.reference = "Salmos 119:146";
+  ASSERT_TRUE(doc.add(first));
+  ASSERT_TRUE(doc.add(second));
+
+  ASSERT_TRUE(doc.setTags(0, {study::toTagId(9)}));
+  EXPECT_EQ(doc.passages()[0].reference, "Salmos 119:145")
+      << "the UI and every stored index address passages positionally";
+}
+
+TEST(PassageDocBudget, RefusesAnAddThatWouldExceedTheWriteBudget) {
   study::PassageDoc doc;
   size_t added = 0;
   while (doc.add(samplePassage())) ++added;
   ASSERT_GT(added, 0u);
+  EXPECT_LE(doc.measureBytes(), study::PassageDoc::SAVE_BYTE_BUDGET);
+}
 
+TEST(PassageDocLoad, ReportsFailureRatherThanTruncatingAnOversizeDocument) {
+  // A file written by a build with a larger budget, or by a format bump that
+  // added a field, must not load as a silently shortened document -- that is the
+  // silent-truncation failure the whole budget discipline exists to prevent.
   JsonDocument json;
-  doc.toJson(json);
-  EXPECT_LE(measureJson(json), study::PassageDoc::SAVE_BYTE_BUDGET)
-      << "the document must never be able to grow past what SDCardManager::readFile can read back";
+  json["v"] = study::PassageDoc::FORMAT_VERSION;
+  const auto rows = json["p"].to<JsonArray>();
+  for (size_t i = 0; i < 2000; ++i) {
+    const auto row = rows.add<JsonObject>();
+    row["u"] = "v:19:119:145:0";
+    row["e"] = "v:19:119:145:108";
+    row["x"] = std::string(100, 'x');
+    const auto tags = row["t"].to<JsonArray>();
+    tags.add(3);
+  }
+
+  study::PassageDoc doc;
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()))
+      << "an oversize document is a load failure the caller must refuse to save over";
 }
 
 }  // namespace
@@ -2034,7 +2395,7 @@ cd test && cmake -S . -B build && cmake --build build --target PassageDocTest
 
 Expected: FAIL — `StudyStore/PassageDoc.h: No such file or directory`.
 
-- [ ] **Step 4: Write `lib/StudyStore/PassageDoc.h`**
+- [ ] **Step 4: Write `lib/StudyStore/StudyStore/PassageDoc.h`**
 
 ```cpp
 #pragma once
@@ -2046,7 +2407,7 @@ Expected: FAIL — `StudyStore/PassageDoc.h: No such file or directory`.
 
 #include "StudyStore/TaggedPassage.h"
 
-// One (pubkey, segment)'s tagged passages, with all format rules and no storage
+// One publication's tagged passages, with all format rules and no storage
 // access. The storage shell is src/study/PassageFile.
 //
 // Bytes are the safety invariant, not passage counts: SDCardManager::readFile
@@ -2058,7 +2419,12 @@ namespace study {
 class PassageDoc {
  public:
   static constexpr int FORMAT_VERSION = 1;
-  static constexpr size_t SAVE_BYTE_BUDGET = 45000;  // persist::DEFAULT_SAVE_BUDGET
+  // Not persist::DEFAULT_SAVE_BUDGET: that figure exists to stay clear of
+  // SDCardManager::readFile's 50,000-byte truncation, and this document is read
+  // through lib/JsonParser instead, which has no such cap. The budget here
+  // bounds a single write so a card-full or an absurd store is refused rather
+  // than half-written; it is not a truncation guard.
+  static constexpr size_t SAVE_BYTE_BUDGET = 200000;
   static constexpr size_t MAX_SNIPPET_BYTES = 120;
   static constexpr size_t MAX_REFERENCE_BYTES = 48;
   static constexpr size_t MAX_TAGS_PER_PASSAGE = 8;
@@ -2073,8 +2439,15 @@ class PassageDoc {
   bool remove(size_t index);
   bool setTags(size_t index, std::vector<TagId> tags);
 
-  // Drops `id` from every passage, and drops any passage left with none.
+  // Drops `id` from every passage in THIS document. Passages left with no tags
+  // are KEPT and reported by untaggedCount(), never deleted: the palette is
+  // global and TagFilterActivity already deletes a tag on a long-press, so a
+  // delete that removed passages would let one tidy-up gesture destroy work
+  // across every publication. Palette deletion is retire-only; see TagPalette.
   void removeTagEverywhere(TagId id);
+
+  // Passages currently carrying no tags, awaiting re-tagging.
+  size_t untaggedCount() const;
 
   // Passages whose start unit is in `document`, for the render pass.
   std::vector<const TaggedPassage*> findByDocument(const std::string& document) const;
@@ -2092,7 +2465,7 @@ class PassageDoc {
 }  // namespace study
 ```
 
-- [ ] **Step 5: Write `lib/StudyStore/PassageDoc.cpp`**
+- [ ] **Step 5: Write `lib/StudyStore/StudyStore/PassageDoc.cpp`**
 
 The field names are deliberately one or two characters — this file is measured
 against a hard byte budget, and `"documentSpine"` costs 14 bytes per passage for
@@ -2115,14 +2488,20 @@ nothing.
 ```cpp
 #include "StudyStore/PassageDoc.h"
 
+#include <Utf8.h>
+
 #include <algorithm>
 
 namespace study {
 
 bool PassageDoc::add(TaggedPassage passage) {
   if (passage.tags.empty()) return false;
-  if (passage.snippet.size() > MAX_SNIPPET_BYTES) passage.snippet.resize(MAX_SNIPPET_BYTES);
-  if (passage.reference.size() > MAX_REFERENCE_BYTES) passage.reference.resize(MAX_REFERENCE_BYTES);
+  // utf8SafeSummary, never resize(): every one of these strings is Spanish and
+  // a raw byte cut can land after a lead byte, producing an invalid sequence
+  // that ArduinoJson will then serialise. HighlightDoc::addHighlight uses the
+  // same helper for the same reason.
+  passage.snippet = utf8SafeSummary(std::move(passage.snippet), MAX_SNIPPET_BYTES);
+  passage.reference = utf8SafeSummary(std::move(passage.reference), MAX_REFERENCE_BYTES);
 
   std::vector<TagId> tags;
   tags.reserve(std::min(passage.tags.size(), MAX_TAGS_PER_PASSAGE));
@@ -2146,22 +2525,38 @@ bool PassageDoc::remove(const size_t index) {
   return true;
 }
 
+// Replaces entry `index`'s tags IN PLACE. Returns false without touching the
+// entry when `index` is out of range or the new list is empty -- matching
+// HighlightDoc::setTags, whose contract is explicitly "the entry is untouched in
+// that case". An earlier draft erased first and re-added, which destroyed the
+// passage whenever the re-add was refused.
 bool PassageDoc::setTags(const size_t index, std::vector<TagId> tags) {
   if (index >= passages_.size()) return false;
-  TaggedPassage updated = passages_[index];
-  updated.tags = std::move(tags);
-  passages_.erase(passages_.begin() + static_cast<long>(index));
-  if (add(std::move(updated))) return true;
-  return false;
+
+  std::vector<TagId> normalised;
+  normalised.reserve(std::min(tags.size(), MAX_TAGS_PER_PASSAGE));
+  for (const TagId id : tags) {
+    if (normalised.size() >= MAX_TAGS_PER_PASSAGE) break;
+    if (std::find(normalised.begin(), normalised.end(), id) == normalised.end()) normalised.push_back(id);
+  }
+  if (normalised.empty()) return false;
+
+  passages_[index].tags = std::move(normalised);
+  return true;
 }
 
 void PassageDoc::removeTagEverywhere(const TagId id) {
   for (auto& p : passages_) {
     p.tags.erase(std::remove(p.tags.begin(), p.tags.end(), id), p.tags.end());
   }
-  passages_.erase(std::remove_if(passages_.begin(), passages_.end(),
-                                 [](const TaggedPassage& p) { return p.tags.empty(); }),
-                  passages_.end());
+}
+
+size_t PassageDoc::untaggedCount() const {
+  size_t n = 0;
+  for (const auto& p : passages_) {
+    if (p.tags.empty()) ++n;
+  }
+  return n;
 }
 
 std::vector<const TaggedPassage*> PassageDoc::findByDocument(const std::string& document) const {
@@ -2211,11 +2606,19 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
     p.pendingUpgrade = v["g"] | false;
     for (const JsonVariantConst t : v["t"].as<JsonArrayConst>()) {
       const uint32_t id = t | 0u;
-      if (id > 0 && id <= UINT16_MAX) p.tags.push_back(static_cast<TagId>(id));
+      if (id > 0 && id <= UINT16_MAX) p.tags.push_back(toTagId(static_cast<uint16_t>(id)));
     }
-    add(std::move(p));  // re-validates and enforces the budget on the way in
+    // Load path: normalise, but NEVER drop for budget. An earlier draft funnelled
+    // this through add(), so a file at or over budget silently lost its tail,
+    // still reported success, and the next save made the loss permanent -- the
+    // spec's headline failure mode, one layer up. A document that will not fit
+    // is a load FAILURE the caller must refuse to save over, not a truncation.
+    if (p.tags.empty()) continue;
+    p.snippet = utf8SafeSummary(std::move(p.snippet), MAX_SNIPPET_BYTES);
+    p.reference = utf8SafeSummary(std::move(p.reference), MAX_REFERENCE_BYTES);
+    passages_.push_back(std::move(p));
   }
-  return true;
+  return measureBytes() <= SAVE_BYTE_BUDGET;
 }
 
 size_t PassageDoc::measureBytes() const {
@@ -2240,10 +2643,10 @@ size_t PassageDoc::measureBytes() const {
 ```cmake
 add_executable(PassageDocTest
   PassageDocTest.cpp
-  ${REPO_ROOT}/lib/StudyStore/PassageDoc.cpp
-  ${REPO_ROOT}/lib/StudyStore/Unit.cpp
-  ${REPO_ROOT}/lib/StudyStore/UnitFingerprint.cpp
-  ${REPO_ROOT}/lib/StudyStore/TagPalette.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/PassageDoc.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitFingerprint.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
 )
 
 target_include_directories(PassageDocTest PRIVATE ${REPO_ROOT}/lib)
@@ -2269,19 +2672,19 @@ add_subdirectory(passage_doc)
 cd test && cmake -S . -B build && cmake --build build --target PassageDocTest && ./build/passage_doc/PassageDocTest
 ```
 
-Expected: `[  PASSED  ] 8 tests.`
+Expected: `[  PASSED  ] 11 tests.`
 
 - [ ] **Step 8: Commit**
 
 ```bash
 ./bin/clang-format-fix -g
-git add lib/StudyStore/TaggedPassage.h lib/StudyStore/PassageDoc.h lib/StudyStore/PassageDoc.cpp test/passage_doc test/CMakeLists.txt
+git add lib/StudyStore/StudyStore/TaggedPassage.h lib/StudyStore/StudyStore/PassageDoc.h lib/StudyStore/StudyStore/PassageDoc.cpp test/passage_doc test/CMakeLists.txt
 git commit -m "feat: add the tagged passage record and its budgeted document"
 ```
 
 ---
 
-## Task 8: The migration planner
+## Task 9: The migration planner
 
 The heart of the phase, and the reason it is a pure function: it decides what
 every one of the user's 63 passages becomes, and it must be testable without a
@@ -2297,7 +2700,7 @@ offline dry run (Task 14) confirmed 63/63 agreement before this plan was
 written; the planner encodes that check so it stays true.
 
 **Files:**
-- Create: `lib/StudyStore/MigrationPlanner.h`, `lib/StudyStore/MigrationPlanner.cpp`
+- Create: `lib/StudyStore/StudyStore/MigrationPlanner.h`, `lib/StudyStore/StudyStore/MigrationPlanner.cpp`
 - Create: `test/migration_planner/MigrationPlannerTest.cpp`, `test/migration_planner/CMakeLists.txt`
 - Modify: `test/CMakeLists.txt`
 
@@ -2337,7 +2740,7 @@ study::MigrationInputs inputs() {
   in.pubKey = "bible";
   in.document = "1001061130-split10.xhtml";
   in.units = psalm119();
-  in.unitText = [](const study::Unit&) { return std::string("Te he llamado con todo el corazon"); };
+  in.unitText = [](void*, const study::Unit&) { return std::string("Te he llamado con todo el corazon"); };
   return in;
 }
 
@@ -2444,12 +2847,11 @@ cd test && cmake -S . -B build && cmake --build build --target MigrationPlannerT
 
 Expected: FAIL — `StudyStore/MigrationPlanner.h: No such file or directory`.
 
-- [ ] **Step 3: Write `lib/StudyStore/MigrationPlanner.h`**
+- [ ] **Step 3: Write `lib/StudyStore/StudyStore/MigrationPlanner.h`**
 
 ```cpp
 #pragma once
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -2486,8 +2888,12 @@ struct MigrationInputs {
   DocumentUnits units;
   bool sourceAvailable = true;
   TagPalette* palette = nullptr;  // optional; when set, tag names become global ids
-  // Visible text of a unit, for the fingerprint. Returns empty when unknown.
-  std::function<std::string(const Unit&)> unitText;
+  // Visible text of a unit, for the fingerprint -- a context pointer and a plain
+  // function pointer, not std::function: CLAUDE.md prohibits std::function in
+  // library code (~2-4 KB per signature plus a heap-allocated closure) and the
+  // pair costs nothing here.
+  void* unitTextCtx = nullptr;
+  std::string (*unitText)(void* ctx, const Unit&) = nullptr;
 };
 
 struct MigrationResult {
@@ -2509,7 +2915,7 @@ std::string referenceTail(const std::string& reference);
 }  // namespace study
 ```
 
-- [ ] **Step 4: Write `lib/StudyStore/MigrationPlanner.cpp`**
+- [ ] **Step 4: Write `lib/StudyStore/StudyStore/MigrationPlanner.cpp`**
 
 ```cpp
 #include "StudyStore/MigrationPlanner.h"
@@ -2567,7 +2973,7 @@ MigrationResult planMigration(const MigrationInputs& in, const LegacyHighlight& 
   p.start = resolve(in.units, legacy.start);
   p.end = resolve(in.units, legacy.end);
 
-  if (in.unitText) p.fingerprint = fingerprintOf(in.unitText(p.start));
+  if (in.unitText) p.fingerprint = fingerprintOf(in.unitText(in.unitTextCtx, p.start));
 
   if (p.start.kind == UnitKind::DocumentOffset) {
     out.outcome = MigrationOutcome::ResolvedDocumentOffset;
@@ -2598,11 +3004,11 @@ MigrationResult planMigration(const MigrationInputs& in, const LegacyHighlight& 
 ```cmake
 add_executable(MigrationPlannerTest
   MigrationPlannerTest.cpp
-  ${REPO_ROOT}/lib/StudyStore/MigrationPlanner.cpp
-  ${REPO_ROOT}/lib/StudyStore/UnitAnchors.cpp
-  ${REPO_ROOT}/lib/StudyStore/Unit.cpp
-  ${REPO_ROOT}/lib/StudyStore/UnitFingerprint.cpp
-  ${REPO_ROOT}/lib/StudyStore/TagPalette.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/MigrationPlanner.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitAnchors.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitFingerprint.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
   ${REPO_ROOT}/lib/Epub/Epub/VerseAnchors.cpp
   ${REPO_ROOT}/lib/Epub/Epub/ParagraphAnchors.cpp
   ${REPO_ROOT}/lib/Epub/Epub/htmlEntities.cpp
@@ -2647,31 +3053,110 @@ Expected: `[  PASSED  ] 11 tests.`
 
 ```bash
 ./bin/clang-format-fix -g
-git add lib/StudyStore/MigrationPlanner.h lib/StudyStore/MigrationPlanner.cpp test/migration_planner test/CMakeLists.txt
+git add lib/StudyStore/StudyStore/MigrationPlanner.h lib/StudyStore/StudyStore/MigrationPlanner.cpp test/migration_planner test/CMakeLists.txt
 git commit -m "feat: plan a legacy highlight's migration to a unit address"
 ```
 
 ---
 
-## Task 9: The unit index — format and lazy cache
+---
 
-Built **per document, on first use of that document**. The spec's arithmetic for
-an eager build stands: 3,937 NWT documents × ~30 ms is 10–13 minutes, the task
-watchdog fires at 5 s, and auto-sleep counts *input* inactivity
-(`src/main.cpp:652`) which a background build does not reset.
+## Task 10: The dry-run gate
+
+**Moved ahead of every task that depends on it.** The first draft placed this
+after the migration and the rewire, which is not a gate — it is a post-mortem.
+
+It is also reframed. The first draft claimed 63/63 agreement "proved" the
+migration. It does not: the `ref` strings were written by the device using
+`VerseAnchors` against the same offsets this re-resolves with `VerseAnchors`, so
+agreement mostly demonstrates that a host build reproduces a device build on
+identical bytes. That is worth having as a **regression gate** — it would catch a
+broken scanner, a changed counter, or an entity-handling slip — and it is worth
+nothing as proof of the write paths, the fingerprint, the book assignment or the
+tag-id allocation. Those are covered by Tasks 4, 6, 8, 9 and 16.
 
 **Files:**
-- Create: `lib/StudyStore/UnitIndexFormat.h`, `lib/StudyStore/UnitIndexFormat.cpp`
-- Create: `test/unit_index_format/UnitIndexFormatTest.cpp`, `test/unit_index_format/CMakeLists.txt`
-- Create: `src/study/UnitIndexCache.h`, `src/study/UnitIndexCache.cpp`
+- Create: `scripts/migration_dryrun.py`, `tools/migration_dryrun/main.cpp`, `tools/migration_dryrun/CMakeLists.txt`
+
+Nothing here is committed with data in it. The markup and the passage text are
+the user's copy of a copyrighted translation; the tool takes paths on the command
+line and the repo stores neither.
+
+- [ ] **Step 1: Pull the EPUB off the card, not from the CDN.** Project memory
+      records that the user's on-card NWT is a TOC-edited repack, so a desktop
+      unzip of the published download is a different file. The gate must run
+      against what the device will actually read.
+
+```bash
+curl -s "http://<device-ip>/download?path=/books/<nwt file>.epub" -o /tmp/nwt-from-card.epub
+mkdir -p /tmp/nwt-card && (cd /tmp/nwt-card && unzip -q /tmp/nwt-from-card.epub)
+```
+
+- [ ] **Step 2: Write `scripts/migration_dryrun.py`** — reads the OPF to build the
+      spine, reads a legacy highlights JSON, resolves each `spineIndex` to its
+      document path, and emits TSV rows of
+      `spineIndex, start, end, ref, documentPath, bookNumber`. The book number
+      comes from `biblebooknav.xhtml` plus the chapter-nav pages it points at —
+      see Task 11's note on why the nav page alone is not enough.
+
+- [ ] **Step 3: Write `tools/migration_dryrun/main.cpp`** — links the real
+      `MigrationPlanner`, `UnitAnchors`, `UnitText`, `VerseAnchors`,
+      `ParagraphAnchors` and expat; reads the TSV; prints per-passage lines and a
+      summary:
+
+```
+ total=63  verse=63  paragraph=0  document-offset=0  ref-mismatch=0  dropped=0
+```
+
+  Exit non-zero when `ref-mismatch > 0` **or** when `verse < total`, so a
+  regression that silently degrades addressing fails the gate rather than
+  reporting success.
+
+- [ ] **Step 4: Run it. Expected: `total=63 verse=63 ref-mismatch=0`.** Any other
+      result stops the phase.
+
+- [ ] **Step 5: Commit the tool, not the data**
+
+```bash
+git status --short   # confirm no .epub, .xhtml, .tsv or highlights JSON is staged
+git add scripts/migration_dryrun.py tools/migration_dryrun
+git commit -m "test: gate the migration on a repeatable offline dry run"
+```
+
+---
+
+## Task 11: The unit index — a cache, and only a cache
+
+**Files:**
+- Create: `lib/StudyStore/StudyStore/UnitIndexFormat.{h,cpp}`, `test/unit_index_format/`
+- Create: `src/study/UnitIndexCache.{h,cpp}`
 - Modify: `test/CMakeLists.txt`
 
-### On-disk layout — `/.berean/units/<pubkey>.bin`
+### Two corrections from review
 
-One file per publication. The spec's rejection of file-per-document stands:
-3,937 files in one FAT directory with `USE_UTF8_LONG_NAMES=1` is ~500 KB of
-directory entries scanned linearly on every open, and ~126 MB of cluster slack
-for ~2 MB of data.
+**The per-document content CRC cost exactly what it saved.** The first draft
+validated a cached document by comparing a CRC32 of its current visible
+codepoints — which requires SD read, inflate and a full expat walk, i.e. the
+entire rebuild minus a few `push_back`s. A cache whose validation costs as much
+as a miss is not a cache.
+
+**And the cheap checks were unreachable.** `HalFile` exposes no modification
+time, `CLAUDE.md` forbids reaching past it into `FsFile`, and no
+`dateTimeCallback` is registered anywhere in the repo, so FAT timestamps on
+device-written files are a constant. `sourceMtime` is gone.
+
+So the index validates on **source file size alone**, and a same-size content
+change is deliberately not detected here. That is not a hole, because it is not
+this layer's job: **the per-passage fingerprint is what catches changed text**,
+at paint time, where the consequence is visible and recoverable. Layering the
+same check twice, once expensively, bought nothing.
+
+That also makes the file a pure cache, which resolves the atomicity question the
+first draft got wrong: **losing it costs nothing**, so it needs corruption
+*detection*, not crash *atomicity*. A CRC over the header and table, checked on
+open, and the whole file is rebuilt on mismatch.
+
+### On-disk layout — `/.berean/units/<pubkey>.bin`
 
 ```
 Header (32 bytes, little-endian)
@@ -2679,17 +3164,17 @@ Header (32 bytes, little-endian)
   formatVersion  uint16   1
   documentCount  uint16
   sourceSize     uint32   EPUB file size at build time
-  sourceMtime    uint32   EPUB mtime at build time
-  tableOffset    uint32   byte offset of the document table
-  reserved       uint32[3]
+  tableCrc       uint32   CRC32 over the document table
+  tableOffset    uint32
+  bookMapOffset  uint32   spine index -> canonical book, built once
+  reserved       uint32
 
-Document table entry (16 bytes each, indexed by spine index)
+Document table entry (12 bytes each, indexed by spine index)
   dataOffset     uint32   0 when this document has not been indexed yet
-  dataLength     uint32
-  contentCrc     uint32   CRC32 of the document's visible codepoints
-  kind           uint8    UnitKind
-  book           uint8    canonical Bible book, or 0
   anchorCount    uint16
+  kind           uint8
+  book           uint8
+  reserved       uint32
 
 Anchor record (8 bytes each)
   offset         uint32
@@ -2697,20 +3182,11 @@ Anchor record (8 bytes each)
   minor          uint16
 ```
 
-**Invalidation.** The header's `sourceSize`/`sourceMtime` catch a replaced file;
-the per-document `contentCrc` catches a same-length correction that neither
-would. This repo has been bitten by the weaker check already —
-`BookMetadataCache.cpp:467` validates on cache version only, which is why
-replacing an EPUB in place kept serving a stale TOC. Any mismatch rebuilds that
-document, not the whole file.
+Every multi-byte field moves through `memcpy`. The S3 tolerates unaligned loads
+where the C3 faults, but `CLAUDE.md`'s rule is unconditional and this is shared
+code.
 
-**Alignment.** Every multi-byte field is read and written with `memcpy`, never a
-pointer cast. The S3 tolerates unaligned loads where the C3 faults, but this
-format is shared code and the rule in `CLAUDE.md` is unconditional.
-
-- [ ] **Step 1: Write the failing test** — `test/unit_index_format/UnitIndexFormatTest.cpp`
-
-Cover, one test each:
+- [ ] **Step 1: Host-test the format.** One test each:
 
 ```cpp
 TEST(UnitIndexFormat, RoundTripsAHeaderThroughBytes);
@@ -2719,207 +3195,142 @@ TEST(UnitIndexFormat, RejectsAWrongMagic);
 TEST(UnitIndexFormat, RejectsAFutureFormatVersion);
 TEST(UnitIndexFormat, ReportsADocumentWithDataOffsetZeroAsNotYetIndexed);
 TEST(UnitIndexFormat, DetectsAChangedSourceSizeAsStale);
-TEST(UnitIndexFormat, DetectsAChangedContentCrcAsStalePerDocument);
+TEST(UnitIndexFormat, DetectsACorruptedTableViaItsCrc);
 TEST(UnitIndexFormat, ReadsEveryFieldThroughMemcpyOnAnUnalignedBuffer);
 ```
 
-The last one is the alignment guard and must be written as: build the serialised
-bytes, copy them into `std::vector<uint8_t>` at offset 1, parse from
-`buf.data() + 1`, and assert every field. Run it under
-`-fsanitize=address,undefined` locally; a pointer cast trips UBSan here.
+  The last builds the bytes, copies them into a `std::vector<uint8_t>` at offset
+  1, parses from `buf.data() + 1`, and asserts every field. Run it under
+  `-fsanitize=address,undefined`; a pointer cast trips UBSan there.
 
-- [ ] **Step 2: Run it and watch it fail.** Expected: `UnitIndexFormat.h: No such file or directory`.
+- [ ] **Step 2: Run it and watch it fail.**
 
-- [ ] **Step 3: Write `lib/StudyStore/UnitIndexFormat.h`**
+- [ ] **Step 3: Implement `UnitIndexFormat.{h,cpp}`** following the layout above.
 
-```cpp
-#pragma once
+- [ ] **Step 4: Build the spine-to-book map — and budget for what it really costs.**
 
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <vector>
+  Review corrected the first draft here. `BibleNav::Scanner` on
+  `biblebooknav.xhtml` returns 66 hrefs to **chapter-nav pages**, not to
+  chapters. Mapping an arbitrary content spine index to a book — the user's marks
+  sit at spine 198–1322 — needs each of those nav pages opened and its chapter
+  list resolved, exactly as `BibleNavigationActivity::loadChapters` does, plus
+  the five single-chapter books (Obadiah, Philemon, 2 John, 3 John, Jude) that
+  have no nav page and point straight at a spine item.
 
-#include "StudyStore/UnitAnchors.h"
-
-namespace study {
-
-inline constexpr uint32_t UNIT_INDEX_MAGIC = 0x31495542;  // "BUI1"
-inline constexpr uint16_t UNIT_INDEX_VERSION = 1;
-inline constexpr size_t UNIT_INDEX_HEADER_BYTES = 32;
-inline constexpr size_t UNIT_INDEX_ENTRY_BYTES = 16;
-inline constexpr size_t UNIT_INDEX_ANCHOR_BYTES = 8;
-
-struct UnitIndexHeader {
-  uint16_t documentCount = 0;
-  uint32_t sourceSize = 0;
-  uint32_t sourceMtime = 0;
-  uint32_t tableOffset = 0;
-};
-
-struct UnitIndexEntry {
-  uint32_t dataOffset = 0;  // 0 means not yet indexed
-  uint32_t dataLength = 0;
-  uint32_t contentCrc = 0;
-  UnitKind kind = UnitKind::DocumentOffset;
-  uint8_t book = 0;
-  uint16_t anchorCount = 0;
-
-  bool indexed() const { return dataOffset != 0; }
-};
-
-void writeHeader(uint8_t* out, const UnitIndexHeader& h);
-std::optional<UnitIndexHeader> readHeader(const uint8_t* in, size_t length);
-
-void writeEntry(uint8_t* out, const UnitIndexEntry& e);
-UnitIndexEntry readEntry(const uint8_t* in);
-
-void writeAnchors(uint8_t* out, const std::vector<UnitAnchor>& anchors);
-std::vector<UnitAnchor> readAnchors(const uint8_t* in, uint16_t count);
-
-// True when the EPUB behind this index has been replaced.
-bool headerIsStale(const UnitIndexHeader& h, uint32_t sourceSize, uint32_t sourceMtime);
-
-}  // namespace study
-```
-
-- [ ] **Step 4: Implement it**, every field through `memcpy`. Follow the
-      little-endian order in the layout table above exactly.
-
-- [ ] **Step 5: Register the test** (`add_subdirectory(unit_index_format)`; sources
-      are `UnitIndexFormat.cpp`, `Unit.cpp`, `UnitAnchors.cpp` plus expat as in Task 3).
-
-- [ ] **Step 6: Run and watch it pass.** Expected: `[  PASSED  ] 8 tests.`
-
-- [ ] **Step 7: Write `src/study/UnitIndexCache.h`** — the firmware half, no host test
+  That is ~66 extra document reads. It is **not** cheap, so it does not happen in
+  `openPublication`. It is built once, on the first request for a book number,
+  and persisted in the index file's `bookMapOffset` block so it never runs twice.
+  Yield with `vTaskDelay(1)` between nav pages.
 
 ```cpp
-#pragma once
-
-#include <Epub.h>
-
-#include <string>
-
-#include "StudyStore/UnitIndexFormat.h"
-
-// Lazily indexes one publication's documents, one document at a time, on first
-// use. Never indexes a publication eagerly: the NWT's 3,937 documents would take
-// 10-13 minutes and trip the task watchdog.
-//
-// Owned by the main task. Every SD access goes through HalStorage, which holds
-// storageMutex -- SdFat is not thread-safe and the web server task also writes.
-class UnitIndexCache {
- public:
-  UnitIndexCache(Epub& epub, std::string pubKey);
-
-  // The units for `spineIndex`, building and persisting them if absent or
-  // stale. Returns a DocumentOffset-kind result when the document has no units
-  // or the build fails -- readable, addressing degraded, never fatal.
-  const study::DocumentUnits& unitsFor(uint16_t spineIndex);
-
-  // Canonical Bible book for a spine index, or 0. Built once from
-  // biblebooknav.xhtml via BibleNav::Scanner, memoised for the object's life.
-  uint8_t bookFor(uint16_t spineIndex);
-
-  bool ready() const { return ready_; }
-
- private:
-  bool openOrCreate();
-  bool buildDocument(uint16_t spineIndex);
-
-  Epub& epub_;
-  std::string pubKey_;
-  bool ready_ = false;
-  uint16_t cachedSpine_ = UINT16_MAX;
-  study::DocumentUnits cached_;  // exactly one document held in RAM at a time
-};
+// Canonical book for a spine index, or 0 outside the Bible text. Building this
+// opens all 66 chapter-nav pages the book-nav page points at; it is persisted
+// in the index so that cost is paid once per publication, never at open.
+uint8_t bookFor(uint16_t spineIndex);
 ```
 
-**Why one document in RAM:** the densest measured document carries 58 anchors —
-under 500 bytes. Holding every indexed document would be unbounded; holding one
-costs nothing and matches the access pattern, which is one document per page
-turn.
+- [ ] **Step 5: Write `src/study/UnitIndexCache.{h,cpp}`.** `unitsFor(spineIndex)`:
+      return the in-RAM copy on a hit; else read the entry and load its anchors
+      if `dataOffset != 0`; else read the document through `Epub`, run
+      `study::scanUnits`, stamp `book` for a Verse document, append the anchors,
+      rewrite the entry, update `tableCrc`. One document is held in RAM at a time
+      — measured p95 is 111 anchors, max 413, so at most ~3.3 KB.
 
-- [ ] **Step 8: Implement `src/study/UnitIndexCache.cpp`.** Order of work inside
-      `unitsFor`:
-      1. Return `cached_` when `cachedSpine_ == spineIndex`.
-      2. Read the entry; if `indexed()` and `contentCrc` matches the document's
-         current visible-text CRC, load the anchors and return.
-      3. Otherwise read the document through `Epub`, run `study::scanUnits`,
-         stamp `book` from `bookFor(spineIndex)`, append the anchors to the
-         file, rewrite the entry, and return.
-      Every write goes through `Storage`; call `vTaskDelay(1)` between documents
-      if a caller ever loops, so a bulk pass cannot trip the watchdog.
+      **`vTaskDelay(1)` after every document**, not every publication. The
+      watchdog is `CONFIG_ESP_TASK_WDT_PANIC=y` at 5 s and a panic during a
+      boot-time pass reboots into the same pass.
 
-- [ ] **Step 9: Build the firmware and commit**
+- [ ] **Step 6: Build and commit**
 
 ```bash
-/Volumes/stein/.platformio/penv/bin/pio run -e x4pro
+cd test && cmake --build build && ctest --test-dir build --output-on-failure
+cd .. && /Volumes/stein/.platformio/penv/bin/pio run -e x4pro
 ./bin/clang-format-fix -g
-git add lib/StudyStore/UnitIndexFormat.h lib/StudyStore/UnitIndexFormat.cpp src/study/UnitIndexCache.h src/study/UnitIndexCache.cpp test/unit_index_format test/CMakeLists.txt
-git commit -m "feat: index a publication's units lazily, one document at a time"
+git add lib/StudyStore/StudyStore/UnitIndexFormat.h lib/StudyStore/StudyStore/UnitIndexFormat.cpp src/study/UnitIndexCache.h src/study/UnitIndexCache.cpp test/unit_index_format test/CMakeLists.txt
+git commit -m "feat: cache a publication's units lazily, one document at a time"
 ```
 
 ---
 
-## Task 10: The storage shells and the `StudyStore` façade
-
-Thin, firmware-only, and disciplined per the spec's storage rules: atomic writes
-only, an explicit byte budget checked before writing, a format version a future
-build refuses rather than reinterprets, and `storageMutex` held on write.
+## Task 12: The storage shells and the `StudyStore` façade
 
 **Files:**
 - Create: `src/study/PassageFile.{h,cpp}`, `src/study/TagPaletteFile.{h,cpp}`, `src/study/StudyStore.{h,cpp}`
 
-- [ ] **Step 1: Write `src/study/PassageFile.h`**
+### Four invariants review put here
 
-Model it on `src/util/HighlightFile.h`, which already solved this exact problem
-— including the four-state load result that a `bool` collapses wrongly.
+**1. The save latch is carried forward.** `EpubReaderActivity.h:60-62` sets
+`highlightsSaveDisabled` on `LoadResult::Failed` — "the file may still hold the
+user's data, so saving over it for the rest of the session would risk destroying
+it." The first draft kept the four-state `LoadResult` and then dropped the latch,
+so an unparseable passages file loaded as empty and the next tag overwrote it.
+`StudyStore` owns a `saveDisabled_` flag set on `Failed`, and `save()` is a no-op
+that returns false while it is set.
+
+**2. Passages are addressed by index with explicit staleness checks**, not by
+pointer or reference. Today's code does this deliberately
+(`if (docIndex >= highlights().size()) return; // stale index`) because
+`TagPickerActivity` is entered and exited while the document mutates underneath.
+The first draft's `removePassage(const TaggedPassage&)` had no stated identity
+rule and `passagesInDocument` handed out pointers into a vector that `add()`
+reallocates.
+
+**3. Saves stay synchronous, with rollback on failure.** Today every edit saves
+immediately and reverts the in-memory change if the save fails
+(`HighlightsActivity.cpp:291-303`). The first draft replaced that with a dirty
+flag and a debounce, which loses an edit on Power-off, has nothing to roll back
+to on `WriteFailed`, and shows the user a tag that was never persisted. A tag
+edit is a handful of times per reading session, not per page turn — the SD cost
+is not worth the loss window.
+
+**4. The PSRAM gate is preserved.** Highlight loading is gated on
+`BOARD_HAS_PSRAM` in `loadBook()` because a resident document plus two live
+`JsonDocument`s is a real risk against a non-PSRAM board's ~50 KB free heap. The
+X4 Pro has PSRAM, but the gate stays rather than silently regressing a board the
+fork may still build.
+
+- [ ] **Step 1: Write `src/study/PassageFile.h`**
 
 ```cpp
 #pragma once
 
-#include <cstdint>
 #include <string>
 
 #include "StudyStore/PassageDoc.h"
 
-// Moves bytes between PassageDoc and /.berean/passages/. All format rules live
-// in PassageDoc; the .tmp promotion rule and the budget check live here.
+// Moves bytes between PassageDoc and /.berean/passages/<pubkey>.json.
 //
-// Single-writer: the main task owns this. If the web server ever writes
-// passages, add a mutex -- PersistableStore.h documents the same hazard.
+// Reads through lib/JsonParser, NOT Storage.readFile: that caps at 50,000 bytes
+// and returns a silently truncated string, which for this file would mean the
+// user's older passages simply cease to exist on the next boot.
 namespace PassageFile {
 
-// The Bible shards by canonical book so one pubkey cannot grow past the budget;
-// everything else uses segment 0 and a single file. See the plan's Task 7.
-std::string path(const std::string& pubKey, uint8_t segment);
+std::string path(const std::string& pubKey);
 
 enum class LoadResult : uint8_t { Loaded, Empty, RecoveredFromTemp, Failed };
 
-// Failed means the bytes could not be read, parsed or validated and the file
-// may still hold the user's data -- the caller MUST NOT save after Failed.
-LoadResult load(const std::string& pubKey, uint8_t segment, study::PassageDoc& doc);
+// Failed means the bytes could not be read, parsed or validated AND THE FILE MAY
+// STILL HOLD THE USER'S DATA. The caller must latch saving off for the session.
+LoadResult load(const std::string& pubKey, study::PassageDoc& doc);
 
 enum class SaveResult : uint8_t { Ok, TooLarge, WriteFailed };
 
-// Measures the serialised document and refuses BEFORE touching any file when it
-// exceeds PassageDoc::SAVE_BYTE_BUDGET. Writes through writeDocToFileAtomic --
+// Measures before writing and refuses over budget. writeDocToFileAtomic only --
 // never writeDocToFile, which is the non-atomic variant.
-SaveResult save(const std::string& pubKey, uint8_t segment, const study::PassageDoc& doc);
+SaveResult save(const std::string& pubKey, const study::PassageDoc& doc);
 
 }  // namespace PassageFile
 ```
 
-- [ ] **Step 2: Implement `PassageFile.cpp`** by copying `src/util/HighlightFile.cpp`
-      and changing the path helper and the document type. Reuse
-      `highlightLoadAction` from `src/util/HighlightFileAction.h` — it is already
-      host-tested and the state machine is identical. **Do not reimplement it.**
+- [ ] **Step 2: Implement it**, reusing `highlightLoadAction` from
+      `src/util/HighlightFileAction.h` for the `.tmp` promotion state machine. It
+      is already host-tested and the states are identical. Do not reimplement it.
 
-- [ ] **Step 3: Write and implement `src/study/TagPaletteFile.{h,cpp}`** — same shape,
-      one file at `/.berean/tags.json`, no segment.
+- [ ] **Step 3: Write and implement `TagPaletteFile.{h,cpp}`** — same shape, one
+      file at `/.berean/tags.json`. This one is small enough for the ordinary
+      `PersistableStore` read path.
 
-- [ ] **Step 4: Write `src/study/StudyStore.h`** — the one object the activities talk to
+- [ ] **Step 4: Write `src/study/StudyStore.h`**
 
 ```cpp
 #pragma once
@@ -2934,77 +3345,71 @@ SaveResult save(const std::string& pubKey, uint8_t segment, const study::Passage
 #include "StudyStore/TagPalette.h"
 #include "study/UnitIndexCache.h"
 
-// The device's study data, for the publication currently open.
-//
-// Holds the global tag palette plus the passages for the open publication's
-// current segment. Loads lazily and saves on change, debounced -- SD writes cost
-// serialisation, I/O and storageMutex, and PersistableStore.h warns that taking
-// that mutex on a read path stalls rendering.
 class StudyStore {
  public:
   static StudyStore& getInstance();
 
-  // Called when a book opens. Resolves the pubkey, loads the palette, and
-  // prepares the unit index. Cheap: no document is scanned here.
   bool openPublication(Epub& epub);
   void closePublication();
 
   const study::TagPalette& palette() const { return palette_; }
-  study::TagPalette& mutablePalette() { return palette_; }
 
-  // Passages whose start unit is in this spine document, resolved to current
-  // document offsets for painting. Returns nothing for a passage whose
-  // fingerprint no longer matches -- see the degradation table in the spec.
+  // Adds a tag name, or returns the existing id. Never allocates behind a
+  // failed save: the palette is written before the id is handed out.
+  std::optional<study::TagId> addTagName(const std::string& name);
+
+  // RETIRES the tag. No passage is ever removed by a palette operation -- the
+  // palette is global and a long-press in TagFilterActivity reaches it, so a
+  // destructive delete would let one gesture wipe work across every publication.
+  bool retireTag(study::TagId id);
+
+  // Passages in this spine document, resolved to current offsets for painting.
+  // `index` addresses passages_ and must be re-checked against size() after any
+  // mutation -- sub-activities mutate the document while these are held.
   struct PaintedPassage {
-    const study::TaggedPassage* passage;
+    size_t index;
     uint32_t startOffset;
     uint32_t endOffset;
+    bool wholeUnit;  // offsets did not fit; paint the unit, not the span
   };
   std::vector<PaintedPassage> passagesInDocument(uint16_t spineIndex);
 
-  // Adds a passage at a document offset range, allocating tag ids by name.
+  const std::vector<study::TaggedPassage>& passages() const { return passages_.passages(); }
+
   bool addPassage(uint16_t spineIndex, uint32_t startOffset, uint32_t endOffset, const std::string& snippet,
-                  const std::string& reference, const std::vector<study::TagId>& tags);
+                  const std::string& reference, std::vector<study::TagId> tags);
+  bool removePassage(size_t index);
+  bool setPassageTags(size_t index, std::vector<study::TagId> tags);
 
-  bool removePassage(const study::TaggedPassage& passage);
-  bool setPassageTags(const study::TaggedPassage& passage, std::vector<study::TagId> tags);
-
-  // Every passage carrying `id`, across publications, via the reverse index.
-  struct TaggedHit {
-    std::string pubKey;
-    uint8_t segment;
-    study::TaggedPassage passage;
-  };
-  std::vector<TaggedHit> passagesWithTag(study::TagId id);
-
-  bool save();
+  bool saveDisabled() const { return saveDisabled_; }
 
  private:
   StudyStore() = default;
+  bool save();
 
   study::TagPalette palette_;
   study::PassageDoc passages_;
   std::string pubKey_;
-  uint8_t segment_ = 0;
-  bool dirty_ = false;
+  bool saveDisabled_ = false;
   std::unique_ptr<UnitIndexCache> units_;
 };
 
 #define STUDY StudyStore::getInstance()
 ```
 
-- [ ] **Step 5: Implement `StudyStore.cpp`.** Three rules the implementer must hold:
+- [ ] **Step 5: Implement `StudyStore.cpp`.** The degradation rule, exactly as the
+      spec's table states it:
 
-  1. **Switching segment saves first.** Moving from Psalms to Proverbs loads a
-     different passages file; the outgoing one is saved if dirty, before the
-     incoming one is read. Losing a mark to a book change is the worst bug this
-     phase could ship.
-  2. **`passagesInDocument` never writes and never rebuilds the index eagerly.**
-     It is on the page-turn path.
-  3. **Degradation follows the spec's table exactly:** fingerprint matches and
-     offsets fit → paint the span; fingerprint matches and offsets do not fit →
-     paint the whole unit; **fingerprint differs → paint nothing** and leave it
-     for the tag list to surface as *el texto cambió*.
+  | Fingerprint | Offsets | Behaviour |
+  |---|---|---|
+  | matches | fit | paint the span |
+  | matches | do not fit | `wholeUnit = true`; paint the unit |
+  | **differs** | — | **return nothing**; the mark is not painted |
+
+  Every mutator saves synchronously and reverts its in-memory change if the save
+  fails, returning false so the caller can tell the user. `passagesInDocument`
+  never writes and never triggers an index build beyond the one document it was
+  asked about.
 
 - [ ] **Step 6: Build and commit**
 
@@ -3012,230 +3417,92 @@ class StudyStore {
 /Volumes/stein/.platformio/penv/bin/pio run -e x4pro
 ./bin/clang-format-fix -g
 git add src/study
-git commit -m "feat: add the study store and its atomic, budgeted files"
+git commit -m "feat: add the study store over atomic, streamed files"
 ```
 
 ---
 
-## Task 11: The reverse index
+## Task 13: Recovering a book path from a legacy store filename
 
-`/.berean/tagindex/<tagid>.bin` — a cache of a question the passages files can
-always answer, so it is **rebuilt on mismatch, never patched**. A corrupt index
-is a slow query; a trusted-but-wrong index is wrong data, and the web server's
-`POST /delete` (`CrossPointWebServer.cpp:164`) can remove a passages file behind
-its back.
-
-**Files:**
-- Create: `src/study/TagIndexFile.{h,cpp}`
-- Create: `lib/StudyStore/TagIndexFormat.{h,cpp}`, `test/tag_index_format/`
-
-```
-Header (16 bytes)
-  magic        uint32   'B','T','I','1'
-  version      uint16
-  entryCount   uint16
-  generation   uint32   bumped by every passages write
-  reserved     uint32
-
-Entry (variable)
-  pubKeyLen    uint8
-  pubKey       char[pubKeyLen]
-  segment      uint8
-  passageIndex uint16
-```
-
-- [ ] **Step 1: Host-test the format** — round trip, wrong magic rejected, future
-      version rejected, generation mismatch reported as stale, a truncated file
-      reported as stale rather than parsed into garbage. Five tests.
-
-- [ ] **Step 2: Implement `TagIndexFile`** with one entry point the store calls:
-
-```cpp
-// Returns the hits for `id`, rebuilding the index from the passages files first
-// when the stored generation disagrees with the store's. Rebuild for the user's
-// real data (one publication, 63 passages) is milliseconds.
-std::vector<StudyStore::TaggedHit> lookup(study::TagId id, uint32_t currentGeneration);
-```
-
-- [ ] **Step 3: Build, run the host suite, commit**
-
-```bash
-cd test && cmake --build build && ctest --test-dir build --output-on-failure
-cd .. && /Volumes/stein/.platformio/penv/bin/pio run -e x4pro
-./bin/clang-format-fix -g
-git add lib/StudyStore/TagIndexFormat.h lib/StudyStore/TagIndexFormat.cpp src/study/TagIndexFile.h src/study/TagIndexFile.cpp test/tag_index_format test/CMakeLists.txt
-git commit -m "feat: add the rebuildable reverse tag index"
-```
-
----
-
-## Task 12: The migration runner and its report
-
-Resumable and idempotent by construction: one source file at a time, renamed to
-`<name>.json.migrated` on success. A battery death mid-migration resumes exactly
-where it stopped, because the rename is the commit.
-
-**The old store is never deleted.** It is the only rollback, and an OTA rollback
-to a Phase 0 build across `app0`/`app1` is a real path — one this device has
-already exercised twice.
+The defect that would have shipped a silently useless migration. Task 12 of the
+first draft asserted "the source filename is a flattened book path, so the book
+path is recoverable." `pathflatten::toCacheName` erases the first character, maps
+both `/` and `\` to `_` — indistinguishable from a literal underscore — and drops
+everything from the last dot. Three lossy transforms, documented in its own
+header.
 
 **Files:**
-- Create: `src/study/MigrationRunner.{h,cpp}`
-- Modify: `src/main.cpp` (call it once at boot), `src/network/CrossPointWebServer.cpp` (serve the report)
+- Create: `src/study/BookPathIndex.{h,cpp}`
 
-- [ ] **Step 1: Write `src/study/MigrationRunner.h`**
+- [ ] **Step 1: Write the header**
 
 ```cpp
 #pragma once
 
-#include <cstdint>
+#include <optional>
 #include <string>
 
-// Migrates /.crosspoint/highlights/*.json into the /.berean/ study store.
-//
-// Resumable: each source file is renamed to <name>.json.migrated only after its
-// passages are safely written, so an interrupted run resumes at the first file
-// without that suffix. Idempotent: a file already renamed is skipped.
-//
-// The old store is NEVER deleted. An OTA rollback to a pre-Phase-1 build must
-// still find the user's data.
-namespace MigrationRunner {
+// Recovers the book path a /.crosspoint/highlights/<name>.json file was named
+// after. toCacheName is lossy in three ways, so this cannot be inverted -- it is
+// resolved by walking the card and re-flattening each candidate until one
+// matches, which is exact by construction.
+namespace BookPathIndex {
 
-struct Summary {
-  uint16_t sourceFiles = 0;
-  uint16_t highlightsRead = 0;
-  uint16_t passagesWritten = 0;
-  uint16_t referenceMismatches = 0;
-  uint16_t pendingUpgrade = 0;
-  uint16_t dropped = 0;
-  uint16_t tagsAdopted = 0;
-};
+// The EPUB whose flattened name equals `flattenedStem`, or nullopt when no file
+// on the card produces it. Searches the configured download folder first, then
+// the card root, at a bounded depth.
+std::optional<std::string> resolve(const std::string& flattenedStem);
 
-// Runs any pending migration. Returns false only on a failure that left the
-// store inconsistent; "nothing to do" is true. Safe to call on every boot.
-bool runIfPending(Summary& summary);
-
-// True when at least one un-migrated source file exists.
-bool pending();
-
-inline constexpr const char* REPORT_PATH = "/.berean/migration-report.json";
-
-}  // namespace MigrationRunner
+}  // namespace BookPathIndex
 ```
 
-- [ ] **Step 2: Implement `MigrationRunner.cpp`.** Per source file:
+- [ ] **Step 2: Implement it.** Enumerate `*.epub` under `SETTINGS.downloadFolder`
+      and the root (depth 2 is enough for how this card is organised), compute
+      `pathflatten::toCacheName` for each, and compare. Ambiguity — two files
+      flattening to the same stem — resolves to **no match**, not a guess: a
+      wrong EPUB would address every passage into the wrong book.
 
-  1. Load it with the **existing** `HighlightFile::load`. On `Failed`, record the
-     file in the report and **skip it without renaming** — the data may still be
-     there and a rename would strand it.
-  2. Derive the pubkey. The source filename is a flattened book path, so the
-     book path is recoverable; open the EPUB if present to get the Bible flag.
-     If the EPUB is absent, `sourceAvailable = false` and every passage in that
-     file migrates as `PendingUpgrade`.
-  3. `study::adoptTagNames(palette, doc.tags())` **first**, so tags the user
-     defined but never applied survive. The user has two of these.
-  4. For each highlight, call `study::planMigration` and add the resulting
-     passage to the right `(pubKey, segment)` document.
-  5. Save every touched passages file and the palette. **Only if every save
-     returned `Ok`**, rename the source to `<name>.json.migrated`.
-  6. Append a report row.
-
-  Call `vTaskDelay(1)` between source files. The user's real run is one file,
-  50 documents and 63 passages — about 1.5 seconds.
-
-- [ ] **Step 3: Write the report.** `/.berean/migration-report.json`:
-
-```json
-{
-  "v": 1,
-  "ranAt": 1789345983,
-  "summary": {
-    "sourceFiles": 1, "highlightsRead": 63, "passagesWritten": 63,
-    "referenceMismatches": 0, "pendingUpgrade": 0, "dropped": 0, "tagsAdopted": 48
-  },
-  "files": [
-    {
-      "source": "Traduccion del Nuevo Mundo (nwt-S) - WATCHTOWER.json",
-      "pubKey": "bible",
-      "read": 63, "written": 63, "mismatches": 0, "pending": 0,
-      "drops": []
-    }
-  ]
-}
-```
-
-  The report is budgeted like every other store: if it would exceed
-  `persist::DEFAULT_SAVE_BUDGET`, write the summary and the first N file rows
-  plus a `"truncated": true` flag. A report that refuses to save would be an
-  absurd way to fail a successful migration.
-
-- [ ] **Step 4: Call it at boot.** In `src/main.cpp`, after storage is up and
-      before the first activity is entered:
-
-```cpp
-MigrationRunner::Summary migrationSummary;
-if (MigrationRunner::pending()) {
-  LOG_INF("MIGRATE", "Migrating study data...");
-  if (!MigrationRunner::runIfPending(migrationSummary)) {
-    LOG_ERR("MIGRATE", "Migration incomplete; old store retained");
-  }
-  LOG_INF("MIGRATE", "read=%u written=%u mismatches=%u pending=%u dropped=%u tags=%u",
-          migrationSummary.highlightsRead, migrationSummary.passagesWritten,
-          migrationSummary.referenceMismatches, migrationSummary.pendingUpgrade,
-          migrationSummary.dropped, migrationSummary.tagsAdopted);
-}
-```
-
-- [ ] **Step 5: Serve the report.** The web server already serves arbitrary SD
-      paths through `/download`, so the report is reachable without new code —
-      but it needs to be *findable*. Add one route beside the others at
-      `CrossPointWebServer.cpp:148`:
-
-```cpp
-server->on("/migration", HTTP_GET, [this] { handleMigrationReport(); });
-```
-
-  `handleMigrationReport` streams `MigrationRunner::REPORT_PATH` as
-  `application/json`, or returns 404 with `{"status":"no migration has run"}`.
-
-- [ ] **Step 6: Build, flash nothing yet, commit**
+- [ ] **Step 3: Build and commit**
 
 ```bash
 /Volumes/stein/.platformio/penv/bin/pio run -e x4pro
 ./bin/clang-format-fix -g
-git add src/study/MigrationRunner.h src/study/MigrationRunner.cpp src/main.cpp src/network/CrossPointWebServer.cpp
-git commit -m "feat: migrate the legacy highlight store into the study store"
+git add src/study/BookPathIndex.h src/study/BookPathIndex.cpp
+git commit -m "feat: recover a book path from a flattened store filename"
 ```
 
 ---
 
-## Task 13: Rewire the five activities
+## Task 14: Rewire the five activities — before the migration runs
 
-The blast radius is contained — `HighlightDoc` reaches exactly five activities:
+**Reordered.** The first draft migrated at Task 12 and rewired at Task 13, so any
+build flashed between them read through `HighlightFile` after the sources had
+been consumed — reporting `Empty`, which means "safe to save over", so one new
+highlight would write a fresh file over the migrated-away data.
 
 | File | What changes |
 |---|---|
-| `src/activities/reader/EpubReaderActivity.{h,cpp}` | Loads `STUDY.openPublication(epub)` instead of `HighlightFile::load`; the paint pass asks `STUDY.passagesInDocument(spine)` |
-| `src/activities/reader/PassageSelectActivity.{h,cpp}` | Emits a document offset range; `STUDY.addPassage` turns it into a Unit |
-| `src/activities/reader/TagPickerActivity.{h,cpp}` | Reads `STUDY.palette()` rather than a per-book palette |
-| `src/activities/reader/HighlightsActivity.{h,cpp}` | Lists `STUDY` passages for the open publication |
-| `src/activities/reader/TagFilterActivity.{h,cpp}` | Filters through `STUDY.passagesWithTag(id)` — now across publications |
+| `EpubReaderActivity.{h,cpp}` | `STUDY.openPublication(epub)`; paint pass asks `STUDY.passagesInDocument(spine)`; keeps the `BOARD_HAS_PSRAM` gate and the save latch |
+| `PassageSelectActivity.{h,cpp}` | Emits a document offset range into `STUDY.addPassage` |
+| `TagPickerActivity.{h,cpp}` | Reads `STUDY.palette()`; selection becomes `std::vector<study::TagId>` |
+| `HighlightsActivity.{h,cpp}` | Lists `STUDY.passages()` for the open publication |
+| `TagFilterActivity.{h,cpp}` | Long-press now calls `STUDY.retireTag` — **retire, not delete** |
+| `ActivityResult.h` | Its tag payload carries ids, not indices into `HighlightDoc::tags()` |
 
-**Every screen keeps its current layout.** This is a data-source swap, not a
-redesign; the launcher and the new sections are Phase 2. If a row moves, a font
-changes or a list reorders, that is a regression in this task.
+**Every screen keeps its current layout.** If a row moves, a list reorders or a
+count changes, that is a regression in this task.
 
-- [ ] **Step 1: `EpubReaderActivity` first**, because it owns the lifecycle. Replace
-      the `HighlightDoc` member with the `STUDY` calls, keeping the same paint
-      geometry. Build.
-- [ ] **Step 2: `PassageSelectActivity`.** It already produces a
-      `VisibleRange`; route it into `STUDY.addPassage`. Build.
-- [ ] **Step 3: `TagPickerActivity`.** The palette is now global and ids are
-      `study::TagId`, not indices into a per-book vector. **This is the one place
-      an off-by-one becomes a wrong tag on a real passage** — the old model used
-      positional indices, the new one uses allocated ids, and they are not
-      interchangeable. Build.
-- [ ] **Step 4: `HighlightsActivity` and `TagFilterActivity`.** Build.
+- [ ] **Step 1: `EpubReaderActivity`** — the lifecycle owner. Build.
+- [ ] **Step 2: `PassageSelectActivity`.** Note its stored `end` is *the last
+      word's start offset + 1* (`PassageSelectActivity.cpp:377-378`), a semantic
+      that holds today only because `VisibleRange::contains` is half-open on word
+      starts. `StudyStore::addPassage` must document and preserve it, or every
+      mark shifts by one word — invisible to every host test. Build.
+- [ ] **Step 3: `TagPickerActivity` and `ActivityResult.h`.** The index-to-id
+      boundary. `study::TagId` is a scoped enum precisely so a mis-wiring here is
+      a compile error rather than a wrong tag on a real passage. Build.
+- [ ] **Step 4: `HighlightsActivity` and `TagFilterActivity`.** Confirm the
+      long-press path retires and cannot remove a passage. Build.
 - [ ] **Step 5: Delete nothing.** `HighlightDoc`, `HighlightFile` and
       `HighlightFileAction` stay compiled — the migration reads through them and
       their host tests stay green.
@@ -3249,150 +3516,260 @@ cd .. && /Volumes/stein/.platformio/penv/bin/pio run -e x4pro
 git add -A && git commit -m "refactor: point the reader activities at the study store"
 ```
 
-  `pio check` is not optional. Skipping it in Phase 0 is what put two
-  `duplicateBreak` failures into CI.
+  `pio check` is not optional — skipping it in Phase 0 put two `duplicateBreak`
+  failures into CI.
 
 ---
 
-## Task 14: The offline dry run, made repeatable
-
-The migration was dry-run against the user's real backup before this plan
-existed: all 63 passages resolved and all 63 agreed with their stored reference.
-That run was a throwaway. This task makes it a tool, so the same check can be
-repeated against the real data after every change to the planner — without a
-device, and without checking copyrighted text into the repo.
+## Task 15: The migration runner, its ledger and its report
 
 **Files:**
-- Create: `scripts/migration_dryrun.py`, `tools/migration_dryrun/main.cpp`, `tools/migration_dryrun/CMakeLists.txt`
+- Create: `src/study/MigrationRunner.{h,cpp}`
+- Modify: `src/main.cpp`, `src/network/CrossPointWebServer.cpp`, `src/activities/meetings/MeetingDownloadActivity.cpp`
 
-**Nothing in this task is committed with data in it.** The publication markup and
-the passage text are the user's copy of a copyrighted translation; the tool reads
-them from paths given on the command line and the repo stores neither.
+### The rename is gone
 
-- [ ] **Step 1: Write `scripts/migration_dryrun.py`** — reads an extracted EPUB's
-      OPF to build the spine, reads a legacy highlights JSON, and emits a TSV of
-      `spineIndex, start, end, ref, documentPath` plus a book number derived from
-      the position of the document's book in `biblebooknav.xhtml`.
+The first draft renamed each source to `<name>.json.migrated` as its commit
+point. That is resumable, and it **voids the rollback the spec calls
+non-negotiable**: a Phase 0 build resolves
+`pathflatten::toCacheName(bookPath) + ".json"`, finds nothing, reports `Empty` —
+which means "safe to save over" — and the user's data is one highlight away from
+being overwritten by the older firmware.
 
-- [ ] **Step 2: Write `tools/migration_dryrun/main.cpp`** — links the real
-      `MigrationPlanner`, `UnitAnchors`, `VerseAnchors`, `ParagraphAnchors` and
-      expat, reads the TSV, and prints one line per passage plus a summary:
+Progress lives in `/.berean/migration-ledger.json` instead: a list of source
+filenames already migrated, with the byte size and passage count each had. The
+old directory is not touched at all. Resumability is unchanged; the rollback
+survives.
 
+- [ ] **Step 1: Write the header**
+
+```cpp
+#pragma once
+
+#include <cstdint>
+
+namespace MigrationRunner {
+
+struct Summary {
+  uint16_t sourceFiles = 0;
+  uint16_t highlightsRead = 0;
+  uint16_t passagesWritten = 0;   // counted from the store AFTER a successful save
+  uint16_t addressedVerse = 0;
+  uint16_t addressedParagraph = 0;
+  uint16_t addressedDocumentOffset = 0;
+  uint16_t referenceMismatches = 0;
+  uint16_t pendingUpgrade = 0;
+  uint16_t dropped = 0;
+  uint16_t tagsAdopted = 0;
+};
+
+bool runIfPending(Summary& summary);
+bool pending();
+
+inline constexpr const char* REPORT_PATH = "/.berean/migration-report.json";
+inline constexpr const char* LEDGER_PATH = "/.berean/migration-ledger.json";
+
+}  // namespace MigrationRunner
 ```
- total=63  resolved=63  mismatch=0  document-offset=0  pending=0  dropped=0
+
+  The `addressed*` breakdown is the fix for the defect that made the first
+  draft's checklist worthless: a migration that resolved nothing still reported
+  `written=63`. `addressedVerse` is the number that says the phase worked.
+
+- [ ] **Step 2: Implement the per-file pass**
+
+  1. Load with the existing `HighlightFile::load`. On `Failed`, record it and
+     **skip without ledgering** — the data may still be there.
+  2. `BookPathIndex::resolve(stem)` for the book path. If it resolves, open the
+     EPUB for the Bible flag and the unit index; if not, `sourceAvailable =
+     false` and every passage migrates `pendingUpgrade`.
+  3. `study::adoptTagNames(palette, doc.tags())` **first**, so the user's two
+     defined-but-unused tags survive.
+  4. `study::planMigration` per highlight; add each result to the store.
+  5. Save the passages file and the palette. **Count `passagesWritten` from the
+     store after the save returns `Ok`**, never from the planner's outcomes — the
+     planner can say `Resolved` for a passage that `PassageDoc::add` then
+     refuses.
+  6. Append to the ledger only when every save returned `Ok`.
+
+  `vTaskDelay(1)` between documents, not between source files: there is one
+  source file, and 50 documents at ~30 ms is comfortable while 200 would not be.
+
+- [ ] **Step 3: Write the report.** `/.berean/migration-report.json`:
+
+```json
+{
+  "v": 1,
+  "summary": {
+    "sourceFiles": 1, "highlightsRead": 63, "passagesWritten": 63,
+    "addressedVerse": 63, "addressedParagraph": 0, "addressedDocumentOffset": 0,
+    "referenceMismatches": 0, "pendingUpgrade": 0, "dropped": 0, "tagsAdopted": 48
+  },
+  "files": [
+    { "source": "…nwt-S… .json", "pubKey": "bible", "bookPath": "/books/…epub",
+      "read": 63, "written": 63, "verse": 63, "mismatches": 0, "pending": 0, "drops": [] }
+  ]
+}
 ```
 
-  Exit non-zero when `mismatch > 0`, so it can gate a change to the planner.
+  Budgeted like every other store: over budget, write the summary plus the first
+  N file rows and a `"truncated": true` flag. A report that refuses to save would
+  be an absurd way to fail a successful migration.
 
-- [ ] **Step 3: Run it against the real backup**
+- [ ] **Step 4: Call it at boot**, in `src/main.cpp` after storage is up and before
+      the first activity:
+
+```cpp
+MigrationRunner::Summary migration;
+if (MigrationRunner::pending()) {
+  LOG_INF("MIGRATE", "Migrating study data...");
+  if (!MigrationRunner::runIfPending(migration)) {
+    LOG_ERR("MIGRATE", "Migration incomplete; legacy store untouched");
+  }
+  LOG_INF("MIGRATE", "read=%u written=%u verse=%u para=%u docoff=%u mismatch=%u pending=%u dropped=%u tags=%u",
+          migration.highlightsRead, migration.passagesWritten, migration.addressedVerse,
+          migration.addressedParagraph, migration.addressedDocumentOffset, migration.referenceMismatches,
+          migration.pendingUpgrade, migration.dropped, migration.tagsAdopted);
+}
+```
+
+- [ ] **Step 5: Serve the report.** Beside the other routes near
+      `CrossPointWebServer.cpp:148`:
+
+```cpp
+server->on("/migration", HTTP_GET, [this] { handleMigrationReport(); });
+```
+
+  Streams `REPORT_PATH` as `application/json`, or 404 with
+  `{"status":"no migration has run"}`.
+
+- [ ] **Step 6: Write the pubkey registry when a publication is downloaded.**
+
+  `PubKey.h` specifies `/.berean/pubkeys.json`, and the first draft had nothing
+  writing it — so the two weekly meeting publications, the ones the user actually
+  tags besides the Bible, would get an unstable `local-<flattened path>` key now
+  and a different key when Phase 3 lands, orphaning every tag on them.
+
+  `MeetingDownloadActivity` already knows the symbol, issue and language at
+  download time. On a completed download, record
+  `{ "<book path>": { "s": "w", "i": "202607", "l": "S" } }`. Small, atomic,
+  budgeted.
+
+- [ ] **Step 7: Build and commit**
 
 ```bash
-python3 scripts/migration_dryrun.py \
-  --epub-dir  <extracted nwt_S> \
-  --highlights "/Volumes/stein/Documents/development/personal/berean-os-backup-2026-09-14/highlights/Traducción del Nuevo Mundo (nwt-S) - WATCHTOWER.json" \
-  --out /tmp/dryrun.tsv
-cmake -S tools/migration_dryrun -B /tmp/dryrun-build && cmake --build /tmp/dryrun-build
-/tmp/dryrun-build/migration_dryrun /tmp/dryrun.tsv
-```
-
-  Expected: `total=63  resolved=63  mismatch=0`. **Any other result stops the
-  phase** — it means the planner disagrees with a result already known to be
-  correct.
-
-- [ ] **Step 4: Commit the tool, not the data**
-
-```bash
-git status --short   # confirm no .epub, .xhtml, .tsv or highlights JSON is staged
-git add scripts/migration_dryrun.py tools/migration_dryrun
-git commit -m "test: add a repeatable offline migration dry run"
+/Volumes/stein/.platformio/penv/bin/pio run -e x4pro
+./bin/clang-format-fix -g
+git add src/study/MigrationRunner.h src/study/MigrationRunner.cpp src/main.cpp src/network/CrossPointWebServer.cpp src/activities/meetings/MeetingDownloadActivity.cpp
+git commit -m "feat: migrate the legacy highlight store, leaving it intact"
 ```
 
 ---
 
-## Task 15: Device verification
+## Task 16: Device verification
 
 Human-tester scope. Do this **before** telling the user the phase is ready, and
 report the numbers rather than a claim.
 
-- [ ] **Step 1: Back up the device again.** The card holds the only copy of the
-      user's study data, and this is the first build that writes a new store.
+- [ ] **Step 0: Back up the card — before any of this phase is flashed.**
 
 ```bash
 curl -s "http://<device-ip>/download?path=/.crosspoint/highlights/<file>.json" -o pre-migration.json
+python3 -c "import json;d=json.load(open('pre-migration.json'));print(len(d.get('t',[])),'tags',len(d.get('h',[])),'passages')"
 ```
 
-- [ ] **Step 2: Build and side-load a dev build** (OTA installs the release build,
-      which has `LOG_LEVEL=0` and no serial output — useless for a first run):
+  Expected: `48 tags 63 passages`.
+
+- [ ] **Step 1: Side-load a dev build.** OTA installs the release build, which has
+      `LOG_LEVEL=0` and no serial output — useless for a first run.
 
 ```bash
 /Volumes/stein/.platformio/penv/bin/pio run -e x4pro
 curl -H "Expect:" -F "file=@.pio/build/x4pro/firmware.bin" "http://<device-ip>/upload?path=/"
 ```
 
-  Then *Settings → SD firmware update*. The `Expect:` header suppression is not
-  optional — the ESP32 web server never answers `100-continue` and the transfer
-  hangs.
+  Then *Settings → SD firmware update*. The `Expect:` suppression is required —
+  the ESP32 web server never answers `100-continue` and the transfer hangs.
 
-- [ ] **Step 3: Watch the migration in the serial log**
+- [ ] **Step 2: Watch the migration**
 
 ```bash
 cat /dev/cu.usbmodem31101 > serial.log &
 ```
 
-  Expected: `read=63 written=63 mismatches=0 pending=0 dropped=0 tags=48`.
-  Never pass a baud rate to this transport — the native USB-JTAG bridge has no
-  line settings and both `pio device monitor` and a baud-overridden `esptool`
-  fail on it.
+  Expected: `read=63 written=63 verse=63 para=0 docoff=0 mismatch=0 pending=0 dropped=0 tags=48`.
 
-- [ ] **Step 4: Read the report over the web server**
+  **`verse=63` is the acceptance criterion, not `written=63`.** A run reporting
+  `written=63 docoff=63` means the migration found no EPUB and addressed nothing
+  — and would paint identically, which is exactly how the first draft's checklist
+  could have passed on a failure.
+
+  Never pass a baud rate to this transport; the native USB-JTAG bridge has no
+  line settings.
+
+- [ ] **Step 3: Read the report**
 
 ```bash
 curl -s "http://<device-ip>/migration" | python3 -m json.tool
 ```
 
-- [ ] **Step 5: Check the four things that would mean data loss**
+- [ ] **Step 4: The checks that would catch data loss**
 
   | Check | Expected |
   |---|---|
-  | `/.crosspoint/highlights/<file>.json.migrated` exists | yes — renamed, not deleted |
-  | Tag list shows every name | **48**, including `igualdad` and `transformación` |
-  | Passage count | **63** |
-  | A marked verse still paints in the reader | the same span, not the whole verse |
+  | `/.crosspoint/highlights/<file>.json` still present, unrenamed | yes — the rollback |
+  | `summary.addressedVerse` | **63** |
+  | Tag list | **48** names, including `igualdad` and `transformación` |
+  | Passage list for the open book | **63** |
+  | A marked verse paints the same span | yes, not the whole verse |
+  | Long-press a tag in the filter row | tag disappears from pickers; **passage count unchanged** |
+  | Power-cycle | migration does not run again |
 
-- [ ] **Step 6: Confirm the fallback still exists.** Power-cycle and confirm the
-      migration does **not** run twice (the summary should not reappear in the log).
-
-- [ ] **Step 7: Report the numbers to the user** — the report JSON and the four
-      checks above, not a summary claim.
+- [ ] **Step 5: Report the numbers to the user** — the report JSON and this table,
+      not a summary claim.
 
 ---
 
 ## Self-review
 
-**Spec coverage.** Every Phase 1 line of the spec's build order maps to a task:
-unified `Unit` type → Task 1; `data-pid` scanner → Task 2; unit index → Tasks 9;
-tag store → Tasks 5, 7, 10; reverse index → Task 11; migration → Tasks 8, 12.
-The acceptance criterion — "`migration-report.json` served over the web server;
-old store retained" — is Task 12 Step 5 and Task 15 Step 5.
+**Spec coverage.** Unified `Unit` → Task 1; `data-pid` scanner → Task 2; unit
+index → Task 11; tag store → Tasks 6, 8, 12; migration → Tasks 9, 13, 15. The
+acceptance criterion — "`migration-report.json` served over the web server; old
+store retained" — is Task 15 Steps 3–5 and Task 16 Step 4.
 
-**Deviations from the spec, all deliberate and argued above:**
+**Deviations from the spec, all argued above:**
 
-1. `Unit` gains a `book` field. Without it the Bible's language-free pubkey does
+1. `Unit` gains a `book` field; without it the Bible's language-free pubkey does
    not work and Genesis 1:1 collides with Matthew 1:1.
-2. Passages shard by Bible book, because one `bible` file hits the byte budget
-   at ~150 passages and the user has 63 already.
-3. Migration defers address resolution when the EPUB is absent rather than
-   requiring it, so a missing card never costs a passage.
-4. The reverse index is rebuilt on generation mismatch rather than patched.
+2. The passages file is streamed rather than sharded.
+3. Migration defers address resolution when the EPUB cannot be found, and the
+   report distinguishes deferred from resolved.
+4. Progress is a ledger, not a rename, so the spec's rollback promise holds.
+5. Palette deletion is retire-only; no palette operation removes a passage.
+6. **The reverse index moves to Phase 3.** At one publication and 63 passages a
+   full scan is milliseconds, while the index costs a rebuild on every tag edit
+   (its entries are positional, so any edit invalidates it) and still opens the
+   passages files to materialise results. The spec's own justification is "at 100
+   publications" — which is what Phase 3 creates.
 
-**Known gaps carried forward, not silently dropped:**
+**Open items carried forward, not dropped:**
 
-- The spec's open item on whether a passage may exist with zero tags is
-  **answered no** here, matching the current model and the user's real data (0
-  of 63 untagged). Task 7 encodes it, and a reserved tag id 0 remains available
-  if Phase 2 wants to revisit it.
-- Document-filename stability under a corrected reissue is still unverified. The
-  `documentSpine` fallback stands on that uncertainty. Unchanged by this phase.
+- **Whether `bible` is safe across translations is unresolved.** A non-NWT Bible
+  with a different canon order shifts every book number, and Psalm superscription
+  numbering differs between translations by one verse across ~100 psalms — which
+  the fingerprint would turn into "paint nothing" for exactly the cross-language
+  comparison the language-free key exists to serve. Phase 1 ships with `bible`
+  gated on a 66-entry book-nav that matches the canonical order, and anything
+  else getting a per-publication key. **Revisit before a second translation is
+  ever loaded.**
+- The fingerprint covers the start and end units only; a change strictly inside a
+  multi-unit span is not detected. Spans are 47–268 codepoints against verses of
+  similar size, so this is a minority of passages, but it is real.
+- "Paint nothing" has no UI surface until Phase 2, so a changed passage silently
+  stops painting while still appearing in the list. Phase 2 owns *el texto
+  cambió*.
+- Document-filename stability under a corrected reissue remains unverified; the
+  `documentSpine` fallback stands on that uncertainty.
 - `ReturnStack` capacity remains a Phase 2 decision.
 
 ---
@@ -3400,6 +3777,5 @@ old store retained" — is Task 12 Step 5 and Task 15 Step 5.
 ## What comes after
 
 Phase 2 (launcher shell, four sections, the new input model, two-tap selection,
-`MappedInputManager` deleted) and Phase 3 (Buscar) each get their own plan,
-written once this one lands — their details depend on what the store actually
-looks like in practice.
+`MappedInputManager` deleted) and Phase 3 (Buscar, and the reverse index that
+earns its place there) each get their own plan, written once this one lands.
