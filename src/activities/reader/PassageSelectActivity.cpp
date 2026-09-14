@@ -44,7 +44,7 @@ void PassageSelectActivity::onEnter() {
   // Worst case for the differential outline snapshot: a selection line can
   // span the full screen width, one line-height tall per selected line, up to
   // MAX_SELECTED_SNAPSHOT_LINES lines. This is this class's own worst case --
-  // DictionaryWordSelectActivity::SNAPSHOT_CAPACITY is sized for one word and
+  // A single-word snapshot capacity would be sized for one word and
   // raising it there would do nothing here, since this class isn't derived
   // from it. +8px covers screenRectToAlignedMemRect's byte alignment, which
   // can round the left edge down and the right edge up by up to 7px each.
@@ -76,7 +76,7 @@ void PassageSelectActivity::extractWords() {
   rowCount = 0;
 
   // Mirrors HighlightOverlay::buildRects: every token is a selectable anchor
-  // point (not just DictionaryWordSelectActivity's isSelectableToken subset),
+  // point (not just a narrower selectable-token subset),
   // and every position comes from the block's own stored layout, never
   // getTextAdvanceX -- see Constraints in the highlights UI plan.
   for (const auto& element : page->elements) {

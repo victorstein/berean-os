@@ -220,7 +220,7 @@ void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
 
 // The reader's one message toast, shared so PassageSelectActivity,
 // TagPickerActivity and HighlightsActivity all route through this instead of
-// each rolling its own popup+pending-flag dance, as DictionaryWordSelectActivity
+// each rolling its own popup+pending-flag dance, as the word-select screen
 // does. Fire-and-forget: overlays the framebuffer and refreshes the display
 // itself, exactly like the GUI.drawPopup call it wraps, so callers must not
 // assume the surface is still clean afterward.

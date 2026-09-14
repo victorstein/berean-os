@@ -60,7 +60,7 @@ class PassageSelectActivity final : public Activity {
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
   // Redraws the reader's page underneath the selection, so it follows the
-  // reading surface's night-mode polarity like DictionaryWordSelectActivity.
+  // reading surface's night-mode polarity.
   bool appliesNightMode() const override { return true; }
 
  private:
@@ -152,7 +152,7 @@ class PassageSelectActivity final : public Activity {
   // bounding box (border included), so a cursor move restores them and
   // redraws just the new outline instead of a full two-pass page render.
   // Sized from this class's own worst case -- widthBytes x lineHeight x
-  // MAX_SELECTED_SNAPSHOT_LINES -- never DictionaryWordSelectActivity's
+  // MAX_SELECTED_SNAPSHOT_LINES -- never a single-word
   // SNAPSHOT_CAPACITY, which is sized for one word. Allocated with
   // makeUniqueNoThrow: on a non-PSRAM board a large allocation can genuinely
   // fail, and when it does, `snapshot` stays null, `snapshotValid` stays

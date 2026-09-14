@@ -150,7 +150,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LP_MENU_KOSYNC = 0,
     LP_MENU_DISABLED = 1,
     LP_MENU_BOOKMARK = 2,
-    LP_MENU_DICTIONARY = 3,
+    // 3 was LP_MENU_DICTIONARY. The gap is deliberate: this value is persisted
+    // by number, so renumbering the members below it would silently rebind
+    // every user whose long-press is set to one of them.
     LP_MENU_READER_MENU = 4,
     // Choosing this replaces whatever function was previously bound to
     // long-press -- this setting is a single choice, not additive. Offered on
@@ -287,8 +289,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t focusReadingEnabled = 0;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
-  // Dictionary folder name under /dictionaries (empty = no dictionary)
-  char dictionaryName[32] = "";
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
   uint8_t showHiddenFiles = 0;
   // Remove a book from the Recent Books list when its End-of-Book screen is reached (0 = off, 1 = on)

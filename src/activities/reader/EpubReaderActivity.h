@@ -40,8 +40,6 @@ class EpubReaderActivity final : public ReaderActivity {
   bool skipNextButtonCheck = false;
   bool automaticPageTurnActive = false;
   bool showBookmarkMessage = false;
-  bool showDictionaryMessage = false;
-  unsigned long dictionaryMessageTime = 0UL;
   bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
@@ -105,7 +103,6 @@ class EpubReaderActivity final : public ReaderActivity {
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
   void openReaderMenu();
-  void openDictionaryWordSelect();
   void openHighlightPassage();
   void openHighlights();
   bool launchKOReaderSync();

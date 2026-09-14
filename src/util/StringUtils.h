@@ -14,7 +14,7 @@ namespace StringUtils {
  * Plain strcmp would land a binary search on the wrong page for any word whose
  * alphabetic neighbourhood contains mixed-case boundaries.
  *
- * Inline (header) because Dictionary's binary search calls it per comparison
+ * Inline (header) because hot lookup paths call it per comparison
  * step; a cross-TU call here would defeat inlining on a hot path.
  */
 inline int asciiCaseCmp(const char* a, const char* b) {

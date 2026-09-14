@@ -27,7 +27,6 @@ class EpubReaderMenuActivity final : public UiListActivity {
     GO_HOME,
     SYNC,
     DELETE_CACHE,
-    DICTIONARY,
     HIGHLIGHT_PASSAGE,
     HIGHLIGHTS
   };

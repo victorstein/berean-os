@@ -26,7 +26,6 @@
 #include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
-#include "DictionaryWordSelectActivity.h"
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
 #include "EpubReaderFootnotesActivity.h"
@@ -313,28 +312,6 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   buildPopupPending = false;
 }
 
-void EpubReaderActivity::openDictionaryWordSelect() {
-  if (SETTINGS.dictionaryName[0] == '\0') {
-    showDictionaryMessage = true;
-    dictionaryMessageTime = millis();
-    requestUpdate();
-    return;
-  }
-  if (!section) return;
-  auto page = section->loadPage(section->currentPage);
-  if (!page) return;
-
-  int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
-  renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
-                                   &orientedMarginLeft);
-  orientedMarginTop += SETTINGS.screenMargin;
-  orientedMarginLeft += SETTINGS.screenMargin;
-
-  startActivityForResult(std::make_unique<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
-                                                                        orientedMarginLeft, orientedMarginTop),
-                         [this](const ActivityResult&) { requestUpdate(); });
-}
-
 void EpubReaderActivity::openHighlightPassage() {
   if (!section) return;
   auto page = section->loadPage(section->currentPage);
@@ -354,8 +331,7 @@ void EpubReaderActivity::openHighlightPassage() {
   // requestUpdate() is all this handler needs: PassageSelectActivity saves
   // directly to the live highlightDoc reference and renderContents recomputes
   // overlay rects from it on every render, so a newly saved highlight appears
-  // on the next repaint with no page turn -- same pattern as
-  // openDictionaryWordSelect above.
+  // on the next repaint with no page turn.
   startActivityForResult(std::make_unique<PassageSelectActivity>(
                              renderer, mappedInput, std::move(page), orientedMarginLeft, orientedMarginTop, columnRight,
                              highlightDoc, epub->getPath(), static_cast<uint16_t>(currentSpineIndex),
@@ -498,11 +474,6 @@ void EpubReaderActivity::loop() {
     requestUpdate();
   }
 
-  if (showDictionaryMessage && (millis() - dictionaryMessageTime) >= ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS) {
-    showDictionaryMessage = false;
-    requestUpdate();
-  }
-
   const bool confirmReleased = mappedInput.wasReleased(MappedInputManager::Button::Confirm);
   if (confirmReleased) {
     switch (SETTINGS.longPressMenuFunction) {
@@ -517,12 +488,6 @@ void EpubReaderActivity::loop() {
         break;
       case CrossPointSettings::LP_MENU_KOSYNC:
         if (mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS && launchKOReaderSync()) return;
-        break;
-      case CrossPointSettings::LP_MENU_DICTIONARY:
-        if (mappedInput.getHeldTime() >= ReaderUtils::BOOKMARK_HOLD_MS) {
-          openDictionaryWordSelect();
-          return;
-        }
         break;
       case CrossPointSettings::LP_MENU_READER_MENU:
         // Confirm already opens the menu on release. This option exists for
@@ -555,11 +520,6 @@ void EpubReaderActivity::loop() {
         return;
       case CrossPointSettings::LP_MENU_KOSYNC:
         launchKOReaderSync();
-        return;
-      case CrossPointSettings::LP_MENU_DICTIONARY:
-        if (!showDictionaryMessage) {
-          openDictionaryWordSelect();
-        }
         return;
       case CrossPointSettings::LP_MENU_READER_MENU:
         openReaderMenu();
@@ -846,10 +806,6 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
               jumpToPercent(std::get<PercentResult>(result.data).percent);
             }
           });
-      break;
-    }
-    case EpubReaderMenuActivity::MenuAction::DICTIONARY: {
-      openDictionaryWordSelect();
       break;
     }
     case EpubReaderMenuActivity::MenuAction::HIGHLIGHT_PASSAGE: {
@@ -1387,9 +1343,6 @@ void EpubReaderActivity::renderBook() {
     GUI.drawPopup(renderer, bookmarkRemoved ? tr(STR_BOOKMARK_REMOVED) : tr(STR_BOOKMARK_ADDED));
   }
 
-  if (showDictionaryMessage) {
-    GUI.drawPopup(renderer, tr(STR_DICT_NO_DICT_SET));
-  }
 }
 
 void EpubReaderActivity::onEndOfBookRendered() {

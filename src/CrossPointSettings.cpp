@@ -95,10 +95,6 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   if (sdFontFamilyName[0] != '\0') {
     doc["sdFontFamilyName"] = sdFontFamilyName;
   }
-  // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
-  if (dictionaryName[0] != '\0') {
-    doc["dictionaryName"] = dictionaryName;
-  }
   // Long-press menu function — uses dynamic getter/setter in SettingsList (per-board
   // displayed list vs. raw enum value), so the generic loop skips it. Save manually.
   doc["longPressMenuFunction"] = longPressMenuFunction;
@@ -216,9 +212,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   } else if (storedFontFamily >= BUILTIN_FONT_COUNT) {
     needsResave = true;
   }
-  // Dictionary folder name — uses dynamic getter/setter in SettingsList, load manually
-  copyToField(dictionaryName, doc["dictionaryName"] | "", sizeof(dictionaryName));
-
   // Long-press menu function — uses dynamic getter/setter in SettingsList, load manually.
   // Clamp against LONG_PRESS_MENU_FUNCTION_COUNT (the full raw enum), not against
   // info.enumValues.size() (the per-board displayed list, which can be shorter) -- a

@@ -245,7 +245,7 @@ class GfxRenderer {
   // Flips every pixel in the rect. On a 1bpp panel this turns black text on a
   // white ground into white text on black without reloading or redrawing any
   // glyphs — unlike the fill-then-redraw-white approach in
-  // DictionaryWordSelectActivity, which pays an SD glyph load per word.
+  // per-word selection screens, which pay an SD glyph load per word.
   // No-op outside renderMode == BW: the GRAYSCALE_MSB/GRAYSCALE_LSB planes are
   // sparse "drive to gray" masks, not images, and XOR-ing a rect across one
   // would corrupt anti-aliased glyph edges rather than invert a visible
