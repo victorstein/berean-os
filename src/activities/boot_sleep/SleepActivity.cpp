@@ -794,6 +794,13 @@ void SleepActivity::renderTransparentCustomSleepScreen() const {
 }
 
 void SleepActivity::renderCoverSleepScreen() const {
+  // bereanOS sleeps under the Bible rather than under whatever was last opened.
+  // The device is built around one book, and a sleeping screen showing last
+  // week's Watchtower says something about the last tap rather than about the
+  // device. renderDefaultSleepScreen paints the cached Bible cover; the
+  // last-read cover below remains the fallback when none has been cached yet.
+  if (!APP_STATE.bibleCoverPath.empty()) return renderDefaultSleepScreen();
+
   void (SleepActivity::*renderNoCoverSleepScreen)() const;
   switch (SETTINGS.sleepScreen) {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):
