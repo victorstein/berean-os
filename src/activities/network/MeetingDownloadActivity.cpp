@@ -50,10 +50,10 @@ std::string bookCachePath(const std::string& bookPath) {
   return "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(bookPath));
 }
 
-// Mirrors the OPDS download target: the configured folder, created on demand,
+// The configured download folder, created on demand,
 // falling back to the SD root so a download is never lost to a failed mkdir.
 std::string resolveDownloadFolder() {
-  const char* folder = SETTINGS.opdsDownloadFolder;
+  const char* folder = SETTINGS.downloadFolder;
   if (folder[0] == '\0') return {};
   if (!Storage.exists(folder) && !Storage.mkdir(folder)) {
     LOG_ERR("MEET", "mkdir failed for %s, using SD root", folder);
