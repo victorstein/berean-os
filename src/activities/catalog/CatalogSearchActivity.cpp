@@ -196,8 +196,8 @@ void CatalogSearchActivity::runSearch() {
       resultsTruncated = true;
       break;
     }
-    hits.push_back(Hit{std::string(entry.symbol), std::string(entry.issue), std::string(entry.title),
-                       std::string(entry.year)});
+    hits.push_back(
+        Hit{std::string(entry.symbol), std::string(entry.issue), std::string(entry.title), std::string(entry.year)});
   }
 
   LOG_INF(MODULE, "'%s' matched %u row(s)%s", query.c_str(), static_cast<unsigned>(hits.size()),
@@ -230,7 +230,7 @@ void CatalogSearchActivity::rebuildRowItems() {
     rowSubtitles[queryRow()] = std::string(count) + " " + tr(STR_SEARCH_MATCHES);
   }
 
-  rowLabels[catalogRow()] = store.hasStaged()  ? tr(STR_CATALOG_INSTALL_UPDATE)
+  rowLabels[catalogRow()] = store.hasStaged()       ? tr(STR_CATALOG_INSTALL_UPDATE)
                             : store.stamp().valid() ? tr(STR_CATALOG_CHECK_UPDATE)
                                                     : tr(STR_CATALOG_DOWNLOAD);
   rowSubtitles[catalogRow()] = catalogSubtitle;
@@ -511,6 +511,32 @@ void CatalogSearchActivity::onBackButton() {
 
 // --- Rendering ---------------------------------------------------------------
 
+// drawCenteredText centres on the screen but neither wraps nor truncates, so a
+// string wider than the panel runs off BOTH edges -- it is centred, so the
+// overflow is split between them. Translated sentences and CDN filenames both
+// exceed 480px at UI_10 routinely, so nothing user-supplied reaches it raw.
+void CatalogSearchActivity::drawMessageLine(const char* text, const int y, const EpdFontFamily::Style style) const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int width = renderer.getScreenWidth() - 2 * metrics.contentSidePadding;
+  renderer.drawCenteredText(UI_10_FONT_ID, y, renderer.truncatedText(UI_10_FONT_ID, text, width, style).c_str(), true,
+                            style);
+}
+
+// Wrapped and centred as a block. Used where the message is a whole sentence
+// and the layout has the room, rather than a label beside a progress bar.
+void CatalogSearchActivity::drawMessageBlock(const char* text, const int centreY) const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int width = renderer.getScreenWidth() - 2 * metrics.contentSidePadding;
+  const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  const auto lines = renderer.wrappedText(UI_10_FONT_ID, text, width, 4, EpdFontFamily::BOLD);
+
+  int y = centreY - (static_cast<int>(lines.size()) - 1) * lineHeight / 2;
+  for (const auto& line : lines) {
+    renderer.drawCenteredText(UI_10_FONT_ID, y, line.c_str(), true, EpdFontFamily::BOLD);
+    y += lineHeight;
+  }
+}
+
 void CatalogSearchActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
@@ -527,13 +553,12 @@ void CatalogSearchActivity::render(RenderLock&&) {
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state == State::FETCHING_INDEX || state == State::DOWNLOADING) {
-    renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, statusMessage.c_str());
+    drawMessageLine(statusMessage.c_str(), centerY - lineHeight, EpdFontFamily::REGULAR);
     if (!currentFilename.empty() && state == State::DOWNLOADING) {
-      renderer.drawCenteredText(UI_10_FONT_ID, centerY, currentFilename.c_str());
+      drawMessageLine(currentFilename.c_str(), centerY, EpdFontFamily::REGULAR);
     }
-    const int percent = downloadTotal > 0
-                            ? static_cast<int>(static_cast<uint64_t>(downloadProgress) * 100 / downloadTotal)
-                            : 0;
+    const int percent =
+        downloadTotal > 0 ? static_cast<int>(static_cast<uint64_t>(downloadProgress) * 100 / downloadTotal) : 0;
     GUI.drawProgressBar(renderer,
                         Rect{metrics.contentSidePadding, centerY + lineHeight + metrics.verticalSpacing,
                              pageWidth - metrics.contentSidePadding * 2, metrics.progressBarHeight},
@@ -541,14 +566,14 @@ void CatalogSearchActivity::render(RenderLock&&) {
     const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state == State::COMPLETE) {
-    renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, statusMessage.c_str(), true, EpdFontFamily::BOLD);
+    drawMessageLine(statusMessage.c_str(), centerY - lineHeight, EpdFontFamily::BOLD);
     if (!currentFilename.empty()) {
-      renderer.drawCenteredText(UI_10_FONT_ID, centerY + metrics.verticalSpacing, currentFilename.c_str());
+      drawMessageLine(currentFilename.c_str(), centerY + metrics.verticalSpacing, EpdFontFamily::REGULAR);
     }
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else {
-    renderer.drawCenteredText(UI_10_FONT_ID, centerY, errorMessage.c_str(), true, EpdFontFamily::BOLD);
+    drawMessageBlock(errorMessage.c_str(), centerY);
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }

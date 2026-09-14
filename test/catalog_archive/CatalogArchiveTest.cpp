@@ -11,7 +11,7 @@ namespace {
 // Payload and trailer are filler: these tests are about the container, and the
 // inflate itself is uzlib's job.
 std::vector<uint8_t> member(const uint8_t flags, const std::vector<uint8_t>& optional, const size_t payloadBytes = 4,
-                           const uint32_t isize = 0) {
+                            const uint32_t isize = 0) {
   std::vector<uint8_t> out = {0x1F, 0x8B, 0x08, flags, 0, 0, 0, 0, 0, 0x03};
   out.insert(out.end(), optional.begin(), optional.end());
   out.insert(out.end(), payloadBytes, 0xAA);

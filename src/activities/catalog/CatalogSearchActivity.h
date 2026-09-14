@@ -80,6 +80,8 @@ class CatalogSearchActivity final : public UiListActivity {
   void runCatalogAction();
   void downloadHit(size_t hitIndex);
   void downloadBySymbol(const std::string& symbol, const std::string& issue);
+  void drawMessageLine(const char* text, int y, EpdFontFamily::Style style) const;
+  void drawMessageBlock(const char* text, int centreY) const;
 
   void fail(const char* message);
   // "Catalogo: 12 sep 2026", or the reason there is no date to show.

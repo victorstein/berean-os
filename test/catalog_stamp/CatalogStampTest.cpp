@@ -128,8 +128,8 @@ TEST(CatalogDate, AShortMonthListFallsBackToTheIsoDate) {
 
 TEST(CatalogDate, ExtraSpacesInTheMonthListAreIgnored) {
   char out[32] = "";
-  ASSERT_TRUE(catalog::formatIndexDate("2026-02-03", "  ene   feb  mar abr may jun jul ago sep oct nov dic", out,
-                                       sizeof(out)));
+  ASSERT_TRUE(
+      catalog::formatIndexDate("2026-02-03", "  ene   feb  mar abr may jun jul ago sep oct nov dic", out, sizeof(out)));
   EXPECT_STREQ(out, "3 feb 2026");
 }
 
