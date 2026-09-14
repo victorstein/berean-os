@@ -164,7 +164,11 @@ Result download(const Request& request, const Hooks& hooks, std::string& outPath
     return Result::NoMediaLink;
   }
 
-  const std::string filename = meetingPublicationFilename(media->pubName(), request.issue, media->url());
+  // No issue means a book or brochure, which is named after itself; an issue
+  // means a periodical, where the issue is what keeps two of them apart.
+  const bool hasIssue = request.issue != nullptr && request.issue[0] != '\0';
+  const std::string filename = hasIssue ? meetingPublicationFilename(media->pubName(), request.issue, media->url())
+                                        : publicationFilename(media->pubName(), media->url());
   if (filename.empty()) {
     LOG_ERR(MODULE, "Unusable media url: %s", media->url());
     return Result::NoMediaLink;

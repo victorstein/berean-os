@@ -162,3 +162,25 @@ TEST(MeetingIssueSuffixOf, RoundTripsWithWhatTheDownloaderWrites) {
   const std::string name = meetingPublicationFilename("La Atalaya (ed. estudio)", "202607", "");
   EXPECT_EQ(meetingIssueSuffixOf(name), issueSuffix("202607"));
 }
+
+TEST(PublicationFilename, NamesANonPeriodicalWithoutAnIssue) {
+  // Downloaded by symbol from Buscar: no issue exists, and the CDN's own
+  // spelling ("lff_S.epub") is not what belongs on the card.
+  EXPECT_EQ(publicationFilename("Disfrute de la vida para siempre", "https://x/lff_S.epub"),
+            "Disfrute de la vida para siempre.epub");
+  // '?' is illegal on FAT, so sanitizeFilename swaps it for '_'. The inverted
+  // opening mark is multibyte, not ASCII '?', and survives untouched.
+  EXPECT_EQ(publicationFilename("¿Qué enseña realmente la Biblia?", "https://x/bh_S.epub"),
+            "¿Qué enseña realmente la Biblia_.epub");
+}
+
+TEST(PublicationFilename, StillFallsBackWhenTheApiPublishedNoName) {
+  EXPECT_EQ(publicationFilename("", "https://x/lff_S.epub"), "lff_S.epub");
+  EXPECT_EQ(publicationFilename(nullptr, "https://x/lff_S.epub"), "lff_S.epub");
+}
+
+TEST(PublicationFilename, AnIssuedPublicationStillKeepsTheCdnNameWhenTheIssueIsBad) {
+  // The issue is what keeps two Watchtowers apart, so naming by title alone
+  // would let one overwrite the other. Unchanged by the no-issue form.
+  EXPECT_EQ(meetingPublicationFilename("La Atalaya", "20XX", "https://x/w_S_202607.epub"), "w_S_202607.epub");
+}
