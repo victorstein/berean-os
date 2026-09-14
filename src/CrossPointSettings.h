@@ -147,7 +147,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // CrossPointSettings::toJson/fromJson must handle longPressMenuFunction manually rather than
   // via the generic valuePtr loop -- see the comments there.
   enum LONG_PRESS_MENU_FUNCTION {
-    LP_MENU_KOSYNC = 0,
+    // 0 was LP_MENU_KOSYNC. Deliberate gap -- see LP_MENU_DICTIONARY below.
     LP_MENU_DISABLED = 1,
     LP_MENU_BOOKMARK = 2,
     // 3 was LP_MENU_DICTIONARY. The gap is deliberate: this value is persisted

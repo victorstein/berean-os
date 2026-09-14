@@ -25,7 +25,6 @@ class EpubReaderMenuActivity final : public UiListActivity {
     SCREENSHOT,
     DISPLAY_QR,
     GO_HOME,
-    SYNC,
     DELETE_CACHE,
     HIGHLIGHT_PASSAGE,
     HIGHLIGHTS
