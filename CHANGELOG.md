@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4](https://github.com/victorstein/berean-os/compare/v1.1.3...v1.1.4) (2026-09-14)
+
+
+### Refactor
+
+* stop identifying as CrossPoint to external services ([5e3a2f8](https://github.com/victorstein/berean-os/commit/5e3a2f89f158675c3f5782d6a6ff3c2fe0b2aa00))
+
 ## [1.1.3](https://github.com/victorstein/berean-os/compare/v1.1.2...v1.1.3) (2026-09-14)
 
 
