@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
-#include "study/StudyStore.h"
 #include "components/OptionPopup.h"
+#include "study/StudyStore.h"
 
 // Single-select tag chooser for the highlights browser's filter row. Returns a
 // TagSelectionResult holding no elements for "all tags" or exactly one for a

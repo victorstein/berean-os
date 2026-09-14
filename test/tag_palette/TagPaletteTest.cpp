@@ -1,6 +1,5 @@
-#include <gtest/gtest.h>
-
 #include <ArduinoJson.h>
+#include <gtest/gtest.h>
 
 #include "StudyStore/TagPalette.h"
 

@@ -39,13 +39,13 @@
 #include "QrDisplayActivity.h"
 #include "ReaderActivity.h"
 #include "ReaderUtils.h"
-#include "study/StudyStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SpineHtmlStream.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "study/StudyStore.h"
 #include "util/BookmarkUtil.h"
 #include "util/ScreenshotUtil.h"
 
@@ -326,11 +326,11 @@ void EpubReaderActivity::openHighlightPassage() {
   // directly to the live highlightDoc reference and renderContents recomputes
   // overlay rects from it on every render, so a newly saved highlight appears
   // on the next repaint with no page turn.
-  startActivityForResult(std::make_unique<PassageSelectActivity>(
-                             renderer, mappedInput, std::move(page), orientedMarginLeft, orientedMarginTop, columnRight,
-                             static_cast<uint16_t>(currentSpineIndex), *epub, *section,
-                             static_cast<uint16_t>(section->currentPage)),
-                         [this](const ActivityResult&) { requestUpdate(); });
+  startActivityForResult(
+      std::make_unique<PassageSelectActivity>(renderer, mappedInput, std::move(page), orientedMarginLeft,
+                                              orientedMarginTop, columnRight, static_cast<uint16_t>(currentSpineIndex),
+                                              *epub, *section, static_cast<uint16_t>(section->currentPage)),
+      [this](const ActivityResult&) { requestUpdate(); });
 }
 
 void EpubReaderActivity::openHighlights() {
@@ -343,8 +343,7 @@ void EpubReaderActivity::openHighlights() {
   // reusing its std::get is type-safe -- it is the surrounding side effects
   // that make reuse wrong, not the ResultVariant alternative.
   startActivityForResult(
-      std::make_unique<HighlightsActivity>(renderer, mappedInput),
-      [this](const ActivityResult& result) {
+      std::make_unique<HighlightsActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
         if (result.isCancelled) return;
         const auto& sync = std::get<ProgressChangeResult>(result.data);
         if (!sync.hasVisibleTextOffset || sync.spineIndex < 0 || sync.spineIndex >= epub->getSpineItemsCount()) {

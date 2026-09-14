@@ -16,9 +16,9 @@ inline void draw(const GfxRenderer& renderer, int x, int y, int size) {
   constexpr int OUTLINE = 2;
   constexpr int CORNER = 4;
 
-  const int pageW = size * 5 / 12;   // each page panel
+  const int pageW = size * 5 / 12;  // each page panel
   const int pageH = size * 8 / 15;
-  const int gap = size / 30;         // spine half-width
+  const int gap = size / 30;  // spine half-width
   const int top = y + (size - pageH) / 2;
   const int midX = x + size / 2;
 

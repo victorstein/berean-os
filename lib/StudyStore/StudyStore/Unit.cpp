@@ -7,27 +7,32 @@ namespace {
 
 char kindLetter(const UnitKind k) {
   switch (k) {
-    case UnitKind::Verse: return 'v';
-    case UnitKind::Paragraph: return 'p';
-    case UnitKind::DocumentOffset: return 'd';
+    case UnitKind::Verse:
+      return 'v';
+    case UnitKind::Paragraph:
+      return 'p';
+    case UnitKind::DocumentOffset:
+      return 'd';
   }
   return 'd';
 }
 
 std::optional<UnitKind> kindFromLetter(const char c) {
   switch (c) {
-    case 'v': return UnitKind::Verse;
-    case 'p': return UnitKind::Paragraph;
-    case 'd': return UnitKind::DocumentOffset;
-    default: return std::nullopt;
+    case 'v':
+      return UnitKind::Verse;
+    case 'p':
+      return UnitKind::Paragraph;
+    case 'd':
+      return UnitKind::DocumentOffset;
+    default:
+      return std::nullopt;
   }
 }
 
 }  // namespace
 
-bool orderableByAddress(const Unit& a, const Unit& b) {
-  return a.kind == b.kind && a.kind != UnitKind::Paragraph;
-}
+bool orderableByAddress(const Unit& a, const Unit& b) { return a.kind == b.kind && a.kind != UnitKind::Paragraph; }
 
 bool operator<(const Unit& a, const Unit& b) {
   // Kind first, so the ordering is a strict weak ordering consistent with the

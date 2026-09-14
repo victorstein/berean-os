@@ -1,11 +1,11 @@
 #pragma once
 
 #include <Epub.h>
-#include <StudyStore/TagPalette.h>
 #include <Epub/HighlightGeometry.h>
 #include <Epub/Page.h>
 #include <Epub/Section.h>
 #include <Epub/VisibleRange.h>
+#include <StudyStore/TagPalette.h>
 
 #include <cstdint>
 #include <memory>

@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <utility>
 
-
 #include "../util/KeyboardEntryActivity.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"

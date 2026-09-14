@@ -43,8 +43,8 @@ struct UnitIndexHeader {
   uint16_t documentCount = 0;
   uint32_t sourceSize = 0;
   uint32_t tableOffset = 0;
-  uint32_t bookMapOffset = 0;   // 0 when the spine-to-book map has not been built
-  uint32_t anchorsOffset = 0;   // first byte past the fixed-size blocks
+  uint32_t bookMapOffset = 0;  // 0 when the spine-to-book map has not been built
+  uint32_t anchorsOffset = 0;  // first byte past the fixed-size blocks
 };
 
 struct UnitIndexEntry {

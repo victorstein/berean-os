@@ -3,10 +3,10 @@
 #include <ArduinoJson.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <PathFlatten.h>
 #include <PersistableStore.h>
 
 #include "HighlightFileAction.h"
-#include <PathFlatten.h>
 
 namespace {
 

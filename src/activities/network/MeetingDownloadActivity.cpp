@@ -1,7 +1,5 @@
 #include "MeetingDownloadActivity.h"
 
-#include "study/PubKeyRegistry.h"
-
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
@@ -25,6 +23,7 @@
 #include "network/HttpDownloader.h"
 #include "network/MeetingFilename.h"
 #include "network/PubMediaJson.h"
+#include "study/PubKeyRegistry.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
 
@@ -336,8 +335,8 @@ bool MeetingDownloadActivity::downloadPublication(const MeetingPub pub, const ch
   // its dc:identifier is a random urn:uuid -- so without this the study store
   // falls back to a path-derived key that dies when the file moves and would
   // change again once the catalog lands, orphaning every tag on the issue.
-  PubKeyRegistry::record(destPath, study::RegisteredPub{pub == MeetingPub::Watchtower ? "w" : "mwb", issue,
-                                                        DOWNLOAD_LANGUAGE});
+  PubKeyRegistry::record(destPath,
+                         study::RegisteredPub{pub == MeetingPub::Watchtower ? "w" : "mwb", issue, DOWNLOAD_LANGUAGE});
 
   LOG_INF("MEET", "Saved %s (%llu bytes advertised)", destPath.c_str(),
           static_cast<unsigned long long>(media->filesize()));

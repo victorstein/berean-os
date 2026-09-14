@@ -16,9 +16,9 @@
 #include "HighlightOverlay.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
-#include "study/StudyStore.h"
 #include "TagPickerActivity.h"
 #include "components/UITheme.h"
+#include "study/StudyStore.h"
 
 void PassageSelectActivity::onEnter() {
   Activity::onEnter();
@@ -340,24 +340,23 @@ void PassageSelectActivity::showActionChooser(const int endIndex) {
 }
 
 void PassageSelectActivity::startTagFlow(const int endIndex) {
-  startActivityForResult(
-      std::make_unique<TagPickerActivity>(renderer, mappedInput),
-      [this, endIndex](const ActivityResult& result) {
-        // Cancelling the picker discards only the TAG
-        // selection, not the highlight itself -- the
-        // two-anchor passage was already committed before
-        // this sub-step opened, and TagPickerActivity's
-        // own contract (see its class comment) is that the
-        // caller decides what "no tags chosen" means. Here
-        // that means the same untagged save Highlight
-        // would have produced, not discarding the work the
-        // user already did picking two anchors.
-        std::vector<study::TagId> tagIds;
-        if (!result.isCancelled) {
-          tagIds = std::get<TagSelectionResult>(result.data).tagIds;
-        }
-        finalizeSelection(endIndex, std::move(tagIds));
-      });
+  startActivityForResult(std::make_unique<TagPickerActivity>(renderer, mappedInput),
+                         [this, endIndex](const ActivityResult& result) {
+                           // Cancelling the picker discards only the TAG
+                           // selection, not the highlight itself -- the
+                           // two-anchor passage was already committed before
+                           // this sub-step opened, and TagPickerActivity's
+                           // own contract (see its class comment) is that the
+                           // caller decides what "no tags chosen" means. Here
+                           // that means the same untagged save Highlight
+                           // would have produced, not discarding the work the
+                           // user already did picking two anchors.
+                           std::vector<study::TagId> tagIds;
+                           if (!result.isCancelled) {
+                             tagIds = std::get<TagSelectionResult>(result.data).tagIds;
+                           }
+                           finalizeSelection(endIndex, std::move(tagIds));
+                         });
 }
 
 void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<study::TagId> tagIds) {

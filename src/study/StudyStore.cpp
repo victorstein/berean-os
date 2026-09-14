@@ -169,8 +169,7 @@ std::vector<StudyStore::PaintedPassage> StudyStore::passagesInDocument(const uin
 }
 
 bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffset, const uint32_t endOffset,
-                            const std::string& snippet, const std::string& reference,
-                            std::vector<study::TagId> tags) {
+                            const std::string& snippet, const std::string& reference, std::vector<study::TagId> tags) {
   if (saveDisabled_ || tags.empty() || !units_) return false;
 
   const study::DocumentUnits& units = units_->unitsFor(spineIndex);

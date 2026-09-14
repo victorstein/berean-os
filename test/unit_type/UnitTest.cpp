@@ -52,9 +52,9 @@ TEST(UnitOrdering, IsConsistentWithEqualityAcrossKinds) {
 }
 
 TEST(UnitRoundTrip, EncodesAndDecodesEachKind) {
-  for (const study::Unit u : {study::Unit{study::UnitKind::Verse, 19, 119, 145, 3},
-                              study::Unit{study::UnitKind::Paragraph, 0, 0, 40, 0},
-                              study::Unit{study::UnitKind::DocumentOffset, 0, 0, 0, 1255}}) {
+  for (const study::Unit u :
+       {study::Unit{study::UnitKind::Verse, 19, 119, 145, 3}, study::Unit{study::UnitKind::Paragraph, 0, 0, 40, 0},
+        study::Unit{study::UnitKind::DocumentOffset, 0, 0, 0, 1255}}) {
     EXPECT_EQ(study::unitFromCompact(study::unitToCompact(u)), u);
   }
 }

@@ -116,8 +116,7 @@ TEST(UnitIndexFormat, ReadsEveryFieldThroughMemcpyOnAnUnalignedBuffer) {
   e.kind = study::UnitKind::Paragraph;
   e.book = 0;
   study::writeEntry(base + study::UNIT_INDEX_HEADER_BYTES, e);
-  study::writeAnchors(base + study::UNIT_INDEX_HEADER_BYTES + study::UNIT_INDEX_ENTRY_BYTES,
-                      {{7, 0, 40}, {99, 0, 7}});
+  study::writeAnchors(base + study::UNIT_INDEX_HEADER_BYTES + study::UNIT_INDEX_ENTRY_BYTES, {{7, 0, 40}, {99, 0, 7}});
 
   const auto h = study::readHeader(base, study::UNIT_INDEX_HEADER_BYTES);
   ASSERT_TRUE(h.has_value());
@@ -127,8 +126,7 @@ TEST(UnitIndexFormat, ReadsEveryFieldThroughMemcpyOnAnUnalignedBuffer) {
   EXPECT_EQ(backEntry.dataOffset, 4096u);
   EXPECT_EQ(backEntry.kind, study::UnitKind::Paragraph);
 
-  const auto anchors =
-      study::readAnchors(base + study::UNIT_INDEX_HEADER_BYTES + study::UNIT_INDEX_ENTRY_BYTES, 2);
+  const auto anchors = study::readAnchors(base + study::UNIT_INDEX_HEADER_BYTES + study::UNIT_INDEX_ENTRY_BYTES, 2);
   ASSERT_EQ(anchors.size(), 2u);
   EXPECT_EQ(anchors[0].minor, 40);
   EXPECT_EQ(anchors[1].minor, 7) << "pid order is not document order, and the format must not assume it is";

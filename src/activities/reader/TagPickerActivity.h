@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
-#include "study/StudyStore.h"
 #include "components/OptionPopup.h"
+#include "study/StudyStore.h"
 
 // Multi-select picker over a book's tag palette (HighlightDoc::tags()), plus
 // a "New tag..." row that pushes KeyboardEntryActivity and calls

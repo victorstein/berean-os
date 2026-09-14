@@ -5,9 +5,9 @@
 #include <cstring>
 #include <new>
 
-#include "StudyStore/UnitFingerprint.h"
 #include "Epub/VisibleOffsetCounter.h"
 #include "Epub/htmlEntities.h"
+#include "StudyStore/UnitFingerprint.h"
 
 namespace study {
 namespace {

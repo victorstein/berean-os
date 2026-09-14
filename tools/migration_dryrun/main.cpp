@@ -100,9 +100,15 @@ int main(int argc, char** argv) {
     }
 
     switch (out.passage->start.kind) {
-      case study::UnitKind::Verse: verse++; break;
-      case study::UnitKind::Paragraph: paragraph++; break;
-      case study::UnitKind::DocumentOffset: documentOffset++; break;
+      case study::UnitKind::Verse:
+        verse++;
+        break;
+      case study::UnitKind::Paragraph:
+        paragraph++;
+        break;
+      case study::UnitKind::DocumentOffset:
+        documentOffset++;
+        break;
     }
 
     if (!out.referenceAgrees) {

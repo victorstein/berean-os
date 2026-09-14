@@ -29,13 +29,13 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
-#include "study/MigrationRunner.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
+#include "study/MigrationRunner.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 
@@ -477,9 +477,9 @@ void setup() {
       LOG_ERR("MAIN", "Migration incomplete; legacy store untouched");
     }
     LOG_INF("MAIN", "read=%u written=%u verse=%u para=%u docoff=%u mismatch=%u pending=%u dropped=%u tags=%u",
-            migration.highlightsRead, migration.passagesWritten, migration.addressedVerse,
-            migration.addressedParagraph, migration.addressedDocumentOffset, migration.referenceMismatches,
-            migration.pendingUpgrade, migration.dropped, migration.tagsAdopted);
+            migration.highlightsRead, migration.passagesWritten, migration.addressedVerse, migration.addressedParagraph,
+            migration.addressedDocumentOffset, migration.referenceMismatches, migration.pendingUpgrade,
+            migration.dropped, migration.tagsAdopted);
   }
 
   switch (resume) {

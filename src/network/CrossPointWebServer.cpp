@@ -1,7 +1,5 @@
 #include "CrossPointWebServer.h"
 
-#include "study/MigrationRunner.h"
-
 #include <ArduinoJson.h>
 #include <BoardConfig.h>
 #include <FsHelpers.h>
@@ -26,6 +24,7 @@
 #include "html/HomePageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
 #include "html/js/jszip_minJs.generated.h"
+#include "study/MigrationRunner.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
 

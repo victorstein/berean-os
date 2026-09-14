@@ -2,10 +2,10 @@
 
 #include <ArduinoJson.h>
 #include <Epub.h>
+#include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
-#include <GfxRenderer.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
 
@@ -279,8 +279,11 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer) {
           summary.referenceMismatches++;
           report.mismatches++;
           break;
-        case study::MigrationOutcome::PendingUpgrade: summary.pendingUpgrade++; break;
-        default: break;
+        case study::MigrationOutcome::PendingUpgrade:
+          summary.pendingUpgrade++;
+          break;
+        default:
+          break;
       }
 
       if (!planned.passage) continue;
@@ -289,8 +292,12 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer) {
           summary.addressedVerse++;
           report.verse++;
           break;
-        case study::UnitKind::Paragraph: summary.addressedParagraph++; break;
-        case study::UnitKind::DocumentOffset: summary.addressedDocumentOffset++; break;
+        case study::UnitKind::Paragraph:
+          summary.addressedParagraph++;
+          break;
+        case study::UnitKind::DocumentOffset:
+          summary.addressedDocumentOffset++;
+          break;
       }
 
       if (!passages.add(*planned.passage)) {
