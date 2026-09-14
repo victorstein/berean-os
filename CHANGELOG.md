@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/victorstein/berean-os/compare/v1.1.4...v1.2.0) (2026-09-14)
+
+
+### Features
+
+* give the boot and sleep screens their own identity ([455e9cd](https://github.com/victorstein/berean-os/commit/455e9cd1785636362f55a65ff955f0151bb3cdf4))
+
 ## [1.1.4](https://github.com/victorstein/berean-os/compare/v1.1.3...v1.1.4) (2026-09-14)
 
 
