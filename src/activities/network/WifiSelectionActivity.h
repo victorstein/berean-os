@@ -86,6 +86,12 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   const bool allowAutoConnect;
 
   // Whether we are attempting to auto-connect or auto-scan saved networks.
+  // DHCP normally settles in well under a second; this is the point at which
+  // waiting longer is less useful than letting the caller try and report.
+  static constexpr uint32_t NETWORK_READY_TIMEOUT_MS = 8000;
+  // 0 until the first poll that finds the link not yet usable.
+  uint32_t networkReadyDeadlineMs = 0;
+
   bool autoConnecting = false;
 
   // True when the user stopped auto-connect and asked to see the scan result.
@@ -131,6 +137,8 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void promptPasswordEntry();
   void attemptConnection();
   void checkConnectionStatus();
+  // True once the link has an address and a resolver, or the wait has run out.
+  bool networkReady();
   bool tryAutoConnectCredential(const WifiCredential& cred);
   bool tryNextSavedNetworkFromScan();
   void handleAutoConnectFailure();
