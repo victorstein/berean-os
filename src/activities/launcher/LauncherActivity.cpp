@@ -7,6 +7,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -32,7 +33,11 @@ constexpr const char* MODULE = "LAUNCH";
 constexpr int TILE_GAP = 10;
 constexpr int TILE_PADDING = 8;
 constexpr int TILE_ICON_SIZE = 32;
-constexpr int COVER_INSET = 6;
+// A cover must be at least as large as the tile in both axes to fill it without
+// upscaling. Covers run roughly 0.6-0.75 wide-to-tall, so asking for a
+// thumbnail this many times the tile's width in height clears the tile's width
+// for anything in that range; a narrower cover is declined rather than blown up.
+constexpr float NARROWEST_COVER_ASPECT = 0.6f;
 // Below this a cover is a smudge and an icon is cramped, so the tile drops its
 // art and centres the label instead.
 constexpr int MIN_ART_HEIGHT = TILE_ICON_SIZE + 4;
@@ -136,7 +141,14 @@ int LauncherActivity::tileArtHeight(const TileRect& rect, const bool hasSubtitle
 // The Bible tile puts its cover beside the label rather than above it, so the
 // cover gets the tile's full height instead of the third left over under a
 // centred caption.
-int LauncherActivity::bibleCoverHeight() const { return rects[static_cast<size_t>(Tile::Bible)].h - 2 * COVER_INSET; }
+// The cover is the Bible tile's background, so the thumbnail must cover the tile
+// on both axes before anything is cropped away. The tile's WIDTH is what binds:
+// covers are portrait, so a thumbnail tall enough to fill the height is still
+// far too narrow to fill the width.
+int LauncherActivity::bibleCoverHeight() const {
+  const TileRect& tile = rects[static_cast<size_t>(Tile::Bible)];
+  return std::max(tile.h, static_cast<int>(static_cast<float>(tile.w) / NARROWEST_COVER_ASPECT));
+}
 
 int LauncherActivity::tileTextHeight(const int titleFont, const bool hasSubtitle) const {
   return renderer.getLineHeight(titleFont) + (hasSubtitle ? renderer.getLineHeight(SMALL_FONT_ID) : 0);
@@ -218,38 +230,68 @@ void LauncherActivity::drawTileArt(const int x, const int y, const int w, const 
   renderer.drawIcon(icon, x + (w - TILE_ICON_SIZE) / 2, y + (h - TILE_ICON_SIZE) / 2, TILE_ICON_SIZE);
 }
 
-// Cover on the left at full tile height, label beside it. A portrait cover in a
-// landscape tile cannot fill it without cropping away the title or stretching
-// the art, so the tile is split instead: the cover gets all the height there
-// is, and the text keeps a white background it stays legible against.
+// Blits the cover across the whole tile at 1:1, cropped rather than scaled:
+// anchored to the cover's top so its own title art survives, centred
+// horizontally, and clipped to the tile so it cannot bleed into its neighbours.
+// GfxRenderer has no clip region and drawBitmap only ever scales DOWN, so the
+// row walk is done here. Resampling is deliberately absent -- these thumbnails
+// are dithered 1-bit and any resampling turns them into static.
+bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const TileRect& rect) const {
+  if (coverPath.empty()) return false;
+  HalFile file;
+  if (!Storage.openFileForRead(MODULE, coverPath, file)) return false;
+
+  Bitmap bitmap(file);
+  if (bitmap.parseHeaders() != BmpReaderError::Ok) return false;
+  const int width = bitmap.getWidth();
+  const int height = bitmap.getHeight();
+  if (width < rect.w || height < rect.h) return false;
+
+  auto packedRow = makeUniqueNoThrow<uint8_t[]>((width + 3) / 4);
+  auto rowScratch = makeUniqueNoThrow<uint8_t[]>(bitmap.getRowBytes());
+  if (!packedRow || !rowScratch) {
+    LOG_ERR(MODULE, "OOM: cover row buffers");
+    return false;
+  }
+
+  const int xOffset = (width - rect.w) / 2;
+  for (int row = 0; row < height; ++row) {
+    if (bitmap.readNextRow(packedRow.get(), rowScratch.get()) != BmpReaderError::Ok) return false;
+    // Rows arrive in file order; a bottom-up BMP delivers the cover's last row
+    // first, so the source row has to be resolved before it can be discarded.
+    const int sourceRow = bitmap.isTopDown() ? row : height - 1 - row;
+    if (sourceRow >= rect.h) continue;
+
+    const int screenY = rect.y + sourceRow;
+    for (int column = 0; column < rect.w; ++column) {
+      const int sourceColumn = column + xOffset;
+      const uint8_t value = packedRow[sourceColumn / 4] >> (6 - ((sourceColumn * 2) % 8)) & 0x3;
+      if (value < 3) renderer.drawPixel(rect.x + column, screenY, true);
+    }
+  }
+  return true;
+}
+
+// Cover as the tile's background with the label over it. Drawing order is the
+// z-order here, so the caption plate and its text simply go down last; the
+// plate is opaque because a dithered cover underneath would otherwise shred the
+// glyphs on a 1-bit panel.
 void LauncherActivity::drawBibleTile(const TileRect& rect, const bool selected) const {
-  renderer.drawRect(rect.x, rect.y, rect.w, rect.h, selected ? 3 : 1, true);
+  const bool filled = drawCoverFilling(bibleCoverPath, rect);
 
-  const int coverWidth =
-      drawCoverNative(bibleCoverPath, rect.x + COVER_INSET, rect.y + COVER_INSET, rect.w / 2, bibleCoverHeight());
-
-  if (coverWidth == 0) {
+  if (!filled) {
     drawTileArt(rect.x, rect.y + TILE_PADDING, rect.w, tileArtHeight(rect, true), {}, BookIcon);
     const int stackedTop = rect.y + rect.h - tileTextHeight(UI_10_FONT_ID, true) - TILE_PADDING;
     drawCenteredIn(rect.x, rect.w, stackedTop, tr(STR_BIBLE), bibleSubtitle.c_str());
-    return;
+  } else {
+    const int plateHeight = tileTextHeight(UI_10_FONT_ID, true) + 2 * TILE_PADDING;
+    const int plateTop = rect.y + rect.h - plateHeight;
+    renderer.fillRect(rect.x, plateTop, rect.w, plateHeight, false);
+    renderer.drawLine(rect.x, plateTop, rect.x + rect.w - 1, plateTop, true);
+    drawCenteredIn(rect.x, rect.w, plateTop + TILE_PADDING, tr(STR_BIBLE), bibleSubtitle.c_str());
   }
 
-  const int textLeft = rect.x + COVER_INSET + coverWidth + TILE_PADDING * 2;
-  const int textWidth = rect.x + rect.w - TILE_PADDING - textLeft;
-  if (textWidth <= 0) return;
-
-  const int titleHeight = renderer.getLineHeight(UI_10_FONT_ID);
-  const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
-  const auto lines = renderer.wrappedText(SMALL_FONT_ID, bibleSubtitle.c_str(), textWidth, 3);
-
-  int y = rect.y + (rect.h - titleHeight - static_cast<int>(lines.size()) * lineHeight) / 2;
-  renderer.drawText(UI_10_FONT_ID, textLeft, y, tr(STR_BIBLE), true, EpdFontFamily::BOLD);
-  y += titleHeight;
-  for (const auto& line : lines) {
-    renderer.drawText(SMALL_FONT_ID, textLeft, y, line.c_str());
-    y += lineHeight;
-  }
+  renderer.drawRect(rect.x, rect.y, rect.w, rect.h, selected ? 3 : 1, true);
 }
 
 void LauncherActivity::drawCenteredIn(const int x, const int w, const int top, const char* title,
