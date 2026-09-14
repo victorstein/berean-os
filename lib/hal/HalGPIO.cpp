@@ -140,6 +140,19 @@ void HalGPIO::begin() {
 
 void HalGPIO::update() {
   inputMgr.update();
+
+  const bool left = inputMgr.isPressed(BTN_UP);
+  const bool right = inputMgr.isPressed(BTN_DOWN);
+  if (!navGesturesPrimed) {
+    // A key already down on the very first tick is absorbed, never synthesised:
+    // recovery firmware mode holds one through startup (main.cpp:387) and boot
+    // deliberately lets an already-held button settle without an edge.
+    navGestures.beginWithKeysDown(left, right, millis());
+    navGesturesPrimed = true;
+  } else {
+    navGestures.update(left, right, millis());
+  }
+
   const bool connected = isUsbConnected();
   usbStateChanged = (connected != lastUsbConnected);
   lastUsbConnected = connected;
@@ -147,13 +160,40 @@ void HalGPIO::update() {
 
 bool HalGPIO::wasUsbStateChanged() const { return usbStateChanged; }
 
-bool HalGPIO::isPressed(uint8_t buttonIndex) const { return inputMgr.isPressed(buttonIndex); }
+// A key that has become a hold is hidden entirely -- press, release and state.
+// ButtonNavigator starts continuous list scrolling at 500 ms off isPressed
+// while Back lands at 850, so leaving the raw key visible would make one hold
+// scroll the list AND then go back.
+//
+// Recovery mode is unaffected: it holds the key from boot, so NavKeyGestures
+// marks it stale, a stale key never synthesises, and it is therefore never
+// suppressed. The screenshot combo latches on the first tick both keys are
+// down, long before the threshold.
+bool HalGPIO::isPressed(uint8_t buttonIndex) const {
+  if (buttonIndex == BTN_BACK) return navGestures.backHeld();
+  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmHeld();
+  if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
+  if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+  return inputMgr.isPressed(buttonIndex);
+}
 
-bool HalGPIO::wasPressed(uint8_t buttonIndex) const { return inputMgr.wasPressed(buttonIndex); }
+bool HalGPIO::wasPressed(uint8_t buttonIndex) const {
+  if (buttonIndex == BTN_BACK) return navGestures.backPressedThisTick();
+  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmPressedThisTick();
+  if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
+  if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+  return inputMgr.wasPressed(buttonIndex);
+}
 
 bool HalGPIO::wasAnyPressed() const { return inputMgr.wasAnyPressed(); }
 
-bool HalGPIO::wasReleased(uint8_t buttonIndex) const { return inputMgr.wasReleased(buttonIndex); }
+bool HalGPIO::wasReleased(uint8_t buttonIndex) const {
+  if (buttonIndex == BTN_BACK) return navGestures.backReleasedThisTick();
+  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmReleasedThisTick();
+  if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
+  if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+  return inputMgr.wasReleased(buttonIndex);
+}
 
 bool HalGPIO::wasAnyReleased() const { return inputMgr.wasAnyReleased(); }
 

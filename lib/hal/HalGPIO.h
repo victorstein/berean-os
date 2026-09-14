@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <InputManager.h>
 
+#include "Input/NavKeyGestures.h"
+
 // Display SPI pins (custom pins for XteinkX4, not hardware SPI defaults)
 #define EPD_SCLK 8   // SPI Clock
 #define EPD_MOSI 10  // SPI MOSI (Master Out Slave In)
@@ -51,6 +53,14 @@ class HalGPIO {
 
  private:
   DeviceType _deviceType = DeviceType::X4;
+
+  // BTN_BACK and BTN_CONFIRM are PIN_UNASSIGNED on this board (BoardConfig.h:1396),
+  // so the SDK never drives them and their indices are ours to fill. Synthesising
+  // HERE rather than in MappedInputManager is what makes wasPressed, isPressed
+  // and the composed NavNext/NavPrevious all agree: patching the layer above
+  // would have left every one of them reading the raw pins.
+  input::NavKeyGestures navGestures;
+  bool navGesturesPrimed = false;
 
  public:
   HalGPIO() = default;
