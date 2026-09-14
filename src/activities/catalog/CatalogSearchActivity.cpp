@@ -405,6 +405,10 @@ void CatalogSearchActivity::downloadBySymbol(const std::string& symbol, const st
   const auto result = publication::download(request, hooks, destPath);
 
   if (result == publication::Result::Cancelled) {
+    // Set by onDownloadProgress, which publication::download calls between body
+    // chunks through a function pointer. cppcheck does not follow the indirect
+    // call, so it reads the flag as never written.
+    // cppcheck-suppress knownConditionTrueFalse
     if (goHomeAfterCancel) {
       onGoHome();
       return;
