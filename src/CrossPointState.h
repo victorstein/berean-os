@@ -14,6 +14,11 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   static constexpr uint8_t SLEEP_RECENT_COUNT = 16;
 
   std::string openEpubPath;
+  // Cover thumbnail the sleep screen paints, cached by the launcher when it
+  // resolves the Bible tile. Kept here so the sleep path never has to repeat
+  // the "which book is the Bible" search, let alone open an EPUB: it runs while
+  // the device is shutting down.
+  std::string bibleCoverPath;
   uint16_t recentSleepImages[SLEEP_RECENT_COUNT] = {};
   uint8_t recentSleepPos = 0;
   uint8_t recentSleepFill = 0;

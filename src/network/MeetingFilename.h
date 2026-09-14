@@ -15,6 +15,11 @@
 // Pure: no I/O, no globals.
 std::string meetingPublicationFilename(const char* pubName, const char* issue, const std::string& url);
 
+// On-disk filename for a publication that carries no issue at all -- a book or
+// brochure downloaded by symbol: "<pubName>.epub". Callers that HAVE an issue
+// must use the form above, which keeps two issues of one periodical apart.
+std::string publicationFilename(const char* pubName, const std::string& url);
+
 // "202607" -> "2026-07", the suffix meetingPublicationFilename writes. Empty for
 // anything that is not six digits.
 std::string issueSuffix(const char* issue);

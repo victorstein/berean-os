@@ -47,6 +47,16 @@ std::string meetingPublicationFilename(const char* pubName, const char* issue, c
   return filename;
 }
 
+// Deliberately separate from the issued form above rather than a special case
+// inside it. An issue is what keeps two Watchtowers apart, so a periodical whose
+// issue is missing or malformed must keep the CDN's name -- naming it by title
+// alone would let one issue overwrite another. A publication with no issue AT
+// ALL has nothing to collide with, and only the caller knows which it asked for.
+std::string publicationFilename(const char* pubName, const std::string& url) {
+  if (!hasUsableName(pubName)) return filenameFromUrl(url);
+  return StringUtils::sanitizeFilename(pubName, FILENAME_BUDGET_BYTES - ISSUE_SUFFIX_BYTES) + ".epub";
+}
+
 std::string issueSuffix(const char* issue) {
   if (!isIssueCode(issue)) return {};
   std::string out;

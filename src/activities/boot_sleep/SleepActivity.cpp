@@ -590,14 +590,62 @@ void SleepActivity::renderCustomSleepScreen() const {
 // firmware's only clean refresh in normal operation is the single-pass 0xD7
 // sequence, used once for the sleep image. It never runs the multi-flash GC
 // waveform (0xF7) that FULL_REFRESH selects (#2471's blinking complaint).
+// Paints the cached Bible cover across the panel, cropped to fit. False when
+// there is none, or it is smaller than the panel -- upscaling a dithered cover
+// is what turns it to noise, so the mark is the better answer.
+bool SleepActivity::drawBibleCover() const {
+  const std::string& coverPath = APP_STATE.bibleCoverPath;
+  if (coverPath.empty()) return false;
+
+  HalFile file;
+  if (!Storage.openFileForRead("SLP", coverPath, file)) return false;
+  Bitmap bitmap(file);
+  if (bitmap.parseHeaders() != BmpReaderError::Ok) return false;
+
+  const int width = bitmap.getWidth();
+  const int height = bitmap.getHeight();
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  if (width < pageWidth || height <= 0) return false;
+
+  auto packedRow = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>((width + 3) / 4));
+  auto rowScratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(bitmap.getRowBytes()));
+  if (!packedRow || !rowScratch) return false;
+
+  const int xOffset = (width - pageWidth) / 2;
+  // Anchored near the top so the cover's title survives; the caption sits over
+  // the lower band, which on a book cover is plain cloth.
+  const int yOffset = std::max(0, std::min(height - pageHeight, height / 8));
+
+  for (int row = 0; row < height; ++row) {
+    if (bitmap.readNextRow(packedRow.get(), rowScratch.get()) != BmpReaderError::Ok) return false;
+    const int sourceRow = bitmap.isTopDown() ? row : height - 1 - row;
+    if (sourceRow < yOffset || sourceRow >= yOffset + pageHeight) continue;
+
+    const int screenY = sourceRow - yOffset;
+    for (int column = 0; column < pageWidth; ++column) {
+      const int sourceColumn = column + xOffset;
+      const uint8_t value = packedRow[sourceColumn / 4] >> (6 - ((sourceColumn * 2) % 8)) & 0x3;
+      if (value < 3) renderer.drawPixel(column, screenY, true);
+    }
+  }
+  return true;
+}
+
 void SleepActivity::renderDefaultSleepScreen() const {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
   renderer.clearScreen();
-  berean_mark::draw(renderer, (pageWidth - 120) / 2, (pageHeight - 120) / 2, 120);
-  renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 70, tr(STR_BEREAN), true, EpdFontFamily::BOLD);
-  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, tr(STR_SLEEPING));
+
+  // The Bible's own cover, cached by the launcher. Drawn at 1:1 and cropped to
+  // the panel rather than scaled: it is a dithered 1-bit image, and resampling
+  // one destroys the pattern that carries its tone.
+  if (!drawBibleCover()) {
+    berean_mark::draw(renderer, (pageWidth - 120) / 2, (pageHeight - 120) / 2, 120);
+  }
+  renderer.drawCenteredText(UI_10_FONT_ID, pageHeight - 90, tr(STR_BEREAN), true, EpdFontFamily::BOLD);
+  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 65, tr(STR_SLEEPING));
 
   // Make sleep screen dark unless light is selected in settings
   if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT) {
@@ -746,6 +794,13 @@ void SleepActivity::renderTransparentCustomSleepScreen() const {
 }
 
 void SleepActivity::renderCoverSleepScreen() const {
+  // bereanOS sleeps under the Bible rather than under whatever was last opened.
+  // The device is built around one book, and a sleeping screen showing last
+  // week's Watchtower says something about the last tap rather than about the
+  // device. renderDefaultSleepScreen paints the cached Bible cover; the
+  // last-read cover below remains the fallback when none has been cached yet.
+  if (!APP_STATE.bibleCoverPath.empty()) return renderDefaultSleepScreen();
+
   void (SleepActivity::*renderNoCoverSleepScreen)() const;
   switch (SETTINGS.sleepScreen) {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):

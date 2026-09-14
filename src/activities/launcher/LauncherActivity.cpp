@@ -16,9 +16,10 @@
 #include <optional>
 
 #include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
-#include "activities/catalog/CatalogSearchActivity.h"
+#include "activities/catalog/PublicationsActivity.h"
 #include "activities/network/MeetingsActivity.h"
 #include "components/UITheme.h"
 #include "components/icons/book.h"
@@ -40,6 +41,7 @@ constexpr const char* MODULE = "LAUNCH";
 constexpr int TILE_GAP = 10;
 constexpr int TILE_PADDING = 8;
 constexpr int TILE_ICON_SIZE = 32;
+constexpr int TILE_RADIUS = 8;
 // A cover must be at least as large as the tile in both axes to fill it without
 // upscaling. Covers run roughly 0.6-0.75 wide-to-tall, so asking for a
 // thumbnail this many times the tile's width in height clears the tile's width
@@ -98,6 +100,12 @@ void LauncherActivity::resolveTargets() {
     biblePath = found->path;
     bibleSubtitle = utf8SafeSummary(found->title, 40);
     bibleCoverPath = coverThumbFor(found->path, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
+    // The sleep screen paints this too, and it runs while the device is shutting
+    // down -- far too late to search for the Bible or open it.
+    if (APP_STATE.bibleCoverPath != bibleCoverPath) {
+      APP_STATE.bibleCoverPath = bibleCoverPath;
+      APP_STATE.saveToFile();
+    }
   }
 
   // The meeting tile shows THIS WEEK's publication when the week cache knows
@@ -297,7 +305,7 @@ int LauncherActivity::drawCoverNative(const std::string& coverPath, const int x,
   const int drawX = x + (boxWidth - width) / 2;
   const int drawY = y + (boxHeight - height) / 2;
   renderer.drawBitmap(bitmap, drawX, drawY, width, height);
-  renderer.drawRect(drawX, drawY, width, height, 1, true);
+  renderer.drawRoundedRect(drawX, drawY, width, height, 1, TILE_RADIUS / 2, true);
   return width;
 }
 
@@ -375,11 +383,17 @@ void LauncherActivity::drawCoverTile(const TileRect& rect, const std::string& co
     return;
   }
 
+  // The cover was blitted as a rectangle, so its corners sit outside the rounded
+  // border about to be drawn over them. Masking them back to paper first is what
+  // stops the art poking out past the arc.
+  renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, rect.w, rect.h, TILE_RADIUS);
+
   const int plateTop = rect.y + rect.h - plateHeight;
-  renderer.fillRect(rect.x, plateTop, rect.w, plateHeight, false);
+  renderer.fillRoundedRect(rect.x, plateTop, rect.w, plateHeight, TILE_RADIUS, /*roundTopLeft=*/false,
+                           /*roundTopRight=*/false, /*roundBottomLeft=*/true, /*roundBottomRight=*/true, Color::White);
   renderer.drawLine(rect.x, plateTop, rect.x + rect.w - 1, plateTop, true);
   drawCenteredIn(rect.x, rect.w, plateTop + TILE_PADDING, title, subtitle);
-  renderer.drawRect(rect.x, rect.y, rect.w, rect.h, selected ? 3 : 1, true);
+  renderer.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, selected ? 3 : 1, TILE_RADIUS, true);
 }
 
 void LauncherActivity::drawCenteredIn(const int x, const int w, const int top, const char* title,
@@ -401,7 +415,7 @@ void LauncherActivity::drawTile(const TileRect& rect, const char* title, const c
   // Selection is a thicker border rather than an inversion: a full-tile inversion
   // on a 1-bit panel costs a visibly slower redraw for the same information.
   const int borderWidth = selected ? 3 : 1;
-  renderer.drawRect(rect.x, rect.y, rect.w, rect.h, borderWidth, true);
+  renderer.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, borderWidth, TILE_RADIUS, true);
 
   const int titleFont = emphasised ? UI_10_FONT_ID : SMALL_FONT_ID;
   const bool hasSubtitle = subtitle != nullptr && subtitle[0] != '\0';
@@ -446,7 +460,7 @@ void LauncherActivity::render(RenderLock&&) {
                 meetingsSubtitle.empty() ? nullptr : meetingsSubtitle.c_str(), LibraryIcon, selected == 1,
                 MAGAZINE_MASTHEAD_BAND);
   // Buscar has landed, so the tile no longer carries a "coming soon" subtitle.
-  drawTile(rects[2], tr(STR_SEARCH), nullptr, selected == 2, false, {}, SearchIcon);
+  drawTile(rects[2], tr(STR_PUBLICATIONS), nullptr, selected == 2, false, {}, SearchIcon);
   drawTile(rects[3], tr(STR_TAGS_AND_SETTINGS), nullptr, selected == 3, false, {}, Settings2Icon);
 
   // The resume strip is deliberately a one-line label over its book's title:
@@ -468,7 +482,7 @@ void LauncherActivity::activate(const Tile tile) {
       openMeetings();
       break;
     case Tile::Search:
-      openSearch();
+      openPublications();
       break;
     case Tile::TagsAndSettings:
       openTagsAndSettings();
@@ -496,8 +510,8 @@ void LauncherActivity::openMeetings() {
                          [this](const ActivityResult&) { requestUpdate(); });
 }
 
-void LauncherActivity::openSearch() {
-  startActivityForResult(std::make_unique<CatalogSearchActivity>(renderer, mappedInput), [this](const ActivityResult&) {
+void LauncherActivity::openPublications() {
+  startActivityForResult(std::make_unique<PublicationsActivity>(renderer, mappedInput), [this](const ActivityResult&) {
     // A download changes what the Bible and resume tiles can offer.
     resolveTargets();
     requestUpdate();

@@ -47,7 +47,7 @@ class LauncherActivity final : public Activity {
   void activate(Tile tile);
   void openBible();
   void openMeetings();
-  void openSearch();
+  void openPublications();
   void openTagsAndSettings();
   void drawTile(const TileRect& rect, const char* title, const char* subtitle, bool selected, bool emphasised,
                 const std::string& coverPath, const uint8_t* icon) const;
