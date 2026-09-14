@@ -4,6 +4,7 @@
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -27,6 +28,8 @@
 #include "components/themes/BaseTheme.h"
 #include "fontIds.h"
 #include "network/MeetingFilename.h"
+#include "network/MeetingLibrary.h"
+#include "network/MeetingWeekCache.h"
 #include "study/BookPathIndex.h"
 #include "study/PubKeyRegistry.h"
 
@@ -97,14 +100,18 @@ void LauncherActivity::resolveTargets() {
     bibleCoverPath = coverThumbFor(found->path, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
   }
 
-  // The meeting tile shows whichever weekly publication is on the card: w = the
-  // Watchtower study edition, mwb = the Meeting Workbook. This asks the registry
-  // rather than the recents list, because recents only holds books that have
-  // been OPENED -- a publication downloaded and not yet read is precisely the
-  // case this tile exists to advertise. The symbol is not in the filename
-  // either: meetingPublicationFilename names the file after the publication's
-  // own title ("La Atalaya (estudio) 2026-09.epub").
-  auto meetingPath = PubKeyRegistry::findBySymbol({"w", "mwb"});
+  // The meeting tile shows THIS WEEK's publication when the week cache knows
+  // which issue that is, preferring the Watchtower. Falling back to "whichever
+  // meeting publication is on the card" is what this used to do on its own, and
+  // it happily showed a months-old issue.
+  //
+  // Neither fallback is redundant. The registry only knows downloads made since
+  // it existed; the card scan reads the dated filename, which is all that
+  // survives for a download older than that. Recents is no use to either: it
+  // holds books that have been OPENED, and a publication downloaded and not yet
+  // read is precisely what this tile exists to advertise.
+  auto meetingPath = thisWeeksMeetingPublication();
+  if (!meetingPath) meetingPath = PubKeyRegistry::findBySymbol({"w", "mwb"});
   if (!meetingPath) meetingPath = findMeetingPublicationOnCard();
   LOG_INF(MODULE, "Meeting publication: %s", meetingPath ? meetingPath->c_str() : "(none found)");
   if (meetingPath) {
@@ -119,6 +126,27 @@ void LauncherActivity::resolveTargets() {
   // launcher paints over a cleared screen anyway -- but the panel still shows
   // the popup until the first render lands, which is the point of drawing it.
   if (generatedAny) LOG_INF(MODULE, "Generated a missing cover thumbnail");
+}
+
+// The current week's Watchtower, or its workbook when no Watchtower is held.
+// Empty when the clock is unset or the cache does not cover this week -- the
+// meetings screen is what fills that cache, and it is one tap away.
+std::optional<std::string> LauncherActivity::thisWeeksMeetingPublication() {
+  HalClock::Date today{};
+  IsoWeek week;
+  if (!halClock.getDate(today) || !isoWeekFromUtcDate(today.year, today.month, today.day, week)) return std::nullopt;
+
+  MeetingWeekTable table;
+  MeetingWeekCache::load(table);
+  const MeetingWeekEntry* entry = table.find(meetingWeekKey(week));
+  if (entry == nullptr) return std::nullopt;
+
+  for (const MeetingPub pub : {MeetingPub::Watchtower, MeetingPub::Workbook}) {
+    const std::string& issue = pub == MeetingPub::Watchtower ? entry->watchtower : entry->workbook;
+    const std::string path = MeetingLibrary::findPublication(pub, issue);
+    if (!path.empty()) return path;
+  }
+  return std::nullopt;
 }
 
 // Publications downloaded before PubKeyRegistry existed carry no symbol entry,
