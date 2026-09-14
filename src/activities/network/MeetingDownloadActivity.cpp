@@ -14,6 +14,7 @@
 #include "WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "network/HttpDownloader.h"
+#include "network/MeetingWeekCache.h"
 #include "network/PublicationDownloader.h"
 
 namespace fui = freeink::ui;
@@ -145,6 +146,12 @@ void MeetingDownloadActivity::runSequence() {
 
   WolWeekScanner scanner;
   if (!scanWeek(week, scanner)) return;
+
+  // Remember what this week references before downloading anything. The scrape
+  // is the only source of these codes and it costs a page fetch, so the answer
+  // is worth keeping even if a download later fails -- issue() is "" for a
+  // publication the week does not carry, which is the Memorial week's workbook.
+  MeetingWeekCache::record(week, scanner.issue(MeetingPub::Watchtower), scanner.issue(MeetingPub::Workbook));
 
   phaseCount = scanner.count();
   workbookUnavailable = !scanner.has(MeetingPub::Workbook);
