@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Epub.h>
-#include <Epub/HighlightDoc.h>
+#include <StudyStore/TagPalette.h>
 #include <Epub/HighlightGeometry.h>
 #include <Epub/Page.h>
 #include <Epub/Section.h>
@@ -39,18 +39,14 @@
 class PassageSelectActivity final : public Activity {
  public:
   explicit PassageSelectActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Page> page,
-                                 int marginLeft, int marginTop, int columnRight, HighlightDoc& highlightDoc,
-                                 std::string bookPath, uint16_t spineIndex, bool saveDisabled, Epub& epub,
+                                 int marginLeft, int marginTop, int columnRight, uint16_t spineIndex, Epub& epub,
                                  Section& section, uint16_t pageNumber)
       : Activity("PassageSelect", renderer, mappedInput),
         page(std::move(page)),
         marginLeft(marginLeft),
         marginTop(marginTop),
         columnRight(columnRight),
-        highlightDoc(highlightDoc),
-        bookPath(std::move(bookPath)),
         spineIndex(spineIndex),
-        saveDisabled(saveDisabled),
         epub(epub),
         section(section),
         currentPageNumber(pageNumber) {}
@@ -84,7 +80,7 @@ class PassageSelectActivity final : public Activity {
   void commitAt(int index);
   void showActionChooser(int endIndex);
   void startTagFlow(int endIndex);
-  void finalizeSelection(int endIndex, std::vector<uint16_t> tagIndices = {});
+  void finalizeSelection(int endIndex, std::vector<study::TagId> tagIds = {});
   // Display label for the selected words. WordBox holds geometry only, so the
   // token text is re-read from the block arena instead of kept resident for
   // every word on the page.
@@ -108,15 +104,12 @@ class PassageSelectActivity final : public Activity {
   const int marginLeft;
   const int marginTop;
   const int columnRight;
-  HighlightDoc& highlightDoc;
-  const std::string bookPath;
   const uint16_t spineIndex;
   // Safe to hold by reference: ActivityManager runs only the top activity, so
   // the reader's own section.reset() paths cannot fire while this is on top.
   Epub& epub;
   Section& section;
   uint16_t currentPageNumber;
-  const bool saveDisabled;
 
   int fontId = 0;
   int lineHeight = 0;

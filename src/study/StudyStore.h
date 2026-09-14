@@ -35,6 +35,26 @@ class StudyStore {
   void closePublication();
 
   const study::TagPalette& palette() const { return palette_; }
+
+  // Active tags in allocation order, paired with their names, for a picker or a
+  // filter row. Returned by value: the caller builds a row list from it and the
+  // palette may be edited underneath while that list is on screen.
+  struct TagView {
+    study::TagId id;
+    std::string name;
+  };
+  std::vector<TagView> activeTags() const;
+
+  // Indices of passages carrying `id`, in document order, for the filter.
+  std::vector<size_t> passagesWithTag(study::TagId id) const;
+
+  // Comma-joined names of the tags a passage carries, for a list row. Retired
+  // tags still resolve -- a passage that carries one must not render a blank.
+  std::string tagNamesFor(size_t passageIndex) const;
+
+  // Document offset the passage starts at, for jumping to it. Builds that one
+  // document's unit index if needed, so it is not for the page-turn path.
+  std::optional<uint32_t> documentOffsetFor(size_t passageIndex);
   const std::vector<study::TaggedPassage>& passages() const { return passages_.passages(); }
   const std::string& pubKey() const { return pubKey_; }
   bool isOpen() const { return units_ != nullptr; }

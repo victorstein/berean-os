@@ -8,13 +8,13 @@
 #include <utility>
 #include <variant>
 
-#include "../../util/HighlightFile.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
 #include "TagFilterActivity.h"
 #include "TagPickerActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "study/StudyStore.h"
 
 namespace fui = freeink::ui;
 
@@ -24,12 +24,8 @@ namespace {
 constexpr int ENTER_DELETE_MODE_MS = 700;
 }  // namespace
 
-HighlightsActivity::HighlightsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                       HighlightDoc& highlightDoc, std::string bookPath, const bool saveDisabled)
-    : UiListActivity("Highlights", renderer, mappedInput, /*wantsTouchLongPress=*/true),
-      highlightDoc_(highlightDoc),
-      bookPath_(std::move(bookPath)),
-      saveDisabled_(saveDisabled) {}
+HighlightsActivity::HighlightsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
+    : UiListActivity("Highlights", renderer, mappedInput, /*wantsTouchLongPress=*/true) {}
 
 void HighlightsActivity::onEnter() {
   UiListActivity::onEnter();
@@ -43,39 +39,30 @@ const char* HighlightsActivity::headerTitle() const { return tr(STR_HIGHLIGHTS);
 
 void HighlightsActivity::rebuildVisibleIndices() {
   visibleIndices_.clear();
-  const auto& highlights = highlightDoc_.highlights();
-  visibleIndices_.reserve(highlights.size());
-  // Most recent first: addHighlight only ever appends, so storage order is
+  const auto& passages = STUDY.passages();
+  visibleIndices_.reserve(passages.size());
+  // Most recent first: add only ever appends, so storage order is
   // oldest-to-newest and "most recent" is the reverse walk.
-  for (size_t i = highlights.size(); i-- > 0;) {
-    if (filterTagIndex_) {
-      const auto& tags = highlights[i].tagIndices;
-      if (std::find(tags.begin(), tags.end(), *filterTagIndex_) == tags.end()) continue;
+  for (size_t i = passages.size(); i-- > 0;) {
+    if (filterTagId_) {
+      const auto& tags = passages[i].tags;
+      if (std::find(tags.begin(), tags.end(), *filterTagId_) == tags.end()) continue;
     }
     visibleIndices_.push_back(i);
   }
 }
 
 std::string HighlightsActivity::computeFilterSubtitle() const {
-  if (!filterTagIndex_) return tr(STR_TAG_FILTER_ALL);
-  const auto& tags = highlightDoc_.tags();
-  if (*filterTagIndex_ >= tags.size()) return tr(STR_TAG_FILTER_ALL);  // defensive; should not happen
-  return tags[*filterTagIndex_];
+  if (!filterTagId_) return tr(STR_TAG_FILTER_ALL);
+  const std::string& name = STUDY.palette().name(*filterTagId_);
+  return name.empty() ? tr(STR_TAG_FILTER_ALL) : name;
 }
 
-std::string HighlightsActivity::tagsValueFor(const HighlightEntry& entry) const {
-  if (entry.tagIndices.empty()) return std::string();
-  const auto& tags = highlightDoc_.tags();
-  std::string value;
-  for (const uint16_t idx : entry.tagIndices) {
-    if (idx >= tags.size()) continue;  // defensive; should not happen
-    if (!value.empty()) value += ", ";
-    value += tags[idx];
-  }
+std::string HighlightsActivity::tagsValueFor(const size_t passageIndex) const {
   // list() takes the value slot's measured width out of the label's, so an
   // unbounded tag list drives the reference's width negative and list() then
   // skips drawing it. Matching MAX_TAG_NAME_BYTES keeps one longest tag whole.
-  return utf8SafeSummary(std::move(value), HighlightDoc::MAX_TAG_NAME_BYTES);
+  return utf8SafeSummary(STUDY.tagNamesFor(passageIndex), study::TagPalette::MAX_TAG_NAME_BYTES);
 }
 
 void HighlightsActivity::rebuildRowItems() {
@@ -91,10 +78,10 @@ void HighlightsActivity::rebuildRowItems() {
   filterRow.actionValue = 0;
   rowItems_.push_back(filterRow);
 
-  const auto& highlights = highlightDoc_.highlights();
+  const auto& passages = STUDY.passages();
   for (size_t i = 0; i < visibleIndices_.size(); ++i) {
-    const auto& entry = highlights[visibleIndices_[i]];
-    rowTagValues_.push_back(tagsValueFor(entry));
+    const auto& entry = passages[visibleIndices_[i]];
+    rowTagValues_.push_back(tagsValueFor(visibleIndices_[i]));
 
     // Reference and tags share the first line, passage wraps beneath. Nothing
     // relies on an embedded newline: GfxRenderer::wrappedText splits on spaces
@@ -105,11 +92,11 @@ void HighlightsActivity::rebuildRowItems() {
       item.label = entry.reference.c_str();
       // Left null when there is no passage: list() tests the pointer, not the
       // string, so an empty one would still reserve a blank second line.
-      if (!entry.label.empty()) item.subtitle = entry.label.c_str();
+      if (!entry.snippet.empty()) item.subtitle = entry.snippet.c_str();
     } else {
       // No verse anchors in this book: the passage takes the label line, which
       // is exactly the layout this replaced.
-      item.label = entry.label.empty() ? tr(STR_UNNAMED) : entry.label.c_str();
+      item.label = entry.snippet.empty() ? tr(STR_UNNAMED) : entry.snippet.c_str();
     }
     if (!rowTagValues_.back().empty()) item.value = rowTagValues_.back().c_str();
     item.actionValue = static_cast<int16_t>(i + 1);
@@ -118,56 +105,52 @@ void HighlightsActivity::rebuildRowItems() {
 }
 
 void HighlightsActivity::openTagFilter() {
-  if (highlightDoc_.tags().empty()) return;  // nothing to filter by; stays on "All"
+  if (STUDY.palette().activeCount() == 0) return;  // nothing to filter by; stays on "All"
 
   app.clearTapFlash();
-  // Captured BEFORE the push: the filter screen can delete a tag, and removeTag
-  // renumbers every index in place, so an index held across the push can name a
-  // different tag on return (1210b1d4). The name is what survives.
-  const std::string activeTagName = filterTagIndex_ ? highlightDoc_.tags()[*filterTagIndex_] : std::string();
-  startActivityForResult(
-      std::make_unique<TagFilterActivity>(renderer, mappedInput, highlightDoc_, bookPath_, saveDisabled_),
-      [this, activeTagName](const ActivityResult& result) {
-        // Guarded on the alternative, not just isCancelled: any finish() that
-        // forgets to set a result leaves monostate here, and std::get on the
-        // wrong alternative aborts under -fno-exceptions.
-        if (!result.isCancelled && std::holds_alternative<TagSelectionResult>(result.data)) {
-          const auto& selection = std::get<TagSelectionResult>(result.data);
-          if (selection.tagIndices.empty()) {
-            filterTagIndex_.reset();
-          } else if (selection.tagIndices.front() < highlightDoc_.tags().size()) {
-            filterTagIndex_ = selection.tagIndices.front();
-          }
-        } else if (filterTagIndex_) {
-          // Cancelled, but a delete may still have happened before Back. Re-resolve
-          // the active filter by name; it is gone if the name is gone.
-          const auto& tags = highlightDoc_.tags();
-          const auto it = std::find(tags.begin(), tags.end(), activeTagName);
-          if (it == tags.end()) {
-            filterTagIndex_.reset();
-          } else {
-            filterTagIndex_ = static_cast<uint16_t>(std::distance(tags.begin(), it));
-          }
-        }
-        // Always rebuilt, including on cancel: a deletion changes the rows and
-        // the labels they borrow even when the filter itself is untouched.
-        rebuildVisibleIndices();
-        rebuildRowItems();
-        moveSelectionTo(0);
-      });
+  startActivityForResult(std::make_unique<TagFilterActivity>(renderer, mappedInput),
+                         [this](const ActivityResult& result) {
+                           // Guarded on the alternative, not just isCancelled: any finish() that
+                           // forgets to set a result leaves monostate here, and std::get on the
+                           // wrong alternative aborts under -fno-exceptions.
+                           if (!result.isCancelled && std::holds_alternative<TagSelectionResult>(result.data)) {
+                             const auto& selection = std::get<TagSelectionResult>(result.data);
+                             if (selection.tagIds.empty()) {
+                               filterTagId_.reset();
+                             } else {
+                               filterTagId_ = selection.tagIds.front();
+                             }
+                           }
+
+                           // The filter screen can retire a tag. Nothing needs re-resolving --
+                           // the id is stable -- but a filter on a now-retired tag would show an
+                           // empty list forever, so it is dropped.
+                           if (filterTagId_ && !STUDY.palette().isActive(*filterTagId_)) filterTagId_.reset();
+
+                           // Always rebuilt, including on cancel: a retirement changes the rows
+                           // and the labels they borrow even when the filter is untouched.
+                           rebuildVisibleIndices();
+                           rebuildRowItems();
+                           moveSelectionTo(0);
+                         });
 }
 
 void HighlightsActivity::jumpToHighlight(const size_t docIndex) {
-  if (docIndex >= highlightDoc_.highlights().size()) return;
-  const auto& entry = highlightDoc_.highlights()[docIndex];
+  if (docIndex >= STUDY.passages().size()) return;
+  const auto& entry = STUDY.passages()[docIndex];
 
-  // hasVisibleTextOffset=true plus the stored start offset routes through the
-  // reader's existing offset-based jump branch (immune to re-pagination); see
-  // the class comment for why this bypasses progressChangeResultHandler.
+  // The stored address is a Unit, so the document offset is resolved now rather
+  // than stored. A passage whose document cannot be indexed has no offset to
+  // jump to; open the document anyway rather than doing nothing.
+  const auto offset = STUDY.documentOffsetFor(docIndex);
+
+  // hasVisibleTextOffset plus the resolved offset routes through the reader's
+  // existing offset-based jump branch (immune to re-pagination); see the class
+  // comment for why this bypasses progressChangeResultHandler.
   ProgressChangeResult result;
-  result.spineIndex = static_cast<int>(entry.spineIndex);
-  result.hasVisibleTextOffset = true;
-  result.visibleTextOffset = entry.range.start;
+  result.spineIndex = static_cast<int>(entry.documentSpine);
+  result.hasVisibleTextOffset = offset.has_value();
+  result.visibleTextOffset = offset.value_or(0);
   setResult(std::move(result));
   finish();
 }
@@ -202,12 +185,12 @@ void HighlightsActivity::showActionChooser(const size_t docIndex) {
   pendingActionIndex_ = docIndex;
   choosingAction_ = true;
 
-  if (saveDisabled_) {
+  if (STUDY.saveDisabled()) {
     // Retagging writes the document, so a book whose file failed to load
     // (the resident doc was built from scratch this session) must never see
     // "Tags..." at all -- omit it rather than offer it and bail inside
     // editTags. Delete still shows: showDeleteConfirmation carries its own
-    // saveDisabled_ bail below, same as before this task.
+    // its own saveDisabled bail below, same as before this task.
     const char* options[] = {tr(STR_DELETE), tr(STR_CANCEL)};
     actionChooser_.show(tr(STR_HIGHLIGHT_ACTIONS), options, 2, 0, [this](const int idx) {
       choosingAction_ = false;
@@ -248,8 +231,8 @@ void HighlightsActivity::showActionChooser(const size_t docIndex) {
 }
 
 void HighlightsActivity::editTags(const size_t docIndex) {
-  if (docIndex >= highlightDoc_.highlights().size()) return;  // stale index; nothing to do
-  if (saveDisabled_) {
+  if (docIndex >= STUDY.passages().size()) return;  // stale index; nothing to do
+  if (STUDY.saveDisabled()) {
     // Defense in depth: showActionChooser already omits "Tags..." in this
     // state, but mirror showDeleteConfirmation's own bail so this method is
     // safe to call regardless of how it's reached.
@@ -263,61 +246,30 @@ void HighlightsActivity::editTags(const size_t docIndex) {
   // button, so it is optional here -- PassageSelectActivity::startTagFlow
   // pushes the same activity from a popup callback without it.
   app.clearTapFlash();
-  const std::vector<uint16_t> initialSelection = highlightDoc_.highlights()[docIndex].tagIndices;
-  const std::string filterTagName = filterTagIndex_ ? highlightDoc_.tags()[*filterTagIndex_] : std::string();
-  startActivityForResult(
-      std::make_unique<TagPickerActivity>(renderer, mappedInput, highlightDoc_, bookPath_, saveDisabled_,
-                                          initialSelection),
-      [this, docIndex, filterTagName](const ActivityResult& result) { applyTagEdit(docIndex, filterTagName, result); });
+  const std::vector<study::TagId> initialSelection = STUDY.passages()[docIndex].tags;
+  startActivityForResult(std::make_unique<TagPickerActivity>(renderer, mappedInput, initialSelection),
+                         [this, docIndex](const ActivityResult& result) { applyTagEdit(docIndex, result); });
 }
 
-void HighlightsActivity::applyTagEdit(const size_t docIndex, const std::string& filterTagName,
-                                      const ActivityResult& result) {
-  // A size_t doc index is stable across the picker push: removeTag erases
-  // from tags_ and rewrites tagIndices in place but never resizes or
-  // reorders highlights_, and TagPickerActivity calls neither addHighlight
-  // nor removeHighlight. Bounds-checked anyway, defensively.
-  if (!result.isCancelled && docIndex < highlightDoc_.highlights().size()) {
+void HighlightsActivity::applyTagEdit(const size_t docIndex, const ActivityResult& result) {
+  // A size_t doc index is stable across the picker push: the picker edits the
+  // palette but never adds or removes a passage. Bounds-checked defensively.
+  if (!result.isCancelled && docIndex < STUDY.passages().size()) {
     // -fno-exceptions means a mismatched alternative aborts with no
     // recovery, so this must never run on the cancelled path.
     const auto& selection = std::get<TagSelectionResult>(result.data);
-    // Capture AFTER the picker returns: it can delete a palette entry, which
-    // renumbers every tagIndices in place (HighlightDoc.cpp:30-32). A copy taken
-    // before the push names tags by the old numbering.
-    const std::vector<uint16_t> previousTags = highlightDoc_.highlights()[docIndex].tagIndices;
-    highlightDoc_.setTags(docIndex, selection.tagIndices);
-
-    if (!saveDisabled_) {
-      switch (HighlightFile::save(bookPath_, highlightDoc_)) {
-        case HighlightFile::SaveResult::Ok:
-          break;
-        case HighlightFile::SaveResult::TooLarge:
-          // Never leave the resident doc holding tags that aren't actually on
-          // disk -- restore the entry's previous tagIndices, mirroring
-          // deleteHighlight's own rollback on a failed save.
-          highlightDoc_.setTags(docIndex, previousTags);
-          ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_TOO_LARGE));
-          break;
-        case HighlightFile::SaveResult::WriteFailed:
-          highlightDoc_.setTags(docIndex, previousTags);
-          ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
-          break;
-      }
+    // setPassageTags saves synchronously and restores the previous tags itself
+    // if the write fails, so the resident document can never hold tags that are
+    // not on disk.
+    if (!STUDY.setPassageTags(docIndex, selection.tagIds) && !selection.tagIds.empty()) {
+      ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
     }
   }
 
-  // The picker persists palette changes (new tags, tag deletion) itself, so
-  // even a user who backed out of this edit (isCancelled) may have already
-  // changed highlightDoc_.tags() on disk -- reconcile below on BOTH paths.
-  // Reconcile by name, not by index or count: the picker can delete AND add in
-  // one visit, leaving the size unchanged while the numbering shifts underneath.
-  if (filterTagIndex_) {
-    const auto& tags = highlightDoc_.tags();
-    const auto it = std::find(tags.begin(), tags.end(), filterTagName);
-    filterTagIndex_ = (it == tags.end())
-                          ? std::nullopt
-                          : std::optional<uint16_t>(static_cast<uint16_t>(std::distance(tags.begin(), it)));
-  }
+  // The picker persists palette changes itself, so even a cancelled edit may
+  // have retired the tag being filtered on. Ids are stable, so there is nothing
+  // to re-resolve -- only to drop if it is no longer active.
+  if (filterTagId_ && !STUDY.palette().isActive(*filterTagId_)) filterTagId_.reset();
   {
     // rebuildVisibleIndices/rebuildRowItems refill the vector buildScreen
     // hands the render task as rowItems_.data(); the render lock is
@@ -335,10 +287,9 @@ void HighlightsActivity::applyTagEdit(const size_t docIndex, const std::string& 
 
 void HighlightsActivity::showDeleteConfirmation(const size_t docIndex) {
   if (confirmPopup_.isActive() || actionChooser_.isActive()) return;
-  if (saveDisabled_) {
-    // The file may still hold the user's data (HighlightFile::LoadResult::Failed);
-    // never let a delete through in that state, matching PassageSelectActivity's
-    // own saveDisabled bail.
+  if (STUDY.saveDisabled()) {
+    // The file may still hold the user's data (a Failed load); never let a
+    // delete through in that state, matching PassageSelectActivity's own bail.
     ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
     requestUpdate();
     return;
@@ -356,43 +307,25 @@ void HighlightsActivity::showDeleteConfirmation(const size_t docIndex) {
 }
 
 void HighlightsActivity::deleteHighlight(const size_t docIndex) {
-  if (docIndex >= highlightDoc_.highlights().size()) return;  // stale index; nothing to do
+  if (docIndex >= STUDY.passages().size()) return;  // stale index; nothing to do
 
-  // Copy the one entry before removing it -- NOT the whole document -- so a
-  // failed save can roll back without doubling HighlightDoc's resident
-  // footprint (up to MAX_HIGHLIGHTS entries) on the C3. See the class comment
-  // for why the rollback can land at the end of the vector rather than back
-  // at its original position.
-  HighlightEntry removed = highlightDoc_.highlights()[docIndex];
-  highlightDoc_.removeHighlight(docIndex);
-  // Rebuild before the SD save, not after: rowItems_[i].label aliases each
-  // entry's std::string storage (see rebuildRowItems), and the render task
-  // runs concurrently under RenderLock -- it must never see rows aliasing
-  // the erased/moved storage while the save is in flight.
-  rebuildVisibleIndices();
-  rebuildRowItems();
+  // removePassage saves synchronously and re-adds the passage itself if the
+  // write fails, so the resident document never diverges from disk. A
+  // rolled-back passage lands at the end of the vector rather than back at its
+  // original position, so visibleIndices_ must be rebuilt wholesale either way
+  // -- never patched in place.
+  const bool removed = STUDY.removePassage(docIndex);
 
-  switch (HighlightFile::save(bookPath_, highlightDoc_)) {
-    case HighlightFile::SaveResult::Ok:
-      break;
-    case HighlightFile::SaveResult::TooLarge:
-      highlightDoc_.addHighlight(std::move(removed));
-      // A rolled-back entry re-appended by addHighlight is a different
-      // document index than the one just removed, so visibleIndices_ (and
-      // everything derived from it) must not be patched in place -- only a
-      // full rebuild from highlightDoc_ is safe here, again before rowItems_
-      // can be read by a concurrent render.
-      rebuildVisibleIndices();
-      rebuildRowItems();
-      ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_TOO_LARGE));
-      break;
-    case HighlightFile::SaveResult::WriteFailed:
-      highlightDoc_.addHighlight(std::move(removed));
-      rebuildVisibleIndices();
-      rebuildRowItems();
-      ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
-      break;
+  // Rebuilt under the render lock: rowItems_[i].label aliases each passage's
+  // std::string storage (see rebuildRowItems) and the render task runs
+  // concurrently, so it must never see rows aliasing erased or moved storage.
+  {
+    RenderLock lock(*this);
+    rebuildVisibleIndices();
+    rebuildRowItems();
   }
+
+  if (!removed) ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
 
   moveSelectionTo(std::clamp(activeNav().selected, 0, listCount() - 1));
 }
@@ -459,7 +392,7 @@ void HighlightsActivity::buildScreen(UiScreen& screen) {
 
   // Nothing to browse or filter: skip the filter row entirely rather than
   // show a control that can only ever read "All" over an empty list.
-  if (highlightDoc_.highlights().empty()) {
+  if (STUDY.passages().empty()) {
     screen.centeredText(tr(STR_NO_HIGHLIGHTS), screen.theme().bodyText);
     return;
   }

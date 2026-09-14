@@ -49,17 +49,14 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long bookmarkMessageTime = 0UL;
   bool pendingReadFolderMove = false;
 
-  // Gated on BOARD_HAS_PSRAM in loadBook(): a resident 400-entry HighlightDoc
-  // plus HighlightFile::load's two live JsonDocuments are a real risk against
-  // the C3's ~50KB free heap during a reading session, so non-PSRAM boards
-  // never load this and highlightDoc simply stays empty. See Task 3's C3
-  // memory decision in the highlights UI plan.
-  HighlightDoc highlightDoc;
+  // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
+  // two live JsonDocuments are a real risk against the C3's ~50KB free heap
+  // during a reading session, so non-PSRAM boards never open the study store.
+  //
+  // The save latch lives in StudyStore, not here: a store that failed to load
+  // may still hold the user's data, and that is a property of the session
+  // rather than of one book.
   bool highlightsLoaded = false;
-  // Set on HighlightFile::LoadResult::Failed: the file may still hold the
-  // user's data, so saving over it for the rest of the session would risk
-  // destroying it.
-  bool highlightsSaveDisabled = false;
 
   // Footnote support
   std::vector<FootnoteEntry> currentPageFootnotes;

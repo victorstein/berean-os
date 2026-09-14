@@ -1,6 +1,7 @@
 #pragma once
 
-#include <Epub/HighlightDoc.h>
+#include <StudyStore/PassageDoc.h>
+#include <StudyStore/TagPalette.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +9,7 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
+#include "study/StudyStore.h"
 #include "components/OptionPopup.h"
 
 // Multi-select picker over a book's tag palette (HighlightDoc::tags()), plus
@@ -37,13 +39,14 @@
 // it from EVERY highlight in the book that carries it, not just the one
 // being tagged here, so a confirmation dialog names that scope explicitly.
 // Unlike the add path above, a failed delete-save cannot be rolled back:
-// removeTag rewrites every highlight's tag references in place and the set
-// of highlights that carried the tag is not retained, so the failure is
-// surfaced to the user instead.
+// A long-press RETIRES a tag rather than deleting it. The palette is global, so
+// a destructive delete here would reach every publication; retiring removes it
+// from the pickers and from this publication's passages while leaving every
+// passage itself on the card.
 class TagPickerActivity final : public UiListActivity {
  public:
-  explicit TagPickerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, HighlightDoc& highlightDoc,
-                             std::string bookPath, bool saveDisabled, std::vector<uint16_t> initialSelection = {});
+  explicit TagPickerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                             std::vector<study::TagId> initialSelection = {});
 
   void onEnter() override;
   bool handleHomeGesture() override;
@@ -51,10 +54,10 @@ class TagPickerActivity final : public UiListActivity {
 
  private:
   // "Done" + palette + "New tag..."
-  static constexpr int MAX_ROWS = static_cast<int>(HighlightDoc::MAX_TAGS) + 2;
+  static constexpr int MAX_ROWS = static_cast<int>(study::TagPalette::MAX_ACTIVE_TAGS) + 2;
   static constexpr int DONE_ROW = 0;
 
-  // Row index -> index into highlightDoc.tags(), or -1 for a non-tag row.
+  // Row index -> index into tags_, or -1 for a non-tag row.
   // EVERY row-to-tag conversion goes through this. The rows and the palette are
   // no longer the same numbering, and applying the offset in one place but not
   // the next is exactly how a held Confirm on "Done" would reach the delete path.
@@ -70,17 +73,26 @@ class TagPickerActivity final : public UiListActivity {
   const char* headerTitle() const override;
   void drawFooter() override;
 
-  void toggleTag(size_t index);
+  void toggleTag(size_t tagRow);
   void startNewTagFlow();
   void reportAddTagFailure(const std::string& name);
   void commitAndFinish();
-  void showDeleteConfirmation(size_t tagIndex);
-  void deleteTag(size_t tagIndex);
+  void showRetireConfirmation(size_t tagRow);
+  void retireTag(size_t tagRow);
 
-  HighlightDoc& highlightDoc;
-  const std::string bookPath_;
-  const bool saveDisabled_;
-  std::vector<uint16_t> initialSelection_;
+  bool isSelected(study::TagId id) const;
+  void setSelected(study::TagId id, bool on);
+
+  // Snapshot of the active palette. rowItems_ borrows label pointers from these
+  // strings, so they must outlive the row list -- and must not be a view into
+  // the palette itself, which "New tag..." can reallocate mid-visit.
+  std::vector<StudyStore::TagView> tags_;
+
+  // The checked set, as IDS. The model this replaced kept a bool array
+  // index-aligned with the palette and had to shift every entry down when a tag
+  // was deleted, because otherwise each slot above it silently came to mean a
+  // different tag. Ids need no alignment and no shifting.
+  std::vector<study::TagId> selectedIds_;
 
   bool confirmingDelete_ = false;
   OptionPopup confirmPopup_;
@@ -88,16 +100,9 @@ class TagPickerActivity final : public UiListActivity {
   // callback (which runs after further input has been processed) deletes the
   // exact row that was long-pressed rather than re-deriving it from whatever
   // nav.selected happens to be by the time the popup resolves.
-  size_t pendingDeleteIndex_ = 0;
+  size_t pendingRetireRow_ = 0;
 
-  // Index-aligned with highlightDoc.tags(). Fixed at MAX_TAGS capacity, but
-  // the palette is no longer grow-only: a long-press/held-Confirm delete can
-  // shrink it too. On delete, entries above the removed index are shifted
-  // down (never simply cleared -- see TagPickerActivity.cpp's deleteTag) so
-  // every remaining slot keeps meaning "is highlightDoc.tags()[i] checked".
-  bool selected_[HighlightDoc::MAX_TAGS]{};
-
-  // Rebuilt from highlightDoc.tags() on every buildScreen() call, never
+  // Rebuilt from tags_ on every buildScreen() call, never
   // cached across visits: a short tag name can live in std::string's small
   // buffer, whose address moves if the tags vector reallocates after
   // "New tag..." adds an entry -- caching label pointers across that round

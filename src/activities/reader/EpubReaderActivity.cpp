@@ -39,6 +39,7 @@
 #include "QrDisplayActivity.h"
 #include "ReaderActivity.h"
 #include "ReaderUtils.h"
+#include "study/StudyStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SpineHtmlStream.h"
@@ -238,24 +239,19 @@ bool EpubReaderActivity::loadBook() {
   loadCachedBookmarks();
 
 #if BOARD_HAS_PSRAM
-  switch (HighlightFile::load(bookPath, highlightDoc)) {
-    case HighlightFile::LoadResult::Loaded:
-    case HighlightFile::LoadResult::Empty:
-    case HighlightFile::LoadResult::RecoveredFromTemp:
-      highlightsLoaded = true;
-      break;
-    case HighlightFile::LoadResult::Failed:
-      // The file may still hold the user's data -- do not save over it, and
-      // say so once up front rather than only at the point a save is refused.
-      highlightsSaveDisabled = true;
-      ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
-      break;
+  // StudyStore latches saving off itself when a store failed to load, so this
+  // only has to surface it. The latch is a property of the session, not of the
+  // book: a file that may still hold the user's data must not be written over
+  // later either.
+  highlightsLoaded = STUDY.openPublication(epub, renderer);
+  if (STUDY.saveDisabled()) {
+    ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
   }
 #else
-  // highlightDoc is never loaded on non-PSRAM boards -- disable saving so no
-  // path (e.g. PassageSelectActivity) can call HighlightFile::save on a
-  // document that was never populated and would overwrite the real file.
-  highlightsSaveDisabled = true;
+  // The study store is never opened on non-PSRAM boards: a resident passage
+  // document plus two live JsonDocuments is a real risk against ~50KB of free
+  // heap. Nothing is loaded, so nothing can be saved over.
+  highlightsLoaded = false;
 #endif
 
   return true;
@@ -332,8 +328,8 @@ void EpubReaderActivity::openHighlightPassage() {
   // on the next repaint with no page turn.
   startActivityForResult(std::make_unique<PassageSelectActivity>(
                              renderer, mappedInput, std::move(page), orientedMarginLeft, orientedMarginTop, columnRight,
-                             highlightDoc, epub->getPath(), static_cast<uint16_t>(currentSpineIndex),
-                             highlightsSaveDisabled, *epub, *section, static_cast<uint16_t>(section->currentPage)),
+                             static_cast<uint16_t>(currentSpineIndex), *epub, *section,
+                             static_cast<uint16_t>(section->currentPage)),
                          [this](const ActivityResult&) { requestUpdate(); });
 }
 
@@ -347,8 +343,7 @@ void EpubReaderActivity::openHighlights() {
   // reusing its std::get is type-safe -- it is the surrounding side effects
   // that make reuse wrong, not the ResultVariant alternative.
   startActivityForResult(
-      std::make_unique<HighlightsActivity>(renderer, mappedInput, highlightDoc, epub->getPath(),
-                                           highlightsSaveDisabled),
+      std::make_unique<HighlightsActivity>(renderer, mappedInput),
       [this](const ActivityResult& result) {
         if (result.isCancelled) return;
         const auto& sync = std::get<ProgressChangeResult>(result.data);
@@ -1388,8 +1383,12 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // those pages -- acceptable.
   std::vector<VisibleRange> highlightRanges;
   if (highlightsLoaded) {
-    for (const auto* entry : highlightDoc.findBySpine(static_cast<uint16_t>(currentSpineIndex))) {
-      highlightRanges.push_back(entry->range);  // value, never the pointer: addHighlight can reallocate
+    // Values, never pointers: adding a passage can reallocate the document.
+    // A passage whose fingerprint no longer matches its unit is not returned at
+    // all -- the text it was attached to is not the text that is there, so
+    // painting it would mark words the user never marked.
+    for (const auto& painted : STUDY.passagesInDocument(static_cast<uint16_t>(currentSpineIndex))) {
+      highlightRanges.push_back(VisibleRange{painted.startOffset, painted.endOffset});
     }
   }
 

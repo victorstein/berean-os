@@ -12,11 +12,11 @@
 #include <algorithm>
 #include <climits>
 
-#include "../../util/HighlightFile.h"
 #include "CrossPointSettings.h"
 #include "HighlightOverlay.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
+#include "study/StudyStore.h"
 #include "TagPickerActivity.h"
 #include "components/UITheme.h"
 
@@ -26,7 +26,7 @@ void PassageSelectActivity::onEnter() {
   // The file may still hold the user's data (HighlightFile::LoadResult::Failed),
   // so a resident doc built from scratch this session must never be saved over
   // it. Bail before spending any effort on word extraction.
-  if (saveDisabled) {
+  if (STUDY.saveDisabled()) {
     ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
     finish();
     return;
@@ -112,8 +112,8 @@ void PassageSelectActivity::rebuildCommittedRects() {
   // Highlights already saved on this page, so the outlined selection-in-progress
   // reads as visibly different from what's already committed.
   std::vector<VisibleRange> existingRanges;
-  for (const auto* entry : highlightDoc.findBySpine(spineIndex)) {
-    existingRanges.push_back(entry->range);
+  for (const auto& painted : STUDY.passagesInDocument(spineIndex)) {
+    existingRanges.push_back(VisibleRange{painted.startOffset, painted.endOffset});
   }
   committedRects = HighlightOverlay::buildRects(*page, existingRanges, marginLeft, marginTop, columnRight, lineHeight,
                                                 ascender, gapTolerance);
@@ -341,7 +341,7 @@ void PassageSelectActivity::showActionChooser(const int endIndex) {
 
 void PassageSelectActivity::startTagFlow(const int endIndex) {
   startActivityForResult(
-      std::make_unique<TagPickerActivity>(renderer, mappedInput, highlightDoc, bookPath, saveDisabled),
+      std::make_unique<TagPickerActivity>(renderer, mappedInput),
       [this, endIndex](const ActivityResult& result) {
         // Cancelling the picker discards only the TAG
         // selection, not the highlight itself -- the
@@ -352,15 +352,15 @@ void PassageSelectActivity::startTagFlow(const int endIndex) {
         // that means the same untagged save Highlight
         // would have produced, not discarding the work the
         // user already did picking two anchors.
-        std::vector<uint16_t> tagIndices;
+        std::vector<study::TagId> tagIds;
         if (!result.isCancelled) {
-          tagIndices = std::get<TagSelectionResult>(result.data).tagIndices;
+          tagIds = std::get<TagSelectionResult>(result.data).tagIds;
         }
-        finalizeSelection(endIndex, std::move(tagIndices));
+        finalizeSelection(endIndex, std::move(tagIds));
       });
 }
 
-void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<uint16_t> tagIndices) {
+void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<study::TagId> tagIds) {
   const VisibleRange range = selectionRange(endIndex);
 
   // Label indices are page-local. When a page turn has left the anchor's page
@@ -369,42 +369,23 @@ void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<ui
   const int lo = (anchorIndex >= 0) ? std::min(anchorIndex, endIndex) : 0;
   const int hi = (anchorIndex >= 0) ? std::max(anchorIndex, endIndex) : endIndex;
 
-  HighlightEntry entry;
-  entry.spineIndex = spineIndex;
-  // Separate fields, so the two no longer compete for one 72-byte budget:
-  // addHighlight caps each independently.
-  entry.reference = verseReference(range.start);
-  entry.label = selectionLabel(lo, hi);
-  // end is the last word's offset + 1: contains() tests a word's start offset.
-  entry.range = range;
-  // Truncated to MAX_TAGS_PER_HIGHLIGHT by addHighlight if ever oversized, but
-  // TagPickerActivity already blocks picking a 9th tag, so this is a no-op in
-  // practice, not a second, divergent cap.
-  entry.tagIndices = std::move(tagIndices);
-
-  if (!highlightDoc.addHighlight(std::move(entry))) {
-    // HighlightDoc::MAX_HIGHLIGHTS reached -- nothing was appended.
-    ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_TOO_LARGE));
+  if (tagIds.empty()) {
+    // A passage exists only to carry tags, and StudyStore refuses an untagged
+    // one. Reaching here means the picker came back with nothing checked.
     finish();
     return;
   }
 
-  // addHighlight appends, so this is exactly the entry just added.
-  const size_t addedIndex = highlightDoc.highlights().size() - 1;
-  switch (HighlightFile::save(bookPath, highlightDoc)) {
-    case HighlightFile::SaveResult::Ok:
-      break;
-    case HighlightFile::SaveResult::TooLarge:
-      // Never leave the resident doc holding an entry that isn't actually on
-      // disk -- it would render as a phantom highlight and get retried (and
-      // fail again) on every future save this session.
-      highlightDoc.removeHighlight(addedIndex);
-      ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_TOO_LARGE));
-      break;
-    case HighlightFile::SaveResult::WriteFailed:
-      highlightDoc.removeHighlight(addedIndex);
-      ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
-      break;
+  // `range.end` is the last word's offset + 1 -- VisibleRange::contains tests a
+  // word's START offset, so the half-open end is what the geometry expects.
+  // StudyStore::addPassage preserves that convention when it resolves the
+  // offsets into units; changing it here would shift every mark by one word.
+  const bool added = STUDY.addPassage(spineIndex, range.start, range.end, selectionLabel(lo, hi),
+                                      verseReference(range.start), std::move(tagIds));
+  if (!added) {
+    // addPassage saves synchronously and rolls back its own append on failure,
+    // so the resident document never holds a phantom highlight.
+    ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
   }
   finish();
 }

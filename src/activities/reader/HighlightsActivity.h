@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Epub/HighlightDoc.h>
+#include <StudyStore/TagPalette.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -77,8 +77,7 @@
 // behave inconsistently with every other browse list in the app.
 class HighlightsActivity final : public UiListActivity {
  public:
-  explicit HighlightsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, HighlightDoc& highlightDoc,
-                              std::string bookPath, bool saveDisabled);
+  explicit HighlightsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
   void render(RenderLock&&) override;
@@ -93,20 +92,20 @@ class HighlightsActivity final : public UiListActivity {
   void onBackButton() override;
   const char* headerTitle() const override;
 
-  // Rebuilds visibleIndices_ from highlightDoc_.highlights() + filterTagIndex_.
+  // Rebuilds visibleIndices_ from STUDY.passages() + filterTagId_.
   // Indices only, most-recent-first (reverse insertion order) -- never the
   // findBySpine-style raw HighlightEntry* pointers, which addHighlight's
   // push_back (rollback on a failed delete-save) or removeHighlight's erase
   // would invalidate out from under a held pointer.
   void rebuildVisibleIndices();
-  // Rebuilds rowTagValues_/rowItems_ from visibleIndices_ + filterTagIndex_.
+  // Rebuilds rowTagValues_/rowItems_ from visibleIndices_ + filterTagId_.
   // Called only when the underlying data changes (onEnter, filter cycle,
   // delete), not on every repaint -- mirrors
   // EpubReaderBookmarksActivity::rebuildBookmarkRowItems.
   void rebuildRowItems();
   std::string computeFilterSubtitle() const;
-  // Tag names for one entry, joined and capped for the row's value slot.
-  std::string tagsValueFor(const HighlightEntry& entry) const;
+  // Tag names for one passage, joined and capped for the row's value slot.
+  std::string tagsValueFor(size_t passageIndex) const;
 
   // Pushes TagFilterActivity and applies its pick. Stepping one tag per tap
   // stopped scaling once the palette cap rose past a handful of tags.
@@ -114,20 +113,22 @@ class HighlightsActivity final : public UiListActivity {
   void jumpToHighlight(size_t docIndex);
   void showActionChooser(size_t docIndex);
   void editTags(size_t docIndex);
-  void applyTagEdit(size_t docIndex, const std::string& filterTagName, const ActivityResult& result);
+  void applyTagEdit(size_t docIndex, const ActivityResult& result);
   void showDeleteConfirmation(size_t docIndex);
   void deleteHighlight(size_t docIndex);
 
-  HighlightDoc& highlightDoc_;
-  const std::string bookPath_;
-  const bool saveDisabled_;
+  // nullopt = no filter ("All"); otherwise a global tag id.
+  //
+  // An ID, not an index. The model this replaced had to re-resolve the active
+  // filter BY NAME after every push, because deleting a tag renumbered every
+  // index in place and an index held across a screen could come back naming a
+  // different tag. Ids are allocated once and never reused, so there is nothing
+  // to reconcile and that whole class of bug is gone.
+  std::optional<study::TagId> filterTagId_;
 
-  // nullopt = no filter ("All"); otherwise an index into highlightDoc_.tags().
-  std::optional<uint16_t> filterTagIndex_;
-
-  // Indices into highlightDoc_.highlights(), most-recent-first, filtered by
-  // filterTagIndex_. See rebuildVisibleIndices()'s comment for why these are
-  // indices and not pointers.
+  // Indices into STUDY.passages(), most-recent-first, filtered by filterTagId_.
+  // See rebuildVisibleIndices()'s comment for why these are indices and not
+  // pointers.
   std::vector<size_t> visibleIndices_;
 
   // Row 0 mirrors the filter control; rows 1.. mirror visibleIndices_.

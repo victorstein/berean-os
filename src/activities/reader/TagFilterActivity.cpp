@@ -3,7 +3,6 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
-#include "../../util/HighlightFile.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
 #include "TagRowMapping.h"
@@ -12,14 +11,10 @@
 
 namespace fui = freeink::ui;
 
-TagFilterActivity::TagFilterActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, HighlightDoc& highlightDoc,
-                                     std::string bookPath, const bool saveDisabled)
-    : UiListActivity("TagFilter", renderer, mappedInput, /*wantsTouchLongPress=*/true),
-      highlightDoc_(highlightDoc),
-      bookPath_(std::move(bookPath)),
-      saveDisabled_(saveDisabled) {}
+TagFilterActivity::TagFilterActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
+    : UiListActivity("TagFilter", renderer, mappedInput, /*wantsTouchLongPress=*/true), tags_(STUDY.activeTags()) {}
 
-int TagFilterActivity::listCount() const { return static_cast<int>(highlightDoc_.tags().size()) + 1; }
+int TagFilterActivity::listCount() const { return static_cast<int>(tags_.size()) + 1; }
 
 const char* TagFilterActivity::headerTitle() const { return tr(STR_FILTER_BY_TAG); }
 
@@ -38,21 +33,20 @@ void TagFilterActivity::buildScreen(UiScreen& screen) {
                   static_cast<int16_t>(safe.x)});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  // Rebuilt every call rather than cached: label pointers borrow the palette's
-  // std::string buffers, which a caller-side edit could have moved since the
-  // last visit.
-  const auto& tags = highlightDoc_.tags();
+  // Refreshed every call: a retirement between visits changes the list, and
+  // rowItems_ borrows label pointers from tags_, so both move together.
+  tags_ = STUDY.activeTags();
   rowItems_.clear();
-  rowItems_.reserve(tags.size() + 1);
+  rowItems_.reserve(tags_.size() + 1);
 
   fui::ListItem allItem{};
   allItem.label = tr(STR_TAG_FILTER_ALL);
   allItem.actionValue = 0;
   rowItems_.push_back(allItem);
 
-  for (size_t i = 0; i < tags.size(); ++i) {
+  for (size_t i = 0; i < tags_.size(); ++i) {
     fui::ListItem item{};
-    item.label = tags[i].c_str();
+    item.label = tags_[i].name.c_str();
     item.actionValue = static_cast<int16_t>(i + 1);
     rowItems_.push_back(item);
   }
@@ -84,16 +78,16 @@ void TagFilterActivity::onRowLongPress(const int row) {
   if (confirmPopup_.isActive()) return;
   // Row 0 is "all tags" and maps to no palette entry. TagRows is the same
   // conversion the picker uses and is host-tested.
-  const int tagIndex = TagRows::tagIndexForRow(row, static_cast<int>(highlightDoc_.tags().size()));
+  const int tagIndex = TagRows::tagIndexForRow(row, static_cast<int>(tags_.size()));
   if (tagIndex < 0) return;
   app.clearTapFlash();
   nav.selected = row;
-  showDeleteConfirmation(static_cast<size_t>(tagIndex));
+  showRetireConfirmation(static_cast<size_t>(tagIndex));
 }
 
-void TagFilterActivity::showDeleteConfirmation(const size_t tagIndex) {
+void TagFilterActivity::showRetireConfirmation(const size_t tagRow) {
   if (confirmPopup_.isActive()) return;
-  if (saveDisabled_) {
+  if (STUDY.saveDisabled()) {
     // The file may still hold the user's data; never let a destructive palette
     // change through in that state, matching the picker's own bail.
     ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
@@ -101,40 +95,33 @@ void TagFilterActivity::showDeleteConfirmation(const size_t tagIndex) {
     return;
   }
 
-  pendingDeleteIndex_ = tagIndex;
+  pendingRetireRow_ = tagRow;
   confirmingDelete_ = true;
   const char* options[] = {tr(STR_CANCEL), tr(STR_DELETE)};
   confirmPopup_.show(tr(STR_CONFIRM_DELETE_TAG), options, 2, 0, [this](const int idx) {
     confirmingDelete_ = false;
-    if (idx == 1) deleteTag(pendingDeleteIndex_);
+    if (idx == 1) retireTag(pendingRetireRow_);
     requestUpdate();
   });
   requestUpdate();
 }
 
-void TagFilterActivity::deleteTag(const size_t tagIndex) {
-  if (tagIndex >= highlightDoc_.tags().size()) return;  // stale index; nothing to do
+void TagFilterActivity::retireTag(const size_t tagRow) {
+  if (tagRow >= tags_.size()) return;  // stale row; nothing to do
+  const study::TagId id = tags_[tagRow].id;
 
+  // rowItems_ borrows label pointers from tags_, so the snapshot must be
+  // replaced under the render lock. The SD write happens after, outside it.
+  bool saved = false;
   {
-    // rowItems_ borrows label pointers from the palette's std::string buffers
-    // and is rebuilt inline in buildScreen, so the mutation itself must be
-    // fenced against the render task -- same reasoning as the picker's delete.
     RenderLock lock(*this);
-    highlightDoc_.removeTag(static_cast<uint16_t>(tagIndex));
+    saved = STUDY.retireTag(id);
+    tags_ = STUDY.activeTags();
+    rowItems_.clear();
   }
   requestUpdate();
 
-  // SD write once the lock is released: save is read-only on the document.
-  switch (HighlightFile::save(bookPath_, highlightDoc_)) {
-    case HighlightFile::SaveResult::Ok:
-      break;
-    case HighlightFile::SaveResult::TooLarge:
-      ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_TOO_LARGE));
-      break;
-    case HighlightFile::SaveResult::WriteFailed:
-      ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
-      break;
-  }
+  if (!saved) ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
 }
 
 bool TagFilterActivity::handleCustomInput() {
@@ -172,9 +159,12 @@ void TagFilterActivity::activateIndex(const int index) {
   nav.selected = index;
 
   TagSelectionResult result;
-  // Row 0 is "all tags" and returns an empty selection; every later row maps
-  // back to tags()[index - 1].
-  if (index > 0) result.tagIndices.push_back(static_cast<uint16_t>(index - 1));
+  // Row 0 is "all tags" and returns an empty selection; every later row reports
+  // the ID of tags_[index - 1], never the row number -- the caller holds that
+  // filter across screens where the palette may be edited.
+  if (index > 0 && static_cast<size_t>(index - 1) < tags_.size()) {
+    result.tagIds.push_back(tags_[static_cast<size_t>(index - 1)].id);
+  }
   setResult(std::move(result));
   finish();
 }

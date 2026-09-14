@@ -6,12 +6,13 @@
 #include <algorithm>
 #include <utility>
 
-#include "../../util/HighlightFile.h"
+
 #include "../util/KeyboardEntryActivity.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
 #include "TagRowMapping.h"
 #include "components/UITheme.h"
+#include "study/StudyStore.h"
 
 namespace fui = freeink::ui;
 
@@ -21,27 +22,34 @@ namespace {
 constexpr int ENTER_DELETE_MODE_MS = 700;
 }  // namespace
 
-TagPickerActivity::TagPickerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, HighlightDoc& highlightDoc,
-                                     std::string bookPath, bool saveDisabled, std::vector<uint16_t> initialSelection)
+TagPickerActivity::TagPickerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                     std::vector<study::TagId> initialSelection)
     : UiListActivity("TagPicker", renderer, mappedInput, /*wantsTouchLongPress=*/true),
-      highlightDoc(highlightDoc),
-      bookPath_(std::move(bookPath)),
-      saveDisabled_(saveDisabled),
-      initialSelection_(std::move(initialSelection)) {}
+      tags_(STUDY.activeTags()),
+      selectedIds_(std::move(initialSelection)) {}
 
 void TagPickerActivity::onEnter() {
   UiListActivity::onEnter();
+  tags_ = STUDY.activeTags();
+}
 
-  const size_t tagCount = highlightDoc.tags().size();
-  for (const uint16_t index : initialSelection_) {
-    if (index < tagCount) selected_[index] = true;
+bool TagPickerActivity::isSelected(const study::TagId id) const {
+  return std::find(selectedIds_.begin(), selectedIds_.end(), id) != selectedIds_.end();
+}
+
+void TagPickerActivity::setSelected(const study::TagId id, const bool on) {
+  const auto it = std::find(selectedIds_.begin(), selectedIds_.end(), id);
+  if (on && it == selectedIds_.end()) {
+    selectedIds_.push_back(id);
+  } else if (!on && it != selectedIds_.end()) {
+    selectedIds_.erase(it);
   }
 }
 
-int TagPickerActivity::listCount() const { return static_cast<int>(highlightDoc.tags().size()) + 2; }
+int TagPickerActivity::listCount() const { return static_cast<int>(tags_.size()) + 2; }
 
 int TagPickerActivity::tagIndexForRow(const int row) const {
-  return TagRows::tagIndexForRow(row, static_cast<int>(highlightDoc.tags().size()));
+  return TagRows::tagIndexForRow(row, static_cast<int>(tags_.size()));
 }
 
 const char* TagPickerActivity::headerTitle() const { return tr(STR_TAGS); }
@@ -63,11 +71,11 @@ void TagPickerActivity::buildScreen(UiScreen& screen) {
                   static_cast<int16_t>(safe.x)});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  // Read live every call (not cached from onEnter): "New tag..." can grow
-  // the palette mid-visit, and a reallocation would strand any pointer
-  // captured on an earlier visit -- see the rowItems_ comment in the header.
-  const auto& tags = highlightDoc.tags();
-  const int tagCount = static_cast<int>(tags.size());
+  // Refreshed every call (not cached from onEnter): "New tag..." can grow the
+  // palette mid-visit, and a reallocation would strand any pointer captured on
+  // an earlier visit -- see the rowItems_ comment in the header.
+  tags_ = STUDY.activeTags();
+  const int tagCount = static_cast<int>(tags_.size());
   // actionValue carries the ROW, not the tag: UiListActivity hands it straight
   // back to activateIndex/onRowLongPress and assigns it to nav.selected, so a
   // tag index here would desync the viewport from the list.
@@ -77,10 +85,11 @@ void TagPickerActivity::buildScreen(UiScreen& screen) {
   rowItems_[DONE_ROW] = doneItem;
 
   for (int i = 0; i < tagCount; ++i) {
+    const auto& tag = tags_[static_cast<size_t>(i)];
     fui::ListItem item{};
-    item.label = tags[static_cast<size_t>(i)].c_str();
+    item.label = tag.name.c_str();
     item.toggle = true;
-    item.toggleChecked = selected_[i];
+    item.toggleChecked = isSelected(tag.id);
     item.actionValue = static_cast<int16_t>(i + 1);
     rowItems_[i + 1] = item;
   }
@@ -101,7 +110,7 @@ void TagPickerActivity::buildScreen(UiScreen& screen) {
 }
 
 void TagPickerActivity::activateIndex(const int row) {
-  const int tagCount = static_cast<int>(highlightDoc.tags().size());
+  const int tagCount = static_cast<int>(tags_.size());
   if (row < 0 || row > tagCount + 1) return;
   nav.selected = row;
 
@@ -116,19 +125,17 @@ void TagPickerActivity::activateIndex(const int row) {
   toggleTag(static_cast<size_t>(tagIndexForRow(row)));
 }
 
-void TagPickerActivity::toggleTag(const size_t index) {
-  if (index >= HighlightDoc::MAX_TAGS) return;
+void TagPickerActivity::toggleTag(const size_t tagRow) {
+  if (tagRow >= tags_.size()) return;
+  const study::TagId id = tags_[tagRow].id;
 
-  if (!selected_[index]) {
-    const size_t checked = static_cast<size_t>(std::count(selected_, selected_ + HighlightDoc::MAX_TAGS, true));
-    if (checked >= HighlightDoc::MAX_TAGS_PER_HIGHLIGHT) {
-      ReaderUtils::showMessage(renderer, tr(STR_TAG_LIMIT_PER_HIGHLIGHT));
-      requestUpdate();
-      return;
-    }
+  if (!isSelected(id) && selectedIds_.size() >= study::PassageDoc::MAX_TAGS_PER_PASSAGE) {
+    ReaderUtils::showMessage(renderer, tr(STR_TAG_LIMIT_PER_HIGHLIGHT));
+    requestUpdate();
+    return;
   }
 
-  selected_[index] = !selected_[index];
+  setSelected(id, !isSelected(id));
   requestUpdate();
 }
 
@@ -142,54 +149,32 @@ void TagPickerActivity::startNewTagFlow() {
     if (result.isCancelled) return;
     const auto& keyboard = std::get<KeyboardResult>(result.data);
 
-    const size_t before = highlightDoc.tags().size();
-    std::optional<uint16_t> tagIndex;
+    // StudyStore::addTagName persists the palette BEFORE handing back the id and
+    // retires it again if that write fails, so an id can never be in use here
+    // but absent from disk. It also dedupes by name, so an existing tag comes
+    // back as its own id rather than a new row -- and going through
+    // "New tag..." reads as intent to apply it either way.
+    std::optional<study::TagId> id;
     {
-      // buildScreen (render task) latches item.label = tags[i].c_str() every
-      // call; push_back may reallocate tags_, stranding any pointer a
-      // concurrent render already took. Fence the mutation itself, matching
-      // deleteTag's own RenderLock below.
+      // buildScreen (render task) latches item.label = tags_[i].name.c_str()
+      // every call; refreshing tags_ may reallocate, stranding any pointer a
+      // concurrent render already took. Fence the mutation itself.
       RenderLock lock(*this);
-      tagIndex = highlightDoc.addTag(keyboard.text);
+      id = STUDY.addTagName(keyboard.text);
+      tags_ = STUDY.activeTags();
     }
-    if (!tagIndex) {
+    if (!id) {
       reportAddTagFailure(keyboard.text);
       return;
     }
 
-    // addTag dedupes by name, so an existing tag with this name comes back
-    // as its existing index rather than a new row. Either way, going
-    // through "New tag..." reads as intent to apply it to this highlight.
-    const bool grew = highlightDoc.tags().size() > before;
-    if (grew && !saveDisabled_) {
-      switch (HighlightFile::save(bookPath_, highlightDoc)) {
-        case HighlightFile::SaveResult::Ok:
-          break;
-        case HighlightFile::SaveResult::TooLarge:
-        case HighlightFile::SaveResult::WriteFailed:
-          // Roll back ONLY a genuinely new tag. A dedupe hit added nothing,
-          // so there is nothing to undo -- and removeTag would strip a tag
-          // the user already had off every highlight in the book. erase()
-          // destroys a std::string and shifts the rest, dangling any
-          // const char* a concurrent buildScreen already latched -- fence it,
-          // but never across HighlightFile::save (see deleteTag's own note).
-          {
-            RenderLock lock(*this);
-            highlightDoc.removeTag(*tagIndex);
-          }
-          ReaderUtils::showMessage(renderer, tr(STR_TAG_SAVE_FAILED));
-          requestUpdate();
-          return;
-      }
-    }
-
-    selected_[*tagIndex] = true;
+    if (selectedIds_.size() < study::PassageDoc::MAX_TAGS_PER_PASSAGE) setSelected(*id, true);
     requestUpdate();
   };
 
   startActivityForResult(
       std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_TAG_NAME_PROMPT), std::string(),
-                                              HighlightDoc::MAX_TAG_NAME_BYTES, InputType::Text),
+                                              study::TagPalette::MAX_TAG_NAME_BYTES, InputType::Text),
       handler);
 }
 
@@ -202,7 +187,7 @@ void TagPickerActivity::reportAddTagFailure(const std::string& name) {
   // depth against any other caller of this same helper later.
   if (name.empty()) {
     ReaderUtils::showMessage(renderer, tr(STR_TAG_NAME_EMPTY));
-  } else if (name.size() > HighlightDoc::MAX_TAG_NAME_BYTES) {
+  } else if (name.size() > study::TagPalette::MAX_TAG_NAME_BYTES) {
     ReaderUtils::showMessage(renderer, tr(STR_TAG_NAME_TOO_LONG));
   } else {
     ReaderUtils::showMessage(renderer, tr(STR_TAG_PALETTE_FULL));
@@ -228,9 +213,10 @@ bool TagPickerActivity::handleHomeGesture() {
 
 void TagPickerActivity::commitAndFinish() {
   TagSelectionResult result;
-  const auto& tags = highlightDoc.tags();
-  for (size_t i = 0; i < tags.size(); ++i) {
-    if (selected_[i]) result.tagIndices.push_back(static_cast<uint16_t>(i));
+  // Reported in palette order rather than the order they were checked, so a row
+  // list reads the same however the user got there.
+  for (const auto& tag : tags_) {
+    if (isSelected(tag.id)) result.tagIds.push_back(tag.id);
   }
   setResult(std::move(result));
   finish();
@@ -244,69 +230,54 @@ void TagPickerActivity::onRowLongPress(const int row) {
   if (tagIndex < 0) return;
   app.clearTapFlash();
   nav.selected = row;
-  showDeleteConfirmation(static_cast<size_t>(tagIndex));
+  showRetireConfirmation(static_cast<size_t>(tagIndex));
 }
 
-void TagPickerActivity::showDeleteConfirmation(const size_t tagIndex) {
+void TagPickerActivity::showRetireConfirmation(const size_t tagRow) {
   if (confirmPopup_.isActive()) return;
-  if (saveDisabled_) {
-    // The file may still hold the user's data (HighlightFile::LoadResult::Failed);
-    // never let a destructive palette change through in that state, matching
-    // HighlightsActivity::showDeleteConfirmation's own saveDisabled bail.
+  if (STUDY.saveDisabled()) {
+    // A store failed to load and may still hold the user's data; never let a
+    // palette change through in that state.
     ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
     requestUpdate();
     return;
   }
 
-  pendingDeleteIndex_ = tagIndex;
+  pendingRetireRow_ = tagRow;
   confirmingDelete_ = true;
   const char* options[] = {tr(STR_CANCEL), tr(STR_DELETE)};
   confirmPopup_.show(tr(STR_CONFIRM_DELETE_TAG), options, 2, 0, [this](const int idx) {
     confirmingDelete_ = false;
-    if (idx == 1) deleteTag(pendingDeleteIndex_);
+    if (idx == 1) retireTag(pendingRetireRow_);
     requestUpdate();
   });
   requestUpdate();
 }
 
-void TagPickerActivity::deleteTag(const size_t tagIndex) {
-  if (tagIndex >= highlightDoc.tags().size()) return;  // stale index; nothing to do
+void TagPickerActivity::retireTag(const size_t tagRow) {
+  if (tagRow >= tags_.size()) return;  // stale row; nothing to do
+  const study::TagId id = tags_[tagRow].id;
 
+  bool retired = false;
   {
-    // The render task reads selected_/highlightDoc.tags() mid-buildScreen
-    // (item.label = tags[i].c_str(), item.toggleChecked = selected_[i]);
-    // TagPickerActivity has no rebuild-then-save recipe to fall back on --
-    // rowItems_ is populated inline in buildScreen and never cached (see the
-    // header's rowItems_ comment) -- so the mutation itself must be fenced,
-    // the same tool UiListActivity::moveSelectionTo uses for the identical
-    // loop-vs-render race.
+    // The render task reads tags_ mid-buildScreen (item.label =
+    // tags_[i].name.c_str()); TagPickerActivity populates rowItems_ inline and
+    // never caches it, so the mutation itself must be fenced -- the same tool
+    // UiListActivity::moveSelectionTo uses for the identical loop-vs-render
+    // race.
     RenderLock lock(*this);
-    highlightDoc.removeTag(static_cast<uint16_t>(tagIndex));
-    // selected_ is index-aligned with the palette; shift it to match so a
-    // still-checked tag above the deleted one keeps meaning the same tag.
-    // Never just clear selected_[tagIndex] and leave the rest -- that would
-    // silently reassign every higher slot to the wrong tag.
-    for (size_t j = tagIndex; j + 1 < HighlightDoc::MAX_TAGS; ++j) selected_[j] = selected_[j + 1];
-    selected_[HighlightDoc::MAX_TAGS - 1] = false;
+    retired = STUDY.retireTag(id);
+    tags_ = STUDY.activeTags();
+    // No index shuffle. The bool array this replaced was aligned with the
+    // palette and every entry above a deleted tag had to shift down or silently
+    // come to mean a different tag; an id needs neither.
+    setSelected(id, false);
   }
   requestUpdate();
 
-  // SD write after the lock releases. HighlightFile::save is read-only on the
-  // doc, so this is safe outside the lock.
-  switch (HighlightFile::save(bookPath_, highlightDoc)) {
-    case HighlightFile::SaveResult::Ok:
-      break;
-    case HighlightFile::SaveResult::TooLarge:
-    case HighlightFile::SaveResult::WriteFailed:
-      // NOTE: unlike every other mutation in this feature, this one CANNOT be
-      // rolled back. removeTag erases the tag and rewrites every highlight's
-      // references (HighlightDoc.cpp:21-34); addTag only appends, and the set
-      // of highlights that carried the tag was not retained. So memory and
-      // disk diverge here and the next successful save commits the deletion.
-      // Tell the user rather than failing silently.
-      ReaderUtils::showMessage(renderer, tr(STR_TAG_SAVE_FAILED));
-      requestUpdate();
-      break;
+  if (!retired) {
+    ReaderUtils::showMessage(renderer, tr(STR_TAG_SAVE_FAILED));
+    requestUpdate();
   }
 }
 

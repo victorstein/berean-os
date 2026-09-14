@@ -1,26 +1,29 @@
 #pragma once
 
-#include <Epub/HighlightDoc.h>
+#include <StudyStore/TagPalette.h>
 
 #include <string>
 #include <vector>
 
 #include "activities/UiListActivity.h"
+#include "study/StudyStore.h"
 #include "components/OptionPopup.h"
 
 // Single-select tag chooser for the highlights browser's filter row. Returns a
 // TagSelectionResult holding no elements for "all tags" or exactly one for a
 // specific tag; a cancelled result means the caller keeps its current filter.
 //
-// A long-press deletes a tag from the palette, so this DOES mutate it and
-// removeTag renumbers every index in place. The returned index is therefore
-// resolved against the palette as it stands when the row is activated, and the
-// caller must re-resolve its own active filter by NAME rather than trusting an
-// index it captured before the push -- the bug 1210b1d4 fixed.
+// A long-press RETIRES a tag: it leaves the pickers and stops filtering, while
+// every passage that carried it keeps its remaining tags and stays on the card.
+// A destructive delete here would be device-wide now that the palette is
+// global -- one tidy-up gesture would wipe work across every publication.
+//
+// Rows report a study::TagId, not an index. Ids are allocated once and never
+// reused, so a retirement cannot renumber anything and the caller's captured
+// filter stays valid -- which is what the index model could not promise.
 class TagFilterActivity final : public UiListActivity {
  public:
-  TagFilterActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, HighlightDoc& highlightDoc,
-                    std::string bookPath, bool saveDisabled);
+  TagFilterActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
  private:
   // Both exits MUST set a result. UiListActivity::onBackButton is a bare
@@ -42,18 +45,19 @@ class TagFilterActivity final : public UiListActivity {
   const char* headerTitle() const override;
   void drawFooter() override;
 
-  void showDeleteConfirmation(size_t tagIndex);
-  void deleteTag(size_t tagIndex);
+  void showRetireConfirmation(size_t tagRow);
+  void retireTag(size_t tagRow);
 
-  HighlightDoc& highlightDoc_;
-  const std::string bookPath_;
-  const bool saveDisabled_;
+  // Snapshot taken when the screen is built. rowItems_ borrows label pointers
+  // from these strings, so they must outlive the row list and must not be a view
+  // into the palette, which an edit can move.
+  std::vector<StudyStore::TagView> tags_;
 
   bool confirmingDelete_ = false;
   OptionPopup confirmPopup_;
   // Captured when the confirmation opens so the callback deletes the row that
   // was long-pressed, not whatever nav.selected became by the time it resolves.
-  size_t pendingDeleteIndex_ = 0;
+  size_t pendingRetireRow_ = 0;
   // Sized to the live palette rather than MAX_TAGS: the cap is 100 and a fixed
   // array would cost ~5KB for a palette that is usually a fraction of that.
   std::vector<freeink::ui::ListItem> rowItems_;

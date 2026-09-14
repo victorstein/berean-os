@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StudyStore/TagPalette.h>
+
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -74,11 +76,13 @@ struct FilePathResult {
   std::string path;
 };
 
-// Indices into HighlightDoc::tags() that TagPickerActivity's caller should
-// apply to whichever highlight it is tagging. Not a HighlightDoc-owning
-// type -- the picker only reports the checked set.
+// Global tag IDS that TagPickerActivity's caller should apply to whichever
+// passage it is tagging. Ids, NOT indices into a palette vector -- the study
+// store allocates an id once and never reuses it, so an index captured before a
+// palette edit would resolve to a different tag afterwards. study::TagId is a
+// scoped enum so the two cannot be confused silently.
 struct TagSelectionResult {
-  std::vector<uint16_t> tagIndices;
+  std::vector<study::TagId> tagIds;
 };
 
 using ResultVariant = std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult,

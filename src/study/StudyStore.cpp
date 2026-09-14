@@ -68,6 +68,44 @@ bool StudyStore::save() {
   return PassageFile::save(pubKey_, passages_) == PassageFile::SaveResult::Ok;
 }
 
+std::vector<StudyStore::TagView> StudyStore::activeTags() const {
+  std::vector<TagView> out;
+  for (const study::TagId id : palette_.activeIds()) out.push_back({id, palette_.name(id)});
+  return out;
+}
+
+std::vector<size_t> StudyStore::passagesWithTag(const study::TagId id) const {
+  std::vector<size_t> out;
+  const auto& all = passages_.passages();
+  for (size_t i = 0; i < all.size(); ++i) {
+    for (const study::TagId carried : all[i].tags) {
+      if (carried == id) {
+        out.push_back(i);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+std::string StudyStore::tagNamesFor(const size_t passageIndex) const {
+  if (passageIndex >= passages_.passages().size()) return {};
+  std::string out;
+  for (const study::TagId id : passages_.passages()[passageIndex].tags) {
+    const std::string& name = palette_.name(id);
+    if (name.empty()) continue;
+    if (!out.empty()) out += ", ";
+    out += name;
+  }
+  return out;
+}
+
+std::optional<uint32_t> StudyStore::documentOffsetFor(const size_t passageIndex) {
+  if (!units_ || !units_->ready() || passageIndex >= passages_.passages().size()) return std::nullopt;
+  const auto& p = passages_.passages()[passageIndex];
+  return study::documentOffsetOf(units_->unitsFor(p.documentSpine), p.start);
+}
+
 std::optional<study::TagId> StudyStore::addTagName(const std::string& name) {
   if (saveDisabled_) return std::nullopt;
 
