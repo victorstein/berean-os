@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "RecentBooksStore.h"
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
 
@@ -45,7 +47,16 @@ class LauncherActivity final : public Activity {
   void openBible();
   void openMeetings();
   void openTagsAndSettings();
-  void drawTile(const TileRect& rect, const char* title, const char* subtitle, bool selected, bool emphasised) const;
+  void drawTile(const TileRect& rect, const char* title, const char* subtitle, bool selected, bool emphasised,
+                const std::string& coverPath, const uint8_t* icon) const;
+  // A publication's own cover when the card has one, else the tile's icon.
+  // Covers are what make the launcher legible at a glance -- a shelf of books
+  // rather than a list of words -- so the icon is the fallback, not the default.
+  void drawTileArt(int x, int y, int w, int h, const std::string& coverPath, const uint8_t* icon) const;
+  static std::string coverThumbFor(const RecentBook& book, bool& generatedAny);
+  // Height of a tile's text block, so computeLayout can size a tile around its
+  // contents and drawTile can centre the same block inside it.
+  int tileTextHeight(int titleFont, bool hasSubtitle) const;
 
   // Resolved once on entry: the resume strip needs a book, and the Bible tile
   // needs to know whether one is on the card before offering to open it.
@@ -57,6 +68,9 @@ class LauncherActivity final : public Activity {
 
   std::string biblePath;
   std::string bibleSubtitle;
+  std::string bibleCoverPath;
+  std::string meetingsSubtitle;
+  std::string meetingsCoverPath;
   std::string resumePath;
   std::string resumeTitle;
   bool hasResume = false;
