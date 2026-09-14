@@ -23,6 +23,7 @@
 #include "components/themes/BaseTheme.h"
 #include "fontIds.h"
 #include "study/BookPathIndex.h"
+#include "study/PubKeyRegistry.h"
 
 namespace {
 
@@ -79,11 +80,13 @@ void LauncherActivity::resolveTargets() {
   }
 
   // The meeting tile shows the cover of whichever weekly publication is on the
-  // card, matched on the CDN's own symbols: w = Atalaya/Watchtower study
-  // edition, mwb = Vida y Ministerio/Meeting Workbook.
+  // card. The symbol comes from the registry the downloader writes, not from the
+  // filename: meetingPublicationFilename names the file after the publication's
+  // own title ("La Atalaya (estudio) 2026-09.epub"), so there is no symbol in it
+  // to match on. w = Watchtower study edition, mwb = Meeting Workbook.
   const auto looksLikeAMeetingPub = [](const RecentBook& book) {
-    const std::string name = book.path.substr(book.path.find_last_of('/') + 1);
-    return name.rfind("w_", 0) == 0 || name.rfind("mwb_", 0) == 0;
+    const auto registered = PubKeyRegistry::lookup(book.path);
+    return registered && (registered->symbol == "w" || registered->symbol == "mwb");
   };
   const auto meeting = std::find_if(recents.begin(), recents.end(), looksLikeAMeetingPub);
   if (meeting != recents.end()) {
