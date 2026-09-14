@@ -15,6 +15,7 @@
 
 #include "BookPathIndex.h"
 #include "PassageFile.h"
+#include "PubKeyRegistry.h"
 #include "StudyStore/MigrationPlanner.h"
 #include "StudyStore/PubKey.h"
 #include "TagPaletteFile.h"
@@ -219,6 +220,7 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer) {
     keyInputs.isBible = sourceAvailable && epub->getBibleBookNavSpineIndex() >= 0;
     keyInputs.canonVerified = keyInputs.isBible;
     keyInputs.bookPath = *bookPath;
+    keyInputs.registered = PubKeyRegistry::lookup(*bookPath);
     const std::string pubKey = study::resolvePubKey(keyInputs);
     report.pubKey = pubKey;
 

@@ -4,6 +4,7 @@
 #include <Memory.h>
 
 #include "PassageFile.h"
+#include "PubKeyRegistry.h"
 #include "StudyStore/PubKey.h"
 #include "StudyStore/UnitAnchors.h"
 #include "TagPaletteFile.h"
@@ -30,6 +31,7 @@ bool StudyStore::openPublication(const std::shared_ptr<Epub>& epub, GfxRenderer&
   // -- that is the only Bible this device has ever opened.
   keyInputs.canonVerified = keyInputs.isBible;
   keyInputs.bookPath = epub->getPath();
+  keyInputs.registered = PubKeyRegistry::lookup(keyInputs.bookPath);
   pubKey_ = study::resolvePubKey(keyInputs);
 
   const auto paletteResult = TagPaletteFile::load(palette_);

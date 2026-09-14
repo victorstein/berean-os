@@ -1,5 +1,7 @@
 #include "MeetingDownloadActivity.h"
 
+#include "study/PubKeyRegistry.h"
+
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
@@ -329,6 +331,14 @@ bool MeetingDownloadActivity::downloadPublication(const MeetingPub pub, const ch
   // mtime, so a revised issue downloaded over an existing copy would otherwise
   // be rendered from the previous issue's sections.
   clearBookCache(destPath);
+
+  // Record what only the downloader knows. The EPUB itself carries no symbol --
+  // its dc:identifier is a random urn:uuid -- so without this the study store
+  // falls back to a path-derived key that dies when the file moves and would
+  // change again once the catalog lands, orphaning every tag on the issue.
+  PubKeyRegistry::record(destPath, study::RegisteredPub{pub == MeetingPub::Watchtower ? "w" : "mwb", issue,
+                                                        DOWNLOAD_LANGUAGE});
+
   LOG_INF("MEET", "Saved %s (%llu bytes advertised)", destPath.c_str(),
           static_cast<unsigned long long>(media->filesize()));
   return true;
