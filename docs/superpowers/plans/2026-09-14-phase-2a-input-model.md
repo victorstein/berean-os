@@ -508,11 +508,30 @@ bool HalGPIO::wasReleased(const uint8_t buttonIndex) const {
 }
 ```
 
-> **The suppression is asymmetric on purpose.** `wasPressed`/`wasReleased` hide
-> the raw edge so one physical action means one thing. `isPressed(BTN_UP)` is
-> **not** suppressed, because recovery mode reads exactly that at boot and
-> hold-to-scroll reads it in lists — both want to know the key is physically
-> down, regardless of what it also came to mean.
+> **Suppression covers `isPressed` too — the asymmetry in the first draft of
+> this task was wrong.** `ButtonNavigator` starts continuous list scrolling at
+> `continuousStartMs = 500` (`ButtonNavigator.h:20`) off `isPressed`, and Back
+> lands at 850. Leaving `isPressed` unsuppressed means one hold scrolls the list
+> *and then* goes back — one physical action, two meanings, which is exactly
+> what this task exists to prevent.
+>
+> **Recovery mode is safe anyway, and not by luck.** It holds the key from boot,
+> so `beginWithKeysDown` marks it stale; a stale key never synthesises, so it is
+> never suppressed and `isPressed` reports it normally. The screenshot combo is
+> safe for a different reason: it latches on the first tick both keys are down,
+> long before 850 ms.
+>
+> So `isPressed` is suppressed as well:
+>
+> ```cpp
+> bool HalGPIO::isPressed(const uint8_t buttonIndex) const {
+>   if (buttonIndex == BTN_BACK) return navGestures.backHeld();
+>   if (buttonIndex == BTN_CONFIRM) return navGestures.confirmHeld();
+>   if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
+>   if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+>   return inputMgr.isPressed(buttonIndex);
+> }
+> ```
 
 - [ ] **Step 4: Build and check with CI's own flags**
 
