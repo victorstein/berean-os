@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/victorstein/berean-os/compare/v1.1.0...v1.1.1) (2026-09-14)
+
+
+### Documentation
+
+* record the Phase 0 result ([31d9492](https://github.com/victorstein/berean-os/commit/31d9492b906f18a8d543a38b75dc80711e2d57da))
+
 ## [1.1.0](https://github.com/victorstein/berean-os/compare/v1.0.1...v1.1.0) (2026-09-14)
 
 
