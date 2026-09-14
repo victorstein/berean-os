@@ -2,282 +2,240 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give this device a Back and a Confirm that exist in hardware, replace `MappedInputManager`'s four-front-button model with one built for two keys and a capacitive Home, and do it without ever leaving the user on a screen they cannot leave.
+**Goal:** Give this device a Back and a Confirm that exist in hardware, without breaking the raw key state that recovery mode, the screenshot combo and hold-to-scroll all depend on.
 
-**Architecture:** A pure gesture state machine takes the two nav keys' pressed/released state plus a clock and emits logical events (Back, Confirm, Launcher, Previous, Next). It is host-tested exhaustively because it is the part that can strand the user. A thin firmware adapter feeds it from `HalGPIO` and presents the same `Button` vocabulary the 121 existing call sites already use, so `MappedInputManager` is replaced rather than ripped out.
+**Architecture:** A pure state machine turns the two nav keys plus a clock into synthesised `BTN_BACK` / `BTN_CONFIRM` events. `HalGPIO` — our code, wrapping the SDK — answers `isPressed`/`wasPressed`/`wasReleased` for those two indices from the machine and passes everything else straight through. Because `SETTINGS.frontButtonBack` already resolves to `BTN_BACK`, every existing call site works with no shim and no edits.
 
-**Tech Stack:** C++20, GoogleTest on the host, PlatformIO/ESP-IDF on the device, FreeRTOS.
-
----
-
-## Why Phase 2 is three plans, not one
-
-The spec's Phase 2 bundles the launcher shell, the four sections, the new input
-model, two-tap selection, and deleting `MappedInputManager`. Those are different
-subsystems with different risk, and one of them gates the others:
-
-| | Plan | Independently shippable? |
-|---|---|---|
-| **2a** | The input model — this plan | Yes. No screen changes; every existing activity keeps working, with a Back that exists. |
-| **2b** | Launcher shell and the four sections | Yes, once 2a lands — a launcher you cannot back out of is not shippable. |
-| **2c** | Long-press-to-anchor, tap-to-finish selection | Yes. Confined to the reader. |
-
-2a comes first because **this device currently has no Back on any physical
-button.** That is not a design opinion; it is what the board config says.
+**Tech Stack:** C++20, GoogleTest on the host, PlatformIO/ESP-IDF, FreeRTOS.
 
 ---
 
-## What the hardware actually reports
+## Revision note — 2026-09-14
 
-`freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h:1396`, the X4 Pro's
-digital-button row, commented *confirmed on hardware*:
+The first draft of this plan was reviewed and came back with 23 defects, four of
+them blockers. It has been rewritten. What changed and why:
+
+- **It synthesised on top of `MappedInputManager`.** That layer sits above the
+  code that actually reads buttons, so `wasPressed`, `isPressed` and the
+  composed `NavNext`/`NavPrevious` all bypassed it. The reader pages on
+  `wasPressed` by default (`ReaderUtils.h:53`, `longPressButtonBehavior`
+  defaults to `OFF`), so every Back would have turned a page first; twelve sites
+  including `KeyboardEntryActivity.cpp:643` read `wasPressed(Confirm)`, so you
+  could not have typed a WiFi password. **Synthesis moves down into `HalGPIO`.**
+- **The chord is gone.** Back is a held left key. A chord needs two keys to land
+  inside a join window, and after three seconds of inactivity the loop drops to
+  `delay(50)` (`HalPowerManager.h:33`), leaving a window narrower than a natural
+  two-thumb squeeze — on the one gesture that exists to rescue a user.
+- **Thresholds now dodge the live ones.** The draft claimed the keys had no
+  other long-press meaning. Both do: `SKIP_HOLD_MS = 700` and
+  `BOOKMARK_HOLD_MS = 400` (`ReaderUtils.h:18-19`), plus
+  `GO_BACK_OR_HOME_MS = 1000` (`:255`).
+- **`HomeLadder` is cut.** It was seven green tests that nothing called.
+- **`ReturnStack` keeps `CAPACITY = 3`.** The draft raised it to 8 and asserted
+  the existing tests were parameterised. They are not — `ReturnStackTest.cpp:45`
+  hardcodes 3, and the eviction-semantics tests assert positions that a capacity
+  change invalidates. Not worth breaking four assertions for a marginal gain.
+
+## Why not the SDK's own two-button style
+
+`InputStyle::DigitalTwoButton` (`InputManager.cpp:380`) already synthesises
+`BTN_BACK` from a held up key, `BTN_CONFIRM` from a held down key, and
+`BTN_POWER` from both, and ships on PaperMono today. Adopting it is one
+assignment, because `BoardConfig::ACTIVE` is a mutable `inline` variable
+(`BoardConfig.h:1532`), not `constexpr` — no fork needed.
+
+**It is still the wrong choice, for one reason.** Under that style a short press
+emits `BTN_UP`/`BTN_DOWN` as *events only*, with no held state
+(`InputManager.cpp:401-406`), so `isPressed(BTN_UP)` and `isPressed(BTN_DOWN)`
+are permanently false. Three things read exactly that:
+
+| Site | What breaks |
+|---|---|
+| `main.cpp:387-388` | **Recovery firmware mode** — DOWN + POWER held at boot |
+| `main.cpp:653` | The screenshot combo (minor; a serial `SCREENSHOT` command exists) |
+| `ButtonNavigator.cpp:57-58` | Hold-to-scroll in lists (minor on a touch device) |
+
+The first is disqualifying. Recovery mode is what you hold when the device will
+not boot, and this phase's entire justification is not stranding the user.
+
+Synthesising in `HalGPIO` gives the same Back and Confirm **in addition to** the
+raw state rather than instead of it, so all three keep working.
+
+---
+
+## What the hardware reports
+
+`BoardConfig.h:1396`, marked *confirmed on hardware*:
 
 ```c
 // {back, confirm, left, right, up, down, power, powerActiveHigh}
 {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 0, 7, 3, false},
 ```
 
-Read that carefully, because three things follow and the spec states two of them
-imprecisely:
+- The two physical nav keys are **`BTN_UP` (GPIO0, physically left)** and
+  **`BTN_DOWN` (GPIO7, physically right)**. `BTN_LEFT`/`BTN_RIGHT` do not exist
+  here; a plan grepping for them finds nothing.
+- `BTN_BACK` and `BTN_CONFIRM` are unassigned pins, skipped by
+  `InputManager::begin` (`InputManager.cpp:101-105`), so they are never
+  configured and always read false. **Their indices are free for us to drive.**
+- `SETTINGS.frontButtonBack` defaults to `FRONT_HW_BACK = 0` = `BTN_BACK`, and
+  `frontButtonConfirm` to `1` = `BTN_CONFIRM` (`CrossPointSettings.h:82-83,242-243`).
+  So `mapButton` already routes `Button::Back` to the index we are about to
+  start driving. **That is why no call site needs touching.**
+- `getHeldTime()` takes no button — it times from the first key down to all
+  released (`InputManager.cpp:482-489`) — so per-key timing must be our own.
 
-1. **The two physical nav keys are `BTN_UP` and `BTN_DOWN`, not `BTN_LEFT` and
-   `BTN_RIGHT`.** Physically they sit left (GPIO0) and right (GPIO7); the board
-   config wires them to the reader's page pair. Every mention of "the Left+Right
-   chord" in the spec means `BTN_UP` + `BTN_DOWN` in code. A plan that greps for
-   `BTN_LEFT` finds nothing on this board.
+## The model
 
-2. **`BTN_BACK`, `BTN_CONFIRM`, `BTN_LEFT` and `BTN_RIGHT` are all
-   `PIN_UNASSIGNED` (-1).** `InputManager::begin` skips any pin below zero
-   (`InputManager.cpp:101-105`), so they are never configured and never read as
-   pressed. `MappedInputManager::mapButton` routes `Button::Back` through
-   `SETTINGS.frontButtonBack` into one of those dead indices
-   (`MappedInputManager.cpp:59-62`).
+| Input | Result |
+|---|---|
+| Left key, short | `BTN_UP` (page back / previous) — unchanged |
+| Right key, short | `BTN_DOWN` (page forward / next) — unchanged |
+| **Left key, held** | **`BTN_BACK`** |
+| **Right key, held** | **`BTN_CONFIRM`** |
+| Home, short | Back — unchanged |
+| Home, long | launcher — unchanged, and what 2b hangs the launcher on |
+| Power | sleep — unchanged |
+| Both keys + POWER at boot | recovery mode — unchanged |
 
-   **So `Button::Back` from a physical button is already dead on this device.**
-   Today's Back comes only from a left-edge touch swipe
-   (`MappedInputManager.cpp:266,301`) and the GT911 capacitive Home key. Both die
-   with the touch controller. That is the hole this plan closes, and it is a real
-   one rather than a hypothetical: Phase 0 deleted the button-remap settings
-   screen, which was the recovery path.
-
-3. **`getHeldTime()` takes no button.** It measures from `buttonPressStart` — set
-   when the first button of a press goes down — to release
-   (`InputManager.cpp:482-489`). With two keys held it times the chord, not
-   either key. Any per-key long-press must keep its own clock.
-
-`isPressed` reads a bitmask (`InputManager.cpp:472`), so both keys can be
-observed down at once. That is what makes a chord detectable at all.
-
----
-
-## The model this implements
-
-| Input | Everywhere | In the reader |
-|---|---|---|
-| Tap | activates what you touched | outer thirds page, centre opens the menu |
-| Left key / Right key, short | previous / next in sequence | previous / next page |
-| **Right key, long** | **Confirm** | — |
-| **Both keys, short** | **Back** | Back |
-| **Both keys, held** | **launcher** | launcher |
-| Home, short | Back | closes overlay, else Back |
-| Home, long | launcher | launcher |
-| Power | sleep | sleep |
-
-The three-zone tap in the reader is untouched — it is the most frequent
-interaction on the device and the spec is explicit that it stays.
-
-**Why the chord is Back and not something rarer:** Back must not depend on the
-touch controller. Home is a GT911 capacitive bit, so a controller that NAKs after
-an ESD event takes Home *and* the left-edge swipe with it. The chord routes
-through GPIO only and needs no configuration, so it is the recovery path that
-survives.
-
-**Why long-press on the Right key is Confirm:** neither key has any other
-long-press meaning, so it costs nothing. The first draft of the spec had no
-Confirm at all while claiming buttons were a one-handed fallback; they were a
-scrollbar.
-
----
+Raw `BTN_UP`/`BTN_DOWN` state is untouched throughout.
 
 ## File structure
 
-**New, host-testable, no Arduino:**
-
 | File | Responsibility |
 |---|---|
-| `lib/Input/Input/GestureState.h` / `.cpp` | The state machine: two keys plus a clock in, logical events out |
-| `lib/Input/Input/HomeLadder.h` / `.cpp` | What Home means right now, given what is on screen |
+| `lib/Input/Input/NavKeyGestures.h` / `.cpp` | Pure: two keys plus a clock in, synthesised Back/Confirm edges out |
+| `test/nav_key_gestures/` | Its host suite |
 
-**New, firmware-only:**
-
-| File | Responsibility |
-|---|---|
-| `src/input/BereanInput.{h,cpp}` | Feeds `GestureState` from `HalGPIO`, exposes the `Button` vocabulary the activities already speak |
-
-**Modified:** `src/activities/Activity.h` (the base-class reference type),
-`src/main.cpp` (construction and the per-tick feed), and
-`src/MappedInputManager.{h,cpp}` — which is **reduced to a shim over
-`BereanInput`, not deleted in this plan.** See the migration note below.
+**Modified:** `lib/hal/HalGPIO.{h,cpp}` only. Nothing in `src/`.
 
 ---
 
-## `MappedInputManager` is shimmed, then emptied
-
-`CLAUDE.md` states the constraint plainly: it sits in the `Activity` base-class
-constructor, spans 418 references across 121 files, and *implements* this
-device's Back. It may only be removed in the same change that lands its
-replacement.
-
-This plan lands the replacement and points `MappedInputManager`'s methods at it,
-leaving the 418 call sites untouched and compiling. That keeps every step of this
-plan shippable. Deleting the shim is bookkeeping for 2b, once the launcher owns
-navigation and the remaining call sites can be swept in one pass with a working
-device at every commit.
-
-A rename that touches 121 files and an input-semantics change in one commit is
-not reviewable, and this is the subsystem where an unreviewable mistake means a
-device you cannot navigate.
-
----
-
-## Task 1: The gesture state machine
-
-The whole reason this is a separate, pure unit: it is the code that decides
-whether the user can leave a screen. It must be exhaustively testable without a
-device, and its edge cases — a chord where one key lands a frame late, a chord
-that becomes a hold, a key released while the other is still down — are exactly
-the ones a human tester will not think to try.
+## Task 1: The nav-key gesture machine
 
 **Files:**
-- Create: `lib/Input/Input/GestureState.h`, `lib/Input/Input/GestureState.cpp`
-- Create: `test/gesture_state/GestureStateTest.cpp`, `test/gesture_state/CMakeLists.txt`
+- Create: `lib/Input/Input/NavKeyGestures.h`, `lib/Input/Input/NavKeyGestures.cpp`
+- Create: `test/nav_key_gestures/NavKeyGesturesTest.cpp`, `test/nav_key_gestures/CMakeLists.txt`
 - Modify: `test/CMakeLists.txt`
 
 - [ ] **Step 1: Write the failing test**
 
-`test/gesture_state/GestureStateTest.cpp`:
+`test/nav_key_gestures/NavKeyGesturesTest.cpp`:
 
 ```cpp
 #include <gtest/gtest.h>
 
-#include "Input/GestureState.h"
+#include "Input/NavKeyGestures.h"
 
 namespace {
 
-using input::Gesture;
-using input::GestureState;
+using input::NavKeyGestures;
 
-// Drives the machine to `until` ms with a fixed key state, returning the last
-// gesture emitted. Ticks every 10 ms, like the firmware loop.
-Gesture run(GestureState& s, const bool left, const bool right, const uint32_t from, const uint32_t until) {
-  Gesture last = Gesture::None;
-  for (uint32_t t = from; t <= until; t += 10) {
-    const Gesture g = s.update(left, right, t);
-    if (g != Gesture::None) last = g;
-  }
-  return last;
+// Drives the machine at a fixed key state, like the firmware loop. `tickMs`
+// defaults to 50 because that is what the loop runs at once the device has been
+// idle three seconds (HalPowerManager.h:33) -- the common case, not the fast one.
+void run(NavKeyGestures& g, const bool left, const bool right, const uint32_t from, const uint32_t until,
+         const uint32_t tickMs = 50) {
+  for (uint32_t t = from; t <= until; t += tickMs) g.update(left, right, t);
 }
 
-TEST(GestureState, AShortLeftPressIsPrevious) {
-  GestureState s;
-  run(s, true, false, 0, 100);
-  EXPECT_EQ(s.update(false, false, 110), Gesture::Previous);
+TEST(NavKeyGestures, AShortPressSynthesisesNothing) {
+  NavKeyGestures g;
+  run(g, true, false, 0, 200);
+  g.update(false, false, 250);
+  EXPECT_FALSE(g.backHeld());
+  EXPECT_FALSE(g.confirmHeld());
+  EXPECT_FALSE(g.backReleasedThisTick());
+  EXPECT_FALSE(g.confirmReleasedThisTick());
 }
 
-TEST(GestureState, AShortRightPressIsNext) {
-  GestureState s;
-  run(s, false, true, 0, 100);
-  EXPECT_EQ(s.update(false, false, 110), Gesture::Next);
+TEST(NavKeyGestures, AHeldLeftKeyBecomesBack) {
+  NavKeyGestures g;
+  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
+  EXPECT_TRUE(g.backHeld()) << "Back asserts WHILE held, so the user sees it without lifting";
+  EXPECT_FALSE(g.confirmHeld());
 }
 
-TEST(GestureState, ALongRightPressIsConfirm) {
-  GestureState s;
-  const Gesture g = run(s, false, true, 0, GestureState::LONG_PRESS_MS + 50);
-  EXPECT_EQ(g, Gesture::Confirm) << "Confirm fires while held, so the user sees it without lifting";
+TEST(NavKeyGestures, AHeldRightKeyBecomesConfirm) {
+  NavKeyGestures g;
+  run(g, false, true, 0, NavKeyGestures::HOLD_MS + 100);
+  EXPECT_TRUE(g.confirmHeld());
+  EXPECT_FALSE(g.backHeld());
 }
 
-TEST(GestureState, ALongRightPressDoesNotAlsoEmitNextOnRelease) {
-  GestureState s;
-  run(s, false, true, 0, GestureState::LONG_PRESS_MS + 50);
-  EXPECT_EQ(s.update(false, false, GestureState::LONG_PRESS_MS + 60), Gesture::None)
-      << "one physical action must not produce both Confirm and a page turn";
+TEST(NavKeyGestures, ReleasingAHeldKeyReportsTheReleaseExactlyOnce) {
+  NavKeyGestures g;
+  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
+  g.update(false, false, NavKeyGestures::HOLD_MS + 150);
+  EXPECT_TRUE(g.backReleasedThisTick());
+  EXPECT_FALSE(g.backHeld());
+
+  g.update(false, false, NavKeyGestures::HOLD_MS + 200);
+  EXPECT_FALSE(g.backReleasedThisTick()) << "an edge that repeats is an edge a caller will act on twice";
 }
 
-TEST(GestureState, ALongLeftPressEmitsNothing) {
-  GestureState s;
-  const Gesture g = run(s, true, false, 0, GestureState::LONG_PRESS_MS + 50);
-  EXPECT_EQ(g, Gesture::None) << "only the right key carries Confirm; the left one has no long meaning";
+// The page turn and the Back must never both happen. The reader pages on
+// wasPressed by default, so this is the property that keeps a held key from
+// turning a page on the way to Back.
+TEST(NavKeyGestures, AKeyThatBecameAHoldSuppressesItsRawPress) {
+  NavKeyGestures g;
+  g.update(true, false, 0);
+  EXPECT_FALSE(g.suppressRaw(input::NavKey::Left)) << "not yet a hold; a short press must still page";
+  run(g, true, false, 50, NavKeyGestures::HOLD_MS + 100);
+  EXPECT_TRUE(g.suppressRaw(input::NavKey::Left));
 }
 
-TEST(GestureState, BothKeysReleasedTogetherIsBack) {
-  GestureState s;
-  run(s, true, true, 0, 100);
-  EXPECT_EQ(s.update(false, false, 110), Gesture::Back);
+TEST(NavKeyGestures, SuppressionClearsOnceTheKeyIsReleased) {
+  NavKeyGestures g;
+  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
+  g.update(false, false, NavKeyGestures::HOLD_MS + 150);
+  EXPECT_FALSE(g.suppressRaw(input::NavKey::Left)) << "the next press must page normally";
 }
 
-// The case a human tester will never reproduce deliberately: two mechanical
-// keys do not close on the same scan. The second must still join the chord.
-TEST(GestureState, AChordIsRecognisedWhenTheSecondKeyLandsLate) {
-  GestureState s;
-  s.update(true, false, 0);
-  run(s, true, true, 10, 120);
-  EXPECT_EQ(s.update(false, false, 130), Gesture::Back)
-      << "a key landing within the join window joins the chord rather than paging";
+TEST(NavKeyGestures, TheTwoKeysAreIndependent) {
+  NavKeyGestures g;
+  run(g, true, true, 0, NavKeyGestures::HOLD_MS + 100);
+  EXPECT_TRUE(g.backHeld());
+  EXPECT_TRUE(g.confirmHeld()) << "holding both is not special; each key means what it means";
 }
 
-TEST(GestureState, AKeyLandingAfterTheJoinWindowIsNotAChord) {
-  GestureState s;
-  run(s, true, false, 0, GestureState::CHORD_JOIN_MS + 50);
-  run(s, true, true, GestureState::CHORD_JOIN_MS + 60, GestureState::CHORD_JOIN_MS + 120);
-  EXPECT_NE(s.update(false, false, GestureState::CHORD_JOIN_MS + 130), Gesture::Back)
-      << "holding one key and later adding the other is not a deliberate chord";
+TEST(NavKeyGestures, HoldingOneKeyDoesNotSuppressTheOther) {
+  NavKeyGestures g;
+  run(g, true, false, 0, NavKeyGestures::HOLD_MS + 100);
+  EXPECT_TRUE(g.suppressRaw(input::NavKey::Left));
+  EXPECT_FALSE(g.suppressRaw(input::NavKey::Right));
 }
 
-TEST(GestureState, HoldingBothKeysOpensTheLauncher) {
-  GestureState s;
-  const Gesture g = run(s, true, true, 0, GestureState::CHORD_HOLD_MS + 50);
-  EXPECT_EQ(g, Gesture::Launcher);
+// millis() wraps after ~49 days. A signed or naive subtraction reads the wrap as
+// a huge elapsed time and asserts Back on the very first touch of a key.
+TEST(NavKeyGestures, SurvivesAClockWrap) {
+  NavKeyGestures g;
+  const uint32_t nearMax = UINT32_MAX - 20;
+  g.update(true, false, nearMax);
+  g.update(true, false, 10);  // wrapped: 30 ms elapsed, nowhere near HOLD_MS
+  EXPECT_FALSE(g.backHeld()) << "a wrap must read as a short interval, not as held-forever";
 }
 
-TEST(GestureState, AChordThatBecameALauncherDoesNotAlsoEmitBack) {
-  GestureState s;
-  run(s, true, true, 0, GestureState::CHORD_HOLD_MS + 50);
-  EXPECT_EQ(s.update(false, false, GestureState::CHORD_HOLD_MS + 60), Gesture::None);
+TEST(NavKeyGestures, AKeyHeldFromTheVeryFirstTickIsIgnoredUntilReleased) {
+  // Boot and wake deliberately absorb an already-held key (main.cpp:562-569),
+  // and recovery mode holds DOWN through startup. A key that was already down
+  // when we started looking must not become a Confirm.
+  NavKeyGestures g;
+  g.beginWithKeysDown(false, true, 0);
+  run(g, false, true, 50, NavKeyGestures::HOLD_MS + 200);
+  EXPECT_FALSE(g.confirmHeld());
+
+  g.update(false, false, NavKeyGestures::HOLD_MS + 250);
+  run(g, false, true, NavKeyGestures::HOLD_MS + 300, NavKeyGestures::HOLD_MS * 2 + 400);
+  EXPECT_TRUE(g.confirmHeld()) << "a fresh press after the release works normally";
 }
 
-// Releasing one key of a chord must not page. The user is mid-chord, and a page
-// turn here is the most visible possible wrong answer on an e-ink panel.
-TEST(GestureState, ReleasingOneKeyOfAChordEmitsNothing) {
-  GestureState s;
-  run(s, true, true, 0, 100);
-  EXPECT_EQ(s.update(false, true, 110), Gesture::None);
-  EXPECT_EQ(s.update(false, false, 120), Gesture::None)
-      << "the chord already resolved; the trailing key is not a fresh press";
-}
-
-TEST(GestureState, APressAfterAResolvedChordWorksNormally) {
-  GestureState s;
-  run(s, true, true, 0, 100);
-  s.update(false, false, 110);
-  run(s, false, true, 200, 260);
-  EXPECT_EQ(s.update(false, false, 270), Gesture::Next) << "the machine must not latch";
-}
-
-TEST(GestureState, AnIdleMachineEmitsNothing) {
-  GestureState s;
-  EXPECT_EQ(s.update(false, false, 0), Gesture::None);
-  EXPECT_EQ(s.update(false, false, 5000), Gesture::None);
-}
-
-// millis() wraps after ~49 days of uptime. A machine that reads a negative
-// elapsed time as "held forever" would fire Launcher on the next key press.
-TEST(GestureState, SurvivesAClockWrap) {
-  GestureState s;
-  const uint32_t nearMax = UINT32_MAX - 50;
-  s.update(false, true, nearMax);
-  s.update(false, true, 10);  // wrapped
-  EXPECT_EQ(s.update(false, false, 20), Gesture::Next)
-      << "elapsed time must be computed with unsigned wrap arithmetic";
+TEST(NavKeyGestures, HoldThresholdClearsTheReadersOwnHolds) {
+  // ReaderUtils.h:18-19 -- SKIP_HOLD_MS 700 and BOOKMARK_HOLD_MS 400 both fire
+  // off the raw key. Synthesised Back/Confirm must land clear of them so one
+  // physical action does not mean two things.
+  EXPECT_GT(NavKeyGestures::HOLD_MS, 700u);
+  EXPECT_LT(NavKeyGestures::HOLD_MS, 1000u) << "GO_BACK_OR_HOME_MS is 1000; stay under it";
 }
 
 }  // namespace
@@ -286,146 +244,137 @@ TEST(GestureState, SurvivesAClockWrap) {
 - [ ] **Step 2: Run it and watch it fail**
 
 ```bash
-cd test && cmake -S . -B build && cmake --build build --target GestureStateTest
+cd test && cmake -S . -B build && cmake --build build --target NavKeyGesturesTest
 ```
 
-Expected: FAIL — `Input/GestureState.h: No such file or directory`.
+Expected: FAIL — `Input/NavKeyGestures.h: No such file or directory`.
 
-- [ ] **Step 3: Write `lib/Input/Input/GestureState.h`**
+- [ ] **Step 3: Write `lib/Input/Input/NavKeyGestures.h`**
 
 ```cpp
 #pragma once
 
 #include <cstdint>
 
-// What the two nav keys mean, as a pure state machine.
+// Turns the two nav keys into a Back and a Confirm this board does not have.
 //
-// This device has exactly two digital nav keys and no Back or Confirm button
-// (BoardConfig.h:1396 leaves both PIN_UNASSIGNED), so every logical action
-// beyond paging has to come from a combination. Getting that wrong strands the
-// user on a screen with no way out, which is why this is a dependency-free unit
-// with a host suite rather than logic scattered through an activity.
+// BoardConfig.h:1396 leaves back/confirm/left/right PIN_UNASSIGNED on the X4
+// Pro, so Back today exists only as a left-edge touch swipe and a capacitive
+// Home key -- both of which die with the GT911. This is the GPIO-only route
+// that survives that.
 //
-// Feed it the two keys' CURRENT pressed state plus a monotonic millisecond
-// clock, once per loop tick. It returns at most one gesture per call.
+// Feed it both keys' CURRENT pressed state plus a monotonic millisecond clock,
+// once per loop tick. It reports state and one-tick edges; it does not consume
+// anything, so several callers may read it within the same tick.
 namespace input {
 
-enum class Gesture : uint8_t {
-  None,
-  Previous,  // left key, short
-  Next,      // right key, short
-  Confirm,   // right key, held
-  Back,      // both keys, short
-  Launcher,  // both keys, held
-};
+enum class NavKey : uint8_t { Left, Right };
 
-class GestureState {
+class NavKeyGestures {
  public:
-  // Held past this, the right key is Confirm rather than a page turn. Matches
-  // the threshold the reader already treats as "a hold, not a tap" elsewhere.
-  static constexpr uint32_t LONG_PRESS_MS = 700;
-  // Two mechanical keys never close on the same scan. A second key arriving
-  // within this window joins the first rather than being a separate press.
-  static constexpr uint32_t CHORD_JOIN_MS = 120;
-  // Both keys held past this is the launcher, not Back.
-  static constexpr uint32_t CHORD_HOLD_MS = 900;
+  // Above the reader's own SKIP_HOLD_MS (700) so a held key means one thing,
+  // and below GO_BACK_OR_HOME_MS (1000) so a delivered Back still reads as a
+  // short press to the reader's back-destination branch.
+  static constexpr uint32_t HOLD_MS = 850;
 
-  // `nowMs` may wrap; elapsed time is computed with unsigned arithmetic so a
-  // wrap reads as a small positive interval rather than a huge one.
-  Gesture update(bool leftPressed, bool rightPressed, uint32_t nowMs);
+  // Both keys' state, and the clock. `nowMs` may wrap.
+  void update(bool leftPressed, bool rightPressed, uint32_t nowMs);
 
-  void reset();
+  // Starts with one or both keys already down, marking them stale so they
+  // cannot synthesise anything until released. Boot and wake absorb an
+  // already-held key deliberately, and recovery mode holds one through startup.
+  void beginWithKeysDown(bool leftPressed, bool rightPressed, uint32_t nowMs);
+
+  bool backHeld() const { return left_.synthesised; }
+  bool confirmHeld() const { return right_.synthesised; }
+  bool backReleasedThisTick() const { return left_.releasedEdge; }
+  bool confirmReleasedThisTick() const { return right_.releasedEdge; }
+  bool backPressedThisTick() const { return left_.pressedEdge; }
+  bool confirmPressedThisTick() const { return right_.pressedEdge; }
+
+  // True once a key has become a hold, so the caller can hide that key's raw
+  // press. Without it a held key pages AND opens Back -- the reader pages on
+  // wasPressed by default (ReaderUtils.h:53).
+  bool suppressRaw(NavKey key) const;
 
  private:
-  enum class Phase : uint8_t {
-    Idle,
-    OneKeyDown,   // a single key is down and could still become a chord
-    ChordDown,    // both keys down, not yet resolved
-    Resolved,     // a gesture already fired; waiting for all keys to lift
+  struct Key {
+    bool down = false;
+    bool stale = false;  // was already down when we started looking
+    bool synthesised = false;
+    bool pressedEdge = false;
+    bool releasedEdge = false;
+    uint32_t downAtMs = 0;
   };
 
-  Phase phase_ = Phase::Idle;
-  bool firstWasLeft_ = false;
-  uint32_t downAtMs_ = 0;
+  void updateKey(Key& key, bool pressed, uint32_t nowMs);
+
+  Key left_;
+  Key right_;
 };
 
 }  // namespace input
 ```
 
-- [ ] **Step 4: Write `lib/Input/Input/GestureState.cpp`**
+- [ ] **Step 4: Write `lib/Input/Input/NavKeyGestures.cpp`**
 
 ```cpp
-#include "Input/GestureState.h"
+#include "Input/NavKeyGestures.h"
 
 namespace input {
 namespace {
 
 // Unsigned subtraction, so a millis() wrap yields the true short interval
-// rather than ~49 days. Reading a wrap as "held forever" would fire Launcher on
-// the first key press after 49 days of uptime.
+// rather than ~49 days. Reading a wrap as "held forever" would assert Back on
+// the first key touched after 49 days of uptime.
 uint32_t elapsed(const uint32_t from, const uint32_t now) { return now - from; }
 
 }  // namespace
 
-void GestureState::reset() {
-  phase_ = Phase::Idle;
-  firstWasLeft_ = false;
-  downAtMs_ = 0;
+void NavKeyGestures::updateKey(Key& key, const bool pressed, const uint32_t nowMs) {
+  key.pressedEdge = false;
+  key.releasedEdge = false;
+
+  if (pressed && !key.down) {
+    key.down = true;
+    key.downAtMs = nowMs;
+    return;
+  }
+
+  if (!pressed && key.down) {
+    key.down = false;
+    key.stale = false;  // a real release clears staleness; the next press is genuine
+    if (key.synthesised) {
+      key.synthesised = false;
+      key.releasedEdge = true;
+    }
+    return;
+  }
+
+  if (pressed && key.down && !key.stale && !key.synthesised && elapsed(key.downAtMs, nowMs) >= HOLD_MS) {
+    key.synthesised = true;
+    key.pressedEdge = true;
+  }
 }
 
-Gesture GestureState::update(const bool leftPressed, const bool rightPressed, const uint32_t nowMs) {
-  const bool anyDown = leftPressed || rightPressed;
-  const bool bothDown = leftPressed && rightPressed;
+void NavKeyGestures::update(const bool leftPressed, const bool rightPressed, const uint32_t nowMs) {
+  updateKey(left_, leftPressed, nowMs);
+  updateKey(right_, rightPressed, nowMs);
+}
 
-  switch (phase_) {
-    case Phase::Idle:
-      if (!anyDown) return Gesture::None;
-      phase_ = bothDown ? Phase::ChordDown : Phase::OneKeyDown;
-      firstWasLeft_ = leftPressed && !rightPressed;
-      downAtMs_ = nowMs;
-      return Gesture::None;
+void NavKeyGestures::beginWithKeysDown(const bool leftPressed, const bool rightPressed, const uint32_t nowMs) {
+  left_ = Key{};
+  right_ = Key{};
+  left_.down = leftPressed;
+  left_.stale = leftPressed;
+  left_.downAtMs = nowMs;
+  right_.down = rightPressed;
+  right_.stale = rightPressed;
+  right_.downAtMs = nowMs;
+}
 
-    case Phase::OneKeyDown:
-      // A second key within the join window makes this a chord, timed from the
-      // FIRST key so the hold threshold measures the whole gesture.
-      if (bothDown) {
-        if (elapsed(downAtMs_, nowMs) <= CHORD_JOIN_MS) {
-          phase_ = Phase::ChordDown;
-          return Gesture::None;
-        }
-        // Too late to be deliberate: treat it as the original key still held.
-        phase_ = Phase::Resolved;
-        return Gesture::None;
-      }
-      if (!anyDown) {
-        phase_ = Phase::Idle;
-        return firstWasLeft_ ? Gesture::Previous : Gesture::Next;
-      }
-      // Still one key down. Only the right key carries a hold meaning.
-      if (!firstWasLeft_ && elapsed(downAtMs_, nowMs) >= LONG_PRESS_MS) {
-        phase_ = Phase::Resolved;
-        return Gesture::Confirm;
-      }
-      return Gesture::None;
-
-    case Phase::ChordDown:
-      if (elapsed(downAtMs_, nowMs) >= CHORD_HOLD_MS) {
-        phase_ = Phase::Resolved;
-        return Gesture::Launcher;
-      }
-      if (!bothDown) {
-        // One or both lifted before the hold threshold. Either way the chord is
-        // over; a trailing single key must not page.
-        phase_ = anyDown ? Phase::Resolved : Phase::Idle;
-        return Gesture::Back;
-      }
-      return Gesture::None;
-
-    case Phase::Resolved:
-      if (!anyDown) phase_ = Phase::Idle;
-      return Gesture::None;
-  }
-  return Gesture::None;
+bool NavKeyGestures::suppressRaw(const NavKey key) const {
+  return key == NavKey::Left ? left_.synthesised : right_.synthesised;
 }
 
 }  // namespace input
@@ -433,519 +382,229 @@ Gesture GestureState::update(const bool leftPressed, const bool rightPressed, co
 
 - [ ] **Step 5: Register the test**
 
-`test/gesture_state/CMakeLists.txt`:
+`test/nav_key_gestures/CMakeLists.txt`:
 
 ```cmake
-add_executable(GestureStateTest
-  GestureStateTest.cpp
-  ${REPO_ROOT}/lib/Input/Input/GestureState.cpp
+add_executable(NavKeyGesturesTest
+  NavKeyGesturesTest.cpp
+  ${REPO_ROOT}/lib/Input/Input/NavKeyGestures.cpp
 )
 
-target_include_directories(GestureStateTest PRIVATE ${REPO_ROOT}/lib/Input)
+target_include_directories(NavKeyGesturesTest PRIVATE ${REPO_ROOT}/lib/Input)
 
-target_link_libraries(GestureStateTest PRIVATE
+target_link_libraries(NavKeyGesturesTest PRIVATE
   crosspoint_test_common
   GTest::gtest_main
 )
 
-gtest_discover_tests(GestureStateTest)
+gtest_discover_tests(NavKeyGesturesTest)
 ```
 
-Append to `test/CMakeLists.txt`:
+Append `add_subdirectory(nav_key_gestures)` to `test/CMakeLists.txt`.
 
-```cmake
-add_subdirectory(gesture_state)
-```
-
-> The nested `lib/Input/Input/` layout is not a typo. PlatformIO puts
+> The nested `lib/Input/Input/` layout is deliberate: PlatformIO puts
 > `lib/<Name>` on the include path and never `lib` itself, so
-> `#include "Input/GestureState.h"` only resolves with the extra level — the
-> same reason `lib/Epub/Epub/` and `lib/StudyStore/StudyStore/` are shaped that
-> way. The host suite adds `lib` directly and so hides the mistake until the
-> first `pio run`.
+> `#include "Input/NavKeyGestures.h"` needs the extra level. Same reason
+> `lib/Epub/Epub/` and `lib/StudyStore/StudyStore/` are shaped that way. The
+> host suite adds `lib` directly and hides the mistake until the first `pio run`.
 
-- [ ] **Step 6: Run and watch it pass**
-
-```bash
-cd test && cmake -S . -B build && cmake --build build --target GestureStateTest && ./build/gesture_state/GestureStateTest
-```
-
-Expected: `[  PASSED  ] 14 tests.`
+- [ ] **Step 6: Run and watch it pass.** Expected: `[  PASSED  ] 11 tests.`
 
 - [ ] **Step 7: Commit**
 
 ```bash
 PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix
-git add lib/Input test/gesture_state test/CMakeLists.txt
-git commit -m "feat: decide what the two nav keys mean, as a testable machine"
+git add lib/Input test/nav_key_gestures test/CMakeLists.txt
+git commit -m "feat: synthesise Back and Confirm from the two nav keys"
 ```
 
-> `clang-format-fix` prints a warning and **exits 0** when clang-format is not on
-> PATH, so without the venv prefix it silently does nothing and CI fails on work
-> that looked clean. This has now cost this project two red builds.
+> `clang-format-fix` warns and **exits 0** without the venv on PATH, doing
+> nothing. That has cost this project two red builds already.
 
 ---
 
-## Task 2: What Home means right now
+## Task 2: Wire it into `HalGPIO`
 
-"Home is always Back" has several claimants and they conflict. The spec's ladder,
-highest priority first, with the reasoning that makes each non-obvious:
-
-1. **A modal overlay is open** → dismiss it. Anything else discards the overlay's
-   context along with it.
-2. **A gesture is in progress** (a half-made two-tap selection) → cancel the
-   gesture only. Leaving the screen mid-selection loses the anchor silently.
-3. **A destructive operation is in flight** (download, OTA) → Home is **inert**.
-   OTA especially: `enterDeepSleep` mid-write bricks the partition.
-4. **The return stack is non-empty** → go back to where the citation was followed
-   from.
-5. **Otherwise** → up one level.
+This is the whole integration. `HalGPIO` is our code (`lib/hal/`), it already
+wraps every button read, and `SETTINGS.frontButtonBack` already resolves to
+`BTN_BACK` — so driving those two indices here reaches all 623 call sites with
+no edits anywhere else.
 
 **Files:**
-- Create: `lib/Input/Input/HomeLadder.h`, `lib/Input/Input/HomeLadder.cpp`
-- Create: `test/home_ladder/HomeLadderTest.cpp`, `test/home_ladder/CMakeLists.txt`
-- Modify: `test/CMakeLists.txt`
+- Modify: `lib/hal/HalGPIO.h`, `lib/hal/HalGPIO.cpp`
 
-- [ ] **Step 1: Write the failing test**
-
-`test/home_ladder/HomeLadderTest.cpp`:
+- [ ] **Step 1: Add the machine to the header**
 
 ```cpp
-#include <gtest/gtest.h>
-
-#include "Input/HomeLadder.h"
-
-namespace {
-
-using input::HomeAction;
-using input::ScreenContext;
-
-ScreenContext ctx() { return ScreenContext{}; }
-
-TEST(HomeLadder, AnOpenOverlayIsDismissedFirst) {
-  ScreenContext c = ctx();
-  c.overlayOpen = true;
-  c.gestureInProgress = true;
-  c.returnStackDepth = 2;
-  EXPECT_EQ(input::resolveHome(c), HomeAction::DismissOverlay);
-}
-
-TEST(HomeLadder, AGestureIsCancelledBeforeAnythingElseMoves) {
-  ScreenContext c = ctx();
-  c.gestureInProgress = true;
-  c.returnStackDepth = 2;
-  EXPECT_EQ(input::resolveHome(c), HomeAction::CancelGesture);
-}
-
-TEST(HomeLadder, HomeIsInertDuringADestructiveOperation) {
-  ScreenContext c = ctx();
-  c.destructiveOperationInFlight = true;
-  c.returnStackDepth = 2;
-  EXPECT_EQ(input::resolveHome(c), HomeAction::Ignore)
-      << "leaving mid-OTA is how a partition gets half-written";
-}
-
-TEST(HomeLadder, AnOverlayStillWinsOverADestructiveOperation) {
-  ScreenContext c = ctx();
-  c.overlayOpen = true;
-  c.destructiveOperationInFlight = true;
-  EXPECT_EQ(input::resolveHome(c), HomeAction::DismissOverlay)
-      << "dismissing a progress popup must not be confused with cancelling the work";
-}
-
-TEST(HomeLadder, ANonEmptyReturnStackReturns) {
-  ScreenContext c = ctx();
-  c.returnStackDepth = 1;
-  EXPECT_EQ(input::resolveHome(c), HomeAction::PopReturnStack);
-}
-
-TEST(HomeLadder, OtherwiseItGoesUpOneLevel) {
-  EXPECT_EQ(input::resolveHome(ctx()), HomeAction::Up);
-}
-
-TEST(HomeLadder, ALongHomeIsAlwaysTheLauncherExceptMidDestructiveWork) {
-  ScreenContext c = ctx();
-  c.overlayOpen = true;
-  c.returnStackDepth = 3;
-  EXPECT_EQ(input::resolveHomeHold(c), HomeAction::Launcher);
-
-  c.destructiveOperationInFlight = true;
-  EXPECT_EQ(input::resolveHomeHold(c), HomeAction::Ignore);
-}
-
-}  // namespace
+#include "Input/NavKeyGestures.h"
 ```
 
-- [ ] **Step 2: Run it and watch it fail.** Expected: `Input/HomeLadder.h: No such file or directory`.
-
-- [ ] **Step 3: Write `lib/Input/Input/HomeLadder.h`**
+and, as private members:
 
 ```cpp
-#pragma once
-
-#include <cstdint>
-
-// What Home means, given what is on screen. Separated from the activities so
-// the precedence is stated once and tested, rather than re-derived — slightly
-// differently — in each screen that handles Home.
-namespace input {
-
-struct ScreenContext {
-  bool overlayOpen = false;
-  bool gestureInProgress = false;
-  bool destructiveOperationInFlight = false;
-  uint8_t returnStackDepth = 0;
-};
-
-enum class HomeAction : uint8_t {
-  Ignore,
-  DismissOverlay,
-  CancelGesture,
-  PopReturnStack,
-  Up,
-  Launcher,
-};
-
-HomeAction resolveHome(const ScreenContext& context);
-HomeAction resolveHomeHold(const ScreenContext& context);
-
-}  // namespace input
+  // BTN_BACK and BTN_CONFIRM are PIN_UNASSIGNED on this board, so the SDK never
+  // drives them and their indices are ours. Synthesising here rather than in
+  // MappedInputManager is what makes wasPressed, isPressed and the composed
+  // NavNext/NavPrevious all agree -- patching the layer above would have left
+  // every one of them reading the raw pins.
+  input::NavKeyGestures navGestures;
+  bool navGesturesPrimed = false;
 ```
 
-- [ ] **Step 4: Write `lib/Input/Input/HomeLadder.cpp`**
+- [ ] **Step 2: Feed it in `HalGPIO::update()`**
 
 ```cpp
-#include "Input/HomeLadder.h"
+void HalGPIO::update() {
+  inputMgr.update();
 
-namespace input {
+  const bool left = inputMgr.isPressed(BTN_UP);
+  const bool right = inputMgr.isPressed(BTN_DOWN);
+  if (!navGesturesPrimed) {
+    // A key already down on the first tick is absorbed, never synthesised:
+    // main.cpp:562-569 deliberately lets a button held at startup settle
+    // without an edge, and recovery mode (main.cpp:387) holds DOWN through it.
+    navGestures.beginWithKeysDown(left, right, millis());
+    navGesturesPrimed = true;
+  } else {
+    navGestures.update(left, right, millis());
+  }
 
-HomeAction resolveHome(const ScreenContext& context) {
-  // An overlay outranks even a download: dismissing a progress popup is a
-  // display decision, not a decision to abandon the transfer.
-  if (context.overlayOpen) return HomeAction::DismissOverlay;
-  if (context.gestureInProgress) return HomeAction::CancelGesture;
-  if (context.destructiveOperationInFlight) return HomeAction::Ignore;
-  if (context.returnStackDepth > 0) return HomeAction::PopReturnStack;
-  return HomeAction::Up;
+  const bool connected = isUsbConnected();
+  usbStateChanged = (connected != lastUsbConnected);
+  lastUsbConnected = connected;
 }
-
-HomeAction resolveHomeHold(const ScreenContext& context) {
-  if (context.destructiveOperationInFlight) return HomeAction::Ignore;
-  return HomeAction::Launcher;
-}
-
-}  // namespace input
 ```
 
-- [ ] **Step 5: Register the test** — sources are `HomeLadder.cpp`; include dir
-      `${REPO_ROOT}/lib/Input`; append `add_subdirectory(home_ladder)` to
-      `test/CMakeLists.txt`. Same shape as Task 1's CMakeLists.
+- [ ] **Step 3: Answer the three queries for the synthesised indices**
 
-- [ ] **Step 6: Run and watch it pass.** Expected: `[  PASSED  ] 7 tests.`
-
-- [ ] **Step 7: Commit**
-
-```bash
-PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix
-git add lib/Input/Input/HomeLadder.h lib/Input/Input/HomeLadder.cpp test/home_ladder test/CMakeLists.txt
-git commit -m "feat: state the Home precedence ladder once, and test it"
-```
-
----
-
-## Task 3: The firmware adapter, and the shim
-
-**Files:**
-- Create: `src/input/BereanInput.{h,cpp}`
-- Modify: `src/MappedInputManager.{h,cpp}`, `src/main.cpp`
-
-- [ ] **Step 1: Write `src/input/BereanInput.h`**
+Each existing method gains a branch ahead of its passthrough. `BTN_UP` and
+`BTN_DOWN` keep reporting the raw pins unchanged — recovery mode, the screenshot
+combo and hold-to-scroll all read those.
 
 ```cpp
-#pragma once
-
-#include <HalGPIO.h>
-
-#include "Input/GestureState.h"
-#include "Input/HomeLadder.h"
-
-// Feeds GestureState from the two digital nav keys and exposes the result.
-//
-// The keys are HalGPIO::BTN_UP (GPIO0, physically the LEFT key) and
-// HalGPIO::BTN_DOWN (GPIO7, physically the RIGHT key). BoardConfig.h:1396
-// leaves back/confirm/left/right PIN_UNASSIGNED on this board, so those indices
-// are never configured and never read as pressed -- reading them is not wrong,
-// it is just permanently false.
-class BereanInput {
- public:
-  explicit BereanInput(HalGPIO& gpio) : gpio_(gpio) {}
-
-  // Called once per loop tick, before anything consumes a gesture.
-  void update(uint32_t nowMs);
-
-  // At most one per tick; consuming it clears it.
-  input::Gesture takeGesture();
-
-  bool homeTapped() const;
-  bool homeHeld() const;
-
- private:
-  HalGPIO& gpio_;
-  input::GestureState machine_;
-  input::Gesture pending_ = input::Gesture::None;
-};
-```
-
-- [ ] **Step 2: Write `src/input/BereanInput.cpp`**
-
-```cpp
-#include "BereanInput.h"
-
-void BereanInput::update(const uint32_t nowMs) {
-  const input::Gesture g =
-      machine_.update(gpio_.isPressed(HalGPIO::BTN_UP), gpio_.isPressed(HalGPIO::BTN_DOWN), nowMs);
-  // Latch rather than overwrite: a consumer that runs after a screen transition
-  // would otherwise lose the gesture that caused the transition.
-  if (g != input::Gesture::None) pending_ = g;
+bool HalGPIO::isPressed(const uint8_t buttonIndex) const {
+  if (buttonIndex == BTN_BACK) return navGestures.backHeld();
+  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmHeld();
+  return inputMgr.isPressed(buttonIndex);
 }
 
-input::Gesture BereanInput::takeGesture() {
-  const input::Gesture g = pending_;
-  pending_ = input::Gesture::None;
-  return g;
+bool HalGPIO::wasPressed(const uint8_t buttonIndex) const {
+  if (buttonIndex == BTN_BACK) return navGestures.backPressedThisTick();
+  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmPressedThisTick();
+  // A key that became a hold must not ALSO report its raw press: the reader
+  // pages on wasPressed by default (ReaderUtils.h:53), so without this a held
+  // key turns a page on its way to Back.
+  if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
+  if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+  return inputMgr.wasPressed(buttonIndex);
 }
 
-bool BereanInput::homeTapped() const { return gpio_.hasHomeKey() && gpio_.wasHomeKeyTapped(); }
-
-bool BereanInput::homeHeld() const { return gpio_.hasHomeKey() && gpio_.wasHomeKeyLongPressed(); }
+bool HalGPIO::wasReleased(const uint8_t buttonIndex) const {
+  if (buttonIndex == BTN_BACK) return navGestures.backReleasedThisTick();
+  if (buttonIndex == BTN_CONFIRM) return navGestures.confirmReleasedThisTick();
+  if (buttonIndex == BTN_UP && navGestures.suppressRaw(input::NavKey::Left)) return false;
+  if (buttonIndex == BTN_DOWN && navGestures.suppressRaw(input::NavKey::Right)) return false;
+  return inputMgr.wasReleased(buttonIndex);
+}
 ```
 
-- [ ] **Step 3: Point `MappedInputManager` at it.** Add a `BereanInput*` member,
-      set from `main.cpp`, and rewrite exactly four methods. Leave every other
-      method, and all 418 call sites, untouched.
+> **The suppression is asymmetric on purpose.** `wasPressed`/`wasReleased` hide
+> the raw edge so one physical action means one thing. `isPressed(BTN_UP)` is
+> **not** suppressed, because recovery mode reads exactly that at boot and
+> hold-to-scroll reads it in lists — both want to know the key is physically
+> down, regardless of what it also came to mean.
 
-```cpp
-// In MappedInputManager::wasReleased, ahead of the existing mapping:
-//
-// Back and Confirm no longer come from a GPIO — BoardConfig leaves both
-// PIN_UNASSIGNED on this board, so the old mapping through
-// SETTINGS.frontButtonBack could only ever return false. They come from the
-// chord and the right key's hold instead.
-case Button::Back:
-  return lastGesture_ == input::Gesture::Back;
-case Button::Confirm:
-  return lastGesture_ == input::Gesture::Confirm;
-case Button::PageBack:
-case Button::Up:
-  return lastGesture_ == input::Gesture::Previous;
-case Button::PageForward:
-case Button::Down:
-  return lastGesture_ == input::Gesture::Next;
-```
-
-  `lastGesture_` is filled once per tick in `update()` by calling
-  `berean_->takeGesture()`, so every `wasReleased` call within one tick sees the
-  same value — matching the edge-event semantics the call sites already assume.
-
-- [ ] **Step 4: Keep the left-edge swipe as a second Back.** Do not remove it.
-      It is the touch-side Back that already works, and having two independent
-      routes is the entire point: the chord survives a dead GT911, the swipe
-      survives a stuck key.
-
-- [ ] **Step 5: Construct and feed it in `src/main.cpp`**, beside the existing
-      `mappedInputManager`, and call `bereanInput.update(millis())` in the same
-      place `mappedInputManager.update()` is already called.
-
-- [ ] **Step 6: Build, analyse, and commit**
+- [ ] **Step 4: Build and check with CI's own flags**
 
 ```bash
 /Volumes/stein/.platformio/penv/bin/pio run -e x4pro
-/Volumes/stein/.platformio/penv/bin/pio check -e x4pro
-PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix
-git add src/input src/MappedInputManager.h src/MappedInputManager.cpp src/main.cpp
-git commit -m "feat: give the device a Back and a Confirm that exist in hardware"
+/Volumes/stein/.platformio/penv/bin/pio check -e x4pro --fail-on-defect low --fail-on-defect medium --fail-on-defect high
 ```
 
-  `pio check` fails CI on `low` severity, not just errors — a raw loop it wants
-  as `std::find_if` is enough to turn the build red.
-
----
-
-## Task 4: The `ReturnStack` capacity decision
-
-The spec defers this to Phase 2 and it comes due now, because Back is about to
-become the device's primary navigation rather than a reader convenience.
-
-`ReturnStack.h:16` sets `CAPACITY = 3` and silently evicts the oldest on push.
-The existing comment states the trade deliberately: *"trading the article origin
-for every individual Back being one correct step back."*
-
-**Decision: keep the eviction, raise the capacity to 8, and expose the depth.**
-
-- Keeping eviction is right, and the existing comment argues it correctly. The
-  alternative — refusing the push when full — means the *newest* citation is the
-  one you cannot return from, which is worse than losing the oldest.
-- Raising to 8 costs 64 bytes (`8 × sizeof(SavedPosition)`) and moves "Back walks
-  a path I did not take" from a four-citation chain to a nine-citation one. Four
-  is reachable in normal study; nine is not.
-- Exposing `depth()` is what Task 2's ladder needs — `ScreenContext::returnStackDepth`
-  is already in its interface — and it is what lets 2b's chrome distinguish
-  *Return* from *Back*, which was the spec's other suggested remedy.
-
-**Files:**
-- Modify: `src/activities/reader/ReturnStack.h`
-- Modify: `test/return_stack/ReturnStackTest.cpp`
-
-- [ ] **Step 1: Add the failing tests** to `test/return_stack/ReturnStackTest.cpp`
-
-```cpp
-TEST(ReturnStack, ReportsItsDepth) {
-  ReturnStack s;
-  EXPECT_EQ(s.depth(), 0);
-  s.push({1, 1});
-  s.push({2, 2});
-  EXPECT_EQ(s.depth(), 2);
-  SavedPosition out;
-  s.pop(out);
-  EXPECT_EQ(s.depth(), 1);
-}
-
-TEST(ReturnStack, DepthSaturatesAtCapacityRatherThanCounting) {
-  ReturnStack s;
-  for (int i = 0; i < ReturnStack::CAPACITY + 4; ++i) s.push({i, i});
-  EXPECT_EQ(s.depth(), ReturnStack::CAPACITY);
-}
-
-TEST(ReturnStack, HoldsAWholeStudySessionOfCitations) {
-  // Four citations in a chain is reachable in normal study; the old capacity of
-  // three meant the fourth Back walked a path the user never took.
-  ReturnStack s;
-  for (int i = 1; i <= 8; ++i) s.push({i, i});
-  SavedPosition out;
-  for (int i = 8; i >= 1; --i) {
-    ASSERT_TRUE(s.pop(out)) << "at depth " << i;
-    EXPECT_EQ(out.spineIndex, i);
-  }
-  EXPECT_FALSE(s.pop(out));
-}
-```
-
-- [ ] **Step 2: Run and watch them fail**
-
-```bash
-cd test && cmake --build build --target ReturnStackTest && ./build/return_stack/ReturnStackTest
-```
-
-Expected: FAIL — no member `depth`, and the eight-citation walk stops after three.
-
-- [ ] **Step 3: Change `src/activities/reader/ReturnStack.h`**
-
-```cpp
-  // Eight, not three. Back is this device's primary navigation now, and at
-  // three a fourth citation in a chain silently evicted the origin -- so the
-  // fourth Back landed somewhere the user had never been. Eight costs 64 bytes
-  // and puts that past any realistic chain.
-  static constexpr int CAPACITY = 8;
-
-  // Entries currently held, for the Home ladder and for chrome that needs to
-  // tell "Return" apart from "Back".
-  int depth() const { return count_; }
-```
-
-- [ ] **Step 4: Run and watch them pass.** Expected: `[  PASSED  ]` with the
-      existing wrap tests still green — they are parameterised on `CAPACITY` and
-      must not need editing. If one hardcodes 3, that is a test bug this change
-      correctly exposes; fix it to use `ReturnStack::CAPACITY`.
+`pio check` fails CI on `low`, so a bare `pio check` is not the same gate.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix
-git add src/activities/reader/ReturnStack.h test/return_stack/ReturnStackTest.cpp
-git commit -m "feat: deepen the return stack now that Back is primary navigation"
+git add lib/hal/HalGPIO.h lib/hal/HalGPIO.cpp
+git commit -m "feat: drive the unassigned Back and Confirm indices from the nav keys"
 ```
 
 ---
 
-## Task 5: Device verification
+## Task 3: Device verification
 
-Human-tester scope, and this phase has a failure mode worth naming: **the way
-this breaks is that you cannot leave a screen.** Test the escape routes before
-anything else.
+The way this breaks is that you cannot leave a screen, or cannot recover a
+device that will not boot. Test those first.
 
-- [ ] **Step 1: Side-load the dev build** (OTA installs the release build, which
-      has `LOG_LEVEL=0` and no serial output):
+- [ ] **Step 1: Side-load the dev build** — OTA installs the release build with
+      `LOG_LEVEL=0` and no serial.
 
 ```bash
 /Volumes/stein/.platformio/penv/bin/pio run -e x4pro
 curl -H "Expect:" -F "file=@.pio/build/x4pro/firmware.bin" "http://<device-ip>/upload?path=/"
 ```
 
-  Then *Settings → SD firmware update*. The `Expect:` suppression is required —
-  the ESP32 web server never answers `100-continue` and the transfer hangs.
+Then *Settings → SD firmware update*. The `Expect:` suppression is required or
+the transfer hangs.
 
-- [ ] **Step 2: The escape routes, from a settings sub-screen**
+- [ ] **Step 2: Recovery mode still works — do this before anything else**
+
+  Power on holding the **right** key (DOWN) + POWER. Expect the recovery
+  firmware log line. If this fails, stop and revert: it is the escape hatch.
+
+- [ ] **Step 3: The escapes, from a settings sub-screen**
 
   | Gesture | Expected |
   |---|---|
-  | Both keys, short | back one level |
-  | Both keys, held ~1 s | launcher / home |
+  | Left key, held ~1 s | back one level |
   | Home, short | back one level |
-  | Home, long | launcher / home |
   | Left-edge swipe | back one level |
 
-  **Four independent routes must work.** If only the touch ones do, the chord is
-  not reaching `wasReleased(Button::Back)` and the phase has not achieved its
-  purpose — a device that strands you when the GT911 stops answering.
-
-- [ ] **Step 3: The gestures that must NOT fire**
+- [ ] **Step 4: What must NOT happen**
 
   | Action | Must not |
   |---|---|
-  | Left key, short, in the reader | do anything but turn one page back |
-  | Right key, short, in the reader | do anything but turn one page forward |
-  | Right key, long | also turn a page when released |
-  | Both keys, release one then the other | turn a page |
-  | Both keys, held to the launcher | also fire Back on release |
+  | Left key, short, in the reader | anything but one page back |
+  | Right key, short, in the reader | anything but one page forward |
+  | Left key, held | turn a page on the way to Back, or on release |
+  | Right key, held | turn a page on the way to Confirm, or on release |
 
-  A stray page turn is the most visible possible wrong answer on e-ink, and
-  every one of these is covered by a host test — so a failure here means the
-  adapter, not the machine.
+  A page turn here means the `suppressRaw` wiring is wrong.
 
-- [ ] **Step 4: Confirm still works where it is the only way through** — enter a
-      settings row with a long right-key press and change a value.
+- [ ] **Step 5: The screens the last review found uncovered**
 
-- [ ] **Step 5: Report the table above**, filled in, rather than a summary claim.
+  | Screen | Check |
+  |---|---|
+  | WiFi password entry | type and submit a password with buttons only |
+  | Settings list | hold a key to scroll continuously — must still work |
+  | A tabbed settings screen | hold to step tabs — must not double-step |
+  | Reader, `longPressButtonBehavior = CHAPTER_SKIP` | chapter skip still reachable |
+  | Reader, `longPressMenuFunction = LP_MENU_BOOKMARK` | the reader menu still reachable |
+
+- [ ] **Step 6: Report the tables filled in**, not a summary claim.
 
 ---
 
 ## Self-review
 
-**Spec coverage for 2a.** Input model table → Tasks 1 and 3. Home precedence
-ladder → Task 2. "Back must not depend on the touch controller" → Task 3 Step 4,
-verified in Task 5 Step 2. "There must be a Confirm" → Task 1. `ReturnStack`
-capacity, the spec's named open item → Task 4.
+**Spec coverage.** "There must be a Confirm" → Task 1. "Back must not depend on
+the touch controller" → Tasks 1–2, verified in Task 3 Step 3. The input-model
+table → Task 2.
 
-**Deliberately not in 2a**, and each is a plan of its own:
+**Deliberately deferred:**
 
-- The launcher shell and the four sections → **2b**, which also deletes the
-  `MappedInputManager` shim once the remaining call sites can be swept with a
-  working device at every commit.
-- Long-press-to-anchor, tap-to-finish selection → **2c**.
-- Horizontal and vertical swipe in the reader → **2c**, with the selection
-  gesture, since they share the touch classifier.
+- The launcher and the four sections → **2b**, which hangs the launcher on the
+  existing Home-long and is where `MappedInputManager` finally goes.
+- Long-press-to-anchor selection and reader swipes → **2c**.
+- `ReturnStack` capacity: **left at 3.** The tests are not parameterised and the
+  gain is marginal; revisit if 2b's chrome wants a return indicator.
 
 **Corrections to the spec this plan makes:**
 
-1. The spec calls the chord "Left + Right". On this board those are `BTN_UP` and
-   `BTN_DOWN`; `BTN_LEFT` and `BTN_RIGHT` are `PIN_UNASSIGNED` and never read.
-2. The spec treats Back-from-a-button as something this phase removes. It is
-   already dead — `SETTINGS.frontButtonBack` resolves to an unassigned pin — so
-   this phase *adds* a physical Back rather than replacing one.
-3. The spec says `MappedInputManager` is deleted in Phase 2. It is shimmed here
-   and deleted in 2b, because a 121-file rename and an input-semantics change in
-   one commit is not reviewable.
-
-**Open item still open:** whether the launcher needs a visible "Return" affordance
-distinct from "Back" when the return stack is non-empty. `depth()` now makes it
-possible; 2b decides whether it is worth the chrome.
+1. The chord it describes is not implementable safely at a 50 ms tick. Back is a
+   held left key instead.
+2. `MappedInputManager` is not deleted here. It is untouched — synthesising
+   below it means it needs no changes at all. It goes in 2b.
+3. Home-long already opens the launcher; the spec presents it as new work.
