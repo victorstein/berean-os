@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/victorstein/berean-os/compare/v1.0.0...v1.0.1) (2026-09-14)
+
+
+### Refactor
+
+* rename to bereanOS and point OTA at its own repo ([bd58e47](https://github.com/victorstein/berean-os/commit/bd58e47d5584a20722e31d25c848f6b18c02969b))
+
 ## 1.0.0 (2026-09-14)
 
 
