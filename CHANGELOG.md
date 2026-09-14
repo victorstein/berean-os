@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/victorstein/berean-os/compare/v1.4.0...v1.5.0) (2026-09-14)
+
+
+### Features
+
+* long-press a word to start a passage selection ([7087e6d](https://github.com/victorstein/berean-os/commit/7087e6d68a09a08e3dffd2bc29f3bc7636d1f2d7))
+
 ## [1.4.0](https://github.com/victorstein/berean-os/compare/v1.3.1...v1.4.0) (2026-09-14)
 
 
