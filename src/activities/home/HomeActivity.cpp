@@ -160,7 +160,6 @@ void HomeActivity::loop() {
       case HomeMenuItem::RECENTS:
         onRecentsOpen();
         break;
-        break;
       case HomeMenuItem::FILE_TRANSFER:
         onFileTransferOpen();
         break;
