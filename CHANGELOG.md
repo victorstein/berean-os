@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.4.0](https://github.com/victorstein/berean-os/compare/v1.3.1...v1.4.0) (2026-09-14)
+
+
+### Features
+
+* add the launcher home screen ([aab3ef1](https://github.com/victorstein/berean-os/commit/aab3ef12dfd2d75b6aae51cb7e93e844a6cf0058))
+* drive the unassigned Back and Confirm indices from the nav keys ([0076e7b](https://github.com/victorstein/berean-os/commit/0076e7b168ed0e5f863defa2c5500139f41d7511))
+* make the launcher the home screen ([ec65d86](https://github.com/victorstein/berean-os/commit/ec65d8628bed5b0c8897d49a39ead08c9bcfa086))
+* show progress while the study migration runs ([5274585](https://github.com/victorstein/berean-os/commit/5274585ad3b52d16620630ab00126f2190bea4c3))
+* synthesise Back and Confirm from the two nav keys ([706fded](https://github.com/victorstein/berean-os/commit/706fded52b6c9df529721c5f5099a42fe1fb58be))
+
+
+### Bug Fixes
+
+* resolve a held nav key on release, not mid-hold ([aab3ef1](https://github.com/victorstein/berean-os/commit/aab3ef12dfd2d75b6aae51cb7e93e844a6cf0058))
+
+
+### Performance
+
+* build the Bible book map in a handful of spine sweeps, not ~127 ([5274585](https://github.com/victorstein/berean-os/commit/5274585ad3b52d16620630ab00126f2190bea4c3))
+
+
+### Documentation
+
+* plan phase 2a, the input model ([9ee6d5d](https://github.com/victorstein/berean-os/commit/9ee6d5db0dc4520ed1aadf63f7eaf42dab609fb3))
+* rewrite the phase 2a plan after review ([df56a37](https://github.com/victorstein/berean-os/commit/df56a371cfa46c0fe37acf093d793408574ed9f6))
+
 ## [1.3.1](https://github.com/victorstein/berean-os/compare/v1.3.0...v1.3.1) (2026-09-14)
 
 
