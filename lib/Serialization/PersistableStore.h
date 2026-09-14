@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+
+#include "SaveBudget.h"
 #include <Logging.h>
 
 #include <mutex>
@@ -105,16 +107,52 @@ class PersistableStore : public PersistableStoreBase {
   PersistableStore(const PersistableStore&) = delete;
   PersistableStore& operator=(const PersistableStore&) = delete;
 
+  // Per-store ceiling. Override by declaring `static constexpr size_t
+  // SAVE_BUDGET` on the store; otherwise the shared default applies.
+  static constexpr size_t saveBudget() {
+    if constexpr (requires { T::SAVE_BUDGET; }) {
+      return T::SAVE_BUDGET;
+    } else {
+      return persist::DEFAULT_SAVE_BUDGET;
+    }
+  }
+
   static T& getInstance() {
     static T instance;
     return instance;
   }
 
+  // Legacy path: non-atomic, unbudgeted. Kept for the stores that already use
+  // it; new stores use saveToFileAtomic instead.
   bool saveToFile() const {
     std::lock_guard<std::mutex> lock(storeMutex);
     JsonDocument doc;
     static_cast<const T*>(this)->toJson(doc);
     return writeDocToFile(T::getFilePath(), doc);
+  }
+
+  // Measures before writing, then writes through a temp file and renames.
+  //
+  // Both halves matter. Without the budget check, a store that outgrows
+  // persist::DEFAULT_SAVE_BUDGET still saves, then reads back truncated at
+  // SDCardManager::readFile's cap, fails to parse, initialises empty, and the
+  // next save overwrites the real file with {}. Without atomicity, a write
+  // interrupted by a dead battery leaves a half-file that fails the same way.
+  //
+  // A store with a bounded record count may declare `static constexpr size_t
+  // SAVE_BUDGET` to tighten the ceiling.
+  bool saveToFileAtomic() const {
+    std::lock_guard<std::mutex> lock(storeMutex);
+    JsonDocument doc;
+    static_cast<const T*>(this)->toJson(doc);
+
+    const size_t serialised = measureJson(doc);
+    if (!persist::fitsBudget(serialised, saveBudget())) {
+      LOG_ERR("PERSIST", "Refusing to save %s: %u bytes exceeds budget %u", T::getFilePath(), (unsigned)serialised,
+              (unsigned)saveBudget());
+      return false;
+    }
+    return writeDocToFileAtomic(T::getFilePath(), doc);
   }
 
   bool loadFromFile() {
