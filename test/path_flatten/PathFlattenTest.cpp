@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "util/PathFlatten.h"
+#include <PathFlatten.h>
 
 TEST(PathFlatten, FlattensSeparatorsAndDropsTheExtension) {
   EXPECT_EQ(pathflatten::toCacheName("/books/novel.epub"), "books_novel");

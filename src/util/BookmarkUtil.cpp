@@ -4,7 +4,7 @@
 
 #include <utility>
 
-#include "PathFlatten.h"
+#include <PathFlatten.h>
 
 std::string BookmarkUtil::getBookmarksDir() { return "/.crosspoint/bookmarks/"; }
 

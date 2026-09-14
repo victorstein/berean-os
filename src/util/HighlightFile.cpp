@@ -6,7 +6,7 @@
 #include <PersistableStore.h>
 
 #include "HighlightFileAction.h"
-#include "PathFlatten.h"
+#include <PathFlatten.h>
 
 namespace {
 
