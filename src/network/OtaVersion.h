@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstring>
 
-// Header-only and free of Logging.h / CROSSPOINT_VERSION so the host suite
+// Header-only and free of Logging.h / BEREAN_VERSION so the host suite
 // (test/ota_version) can exercise the comparison directly.
 namespace ota_version {
 

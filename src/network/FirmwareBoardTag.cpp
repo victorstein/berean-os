@@ -2,30 +2,18 @@
 
 #include <cstring>
 
-// The board name derives from the FREEINK_DEVICE_* build flags so every env
-// (and any fork built from this source) is tagged automatically. The combined
-// X3/X4 ESP32-C3 binary is one compatibility class, tagged "x4". Names match
-// the release asset suffixes (firmware-<name>.bin; plain firmware.bin for x4).
+// bereanOS targets one board, so there is one name. It matches the release asset
+// suffix (firmware-x4pro.bin), which OtaUpdater derives from this tag.
+//
+// The magic string stays CROSSPOINT-BOARD-V1 deliberately. It appears twice below
+// as independent literals, so a partial rename compiles and silently returns a
+// garbage board slice into the OTA asset name -- and the scanner's single-byte
+// lookback requires the magic's first character never to recur inside it, which
+// "BEREAN-BOARD-V1:" violates at BOARD.
 #if FREEINK_DEVICE_X4PRO
-#define CROSSPOINT_BOARD_NAME "x4pro"
-#elif FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3
-#define CROSSPOINT_BOARD_NAME "x4"
-#elif FREEINK_DEVICE_PAPERMONO
-#define CROSSPOINT_BOARD_NAME "papermono"
-#elif FREEINK_DEVICE_STICKY
-#define CROSSPOINT_BOARD_NAME "sticky"
-#elif FREEINK_DEVICE_M5PAPER
-#define CROSSPOINT_BOARD_NAME "m5paper"
-#elif FREEINK_DEVICE_LILYGO
-#define CROSSPOINT_BOARD_NAME "lilygo"
-#elif FREEINK_DEVICE_M5
-#define CROSSPOINT_BOARD_NAME "m5"
-#elif FREEINK_DEVICE_MURPHY
-#define CROSSPOINT_BOARD_NAME "murphy"
-#elif FREEINK_DEVICE_DELINK
-#define CROSSPOINT_BOARD_NAME "delink"
+#define BEREAN_BOARD_NAME "x4pro"
 #else
-#error "FirmwareBoardTag: no FREEINK_DEVICE_* flag set; cannot derive board name"
+#error "FirmwareBoardTag: no FREEINK_DEVICE_X4PRO flag set; cannot derive board name"
 #endif
 
 namespace board_tag {
@@ -36,7 +24,7 @@ namespace {
 constexpr size_t MAGIC_LEN = sizeof("CROSSPOINT-BOARD-V1:") - 1;
 }  // namespace
 
-const char TAG[] = "CROSSPOINT-BOARD-V1:" CROSSPOINT_BOARD_NAME ";";
+const char TAG[] = "CROSSPOINT-BOARD-V1:" BEREAN_BOARD_NAME ";";
 
 const char* boardName() { return TAG + MAGIC_LEN; }
 size_t boardNameLen() { return sizeof(TAG) - 1 - MAGIC_LEN - 1; }  // strip magic and ';'

@@ -1,9 +1,9 @@
 """
 PlatformIO pre-build script: inject git branch and short SHA into
-CROSSPOINT_VERSION for development environments.
+BEREAN_VERSION for development environments.
 
 Results in a version string like:  1.1.0-dev-feat-kosync-xpath-05c6cf8
-Release environments are unaffected; they set CROSSPOINT_VERSION in the ini.
+Release environments are unaffected; they set BEREAN_VERSION in the ini.
 """
 
 import configparser
@@ -70,19 +70,19 @@ def get_base_version(project_dir):
         return '0.0.0'
     # Match PlatformIO's own parser: an inline comment on the version line
     # (the release-please markers live on their own lines, but any other
-    # trailing comment would otherwise land inside CROSSPOINT_VERSION).
+    # trailing comment would otherwise land inside BEREAN_VERSION).
     config = configparser.ConfigParser(inline_comment_prefixes=('#', ';'))
     config.read(ini_path, encoding='utf-8')
-    if not config.has_option('crosspoint', 'version'):
-        warn('No [crosspoint] version in platformio.ini; base version will be "0.0.0"')
+    if not config.has_option('berean', 'version'):
+        warn('No [berean] version in platformio.ini; base version will be "0.0.0"')
         return '0.0.0'
-    return config.get('crosspoint', 'version')
+    return config.get('berean', 'version')
 
 
 def inject_version(env):
     # Only applies to development environments; release envs set the
     # version via build_flags in platformio.ini and are unaffected.
-    if env['PIOENV'] not in ('default', 'sticky', 'x4pro'):
+    if env['PIOENV'] not in ('x4pro',):
         return
 
     project_dir = env['PROJECT_DIR']
@@ -91,8 +91,8 @@ def inject_version(env):
     short_sha = get_git_short_sha(project_dir)
     version_string = f'{base_version}-dev-{branch}-{short_sha}'
 
-    env.Append(CPPDEFINES=[('CROSSPOINT_VERSION', f'\\"{version_string}\\"')])
-    print(f'CrossPoint build version: {version_string}')
+    env.Append(CPPDEFINES=[('BEREAN_VERSION', f'\\"{version_string}\\"')])
+    print(f'bereanOS build version: {version_string}')
 
 
 # PlatformIO/SCons entry point — Import and env are SCons builtins injected at runtime.
@@ -106,4 +106,4 @@ except NameError:
         def Append(self, **_): pass
 
     _project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    inject_version(_Env({'PIOENV': 'default', 'PROJECT_DIR': _project_dir}))
+    inject_version(_Env({'PIOENV': 'x4pro', 'PROJECT_DIR': _project_dir}))

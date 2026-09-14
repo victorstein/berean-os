@@ -22,7 +22,7 @@
 // Set per fork in [base] build_flags so the source stays mergeable with upstream,
 // whose releases remain the default.
 #ifndef OTA_RELEASE_REPO
-#define OTA_RELEASE_REPO "crosspoint-reader/crosspoint-reader"
+#define OTA_RELEASE_REPO "victorstein/berean-os"
 #endif
 
 namespace {
@@ -30,7 +30,7 @@ constexpr char latestReleaseUrl[] = "https://api.github.com/repos/" OTA_RELEASE_
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
-  LOG_DBG("OTA", "Checking for update (current: %s)", CROSSPOINT_VERSION);
+  LOG_DBG("OTA", "Checking for update (current: %s)", BEREAN_VERSION);
 
   // Stream the ~32KB release JSON straight into the parser as it arrives.
   // Buffering the whole body in a std::string would add a growing allocation
@@ -97,7 +97,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
 }
 
 bool OtaUpdater::isUpdateNewer() const {
-  return updateAvailable && ota_version::isNewerVersion(latestVersion.c_str(), CROSSPOINT_VERSION);
+  return updateAvailable && ota_version::isNewerVersion(latestVersion.c_str(), BEREAN_VERSION);
 }
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }
