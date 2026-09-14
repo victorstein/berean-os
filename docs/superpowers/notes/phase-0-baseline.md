@@ -31,6 +31,32 @@ These exist because the host suite compiles nothing from `src/activities`,
 `lib/I18n` — precisely the surfaces Phase 0 deletes from. Without them the
 verification triad is close to a null test.
 
-## Result
+## Result — 2026-09-14
 
-_To be filled in by Task 14._
+| | |
+|---|---|
+| `x4pro` dev `firmware.bin` | **5,441,200 bytes** (was 5,628,560) |
+| Saved | **187,360 bytes**, 3.33% |
+| Host suite | 356 passing (was 359; the `opds_filename` suite went with its subject, `save_budget` added 6) |
+| Settings keys | 132 (was 147) |
+| i18n orphans | 0 |
+
+Inside the 200-230 KB expectation once you subtract what this phase was
+forbidden to delete: the estimate included MappedInput and ButtonRemap
+(~5,827 B), which the input-layer guard protects until Phase 2.
+
+### Verified on the real chain, not just locally
+
+- `release-publish.yml` cut `firmware-x4pro.bin` onto v1.0.1 with the repo
+  guard corrected — the guard was still naming crosspoint, which would have
+  published every release with no asset while reporting success.
+- `extra_files` holds `version.txt` and `platformio.ini` in sync at 1.0.1.
+- `OTA_RELEASE_REPO` names this repo, so an update check finds bereanOS's own
+  releases rather than CrossPoint's.
+
+### Still outstanding
+
+- **Task 12, the device smoke test.** Human-only, and the one gate nothing here
+  substitutes for. Flash the dev build, enter and exit every remaining screen,
+  and confirm Settings → check for updates reports no update rather than a
+  CrossPoint version.
