@@ -1,5 +1,7 @@
 #include "MeetingFilename.h"
 
+#include <algorithm>
+
 #include "network/WolWeekScan.h"
 #include "util/StringUtils.h"
 
@@ -43,4 +45,25 @@ std::string meetingPublicationFilename(const char* pubName, const char* issue, c
   filename.append(issue + 4, 2);
   filename += ".epub";
   return filename;
+}
+
+std::string issueSuffix(const char* issue) {
+  if (!isIssueCode(issue)) return {};
+  std::string out;
+  out.append(issue, 4);
+  out += '-';
+  out.append(issue + 4, 2);
+  return out;
+}
+
+std::string meetingIssueSuffixOf(const std::string& filename) {
+  constexpr size_t SUFFIX = 13;  // " YYYY-MM.epub"
+  if (filename.size() < SUFFIX) return {};
+  const std::string tail = filename.substr(filename.size() - SUFFIX);
+  if (tail[0] != ' ' || tail[5] != '-' || tail.compare(8, 5, ".epub") != 0) return {};
+  constexpr size_t DIGITS[] = {1, 2, 3, 4, 6, 7};
+  const bool allDigits = std::all_of(std::begin(DIGITS), std::end(DIGITS),
+                                     [&tail](const size_t i) { return tail[i] >= '0' && tail[i] <= '9'; });
+  if (!allDigits) return {};
+  return tail.substr(1, 7);
 }

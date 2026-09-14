@@ -68,7 +68,6 @@ class LauncherActivity final : public Activity {
   // Finds a meeting publication the registry does not know about, for downloads
   // that predate it. Keyed on the downloader's own filename convention.
   static std::optional<std::string> findMeetingPublicationOnCard();
-  static std::string meetingIssueOf(const std::string& filename);
   // Height of a tile's text block, so computeLayout can size a tile around its
   // contents and drawTile can centre the same block inside it.
   int tileTextHeight(int titleFont, bool hasSubtitle) const;

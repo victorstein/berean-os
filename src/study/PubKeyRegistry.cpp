@@ -47,7 +47,7 @@ bool record(const std::string& bookPath, const study::RegisteredPub& pub) {
 // Watchtower on this card?" -- and it cannot ask the recents list, which only
 // holds books that have been OPENED. A publication downloaded and not yet read
 // is exactly the case the meeting tile has to cover.
-std::optional<std::string> findBySymbol(std::initializer_list<std::string_view> symbols) {
+std::optional<std::string> findBySymbol(std::initializer_list<std::string_view> symbols, const std::string_view issue) {
   JsonDocument doc;
   if (PersistableStoreBase::readDocFromFileChecked(PATH, doc) != DocReadStatus::Ok) return std::nullopt;
   if ((doc["v"] | 0) > FORMAT_VERSION) return std::nullopt;
@@ -57,6 +57,9 @@ std::optional<std::string> findBySymbol(std::initializer_list<std::string_view> 
 
   for (const JsonPairConst entry : entries) {
     const char* symbol = entry.value()["s"] | "";
+    // An empty issue means "any issue of this publication"; the meeting tile
+    // asks that way, the meetings screen asks for one specific week.
+    if (!issue.empty() && issue != (entry.value()["i"] | "")) continue;
     for (const std::string_view wanted : symbols) {
       if (wanted != symbol) continue;
       std::string path = entry.key().c_str();

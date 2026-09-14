@@ -18,7 +18,7 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "activities/catalog/CatalogSearchActivity.h"
-#include "activities/network/MeetingDownloadActivity.h"
+#include "activities/network/MeetingsActivity.h"
 #include "components/UITheme.h"
 #include "components/icons/book.h"
 #include "components/icons/library.h"
@@ -26,6 +26,7 @@
 #include "components/icons/settings2.h"
 #include "components/themes/BaseTheme.h"
 #include "fontIds.h"
+#include "network/MeetingFilename.h"
 #include "study/BookPathIndex.h"
 #include "study/PubKeyRegistry.h"
 
@@ -120,21 +121,6 @@ void LauncherActivity::resolveTargets() {
   if (generatedAny) LOG_INF(MODULE, "Generated a missing cover thumbnail");
 }
 
-// The " YYYY-MM" that meetingPublicationFilename appends to every meeting
-// download, or empty. This is our own naming convention rather than a guess at
-// JW's: the CDN name is discarded and the file is named after the publication's
-// title plus its issue, so the issue suffix is what marks a file as one of ours.
-std::string LauncherActivity::meetingIssueOf(const std::string& filename) {
-  constexpr size_t SUFFIX = 13;  // " YYYY-MM.epub"
-  if (filename.size() < SUFFIX) return {};
-  const std::string tail = filename.substr(filename.size() - SUFFIX);
-  if (tail[0] != ' ' || tail[5] != '-' || tail.compare(8, 5, ".epub") != 0) return {};
-  for (const size_t digit : {1u, 2u, 3u, 4u, 6u, 7u}) {
-    if (!std::isdigit(static_cast<unsigned char>(tail[digit]))) return {};
-  }
-  return tail.substr(1, 7);
-}
-
 // Publications downloaded before PubKeyRegistry existed carry no symbol entry,
 // so the card itself is the fallback. The Watchtower outranks the workbook
 // outright rather than on issue date: it is the publication the meeting tile is
@@ -152,7 +138,7 @@ std::optional<std::string> LauncherActivity::findMeetingPublicationOnCard() {
   bool bestIsWatchtower = false;
   for (const String& entry : Storage.listFiles(folder.c_str(), 200)) {
     const std::string name = entry.c_str();
-    const std::string issue = meetingIssueOf(name);
+    const std::string issue = meetingIssueSuffixOf(name);
     if (issue.empty()) continue;
 
     const bool isWatchtower = name.find("talaya") != std::string::npos || name.find("atchtower") != std::string::npos;
@@ -478,7 +464,7 @@ void LauncherActivity::openBible() {
 }
 
 void LauncherActivity::openMeetings() {
-  startActivityForResult(std::make_unique<MeetingDownloadActivity>(renderer, mappedInput),
+  startActivityForResult(std::make_unique<MeetingsActivity>(renderer, mappedInput),
                          [this](const ActivityResult&) { requestUpdate(); });
 }
 

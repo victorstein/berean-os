@@ -31,8 +31,9 @@ const MeetingWeekEntry* MeetingWeekTable::find(const std::string& key) const {
 }
 
 const MeetingWeekEntry* MeetingWeekTable::newest() const {
-  const auto found = std::max_element(entries_.begin(), entries_.end(),
-                                      [](const MeetingWeekEntry& a, const MeetingWeekEntry& b) { return a.key < b.key; });
+  const auto found =
+      std::max_element(entries_.begin(), entries_.end(),
+                       [](const MeetingWeekEntry& a, const MeetingWeekEntry& b) { return a.key < b.key; });
   return found == entries_.end() ? nullptr : &*found;
 }
 

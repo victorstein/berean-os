@@ -129,3 +129,36 @@ TEST(MeetingFilename, StaysWithinTheHundredByteCap) {
   EXPECT_EQ(filename, repeated("a", kStemBudget) + " 2026-07.epub");
   EXPECT_LE(filename.size() - 5, 100u);
 }
+
+TEST(IssueSuffix, DerivesTheDatedSuffixFromAnIssueCode) {
+  EXPECT_EQ(issueSuffix("202607"), "2026-07");
+  EXPECT_EQ(issueSuffix("202512"), "2025-12");
+}
+
+TEST(IssueSuffix, RefusesAnythingThatIsNotSixDigits) {
+  EXPECT_TRUE(issueSuffix("").empty());
+  EXPECT_TRUE(issueSuffix("2026").empty());
+  EXPECT_TRUE(issueSuffix("2026071").empty());
+  EXPECT_TRUE(issueSuffix("20260a").empty());
+  EXPECT_TRUE(issueSuffix(nullptr).empty());
+}
+
+TEST(MeetingIssueSuffixOf, RecognisesADownloadedMeetingPublication) {
+  EXPECT_EQ(meetingIssueSuffixOf("La Atalaya (ed. estudio) 2026-07.epub"), "2026-07");
+  EXPECT_EQ(meetingIssueSuffixOf("Guia de actividades 2026-09.epub"), "2026-09");
+}
+
+TEST(MeetingIssueSuffixOf, IgnoresFilesThatAreNotOneOfOurs) {
+  // The CDN's own name, which is what a pre-registry download may still carry.
+  EXPECT_TRUE(meetingIssueSuffixOf("w_S_202607.epub").empty());
+  EXPECT_TRUE(meetingIssueSuffixOf("nwt_S.epub").empty());
+  EXPECT_TRUE(meetingIssueSuffixOf("2026-07.epub").empty());
+  EXPECT_TRUE(meetingIssueSuffixOf("Something 2026-07.txt").empty());
+  EXPECT_TRUE(meetingIssueSuffixOf("Something 20XX-07.epub").empty());
+  EXPECT_TRUE(meetingIssueSuffixOf("").empty());
+}
+
+TEST(MeetingIssueSuffixOf, RoundTripsWithWhatTheDownloaderWrites) {
+  const std::string name = meetingPublicationFilename("La Atalaya (ed. estudio)", "202607", "");
+  EXPECT_EQ(meetingIssueSuffixOf(name), issueSuffix("202607"));
+}

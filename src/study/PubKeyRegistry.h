@@ -25,7 +25,7 @@ std::optional<study::RegisteredPub> lookup(const std::string& bookPath);
 // The path of the first publication carrying one of `symbols`, skipping entries
 // whose file is no longer on the card. For asking "is there a Watchtower here?"
 // without requiring the book to have been opened.
-std::optional<std::string> findBySymbol(std::initializer_list<std::string_view> symbols);
+std::optional<std::string> findBySymbol(std::initializer_list<std::string_view> symbols, std::string_view issue = {});
 
 inline constexpr const char* PATH = "/.berean/pubkeys.json";
 
