@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.2](https://github.com/victorstein/berean-os/compare/v1.1.1...v1.1.2) (2026-09-14)
+
+
+### Refactor
+
+* rename the device's network identity ([af0db1c](https://github.com/victorstein/berean-os/commit/af0db1cd523e81041574b994ef9a97aa8be1fc71))
+
+
+### Documentation
+
+* rewrite the project documents for bereanOS ([d009259](https://github.com/victorstein/berean-os/commit/d00925936a3b1e91c853a9f7b6d8ae843d398ca1))
+
 ## [1.1.1](https://github.com/victorstein/berean-os/compare/v1.1.0...v1.1.1) (2026-09-14)
 
 
