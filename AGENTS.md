@@ -10,23 +10,28 @@ on-device full-text search.
 
 ---
 
-## Read this before the CrossPoint guide below
+## The device
 
-Everything after the separator is inherited from CrossPoint and is being stripped
-in Phase 0. Where it conflicts with this section, **this section wins.** The
-inherited text is kept because most of it — HAL rules, memory safety, SdFat
-threading, cache versioning — is still correct and hard-won.
+One board, one target: **ESP32-S3, dual core, 8 MB PSRAM, 16 MB flash**
+(`platformio.ini:162,167` — `esp32-s3-devkitc1-n16r8` plus `-DBOARD_HAS_PSRAM`). Multi-board support is out of scope. Any rule you
+remember that starts "on the C3" or "380 KB is the hard ceiling" was written for a
+different device and does not apply here.
 
-### One device, and it is not a C3
+| | |
+|---|---|
+| MCU | ESP32-S3, dual core Xtensa LX7 |
+| RAM | ~380 KB-class internal SRAM, plus 8 MB PSRAM |
+| Flash | 16 MB; `app0`/`app1` 6,553,600 B each (`partitions.csv:4-5`) |
+| Display | 800×480 e-ink, SSD1677 or UC8179 by production batch; 1-bit, slow full refresh |
+| Framebuffer | 48,000 bytes (800 × 480 ÷ 8), **single buffer** |
+| Storage | SD card — books, caches, and all persisted study data |
+| Orientation | **Portrait only.** A fixed Left/Right button mapping and a device that turns over cannot both be true. |
 
-The inherited guide opens with "380KB RAM is the hard ceiling" for the ESP32-C3.
-**This project targets only the X4 Pro: ESP32-S3, dual core, 8 MB PSRAM, 16 MB
-flash** (`platformio.ini:239,250`). Multi-board support is out of scope.
+### PSRAM is a licence to budget deliberately, not to stop budgeting
 
-That is a licence to use PSRAM deliberately, not a licence to stop budgeting. S3
-PSRAM is on an external SPI bus: roughly an order of magnitude slower than internal
-SRAM, unusable from an ISR, unusable while the flash cache is suspended, and
-DMA-constrained.
+S3 PSRAM sits on an external SPI bus: roughly an order of magnitude slower than
+internal SRAM, unusable from an ISR, unusable while the flash cache is suspended,
+and DMA-constrained.
 
 | Lives in PSRAM | Lives in internal SRAM |
 |---|---|
@@ -34,11 +39,11 @@ DMA-constrained.
 | Unit index pages being built or queried | Selection geometry, render hot path |
 | Download and inflate buffers | ISR state, anything `IRAM_ATTR` touches |
 
-Internal SRAM is still the same ~380 KB-class resource the inherited guide
-disciplines you about. Every rule below about stack size, heap fragmentation,
-`constexpr`, and string policy still applies to it.
+Internal SRAM is still a ~380 KB-class resource. Every rule below about stack
+size, heap fragmentation, `constexpr`, and string policy is about internal SRAM
+and still applies in full.
 
-### The input hardware, as confirmed on the bench
+### Input hardware, as confirmed on the bench
 
 `freeink-sdk/docs/xteink-x4pro-support.md`, section "Input — digital buttons +
 capacitive Home":
@@ -46,12 +51,17 @@ capacitive Home":
 - **Left** nav button — GPIO0 (also a boot-strap pin; fine unless held at reset)
 - **Right** nav button — GPIO7
 - **Power** — GPIO3
-- **Home** — a capacitive key bit on the GT911 (`0x814E & 0x10`), **not a GPIO**
+- **Home** — a capacitive key bit on the GT911 (`0x814E & 0x10`), **not a GPIO**,
+  reached through `BoardConfig::hasHomeKey()` → `HalGPIO.cpp:166`
 - GT911 capacitive touchscreen
 
-**There is no Back button and no Confirm button.** The inherited "Logical Button
-Mapping" section models four remappable front buttons plus two side buttons; most
-of that describes hardware this device does not have.
+**There is no Back button and no Confirm button.** Anything that assumes four
+remappable front buttons plus two side buttons describes hardware this device does
+not have.
+
+In the reader, touch is the primary control: the screen is three vertical tap
+zones — outer thirds page, centre third opens the menu
+(`src/activities/reader/ReaderUtils.h:129`, `isTouchMenuTap`).
 
 `MappedInputManager` cannot simply be deleted — it is in the `Activity` base-class
 constructor (`src/activities/Activity.h:22,28-29`), spans 418 references across 121
@@ -59,7 +69,208 @@ files, and *implements* this device's Back via a left-edge swipe
 (`src/MappedInputManager.cpp:266,301`). It may only be removed in the same change
 that lands its replacement.
 
-### Storage discipline — the rule that protects the only irreplaceable data
+---
+
+## Agent rules
+
+* **Role**: Senior Embedded Systems Engineer (ESP-IDF / Arduino-ESP32).
+* **Primary constraint**: internal SRAM and flash headroom are both finite.
+  Stability is non-negotiable.
+* **Evidence**: a claim about this codebase needs a file and a line, and the line
+  must have been read. The two claims most likely to be wrong and most expensive to
+  discover late are "this already exists" and "this is already tested."
+* **Anti-hallucination**: do not assume a library or ESP-IDF function exists. If
+  you are unsure of an API's availability on the ESP32-S3 target, check the
+  `freeink-sdk` source or the FreeInk SDK docs (https://freeink.org/llms.txt for an
+  LLM-readable index) first.
+* **No unfounded claims**: never assert a performance or memory gain without the
+  mechanism (PSRAM vs SRAM, flash vs DRAM, fewer heap operations).
+* **Resource justification**: justify any new heap allocation, or explain why a
+  stack or static alternative was rejected.
+* **Verification**: after a fix, say how the user verifies it — heap via serial, a
+  specific cache file, a host test.
+
+### Do not repeat these
+
+All three were asserted and disproven during design:
+
+- `sdkconfig.x4pro`'s `CONFIG_BT_NIMBLE_*` lines do **not** mean BLE is compiled
+  in. Zero NimBLE objects link; `lib_deps` has no BLE library. The stack's flash
+  cost is entirely unpaid.
+- `data-pnum` is **not** the addressable unit in JW publications. It is the printed
+  paragraph number on a `<span class="parNum">`. The structural address is
+  `data-pid` on the block element.
+- `VerseAnchors` does **not** generalise to other markers. It hardcodes the `id`
+  attribute and a `chapter%u_verse%u` grammar (`VerseAnchors.cpp:30-41`).
+
+---
+
+## Scope
+
+In: the Bible as the centre of the device, the two weekly meeting publications,
+browsing and downloading from the jw.org catalog, tagging passages with global
+tags, and settings.
+
+Out, deliberately: notes, `.jwlibrary` interop, on-device full-text search, and the
+general-reader subsystems the fork removed.
+
+`SCOPE.md` describes CrossPoint's product, not this one. It is kept for the
+reasoning, not the rules.
+
+**Philosophy**: this is a dedicated study device, not a Swiss Army knife. A feature
+that adds RAM pressure without improving study is out of scope.
+
+---
+
+## Development environment
+
+Detect the host platform once per session — it decides which shell idioms work:
+
+```bash
+uname -s     # MINGW64_NT-* (Windows Git Bash), Linux, Darwin (macOS)
+```
+
+- **Windows (Git Bash)**: Unix commands, `C:\` paths in Windows but `/` in bash,
+  limited glob (use `find` + `xargs`)
+- **Linux / WSL / macOS**: full bash, Unix paths, native glob
+
+### Formatting
+
+```bash
+./bin/clang-format-fix -g   # while working: only Git-modified files
+./bin/clang-format-fix      # before committing: the whole tree, as CI does
+```
+
+**Run the unsuffixed form before you commit.** CI runs `./bin/clang-format-fix`
+over the entire tree (`.github/workflows/ci.yml`), while `-g` only reaches files
+Git currently reports as modified. A file you create and commit is no longer
+"modified", so `-g` silently skips it and the CI format job fails on work that
+looked clean locally.
+
+Never invoke or probe `clang-format` directly. The repository wrapper is the only
+sanctioned entry point.
+
+---
+
+## Build system
+
+PlatformIO, as a CLI (`pio`) and as the VS Code extension
+(`platformio.platformio-ide`, see `.vscode/extensions.json`).
+
+**Configuration files**:
+
+* `platformio.ini` — main build configuration (committed)
+* `platformio.local.ini` — local overrides (gitignored; see below)
+* `partitions.csv` — ESP32 flash partition layout
+
+### Environments
+
+Two, both X4 Pro:
+
+* `x4pro` — development, the `default_envs` (`platformio.ini:2`). Serial logging on.
+* `x4pro-gh_release` — production, `LOG_LEVEL=0`, no serial logging. This is what
+  OTA installs.
+
+**Standard**: C++20 (`-std=c++2a`). No exceptions, no RTTI.
+**Logging**: always `LOG_INF` / `LOG_DBG` / `LOG_ERR` from `Logging.h`. Raw
+`Serial` output is deprecated.
+
+### Critical build flags
+
+These flags in `platformio.ini` fundamentally affect firmware behaviour:
+
+```cpp
+-DEINK_DISPLAY_SINGLE_BUFFER_MODE=1  // Single framebuffer (saves 48KB RAM)
+-DARDUINO_USB_MODE=1                 // Enable USB CDC
+-DARDUINO_USB_CDC_ON_BOOT=1          // Serial available immediately at boot
+-DXML_CONTEXT_BYTES=1024             // XML parser memory limit (EPUB parsing)
+-DUSE_UTF8_LONG_NAMES=1              // SD card long filename support
+-DMINIZ_NO_ZLIB_COMPATIBLE_NAMES=1   // Avoid zlib name conflicts
+-DXML_GE=0                           // Disable XML general entities (security)
+-DDESTRUCTOR_CLOSES_FILE=1           // FsFile destructor auto-closes (SdFat)
+```
+
+**`DESTRUCTOR_CLOSES_FILE` implications**:
+
+- SdFat's `FsBaseFile` destructor calls `close()` when the object goes out of scope.
+- **Do NOT add explicit `file.close()` calls** for local `FsFile` variables — the
+  destructor handles it.
+- Explicit `close()` is still required in three cases:
+  1. **Close before delete** — before `Storage.remove()` on the same path.
+  2. **Close before reopen** — before reopening the same `FsFile` variable (write
+     then read, or rewrite the same path).
+  3. **Member variables** — `FsFile` members outlive any single function scope, so
+     close at the intended release point (usually `onExit()`).
+
+**`SINGLE_BUFFER_MODE` implications**:
+
+- Only one framebuffer exists; it is not double-buffered.
+- Grayscale rendering needs a temporary buffer (`renderer.storeBwBuffer()`), and
+  `renderer.restoreBwBuffer()` must be called to free it.
+- See `lib/GfxRenderer/GfxRenderer.cpp` for the allocation pattern.
+
+---
+
+## Project architecture
+
+### Directory structure
+
+* `lib/` — internal libraries: `Epub` (engine), `GfxRenderer`, `I18n`, `Memory`,
+  `Serialization`, `Utf8`, the parsers and codecs
+  * `lib/hal/` — Hardware Abstraction Layer (`HalDisplay`, `HalGPIO`, `HalStorage`)
+  * `lib/I18n/` — translations in `translations/*.yaml`, generated string tables
+* `src/` — firmware: `activities/` (UI, `onEnter`/`loop`/`onExit`), `components/`
+  (`UITheme`), `network/`, `platform/`, the settings and state singletons
+* `freeink-sdk/` — low-level SDK (`EInkDisplay`, `InputManager`, `BatteryMonitor`,
+  `SDCardManager`)
+* `test/` — host test suites (no Arduino, no `HalStorage`), built with CMake
+* `/.crosspoint/` on the SD card — binary cache for EPUB metadata and pre-rendered
+  layout sections
+
+### Hardware Abstraction Layer
+
+**Always use HAL classes, never the SDK classes directly.**
+
+| HAL Class    | Wraps SDK Class | Purpose               | Singleton Macro |
+| ------------ | --------------- | --------------------- | --------------- |
+| `HalDisplay` | `EInkDisplay`   | E-ink display control | *(none)*        |
+| `HalGPIO`    | `InputManager`  | Button input handling | *(none)*        |
+| `HalStorage` | `SDCardManager` | SD card file I/O      | `Storage`       |
+
+The HAL gives consistent per-module error logging, hides SDK implementation
+details, and centralises resource management. Location: `lib/hal/`.
+
+```cpp
+#include <HalStorage.h>
+
+HalFile file;
+if (Storage.openFileForRead("MODULE", "/path/to/file.bin", file)) {
+  // Read from file.
+  // No file.close() needed — DESTRUCTOR_CLOSES_FILE=1 handles it at scope exit.
+}
+```
+
+Use `HalFile` (the mutex-wrapping handle), not a raw SdFat `FsFile` or an Arduino
+`File`.
+
+### SdFat is not thread-safe; all SD access MUST go through HalStorage
+
+- SdFat's `SdSpiCard` tracks SPI bus state with an unsynchronised `m_spiActive`
+  bool. Two tasks calling SdFat concurrently can confuse that state machine and end
+  with one task calling `SPIClass::endTransaction()` against a paramLock the *other*
+  task is holding. That trips FreeRTOS's `xTaskPriorityDisinherit` assert
+  (`tasks.c:5156, pxTCB == pxCurrentTCBs[0]`) and panics the system. See SdFat
+  issue #518.
+- `HalStorage` serialises everything via `storageMutex`. Downstream code uses
+  `HalFile` (declared in `<HalStorage.h>`); every method call — read, write, seek,
+  close — takes the mutex, and `HalFile`'s destructor takes it before letting the
+  underlying `FsFile` close.
+- **Never** call into `SdFat` / `SdSpiCard` / `FsBaseFile` / `SDCardManager` / a raw
+  `FsFile` directly. That bypasses the mutex.
+
+---
+
+## Storage discipline — the rule that protects the only irreplaceable data
 
 `SDCardManager::readFile` (`freeink-sdk/.../SDCardManager.cpp:202`) hard-caps reads
 at `constexpr size_t maxSize = 50000` and returns a **silently truncated** string.
@@ -83,409 +294,70 @@ next save overwrites the real file with `{}`. The repo already carries the scar 
    server and background downloads, so it has more concurrent writers than the
    model it replaces.
 
-### Evidence rules
-
-The inherited "Anti-Hallucination" rule stands and is sharpened: **a claim about
-this codebase needs a file and a line, and the line must have been read.** The two
-claims most likely to be wrong and most expensive to discover late are "this
-already exists" and "this is already tested."
-
-Specifically do not repeat these, all of which were asserted and disproven during
-design:
-
-- `sdkconfig.x4pro`'s `CONFIG_BT_NIMBLE_*` lines do **not** mean BLE is compiled
-  in. Zero NimBLE objects link; `lib_deps` has no BLE library. The stack's flash
-  cost is entirely unpaid.
-- `data-pnum` is **not** the addressable unit in JW publications. It is the printed
-  paragraph number on a `<span class="parNum">`. The structural address is
-  `data-pid` on the block element.
-- `VerseAnchors` does **not** generalise to other markers. It hardcodes the `id`
-  attribute and a `chapter%u_verse%u` grammar (`VerseAnchors.cpp:30-41`).
-
-### Scope
-
-Out, deliberately: notes, `.jwlibrary` interop, on-device full-text search, and
-everything CrossPoint carries that is not JW study (OPDS, KOSync, dictionary, TXT
-and XTC readers, other board targets).
-
-The inherited `SCOPE.md` describes CrossPoint's product, not this one. It is kept
-for the reasoning, not the rules.
+Settings, state, credentials and other `PersistableStore` JSON files live on SD
+under `/.crosspoint/` through `HalStorage`; SPIFFS is not mounted. Study data goes
+under `/.berean/`. Guard redundant writes and debounce progress saves — every one
+costs serialisation, SD I/O, and `storageMutex` contention.
 
 ---
 
-# CrossPoint Reader Development Guide
-
-Project: Open-source e-reader firmware for Xteink X4 (ESP32-C3)
-Mission: Provide a lightweight, high-performance reading experience focused on EPUB rendering on constrained hardware.
-
-## AI Agent Identity and Cognitive Rules
-
-* Role: Senior Embedded Systems Engineer (ESP-IDF/Arduino-ESP32 specialized).
-* Primary Constraint: 380KB RAM is the hard ceiling. Stability is non-negotiable.
-* Evidence-Based Reasoning: Before proposing a change, you MUST cite the specific file path and line numbers that justify the modification.
-* Anti-Hallucination: Do not assume the existence of libraries or ESP-IDF functions. If you are unsure of an API's availability for the ESP32-C3 RISC-V target, check the freeink-sdk source or the FreeInk SDK docs (https://freeink.org/llms.txt for an LLM-readable index) first.
-* No Unfounded Claims: Do not claim performance gains or memory savings without explaining the technical mechanism (e.g., DRAM vs IRAM usage).
-* Resource Justification: You must justify any new heap allocation (new, malloc, std::vector) or explain why a stack/static alternative was rejected.
-* Verification: After suggesting a fix, instruct the user on how to verify it (e.g., monitoring heap via Serial or checking a specific cache file).
-
----
-
-## Development Environment Awareness
-
-**CRITICAL**: Detect the host platform at session start to choose appropriate tools and commands.
-
-### Platform Detection
-
-```bash
-# Detect platform (run once per session)
-uname -s
-# Returns: MINGW64_NT-* (Windows Git Bash), Linux, Darwin (macOS)
-```
-
-**Detection Required**: Run `uname -s` at session start to determine platform
-
-### Platform-Specific Behaviors
-
-- **Windows (Git Bash)**: Unix commands, `C:\` paths in Windows but `/` in bash, limited glob (use `find`+`xargs`)
-- **Linux/WSL**: Full bash, Unix paths, native glob support
-
-**Cross-Platform Code Formatting**:
-
-```bash
-./bin/clang-format-fix -g   # while working: only Git-modified files
-./bin/clang-format-fix      # before committing: the whole tree, as CI does
-```
-
-**Run the unsuffixed form before you commit.** CI runs `./bin/clang-format-fix` over the entire
-tree (`.github/workflows/ci.yml`), while `-g` only reaches files Git currently reports as
-modified. A file you create and commit is no longer "modified", so `-g` silently skips it and the
-CI format job fails on work that looked clean locally.
-
-Never invoke or probe `clang-format` directly. The repository wrapper is the only sanctioned entry point.
-
----
-
-## Platform and Hardware Constraints
-
-### Hardware Specs
-
-* MCUs: ESP32-C3 (single-core RISC-V @ 160MHz) and ESP32-S3 (`sticky`, dual-core Xtensa LX7)
-* RAM: ~380KB usable on ESP32-C3 (VERY LIMITED - primary project constraint)
-  * **NO PSRAM on C3**.
-  * **Single Buffer Mode**: Only ONE 48KB framebuffer (not double-buffered)
-* Flash: 16MB (Instruction storage and static data)
-* Display: 800x480 E-Ink (Slow refresh, monochrome, 1-2s full update)
-  * Framebuffer: 48,000 bytes (800 × 480 ÷ 8)
-* Storage: SD Card (Used for books and aggressive caching)
-
-### The Resource Protocol
-
-1. Stack Safety: Limit local function variables to < 256 bytes. The ESP32-C3 default stack is small; use std::unique_ptr or static pools for larger buffers.
-2. Heap Fragmentation: Avoid repeated new/delete in loops. Allocate buffers once during onEnter() and reuse them.
-3. Flash Persistence: Large constant data (UI strings, lookup tables) MUST be marked static const to stay in Flash (Instruction Bus), freeing DRAM.
-4. String Policy: Prohibit std::string and Arduino String in hot paths. Use std::string_view for read-only access and snprintf with fixed char[] buffers for construction.
-5. UI Strings: All user-facing text must use the `tr()` macro (e.g., `tr(STR_LOADING)`) for i18n support. Never hardcode UI strings directly. For the avoidance of doubt, logging messages (LOG_DBG/LOG_ERR) can be hardcoded, but user-facing text must use `tr()`.
-6. `constexpr` First: Compile-time constants and lookup tables must be `constexpr`, not just `static const`. This moves computation to compile time, enables dead-branch elimination, and guarantees flash placement. Use `static constexpr` for class-level constants.
-7. `std::vector` Pre-allocation: Always call `.reserve(N)` before any `push_back()` loop. Each growth event allocates a new block (2×), copies all elements, then frees the old one — three heap operations that fragment DRAM. When the final size is unknown, estimate conservatively.
-8. SD Persistence Throttling: Settings, state, credentials, and other `PersistableStore` JSON files live on SD under `/.crosspoint/` through `HalStorage`; SPIFFS is not mounted. Guard redundant writes and debounce progress saves to avoid serialization, SD I/O, and `storageMutex` cost.
-9. `new` is not nothrow on ESP32: With `-fno-exceptions`, bare `new` that fails calls `abort()` — it does NOT return `nullptr`. Always use `new (std::nothrow)` and null-check the result, or use `makeUniqueNoThrow<T>()` from `lib/Memory/Memory.h`. Never write bare `new` for any fallible allocation.
-
----
-
-## Project Architecture
-
-### Build System: PlatformIO
-
-**PlatformIO is BOTH a VS Code extension AND a CLI tool**:
-
-1. **VS Code Extension** (Recommended):
-   
-   * Extension ID: `platformio.platformio-ide` (see `.vscode/extensions.json`)
-   
-   * Provides: Toolbar buttons, IntelliSense, integrated build/upload/monitor
-   
-   * Configuration: `.vscode/c_cpp_properties.json`, `.vscode/tasks.json`
-   
-   * Usage: Click Build (✓), Upload (→), or Monitor (🔌) buttons
-
-2. **CLI Tool** (`pio` command):
-   
-   * **Installation**: Python package (typically `pip install platformio`)
-   
-   * **Windows Location**: `C:\Users\<user>\AppData\Local\Programs\Python\Python3xx\Scripts\pio.exe`
-   
-   * **Verify**: `which pio` (Git Bash) or `where.exe pio` (cmd)
-   
-   * **Usage**: `pio run`, `pio run -t upload`, etc.
-
-**Configuration Files**:
-
-* `platformio.ini`: Main build configuration (committed to git)
-* `platformio.local.ini`: Local overrides (gitignored, create if needed)
-* `partitions.csv`: ESP32 flash partition layout
-
-### Build Environment
-
-* **Standard**: C++20 (`-std=c++2a`). No Exceptions, No RTTI.
-* **Logging**: ALWAYS use `LOG_INF`, `LOG_DBG`, or `LOG_ERR` from `Logging.h`. Raw Serial output is deprecated.
-* **Environments** (in `platformio.ini`):
-  * `default`: Development (LOG_LEVEL=2, serial enabled)
-  * `gh_release`: Production (LOG_LEVEL=0)
-  * `gh_release_rc`: Release candidate (LOG_LEVEL=1)
-  * `slim`: Minimal build (no serial logging)
-
-### Critical Build Flags
-
-These flags in `platformio.ini` fundamentally affect firmware behavior:
-
-```cpp
--DEINK_DISPLAY_SINGLE_BUFFER_MODE=1  // Single framebuffer (saves 48KB RAM!)
--DARDUINO_USB_MODE=1                 // Enable USB CDC
--DARDUINO_USB_CDC_ON_BOOT=1          // Serial available immediately at boot
--DXML_CONTEXT_BYTES=1024             // XML parser memory limit (EPUB parsing)
--DUSE_UTF8_LONG_NAMES=1              // SD card long filename support
--DMINIZ_NO_ZLIB_COMPATIBLE_NAMES=1   // Avoid zlib name conflicts
--DXML_GE=0                           // Disable XML general entities (security)
--DDESTRUCTOR_CLOSES_FILE=1           // FsFile destructor auto-closes (SdFat)
-```
-
-**DESTRUCTOR_CLOSES_FILE implications**:
-
-- SdFat's `FsBaseFile` destructor calls `close()` automatically when the object goes out of scope
-- **Do NOT add explicit `file.close()` calls** for local `FsFile` variables — the destructor handles it
-- Explicit `close()` is still required in these cases:
-  
-  1. **Close before delete**: Must close before `Storage.remove()` on the same path
-  
-  2. **Close before reopen**: Must close before reopening the same `FsFile` variable (e.g., write then reopen for read, or rewrite the same path)
-  
-  3. **Member variables**: `FsFile` members persist beyond any single function scope, so close at the intended release point (e.g., in `onExit()`)
-
-**SINGLE_BUFFER_MODE implications**:
-
-- Only ONE framebuffer exists (not double-buffered)
-- Grayscale rendering requires temporary buffer allocation (`renderer.storeBwBuffer()`)
-- Must call `renderer.restoreBwBuffer()` to free temporary buffers
-- See [lib/GfxRenderer/GfxRenderer.cpp:439-440](lib/GfxRenderer/GfxRenderer.cpp) for malloc usage
-
-### Directory Structure
-
-* lib/: Internal libraries (Epub engine, GfxRenderer, UITheme, I18n)
-  * lib/hal/: Hardware Abstraction Layer (HalDisplay, HalGPIO, HalStorage)
-  * lib/I18n/: Internationalization (translations in `translations/*.yaml`, generated string tables)
-* src/activities/: UI logic using the Activity Lifecycle (onEnter, loop, onExit)
-* freeink-sdk/: Low-level SDK (EInkDisplay, InputManager, BatteryMonitor, SDCardManager)
-* .crosspoint/: SD-based binary cache for EPUB metadata and pre-rendered layout sections
-
-### Hardware Abstraction Layer (HAL)
-
-**CRITICAL**: Always use HAL classes, NOT SDK classes directly.
-
-| HAL Class    | Wraps SDK Class | Purpose               | Singleton Macro |
-| ------------ | --------------- | --------------------- | --------------- |
-| `HalDisplay` | `EInkDisplay`   | E-ink display control | *(none)*        |
-| `HalGPIO`    | `InputManager`  | Button input handling | *(none)*        |
-| `HalStorage` | `SDCardManager` | SD card file I/O      | `Storage`       |
-
-**Location**: [lib/hal/](lib/hal/)
-
-**Why HAL?**
-
-- Provides consistent error logging per module
-- Abstracts SDK implementation details
-- Centralizes resource management
-
-**Example - HalStorage**:
-
-```cpp
-#include <HalStorage.h>
-
-// Use Storage singleton (defined via macro)
-HalFile file;
-if (Storage.openFileForRead("MODULE", "/path/to/file.bin", file)) {
-  // Read from file
-  // No file.close() needed — DESTRUCTOR_CLOSES_FILE=1 handles it at scope exit
-}
-```
-
-**Usage**: Use `HalFile` (the mutex-wrapping handle), NOT raw SdFat `FsFile` or Arduino `File`. Do NOT add `file.close()` for local variables (see DESTRUCTOR_CLOSES_FILE above).
-
-**SdFat is not thread-safe; all SD access MUST go through HalStorage**:
-
-- SdFat's `SdSpiCard` tracks SPI bus state with an unsynchronized `m_spiActive` bool. Two tasks calling SdFat concurrently can confuse that state machine and end with one task calling `SPIClass::endTransaction()` against a paramLock the *other* task is holding. That trips FreeRTOS's `xTaskPriorityDisinherit` assert (`tasks.c:5156, pxTCB == pxCurrentTCBs[0]`) and panics the system. See SdFat issue #518.
-- `HalStorage` serializes everything via `storageMutex`. Downstream code uses `HalFile` (declared in `<HalStorage.h>`); every method call (read, write, seek, close) takes the mutex. `HalFile`'s destructor also takes the mutex before letting the underlying SdFat `FsFile` close.
-- **Never** call into `SdFat` / `SdSpiCard` / `FsBaseFile` / `SDCardManager` / raw `FsFile` directly — that bypasses the mutex.
-
----
-
-## Coding Standards
-
-### Naming Conventions
-
-* Classes: PascalCase (e.g., EpubReaderActivity)
-* Methods/Variables: camelCase (e.g., renderPage())
-* Constants: UPPER_SNAKE_CASE (e.g., MAX_BUFFER_SIZE)
-* Private Members: memberVariable (no prefix)
-* File Names: Match Class names (e.g., EpubReaderActivity.cpp)
-
-### Header Guards
-
-* Use #pragma once for all header files.
-
-### Comment Style
-
-* Keep comments short and write them for the merged state, as if the code had always worked this way.
-* Remove before/after narration, investigation measurements, and rationale that belongs in the commit message.
-* Keep only non-obvious mechanism, field/parameter meaning, or the reason a special case exists.
-
-### Memory Safety and RAII
-
-* Smart Pointers: Prefer std::unique_ptr. 
-* RAII: Use destructors for cleanup. Call `vTaskDelete()` explicitly for deterministic task release. Do NOT call `file.close()` on local `FsFile` variables — `DESTRUCTOR_CLOSES_FILE=1` handles it at scope exit (see Critical Build Flags).
-
-### ESP32-C3 Platform Pitfalls
-
-#### `std::string_view` and Null Termination
-
-`string_view` is *not* null-terminated. Passing `.data()` to any C-style API (`drawText`, `snprintf`, `strcmp`, SdFat file paths) is undefined behaviour when the view is a substring or a view of a non-null-terminated buffer.
-
-**Rule**: `string_view` is safe only when passing to C++ APIs that accept `string_view`. For any C API boundary, convert explicitly:
-
-```cpp
-// WRONG - undefined behaviour if view is a substring:
-renderer.drawText(font, x, y, myView.data(), true);
-
-// CORRECT - guaranteed null-terminated:
-renderer.drawText(font, x, y, std::string(myView).c_str(), true);
-
-// CORRECT - for short strings, use a stack buffer:
-char buf[64];
-snprintf(buf, sizeof(buf), "%.*s", (int)myView.size(), myView.data());
-```
-
-#### `IRAM_ATTR` and Flash Cache Safety
-
-All code runs from flash via the instruction cache. During internal-flash operations such as OTA writes or NVS updates, the cache is briefly suspended. Any code that can execute during this window — ISRs in particular — must reside in IRAM or it will crash silently.
-
-```cpp
-// ISR handler: must be in IRAM
-void IRAM_ATTR gpioISR() { ... }
-
-// Data accessed from IRAM_ATTR code: must be in DRAM, never a flash const
-static DRAM_ATTR uint32_t isrEventFlags = 0;
-```
-
-**Rules**:
-
-- All ISR handlers: `IRAM_ATTR`
-- Data read by `IRAM_ATTR` code: `DRAM_ATTR` (a flash-resident `static const` will fault)
-- Normal task code does **not** need `IRAM_ATTR`
-
-#### ISR vs Task Shared State
-
-`xSemaphoreTake()` (mutex) **cannot** be called from ISR context — it will crash. Use the correct primitive for each communication direction:
-
-| Direction                       | Correct primitive                                  |
-| ------------------------------- | -------------------------------------------------- |
-| ISR → task (data)               | `xQueueSendFromISR()` + `portYIELD_FROM_ISR()`     |
-| ISR → task (signal)             | `xSemaphoreGiveFromISR()` + `portYIELD_FROM_ISR()` |
-| Task → task                     | `xSemaphoreTake()` / mutex                         |
-| Simple flag (single writer ISR) | `volatile bool` + `portENTER_CRITICAL_ISR()`       |
-
-#### RISC-V Alignment
-
-ESP32-C3 faults on unaligned multi-byte loads. Never cast a `uint8_t*` buffer to a wider pointer type and dereference it directly. Use `memcpy` for any unaligned read:
-
-```cpp
-// WRONG — faults if buf is not 4-byte aligned:
-uint32_t val = *reinterpret_cast<const uint32_t*>(buf);
-
-// CORRECT:
-uint32_t val;
-memcpy(&val, buf, sizeof(val));
-```
-
-This applies to all cache deserialization code and any raw buffer-to-struct casting. `__attribute__((packed))` structs have the same hazard when accessed via member reference.
-
-#### Template and `std::function` Bloat
-
-Each template instantiation generates a separate binary copy. `std::function<void()>` adds ~2–4 KB per unique signature and heap-allocates its closure. Avoid both in library code and any path called from the render loop:
-
-```cpp
-// Avoid — heap-allocating, large binary footprint:
-std::function<void()> callback;
-
-// Prefer — zero overhead:
-void (*callback)() = nullptr;
-
-// For member function + context (common activity callback pattern):
-struct Callback { void* ctx; void (*fn)(void*); };
-```
-
-When a template is necessary, limit instantiations: use explicit template instantiation in a `.cpp` file to prevent the compiler from generating duplicates across translation units.
-
----
-
-### Error Handling Philosophy
-
-**Source**: [src/main.cpp:132-143](src/main.cpp), [lib/GfxRenderer/GfxRenderer.cpp:10](lib/GfxRenderer/GfxRenderer.cpp)
-
-**Pattern Hierarchy**:
-
-1. **LOG_ERR + return false** (90%): `LOG_ERR("MOD", "Failed: %s", reason); return false;`
-2. **LOG_ERR + fallback**: `LOG_ERR("MOD", "Unavailable"); useDefault();`
-3. **assert(false)**: Only for fatal "impossible" states (framebuffer missing)
-4. **ESP.restart()**: Only for recovery (OTA complete)
-
-**Rules**: NO exceptions, NO abort(), ALWAYS log before error return
-
-### Heap Buffer Allocation
-
-**Prefer `makeUniqueNoThrow` over `malloc`.** Both are nothrow (return `nullptr` on OOM rather than calling `abort()`), but `malloc` requires a manual `free` on every return path — a common source of leaks. `makeUniqueNoThrow<uint8_t[]>(size)` from `lib/Memory/Memory.h` frees automatically when it goes out of scope.
-
-**Preferred pattern**:
-
-```cpp
-#include <Memory.h>
-
-auto buffer = makeUniqueNoThrow<uint8_t[]>(bufferSize);
-if (!buffer) {
-  LOG_ERR("MODULE", "OOM: %d bytes", bufferSize);
-  return false;
-}
-
-processData(buffer.get(), bufferSize);
-// freed automatically — no manual free needed, no leak on early return
-```
-
-**`malloc` or `new (std::nothrow)` are still acceptable** when the buffer must be passed to a C API that takes ownership and frees it itself (e.g., certain SDK callbacks). In that case follow the manual pattern:
-
-```cpp
-auto* buffer = static_cast<uint8_t*>(malloc(bufferSize));  // or new (std::nothrow) uint8_t[bufferSize]
-if (!buffer) {
-  LOG_ERR("MODULE", "OOM: %d bytes", bufferSize);
-  return false;
-}
-sdkApiThatTakesOwnership(buffer, bufferSize);  // SDK calls free() / delete[]
-```
-
-**Rules**:
-
-- **Prefer `makeUniqueNoThrow`** — automatic cleanup eliminates leak risk on error paths
-- **ALWAYS check for nullptr** after any allocation and `LOG_ERR` before returning false
-- **Raw allocation only** when a C API takes ownership; document why in a comment
-
-**Examples in codebase**:
-
-- Memory utilities: [Memory.h](lib/Memory/Memory.h) (`makeUniqueNoThrow`)
-- Cover image buffers: [HomeActivity.cpp:166](src/activities/home/HomeActivity.cpp)
-- Bitmap rendering: [GfxRenderer.cpp:439-440](lib/GfxRenderer/GfxRenderer.cpp)
-
-### Heap Allocation with `new`: Always Use `makeUniqueNoThrow`
-
-**CRITICAL**: With `-fno-exceptions`, bare `new` on OOM calls `abort()` — it does NOT return `nullptr`. Always use `makeUniqueNoThrow` from `lib/Memory/Memory.h`, which wraps `new (std::nothrow)` and returns a `std::unique_ptr` that is null on OOM and automatically frees on scope exit.
-
-**Preferred pattern**:
+## Coding standards
+
+### Naming
+
+* Classes: PascalCase (`EpubReaderActivity`)
+* Methods and variables: camelCase (`renderPage()`)
+* Constants: UPPER_SNAKE_CASE (`MAX_BUFFER_SIZE`)
+* Private members: `memberVariable`, no prefix
+* File names match class names (`EpubReaderActivity.cpp`)
+* `#pragma once` for all headers
+
+### Comments
+
+* Keep comments short and write them for the merged state, as if the code had
+  always worked this way.
+* Remove before/after narration, investigation measurements, and rationale that
+  belongs in the commit message.
+* Keep only non-obvious mechanism, field or parameter meaning, or the reason a
+  special case exists.
+
+### The resource protocol
+
+1. **Stack safety**: keep local function variables under 256 bytes. Task stacks
+   here are 2–4 KB; use `std::unique_ptr` or a static pool for anything larger.
+2. **Heap fragmentation**: avoid repeated `new`/`delete` in loops. Allocate once in
+   `onEnter()` and reuse.
+3. **Flash persistence**: large constant data (UI strings, lookup tables) must be
+   `static const` at minimum so it stays in flash rather than DRAM.
+4. **String policy**: no `std::string` or Arduino `String` in hot paths. Use
+   `std::string_view` for read-only access and `snprintf` into a fixed `char[]` for
+   construction.
+5. **UI strings**: all user-facing text goes through the `tr()` macro (e.g.
+   `tr(STR_LOADING)`) for i18n. Never hardcode UI text. Logging messages
+   (`LOG_DBG` / `LOG_ERR`) may be hardcoded; user-facing text may not.
+6. **`constexpr` first**: compile-time constants and lookup tables must be
+   `constexpr`, not merely `static const`. That moves computation to compile time,
+   enables dead-branch elimination, and guarantees flash placement. Use
+   `static constexpr` for class-level constants.
+7. **`std::vector` pre-allocation**: always `.reserve(N)` before a `push_back()`
+   loop. Each growth allocates a new block (2×), copies every element, then frees
+   the old one — three heap operations that fragment DRAM. When the final size is
+   unknown, estimate conservatively.
+
+### Memory safety and RAII
+
+* Prefer `std::unique_ptr`. Use destructors for cleanup, and call `vTaskDelete()`
+  explicitly for deterministic task release.
+* Do **not** call `file.close()` on local `FsFile` variables —
+  `DESTRUCTOR_CLOSES_FILE=1` handles it at scope exit.
+
+#### Always use `makeUniqueNoThrow`
+
+With `-fno-exceptions`, a bare `new` that fails calls `abort()` — it does **not**
+return `nullptr`. `makeUniqueNoThrow` (`lib/Memory/Memory.h`) wraps
+`new (std::nothrow)` and returns a `std::unique_ptr` that is null on OOM and frees
+automatically on scope exit. It is also preferable to `malloc`, which is nothrow
+but needs a manual `free` on every return path — a common source of leaks.
 
 ```cpp
 #include <Memory.h>
@@ -496,180 +368,183 @@ if (!obj) { LOG_ERR("MOD", "OOM: MyClass"); return false; }
 auto buf = makeUniqueNoThrow<uint8_t[]>(size);
 if (!buf) { LOG_ERR("MOD", "OOM: %d bytes", size); return false; }
 
-// Pass to C APIs via .get(); unique_ptr frees automatically on return
-someApi(buf.get(), size);
+someApi(buf.get(), size);   // unique_ptr keeps ownership and frees on return
 ```
 
-**`new (std::nothrow)` directly is acceptable** when the object must be passed to a C API that takes ownership and calls `delete` itself:
+`malloc` or `new (std::nothrow)` directly are acceptable **only** when a C API
+takes ownership of the buffer and frees or deletes it itself. Document why in a
+comment:
 
 ```cpp
-auto* obj = new (std::nothrow) MyClass(args);
-if (!obj) { LOG_ERR("MOD", "OOM: MyClass"); return false; }
-sdkApiThatTakesOwnership(obj);  // SDK calls delete
+auto* buffer = static_cast<uint8_t*>(malloc(bufferSize));
+if (!buffer) { LOG_ERR("MODULE", "OOM: %d bytes", bufferSize); return false; }
+sdkApiThatTakesOwnership(buffer, bufferSize);  // SDK calls free()
 ```
 
 **Rules**:
 
-- **Prefer `makeUniqueNoThrow`** — automatic cleanup eliminates leak risk on error paths
-- **NEVER use bare `new`** — always `makeUniqueNoThrow` or `new (std::nothrow)`
-- **ALWAYS `LOG_ERR` before returning false** on OOM
-- **Use `.get()`** to pass the raw pointer to C-style APIs; ownership stays with the `unique_ptr`
-- **`new (std::nothrow)` directly only** when a C API takes ownership; document why in a comment
+- Prefer `makeUniqueNoThrow`; automatic cleanup eliminates leak risk on error paths.
+- **Never write a bare `new`** for any fallible allocation.
+- Always null-check an allocation and `LOG_ERR` before returning false.
+- Use `.get()` to pass the raw pointer to C-style APIs; ownership stays with the
+  `unique_ptr`.
 
-**Examples in codebase**:
+### Platform pitfalls
 
-- Memory utilities: [Memory.h](lib/Memory/Memory.h) (`makeUniqueNoThrow`)
+#### `std::string_view` and null termination
+
+`string_view` is *not* null-terminated. Passing `.data()` to any C-style API
+(`drawText`, `snprintf`, `strcmp`, SdFat file paths) is undefined behaviour when the
+view is a substring or a view of a non-null-terminated buffer.
+
+`string_view` is safe only when passed to a C++ API that accepts `string_view`. At
+any C boundary, convert explicitly:
+
+```cpp
+// WRONG — undefined behaviour if the view is a substring:
+renderer.drawText(font, x, y, myView.data(), true);
+
+// CORRECT — guaranteed null-terminated:
+renderer.drawText(font, x, y, std::string(myView).c_str(), true);
+
+// CORRECT — for short strings, a stack buffer:
+char buf[64];
+snprintf(buf, sizeof(buf), "%.*s", (int)myView.size(), myView.data());
+```
+
+#### `IRAM_ATTR` and flash cache safety
+
+All code runs from flash via the instruction cache. During internal-flash
+operations such as OTA writes or NVS updates the cache is briefly suspended. Any
+code that can execute in that window — ISRs in particular — must live in IRAM or it
+crashes silently.
+
+```cpp
+void IRAM_ATTR gpioISR() { ... }            // ISR handler: must be in IRAM
+static DRAM_ATTR uint32_t isrEventFlags = 0; // data an ISR reads: must be in DRAM
+```
+
+- All ISR handlers: `IRAM_ATTR`
+- Data read by `IRAM_ATTR` code: `DRAM_ATTR` — a flash-resident `static const` will
+  fault
+- Normal task code does **not** need `IRAM_ATTR`
+
+#### ISR vs task shared state
+
+`xSemaphoreTake()` cannot be called from ISR context — it will crash. Use the right
+primitive per direction:
+
+| Direction                       | Correct primitive                                  |
+| ------------------------------- | -------------------------------------------------- |
+| ISR → task (data)               | `xQueueSendFromISR()` + `portYIELD_FROM_ISR()`     |
+| ISR → task (signal)             | `xSemaphoreGiveFromISR()` + `portYIELD_FROM_ISR()` |
+| Task → task                     | `xSemaphoreTake()` / mutex                         |
+| Simple flag (single writer ISR) | `volatile bool` + `portENTER_CRITICAL_ISR()`       |
+
+#### Template and `std::function` bloat
+
+Each template instantiation generates a separate binary copy. `std::function<void()>`
+adds ~2–4 KB per unique signature and heap-allocates its closure. Avoid both in
+library code and on any path called from the render loop:
+
+```cpp
+std::function<void()> callback;      // avoid — heap-allocating, large footprint
+void (*callback)() = nullptr;        // prefer — zero overhead
+
+// For member function + context (the common activity callback pattern):
+struct Callback { void* ctx; void (*fn)(void*); };
+```
+
+When a template is necessary, use explicit instantiation in a `.cpp` to stop the
+compiler duplicating it across translation units.
+
+### Error handling
+
+1. **`LOG_ERR` + return false** (90%): `LOG_ERR("MOD", "Failed: %s", reason); return false;`
+2. **`LOG_ERR` + fallback**: `LOG_ERR("MOD", "Unavailable"); useDefault();`
+3. **`assert(false)`**: only for fatal impossible states (framebuffer missing)
+4. **`ESP.restart()`**: only for recovery (OTA complete)
+
+No exceptions, no `abort()`, always log before an error return.
+
+A failed network fetch leaves the previous data in place and says so. A failed
+write must never leave a partial file — hence atomic writes — and must report to
+the UI rather than fail silently.
 
 ---
 
-## UI and Orientation Guidelines
+## UI
 
-### Orientation-Aware Logic
+* **No hardcoded dimensions**: never assume 800 or 480. Use
+  `renderer.getScreenWidth()` and `renderer.getScreenHeight()`.
+* **Viewable area**: use `renderer.getOrientedViewableTRBL()` to stay inside the
+  physical bezel margins.
+* **All rendering goes through the `GUI` macro (`UITheme`).** Do not hardcode
+  fonts, colours, or positions.
 
-* No Hardcoding: Never assume 800 or 480. Use renderer.getScreenWidth() and renderer.getScreenHeight().
-* Viewable Area: Use renderer.getOrientedViewableTRBL() to stay within physical bezel margins.
-
-### Logical Button Mapping
-
-**Source**: [src/MappedInputManager.cpp:20-55](src/MappedInputManager.cpp)
-
-Constraint: Physical button positions are fixed on hardware, but their logical functions change based on user settings and screen orientation.
-
-**Button Categories**:
-
-1. **Physical Fixed** (Up/Down side buttons):
-   
-   - `Button::Up` → Always `HalGPIO::BTN_UP`
-   
-   - `Button::Down` → Always `HalGPIO::BTN_DOWN`
-
-2. **User Remappable** (Front buttons):
-   
-   - `Button::Back` → Maps to `SETTINGS.frontButtonBack` (hardware index)
-   
-   - `Button::Confirm` → Maps to `SETTINGS.frontButtonConfirm`
-   
-   - `Button::Left` → Maps to `SETTINGS.frontButtonLeft`
-   
-   - `Button::Right` → Maps to `SETTINGS.frontButtonRight`
-
-3. **Reader-Specific** (Page navigation with optional swap):
-   
-   - `Button::PageBack` → Uses side button (swappable via `SETTINGS.sideButtonLayout`)
-   
-   - `Button::PageForward` → Uses side button (swappable)
-
-**Implementation**:
-
-- Activities use **logical buttons** (e.g., `Button::Confirm`)
-- `MappedInputManager` translates to **physical hardware buttons**
-- User can remap front buttons in settings
-- Orientation changes handled separately by renderer coordinate transforms
-
-**Rule**: Always use `MappedInputManager::Button::*` enums, never raw `HalGPIO::BTN_*` indices (except in ButtonRemapActivity).
-
-### UITheme (The GUI Macro)
-
-* Rule: All UI rendering must go through the GUI macro (UITheme). 
-* Do not hardcode fonts, colors, or positioning. This ensures orientation-aware layout consistency.
-
----
-
-## Common Patterns
-
-### Singleton Access
-
-**Available Singletons**:
+### Singletons
 
 ```cpp
 #define SETTINGS CrossPointSettings::getInstance()  // User settings
 #define APP_STATE CrossPointState::getInstance()    // Runtime state
-#define GUI UITheme::getInstance()                   // Current theme
-#define Storage HalStorage::getInstance()            // SD card I/O
-#define I18N I18n::getInstance()                     // Internationalization
+#define GUI UITheme::getInstance()                  // Current theme
+#define Storage HalStorage::getInstance()           // SD card I/O
+#define I18N I18n::getInstance()                    // Internationalization
 ```
 
-### Activity Lifecycle and Memory Management
+---
 
-**Source**: [src/main.cpp:132-143](src/main.cpp)
+## Common patterns
 
-**CRITICAL**: Activities are **heap-allocated** and **deleted on exit**.
+### Activity lifecycle and memory management
+
+Activities are **heap-allocated and deleted on exit** (`src/main.cpp`):
 
 ```cpp
-// main.cpp navigation pattern
 void exitActivity() {
   if (currentActivity) {
     currentActivity->onExit();
-    delete currentActivity;  // Activity deleted here!
+    delete currentActivity;      // Activity deleted here
     currentActivity = nullptr;
   }
 }
-
-void enterNewActivity(Activity* activity) {
-  currentActivity = activity;  // Heap-allocated activity
-  currentActivity->onEnter();
-}
 ```
 
-**Memory Implications**:
-
-- Activity navigation = `delete` old activity + `new` create next activity
-- Any memory allocated in `onEnter()` MUST be freed in `onExit()`
-- FreeRTOS tasks MUST be deleted in `onExit()` before activity destruction
-- Member `FsFile` handles MUST be closed in `onExit()` (local `FsFile` variables auto-close via destructor)
-
-**Activity Pattern**:
+- Navigation = `delete` the old activity, construct the next one.
+- Anything allocated in `onEnter()` MUST be freed in `onExit()`.
+- FreeRTOS tasks MUST be deleted in `onExit()`, before the activity is destroyed.
+- Member `FsFile` handles MUST be closed in `onExit()`; local ones auto-close.
 
 ```cpp
-void onEnter()  { Activity::onEnter(); /* alloc: buffer, tasks */ render(); }
-void loop()     { mappedInput.update(); /* handle input */ }
-void onExit()   { /* free: vTaskDelete, free buffer, close member FsFiles */ Activity::onExit(); }
+void onEnter() { Activity::onEnter(); /* alloc: buffer, tasks */ render(); }
+void loop()    { mappedInput.update(); /* handle input */ }
+void onExit()  { /* vTaskDelete, free buffers, close member FsFiles */ Activity::onExit(); }
 ```
 
-**Critical**: Free resources in reverse order. Delete tasks BEFORE activity destruction.
+Free resources in reverse order. Delete tasks **before** activity destruction —
+a task still running against a deleted activity is the classic use-after-free here.
 
-### FreeRTOS Task Guidelines
+### FreeRTOS tasks
 
-**Source**: [src/activities/util/KeyboardEntryActivity.cpp:45-50](src/activities/util/KeyboardEntryActivity.cpp)
+`xTaskCreate(&taskTrampoline, "Name", stackSize, this, 1, &handle)`.
 
-**Pattern**: See Activity Lifecycle above. `xTaskCreate(&taskTrampoline, "Name", stackSize, this, 1, &handle)`
+Stack sizes are in **bytes**, not words:
 
-**Stack Sizing** (in BYTES, not words):
+- **2048** — simple rendering (most activities)
+- **4096** — network, EPUB parsing
+- Monitor with `uxTaskGetStackHighWaterMark()` when a crash looks stack-shaped.
 
-- **2048**: Simple rendering (most activities)
-- **4096**: Network, EPUB parsing
-- Monitor: `uxTaskGetStackHighWaterMark()` if crashes
+Always `vTaskDelete()` in `onExit()`. Use a mutex for any shared state.
 
-**Rules**: Always `vTaskDelete()` in `onExit()` before destruction. Use mutex if shared state.
+### Global font loading
 
-### Global Font Loading
+All fonts are loaded as global static objects at startup (`src/main.cpp`): Noto
+Serif and Noto Sans at 12/14/16/18pt in four styles each, plus Ubuntu UI at
+10/12pt — ~80 global `EpdFont` and `EpdFontFamily` objects, guarded by
+`#ifndef OMIT_FONTS`.
 
-**Source**: [src/main.cpp:40-115](src/main.cpp)
-
-**All fonts are loaded as global static objects** at firmware startup:
-
-- Noto Serif: 12, 14, 16, 18pt (4 styles each: regular, bold, italic, bold-italic)
-- Noto Sans: 12, 14, 16, 18pt (4 styles each)
-- Ubuntu UI fonts: 10, 12pt (2 styles)
-
-**Total**: ~80+ global `EpdFont` and `EpdFontFamily` objects
-
-**Compilation Flag**:
-
-```cpp
-#ifndef OMIT_FONTS
-  // Most fonts loaded here
-#endif
-```
-
-**Implications**:
-
-- Fonts stored in **Flash** (marked as `static const` in `lib/EpdFont/builtinFonts/`)
-- Font rendering data cached in **DRAM** when first used
-- `OMIT_FONTS` can reduce binary size for minimal builds
-- Font IDs defined in [src/fontIds.h](src/fontIds.h)
-
-**Usage**:
+Font data is `static const` in `lib/EpdFont/builtinFonts/` and therefore in flash;
+rendering data is cached in DRAM on first use. Font IDs live in `src/fontIds.h`.
 
 ```cpp
 #include "fontIds.h"
@@ -680,177 +555,226 @@ renderer.drawText(FONT_UI_MEDIUM, x, y, "Hello", true);
 
 ---
 
-## Testing and Debugging
+## Testing and debugging
 
-### Build Commands
-
-**Via CLI**:
+### Build commands
 
 ```bash
-# Build firmware (default environment)
-pio run
-
-# Build and upload to device
-pio run -t upload
-
-# Build specific environment
-pio run -e gh_release
-
-# Clean build artifacts
-pio run -t clean
+pio run                      # build the default env (x4pro)
+pio run -t upload            # build and upload
+pio run -e x4pro-gh_release  # build the release env
+pio run -t clean             # clean build artifacts
+pio check                    # static analysis (cppcheck)
 ```
 
-**Via VS Code**:
+### Testing checklist
 
-* Use PlatformIO toolbar: Build (✓), Upload (→), Clean (🗑️)
-* Or Command Palette: `PlatformIO: Build`, `PlatformIO: Upload`, etc.
+**What you can verify:**
 
-### Monitoring and Debugging
+1. **Build** — build once after the last code edit, with the relevant `pio run`
+   target. Do not clean by default, repeat a target that already passed, or rebuild
+   after formatting, comment-only or documentation-only changes.
+2. **Quality** — `pio check` when relevant, plus `./bin/clang-format-fix` over the
+   full tree (matching CI; `-g` alone misses newly added files once committed).
+3. **Format** — conventional commit messages, and no `.gitignore`-excluded files
+   staged (`*.generated.h`, `.pio/`, `platformio.local.ini`).
+4. **CI** — fix GitHub Actions failures before requesting review.
 
-```bash
-# Enhanced monitor with color/logging (recommended)
-python3 scripts/debugging_monitor.py
+**What only the human tester can verify — flag these for the user:**
 
-# Standard PlatformIO monitor
-pio device monitor
-```
+5. **Device** — test on hardware.
+6. **Heap** — `ESP.getFreeHeap()` above ~50 KB, no leaks across an activity cycle.
+7. **Cache** — if a format version moved, delete `/.crosspoint/` and verify the
+   re-parse.
 
-**Via VS Code**: Click Monitor (🔌) button in PlatformIO toolbar
+### Debugging crashes
 
-### Code Quality
+1. **Out of memory** (most common) — `LOG_DBG("MEM", "Free heap: %d", ESP.getFreeHeap());`
+   around the suspect operation. Watch for allocations over 10 KB, and confirm
+   buffers are freed in `onExit()`.
+2. **Stack overflow** — `LOG_DBG("TASK", "Stack high water: %d", uxTaskGetStackHighWaterMark(taskHandle));`
+   Deep recursion or a large local. Raise the task stack (2048 → 4096) or move the
+   buffer to the heap.
+3. **Use-after-free** — activity deleted while its task still runs. `vTaskDelete()`
+   in `onExit()`, and null pointers after freeing.
+4. **Corrupt cache** — delete `/.crosspoint/` on the SD card to force a clean
+   re-parse; check the format versions in `docs/file-formats.md`.
+5. **Watchdog timeout** — a loop or task blocked over 5 s. Add `vTaskDelay(1)` in
+   tight loops; look for blocking I/O.
 
-```bash
-# Static analysis (cppcheck)
-pio check
-
-# Format only Git-modified C/C++ files, on every host
-./bin/clang-format-fix -g
-
-# Format the whole tree -- what CI checks. Run this before committing.
-./bin/clang-format-fix
-```
-
-Do not run raw `clang-format` or probe it with `command -v`; use the wrapper even for diagnostics.
-
-### Debugging Crashes
-
-**Common Crash Causes**:
-
-1. **Out of Memory** (Most common):
-   
-   ```cpp
-   LOG_DBG("MEM", "Free heap: %d bytes", ESP.getFreeHeap());
-   ```
-   
-   - Monitor heap usage throughout activity lifecycle
-   
-   - Check if large allocations (>10KB) occur before crash
-   
-   - Verify buffers are freed in `onExit()`
-
-2. **Stack Overflow**:
-   
-   ```cpp
-   LOG_DBG("TASK", "Stack high water: %d", uxTaskGetStackHighWaterMark(taskHandle));
-   ```
-   
-   - Occurs during deep recursion or large local variables
-   
-   - Increase task stack size in `xTaskCreate()` (2048 → 4096)
-   
-   - Move large buffers to heap with malloc
-
-3. **Use-After-Free**:
-   
-   - Activity deleted but task still running
-   
-   - Always `vTaskDelete()` in `onExit()` BEFORE activity destruction
-   
-   - Set pointers to `nullptr` after `free()`
-
-4. **Corrupt Cache Files**:
-   
-   - Delete `.crosspoint/` directory on SD card
-   
-   - Forces clean re-parse of all EPUBs
-   
-   - Check file format versions in [docs/file-formats.md](docs/file-formats.md)
-
-5. **Watchdog Timeout**:
-   
-   - Loop/task blocked for >5 seconds
-   
-   - Add `vTaskDelay(1)` in tight loops
-   
-   - Check for blocking I/O operations
-
-**Verification Steps**:
-
-1. Check serial output for stack traces
-2. Monitor heap with `ESP.getFreeHeap()` before/after operations
-3. Verify task deletion with task list (`vTaskList()`)
-4. Test with `LOG_LEVEL=2` (debug logging enabled)
+Verification: read the serial stack trace, compare `ESP.getFreeHeap()` before and
+after, check task deletion with `vTaskList()`, and test with `LOG_LEVEL=2`.
 
 ---
 
-## Git Workflow and Repository Awareness
+## Serial monitoring and live debugging
 
-### Repository Detection Protocol
+1. **Enhanced**: `python3 scripts/debugging_monitor.py` (colour-coded, recommended)
+2. **Plain read**: `cat /dev/cu.usbmodemXXXXX > serial.log` — background it and tail
+   the file
+3. **VS Code**: the Monitor button in the PlatformIO toolbar
 
-**CRITICAL**: ALWAYS verify repository context before git operations. This could be:
+**`pio device monitor` does not work on the X4 Pro.** Its native USB-JTAG/serial
+bridge (`303A:1001`) has no line settings, so the monitor dies setting a baud rate:
+`termios.error: (19, 'Operation not supported by device')`. Never pass a baud rate
+to this transport in any tool — `esptool` corrupts large transfers the same way.
 
-- A **fork** with `origin` pointing to personal repo, `upstream` to main repo
-- A **direct clone** with `origin` pointing to main repo
-- Multiple collaborator remotes
+**Heap**: `LOG_DBG("MEM", "Free: %d", ESP.getFreeHeap());` every 5 s in the loop.
+**Stack**: `uxTaskGetStackHighWaterMark(nullptr)` — under 512 bytes, raise the stack.
+**Flush**: `logSerial.flush();` to force output before a crash.
 
-**Verification Commands** (run at session start):
+Port detection — Windows: `mode`. Linux: `ls /dev/ttyUSB* /dev/ttyACM*` or
+`dmesg | grep tty`.
+
+---
+
+## Cache management and invalidation
+
+**Location**: `/.crosspoint/` on the SD card.
+**Structure**: `/.crosspoint/epub_<hash>/{book.bin, progress.bin, cover.bmp, sections/*.bin}`
+**Hash**: `std::hash<std::string>{}(filepath)` — moving or renaming a book gives a
+new hash and loses its progress. (The study data under `/.berean/` deliberately does
+not work this way; it keys on publication identity.)
+
+Cache is invalidated automatically when:
+
+1. **A file format version changes** — `book.bin` or `section.bin`.
+2. **Render settings change** — `SETTINGS.fontFamily`, `fontSize`, `lineSpacing`,
+   `extraParagraphSpacing`, `screenMargin`.
+3. **Viewport dimensions change**.
+4. **The book file is modified** — moved, renamed, or re-content-ed (new hash).
+
+Manual clears:
 
 ```bash
-# Check current branch
+rm -rf /path/to/sd/.crosspoint/                     # all caches
+rm -rf /path/to/sd/.crosspoint/epub_<hash>/         # one book
+rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/ # keep progress, drop layout
+```
+
+Clear the cache after EPUB parsing errors, corrupt rendering, or any change to
+`lib/Epub/Epub/Section.cpp`, `lib/Epub/Epub/BookMetadataCache.cpp`, or the render
+settings in `CrossPointSettings`.
+
+### Format versioning
+
+The constants are the source of truth; `docs/file-formats.md` documents the layout
+and lags behind them.
+
+- `BOOK_CACHE_VERSION` — `lib/Epub/Epub/BookMetadataCache.cpp:14`
+- `SECTION_FILE_VERSION` — `lib/Epub/Epub/Section.cpp:48`
+
+**Increment the version *before* changing a binary structure.** A mismatch
+invalidates and regenerates the cache; a changed structure under an unchanged
+version deserialises garbage. Document the change in `docs/file-formats.md`.
+
+```cpp
+// lib/Epub/Epub/Section.cpp
+constexpr uint8_t SECTION_FILE_VERSION = 43;  // bumped with the struct change
+
+struct PageLine {
+  // ... existing fields ...
+  uint16_t newField;
+};
+```
+
+The same discipline applies to every store this firmware writes: a format version a
+future build **refuses** rather than reinterprets.
+
+---
+
+## Generated files and build artifacts
+
+**Never hand-edit these** — they are regenerated on every build:
+
+1. **HTML headers** — `src/network/html/*.generated.h`, produced by
+   `scripts/build_html.py` from `data/html/` during the PlatformIO `pre:` step.
+   Edit the source HTML.
+2. **I18n headers** — `lib/I18n/I18nKeys.h`, `I18nStrings.h`, `I18nStrings.cpp`,
+   produced by `scripts/gen_i18n.py` from `lib/I18n/translations/*.yaml`. Edit the
+   YAML, then run
+   `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/`.
+3. **Build artifacts** — `.pio/`, `build/`, `*.generated.h`,
+   `compile_commands.json`. All gitignored.
+
+**Commit source only.** All three generated i18n files are in `.gitignore` and are
+regenerated at build time; the same goes for the `.generated.h` HTML headers.
+
+Each translation YAML must contain `_language_name`, `_language_code`, `_order` and
+its `STR_*` keys. English (`english.yaml`) is the reference; missing keys elsewhere
+fall back to it.
+
+```cpp
+#include <I18n.h>
+renderer.drawText(FONT_UI, x, y, tr(STR_LOADING), true);
+```
+
+**To add a custom font**: put the source in `lib/EpdFont/fontsrc/` (gitignored), run
+the conversion script (`lib/EpdFont/README`), add the global font object in
+`src/main.cpp`, and add its ID to `src/fontIds.h`.
+
+---
+
+## Local development configuration
+
+`platformio.local.ini` holds personal settings that must **never** be committed:
+serial ports, personal debug flags, local paths.
+
+```ini
+# platformio.local.ini (gitignored)
+[env:x4pro]
+upload_port = COM7              # Windows: COMx, Linux: /dev/ttyUSBx
+monitor_port = COM7
+
+build_flags =
+  ${base.build_flags}
+  -DMY_DEBUG_FLAG=1
+```
+
+`platformio.ini` is the committed, shared configuration; `platformio.local.ini`
+extends it. Use `${base.build_flags}` to extend rather than replace the base flags,
+and keep serial ports and credentials out of `platformio.ini`.
+
+---
+
+## Git workflow
+
+### Repository context
+
+Verify before any git operation — remotes differ between clones:
+
+```bash
 git branch --show-current
-
-# Check all remotes
 git remote -v
-
-# Check working tree status
 git status --short
 ```
 
-**Example Output** (forked repository):
+This repo's own remotes are `origin` (`git@github.com:victorstein/berean-os.git`)
+and `crosspoint`, a local path remote pointing at the fork parent. A `gh` command
+here needs `--repo victorstein/berean-os` if the CLI resolves a different default.
 
-```text
-origin      https://github.com/<your-username>/crosspoint-reader.git (fetch/push)
-upstream    https://github.com/crosspoint-reader/crosspoint-reader.git (fetch/push)
-```
+### Rules
 
-### Git Operation Rules
+1. Integration branches and PR comparisons target `main`, never `master` or the
+   remote's symbolic HEAD. release-please only watches `main`, so a PR targeting
+   anything else releases nothing.
+2. Never push to any remote, or open or close a PR, without explicit user approval.
+   Complete local work and any requested local commit, then stop.
+3. Never add Claude, Codex, or assistant self-attribution as a commit co-author or
+   generated-by trailer.
+4. When a change supersedes or adapts another person's PR, verify the original human
+   author from Git or GitHub and add them as `Co-Authored-By`. Skip bot authors.
 
-1. Integration branches and PR comparisons target `main`, not `master` or the remote's symbolic HEAD. release-please only watches `main`, so a PR targeting anything else releases nothing.
-2. Never push to any remote or open/close a PR without explicit user approval. Complete local work and any requested local commit, then stop.
-3. If the user explicitly approves a push, inspect remotes again and use `fork` for the feature branch unless the user specifies otherwise.
-4. Never add Claude, Codex, or assistant self-attribution as a commit co-author or generated-by trailer.
-5. When a change supersedes or adapts another person's PR, verify the original human author from Git/GitHub and add that person as `Co-Authored-By`; skip bot authors.
-
-### Branch Naming Convention
-
-**For feature/fix branches**:
+### Branch naming
 
 ```text
 feature/<short-description>       # New features
 fix/<issue-number>-<description>  # Bug fixes
-refactor/<component-name>         # Code refactoring
-docs/<topic>                      # Documentation updates
+refactor/<component-name>         # Refactoring
+docs/<topic>                      # Documentation
 ```
 
-**Examples**:
-
-- `feature/sd-download-progress`
-- `fix/123-orientation-crash`
-- `refactor/hal-storage`
-
-### Commit Message Format
-
-**Pattern**:
+### Commit messages
 
 ```text
 <type>: <short summary (50 chars max)>
@@ -858,331 +782,77 @@ docs/<topic>                      # Documentation updates
 <optional detailed description>
 ```
 
-**Types**: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`
-
-**Example**:
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`.
 
 ```text
 feat: add real-time SD download progress bar
 
-Implements progress tracking for book downloads using
-UITheme progress bar component with heap-safe updates.
+Implements progress tracking for publication downloads using the UITheme
+progress bar, with heap-safe updates.
 
-Tested in all 4 orientations with 5MB+ files.
+Verified on device with a 5 MB download.
 ```
 
-### When to Commit
+### When to commit
 
-**DO commit when**:
+**Do** when the user explicitly asks, when a feature is complete and tested on
+device, when a bug fix is verified, or when a refactor preserves behaviour and
+`pio run` succeeds.
 
-- User explicitly requests: "commit these changes"
-- Feature is complete and tested on device
-- Bug fix is verified working
-- Refactoring preserves all functionality
-- All tests pass (`pio run` succeeds)
+**Do not** when the change is untested on hardware, when the build fails or warns,
+while still experimenting, when the user has not asked, or when
+`.gitignore`-excluded files would be staged — run `git status` and cross-check
+against `.gitignore` first.
 
-**DO NOT commit when**:
-
-- Changes are untested on actual hardware
-- Build fails or has warnings
-- Experimenting or debugging in progress
-- User hasn't explicitly requested commit
-- Files excluded by `.gitignore` would be included — always run `git status` and cross-check against `.gitignore` before staging (e.g., `*.generated.h`, `.pio/`, `compile_commands.json`, `platformio.local.ini`)
-
-**Rule**: **If uncertain, ASK before committing.**
+If uncertain, **ask before committing.**
 
 ---
 
-## Generated Files and Build Artifacts
+## CI and releases
 
-### Files Generated by Build Scripts
+| Workflow | File | Purpose |
+| --- | --- | --- |
+| Build check | `.github/workflows/ci.yml` | Compiles `x4pro`; runs the format check |
+| Format check | `.github/workflows/pr-formatting-check.yml` | Validates clang-format |
+| PR title lint | `.github/workflows/pr-title-lint.yml` | Enforces conventional PR titles |
+| Release | `.github/workflows/release-please.yml` | Opens and merges the release PR |
+| Release publish | `.github/workflows/release-publish.yml` | Builds `x4pro-gh_release`, attaches `firmware-x4pro.bin` |
 
-**NEVER manually edit these files** - they are regenerated automatically:
-
-1. **HTML Headers** (generated by `scripts/build_html.py`):
-   
-   - `src/network/html/*.generated.h`
-   
-   - **Source**: HTML templates in `data/html/` directory
-   
-   - **Triggered**: During PlatformIO `pre:` build step
-   
-   - **To modify**: Edit source HTML in `data/html/`, not generated headers
-
-2. **I18n Headers** (generated by `scripts/gen_i18n.py`):
-   
-   - `lib/I18n/I18nKeys.h`, `lib/I18n/I18nStrings.h`, `lib/I18n/I18nStrings.cpp`
-   
-   - **Source**: YAML translation files in `lib/I18n/translations/` (one per language)
-   
-   - **To modify**: Edit source YAML files, then run `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/`
-   
-   - **Commit**: Source YAML files only. All three generated files (`I18nKeys.h`, `I18nStrings.h`, `I18nStrings.cpp`) are in `.gitignore` and regenerated at build time.
-
-3. **Build Artifacts** (in `.gitignore`):
-   
-   - `.pio/` - PlatformIO build output
-   
-   - `build/` - Compiled binaries
-   
-   - `*.generated.h` - Any auto-generated headers
-   
-   - `compile_commands.json` - LSP/IDE metadata
-
-### Modifying Generated Content Workflow
-
-**To change HTML pages**:
-
-1. Edit source: `data/html/<pagename>.html`
-2. Build: `pio run` (auto-triggers `scripts/build_html.py`)
-3. Generated headers update: `src/network/html/<pagename>Html.generated.h`
-4. **Commit ONLY** source HTML, NOT generated `.generated.h` files
-
-**To add/modify translations (i18n)**:
-
-1. Edit or add YAML file: `lib/I18n/translations/<language>.yaml`
-   
-   - Each file must contain: `_language_name`, `_language_code`, `_order`, and `STR_*` keys
-   
-   - English (`english.yaml`) is the reference; missing keys in other languages fall back to English
-2. Run generator: `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/`
-3. Generated files update: `I18nKeys.h`, `I18nStrings.h`, `I18nStrings.cpp`
-4. **Commit** source YAML files only. All three generated files are in `.gitignore` and regenerated at build time.
-
-**To use translated strings in code**:
-
-```cpp
-#include <I18n.h>
-// Use tr() macro with StrId enum (defined in generated I18nKeys.h)
-renderer.drawText(FONT_UI, x, y, tr(STR_LOADING), true);
-```
-
-**To add custom fonts**:
-
-1. Place source fonts in `lib/EpdFont/fontsrc/` (gitignored)
-2. Run conversion script (see `lib/EpdFont/README`)
-3. Update global font objects in `src/main.cpp:40-115`
-4. Add font ID constant to `src/fontIds.h`
-
----
-
-## Local Development Configuration
-
-### platformio.local.ini (Personal Overrides)
-
-**Purpose**: Personal development settings that should NEVER be committed.
-
-**Use Cases**:
-
-- Serial port configuration (varies by machine)
-- Debug flags for specific testing
-- Local build optimizations
-- Developer-specific paths
-
-**Example** `platformio.local.ini`:
-
-```ini
-# platformio.local.ini (gitignored)
-[env:default]
-upload_port = COM7              # Windows: COMx, Linux: /dev/ttyUSBx
-monitor_port = COM7
-
-build_flags =
-  ${base.build_flags}
-  -DMY_DEBUG_FLAG=1             # Personal debug flags
-  -DTEST_FEATURE_ENABLED=1
-```
-
-**Configuration Hierarchy**:
-
-1. `platformio.ini` - **Committed**, shared project settings
-2. `platformio.local.ini` - **Gitignored**, personal overrides
-3. Local file extends/overrides base config
-
-**Rules**:
-
-- **NEVER commit** `platformio.local.ini`
-- **NEVER put** personal info (serial ports, credentials) in main `platformio.ini`
-- Use `${base.build_flags}` to extend (not replace) base flags
-
----
-
-## Testing and Verification Workflow
-
-### Testing Checklist
-
-**AI agent scope** (what you CAN verify):
-
-1. ✅ **Build**: Build once after the last code edit with the relevant `pio run` target. Do not clean by default, repeat a target that already passed, or rebuild after formatting/comment-only/documentation-only changes.
-2. ✅ **Quality**: `pio check` when relevant + `./bin/clang-format-fix` (full tree, matching CI; `-g` alone misses newly added files once they are committed)
-3. ✅ **Format**: Commit messages (`feat:`/`fix:`), no `.gitignore`-excluded files staged (e.g., `*.generated.h`, `.pio/`, `platformio.local.ini`)
-4. ✅ **CI**: Fix GitHub Actions failures before review
-5. ✅ **Code review**: Ensure orientation-aware logic is correct in all 4 modes by inspecting switch/case coverage
-
-**Human tester scope** (flag these for the user):
-6. 🔲 **Device**: Test on hardware
-7. 🔲 **Orientations**: Verify all 4 modes (Portrait/Inverted/Landscape CW/CCW)
-8. 🔲 **Heap**: `ESP.getFreeHeap()` > 50KB, no leaks
-9. 🔲 **Cache**: If EPUB modified, delete `.crosspoint/` and verify re-parse
-
-### CI/CD Pipeline Awareness
-
-**GitHub Actions** run automatically on pull requests:
-
-| Workflow      | File                                        | Purpose                |
-| ------------- | ------------------------------------------- | ---------------------- |
-| Build Check   | `.github/workflows/ci.yml`                  | Verifies code compiles |
-| Format Check  | `.github/workflows/pr-formatting-check.yml` | Validates clang-format |
-| Release Publish | `.github/workflows/release-publish.yml`   | Builds and attaches release firmware; dispatched by release-please |
-| RC Build      | `.github/workflows/release_candidate.yml`   | Release candidates     |
-
-### Releases and flashing
-
-**Releases are automated — never push a tag by hand.** `release-please` (managed by stein-infra,
-not by files in this repo) watches conventional commits on `main`, opens a `chore(main): release
-X.Y.Z` PR, self-merges it, cuts a `vX.Y.Z` tag and creates the release. That fires
-`release-publish.yml`, which builds all four boards and attaches the binaries. A manually pushed tag
-is filtered out and does nothing.
+**Releases are automated — never push a tag by hand.** release-please (managed by
+stein-infra, not by files in this repo) watches conventional commits on `main`,
+opens a `chore(main): release X.Y.Z` PR, self-merges it, cuts a `vX.Y.Z` tag and
+creates the release. That fires `release-publish.yml`. A manually pushed tag is
+filtered out and does nothing.
 
 Consequences worth holding onto:
 
-- **The PR title is the release input.** A non-conventional title contributes nothing to the
-  changelog and may skip the version bump.
-- **`[crosspoint] version` in `platformio.ini` is bumped for you**, via release-please `extra-files`
-  and the block-form `x-release-please-start-version` markers. Do not edit it by hand, and do not
-  convert those markers to the inline form — `scripts/git_branch.py` reads that key with a parser
-  that keeps inline comments, which would put the comment inside `CROSSPOINT_VERSION`.
-- **Do not hand-create** `release-please-config.json`, `.release-please-manifest.json`,
-  `version.txt` or `.github/workflows/release-please.yml`. They are pushed by stein-infra's tofu.
+- **The PR title is the release input.** PRs are squash-merged, so a
+  non-conventional title contributes nothing to the changelog and may skip the
+  version bump entirely.
+- **`[berean] version` in `platformio.ini` is bumped for you**, via release-please
+  `extra-files` and the block-form `x-release-please-start-version` markers. Do not
+  edit it by hand, and do not convert those markers to the inline form —
+  `scripts/git_branch.py` reads that key with a parser that keeps inline comments,
+  which would put the comment inside `BEREAN_VERSION`.
+- **Do not hand-create** `release-please-config.json`,
+  `.release-please-manifest.json`, `version.txt` or
+  `.github/workflows/release-please.yml`. They are pushed by stein-infra's tofu.
+- **`release-publish.yml` is gated on the repository name**
+  (`release-publish.yml:106`). If that guard names the wrong repo, the release is
+  cut with no firmware asset, the workflow goes green, and OTA finds a release whose
+  asset does not exist.
 
-**Flashing: OTA is the default path.** The device updates itself from this repo's releases over
-WiFi (Settings → check for updates). Reach for a cable only when you need a **dev** build — OTA
-installs `x4pro-gh_release`, which has `LOG_LEVEL=0` and no serial logging.
+**Fix CI failures before requesting review.** A format failure means
+`./bin/clang-format-fix` over the whole tree, not `-g`.
 
-Cable-free side-load of a dev build, when you do need logs: `POST /upload?path=/` the `firmware.bin`
-to the device web server, then *Settings → SD firmware update*. Suppress `Expect: 100-continue`
-(`curl -H "Expect:"`) or the transfer hangs — the ESP32 web server never answers it.
+### Flashing
 
-**Rules**:
+**OTA is the default path.** The device updates itself from this repo's releases
+over WiFi (Settings → check for updates). Reach for a cable only when you need a
+**dev** build — OTA installs `x4pro-gh_release`, which has `LOG_LEVEL=0` and no
+serial logging.
 
-- **Fix CI failures BEFORE** requesting review
-- CI runs on: Push to PR, PR updates
-- Format check fails → Run `./bin/clang-format-fix` (no `-g`; CI checks the whole tree)
-- Build check fails → Fix compile errors
-
----
-
-## Serial Monitoring and Live Debugging
-
-### Serial Monitor Options
-
-1. **Enhanced**: `python3 scripts/debugging_monitor.py` (color-coded, recommended)
-2. **Plain read**: `cat /dev/cu.usbmodemXXXXX > serial.log` — background it and tail the file
-3. **VS Code**: Monitor (🔌) button (IDE-integrated)
-
-**`pio device monitor` does not work on the X4 Pro.** Its native USB-JTAG/serial bridge
-(`303A:1001`) has no line settings, so the monitor dies setting a baud rate:
-`termios.error: (19, 'Operation not supported by device')`. Never pass a baud rate to this
-transport in any tool — `esptool` corrupts large transfers the same way.
-
-### Live Debugging Patterns
-
-**Heap**: `LOG_DBG("MEM", "Free: %d", ESP.getFreeHeap());` (every 5s in loop)
-**Stack**: `uxTaskGetStackHighWaterMark(nullptr)` (< 512 bytes → increase stack)
-**Flush**: `logSerial.flush();` (force output before crash)
-
-**Port Detection**: Windows: `mode` | Linux: `ls /dev/ttyUSB* /dev/ttyACM*` or `dmesg | grep tty`
-
----
-
-## Cache Management and Invalidation
-
-### Cache Structure on SD Card
-
-**Location**: `.crosspoint/` directory on SD card root
-
-**Structure**: `.crosspoint/epub_<hash>/{book.bin, progress.bin, cover.bmp, sections/*.bin}`
-
-**Hash**: `std::hash<std::string>{}(filepath)` → Moving/renaming file = new hash = lost progress
-
-### Cache Invalidation Rules
-
-**Cache is automatically invalidated when**:
-
-1. **File format version changes** (see `docs/file-formats.md`)
-   
-   - `book.bin` version number incremented
-   
-   - `section.bin` version number incremented
-2. **Render settings change**:
-   
-   - Font family or size (`SETTINGS.fontFamily`, `SETTINGS.fontSize`)
-   
-   - Line spacing (`SETTINGS.lineSpacing`)
-   
-   - Paragraph spacing (`SETTINGS.extraParagraphSpacing`)
-   
-   - Screen margins (`SETTINGS.screenMargin`)
-3. **Viewport dimensions change**:
-   
-   - Screen orientation change
-   
-   - Display resolution change
-4. **Book file modified**:
-   
-   - Moved, renamed, or content changed (new hash)
-
-**Manual Cache Clear** (safe operations):
-
-```bash
-# Delete ALL caches (forces full regeneration)
-rm -rf /path/to/sd/.crosspoint/
-
-# Delete specific book cache
-rm -rf /path/to/sd/.crosspoint/epub_<hash>/
-
-# Keep progress, delete only rendered sections
-rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/
-```
-
-**When to Clear Cache**:
-
-- EPUB parsing errors after code changes to `lib/Epub/`
-- Corrupt rendering (missing text, wrong layout)
-- Testing cache generation logic
-- After modifying:
-  - `lib/Epub/Epub/Section.cpp`
-  - `lib/Epub/Epub/BookMetadataCache.cpp`
-  - Render settings in `CrossPointSettings`
-
-### Cache File Format Versioning
-
-**Source**: `lib/Epub/Epub/Section.cpp`, `lib/Epub/Epub/BookMetadataCache.cpp`
-
-**Current Versions** (as of docs/file-formats.md):
-
-- `book.bin`: **Version 7** (metadata structure)
-- `section.bin`: **Version 25** (layout structure)
-
-**Version Increment Rules**:
-
-1. **ALWAYS increment version** BEFORE changing binary structure
-2. Version mismatch → Cache auto-invalidated and regenerated
-3. Document format changes in `docs/file-formats.md`
-
-**Example** (incrementing section format version):
-
-```cpp
-// lib/Epub/Epub/Section.cpp
-static constexpr uint8_t SECTION_FILE_VERSION = 26;  // Was 25, now 26
-
-// Add new field to structure
-struct PageLine {
-  // ... existing fields ...
-  uint16_t newField;  // New field added
-};
-```
-
----
-
-Philosophy: We are building a dedicated e-reader, not a Swiss Army knife. If a feature adds RAM pressure without significantly improving the reading experience, it is Out of Scope.
+Cable-free side-load of a dev build, when you do need logs: `POST /upload?path=/`
+the `firmware.bin` to the device web server, then *Settings → SD firmware update*.
+Suppress `Expect: 100-continue` (`curl -H "Expect:"`) or the transfer hangs — the
+ESP32 web server never answers it.
