@@ -8,7 +8,6 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Utf8.h>
-#include <Xtc.h>
 
 #include <algorithm>
 #include <cstring>
@@ -82,24 +81,6 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
           }
           coverRendered = false;
           requestUpdate();
-        } else if (FsHelpers::hasXtcExtension(book.path)) {
-          // Handle XTC file
-          Xtc xtc(book.path, "/.crosspoint");
-          if (xtc.load()) {
-            // Try to generate thumbnail image for Continue Reading card
-            if (!showingLoading) {
-              showingLoading = true;
-              popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-            }
-            GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
-            bool success = xtc.generateThumbBmp(coverHeight);
-            if (!success) {
-              RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
-              book.coverBmpPath = "";
-            }
-            coverRendered = false;
-            requestUpdate();
-          }
         }
       }
     }
