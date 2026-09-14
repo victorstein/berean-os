@@ -51,6 +51,12 @@ class PassageDoc {
 
   size_t untaggedCount() const;
 
+  // Updates a passage's stale spine hint after its address resolved in a
+  // different document -- which happens when the publication is replaced by
+  // another edition whose spine is laid out differently. The ADDRESS is
+  // authoritative; documentSpine is only a shortcut for finding it again.
+  void repairDocumentSpine(size_t index, uint16_t spineIndex);
+
   // Indices of passages whose start unit is in `document`, for the render pass.
   std::vector<size_t> findByDocument(const std::string& document) const;
 

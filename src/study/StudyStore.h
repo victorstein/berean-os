@@ -52,9 +52,19 @@ class StudyStore {
   // tags still resolve -- a passage that carries one must not render a blank.
   std::string tagNamesFor(size_t passageIndex) const;
 
-  // Document offset the passage starts at, for jumping to it. Builds that one
-  // document's unit index if needed, so it is not for the page-turn path.
-  std::optional<uint32_t> documentOffsetFor(size_t passageIndex);
+  struct Location {
+    uint16_t spineIndex;
+    uint32_t offset;
+  };
+
+  // Where a passage currently lives, for jumping to it. Tries the stored spine
+  // hint first; if that no longer holds -- the publication was replaced by an
+  // edition laid out differently -- a Verse address is searched for within its
+  // own book, which bounds the scan to at most 150 documents.
+  //
+  // Builds unit indexes as it goes, so this is a user-initiated action, never
+  // the page-turn path.
+  std::optional<Location> locate(size_t passageIndex);
   const std::vector<study::TaggedPassage>& passages() const { return passages_.passages(); }
   const std::string& pubKey() const { return pubKey_; }
   bool isOpen() const { return units_ != nullptr; }

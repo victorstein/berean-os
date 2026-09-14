@@ -102,10 +102,29 @@ std::string StudyStore::tagNamesFor(const size_t passageIndex) const {
   return out;
 }
 
-std::optional<uint32_t> StudyStore::documentOffsetFor(const size_t passageIndex) {
+std::optional<StudyStore::Location> StudyStore::locate(const size_t passageIndex) {
   if (!units_ || !units_->ready() || passageIndex >= passages_.passages().size()) return std::nullopt;
-  const auto& p = passages_.passages()[passageIndex];
-  return study::documentOffsetOf(units_->unitsFor(p.documentSpine), p.start);
+  const study::Unit start = passages_.passages()[passageIndex].start;
+  const uint16_t hint = passages_.passages()[passageIndex].documentSpine;
+
+  if (const auto offset = study::documentOffsetOf(units_->unitsFor(hint), start)) {
+    return Location{hint, *offset};
+  }
+
+  // Only a Verse address is portable enough to search for. A data-pid or a raw
+  // offset means nothing outside the document it was measured in, so a stale
+  // hint there is unrecoverable and the caller opens the document as stored.
+  if (start.kind != study::UnitKind::Verse || start.book == 0) return std::nullopt;
+
+  for (const uint16_t candidate : units_->spineIndicesForBook(start.book)) {
+    if (candidate == hint) continue;
+    if (const auto offset = study::documentOffsetOf(units_->unitsFor(candidate), start)) {
+      passages_.repairDocumentSpine(passageIndex, candidate);
+      return Location{candidate, *offset};
+    }
+    vTaskDelay(1);  // up to 150 documents, each possibly a fresh index build
+  }
+  return std::nullopt;
 }
 
 std::optional<study::TagId> StudyStore::addTagName(const std::string& name) {
@@ -144,11 +163,29 @@ std::vector<StudyStore::PaintedPassage> StudyStore::passagesInDocument(const uin
 
   for (size_t i = 0; i < passages_.passages().size(); ++i) {
     const auto& p = passages_.passages()[i];
-    if (p.documentSpine != spineIndex) continue;
+    const bool spineMatches = p.documentSpine == spineIndex;
+
+    // A Verse address is portable: book + chapter + verse identifies a passage
+    // in ANY edition, which is the whole reason the Bible's pubkey carries no
+    // language. So the stored spine is only a hint, and a passage whose hint is
+    // stale -- because the publication was replaced by an edition laid out
+    // differently -- is still found by resolving its address here.
+    //
+    // Paragraph and DocumentOffset addresses are NOT portable: a data-pid is
+    // unique only within its document, and a raw offset means nothing outside
+    // the one it was measured in. documentOffsetOf returns a DocumentOffset
+    // unconditionally, so without this guard every such passage would paint in
+    // every document.
+    if (p.start.kind != study::UnitKind::Verse && !spineMatches) continue;
 
     const auto start = study::documentOffsetOf(units, p.start);
     if (!start) continue;
     const auto end = study::documentOffsetOf(units, p.end);
+
+    // Repaired in memory only. This runs on the page-turn path, and an SD write
+    // there costs serialisation, I/O and storageMutex contention; the next tag
+    // edit persists it, and until then it simply re-repairs each session.
+    if (!spineMatches) passages_.repairDocumentSpine(i, spineIndex);
 
     // Fingerprint differs -> the text this was attached to is not the text that
     // is there. Paint nothing: a mark drawn over different words is a claim the

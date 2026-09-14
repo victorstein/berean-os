@@ -136,3 +136,78 @@ TEST(UnitScanner, FallsBackToParagraphInOnePass) {
 }
 
 }  // namespace
+
+namespace {
+
+// The claim the Bible's language-free pubkey rests on: a verse address resolves
+// in ANY edition, even one whose documents are laid out differently. These are
+// two renderings of Matthew 1 -- different markup, different pid numbering,
+// different surrounding text -- and one address must find the verse in both.
+TEST(UnitAddressPortability, TheSameVerseResolvesInADifferentEdition) {
+  const char* editionA =
+      "<html><body><p id=\"p3\" data-pid=\"3\">"
+      "<span id=\"chapter1_verse1\"></span><strong><sup>1</sup></strong> alpha bravo"
+      "<span id=\"chapter1_verse2\"></span><strong><sup>2</sup></strong> charlie delta"
+      "</p></body></html>";
+  const char* editionB =
+      "<html><body>"
+      "<h2 data-pid=\"90\">A heading this edition adds</h2>"
+      "<p id=\"p41\" data-pid=\"41\">"
+      "<span id=\"chapter1_verse1\"></span><strong><sup>1</sup></strong> alpha bravo"
+      "<span id=\"chapter1_verse2\"></span><strong><sup>2</sup></strong> charlie delta"
+      "</p></body></html>";
+
+  auto a = study::scanUnits(editionA, strlen(editionA));
+  auto b = study::scanUnits(editionB, strlen(editionB));
+  a.book = 40;
+  b.book = 40;
+
+  // Address a passage in edition A...
+  const study::Unit mark = study::resolve(a, a.anchors[1].offset + 3);
+  EXPECT_EQ(mark.minor, 2);
+
+  // ...and find it in edition B, at a different document offset.
+  const auto inA = study::documentOffsetOf(a, mark);
+  const auto inB = study::documentOffsetOf(b, mark);
+  ASSERT_TRUE(inA.has_value());
+  ASSERT_TRUE(inB.has_value());
+  EXPECT_NE(*inA, *inB) << "the editions differ, so the raw offsets must differ";
+  EXPECT_EQ(*inB - b.anchors[1].offset, 3u) << "the offset WITHIN the verse is what carries over";
+}
+
+// The counterpart: a paragraph address must NOT be treated as portable. pid 41
+// exists in edition B and means something entirely different there.
+TEST(UnitAddressPortability, AParagraphAddressIsNotPortableAcrossEditions) {
+  const char* editionA = "<html><body><p data-pid=\"41\">alpha bravo</p></body></html>";
+  const char* editionB = "<html><body><p data-pid=\"41\">a completely different paragraph</p></body></html>";
+
+  const auto a = study::scanUnits(editionA, strlen(editionA));
+  const auto b = study::scanUnits(editionB, strlen(editionB));
+  const study::Unit mark = study::resolve(a, 2);
+
+  // Both resolve, which is exactly why StudyStore refuses to search for a
+  // Paragraph address outside its own document: the match would be spurious.
+  EXPECT_TRUE(study::documentOffsetOf(a, mark).has_value());
+  EXPECT_TRUE(study::documentOffsetOf(b, mark).has_value());
+  EXPECT_EQ(mark.kind, study::UnitKind::Paragraph);
+}
+
+TEST(UnitAddressPortability, AVerseInAnotherBookIsNeverMatched) {
+  const char* doc =
+      "<html><body><p data-pid=\"1\">"
+      "<span id=\"chapter4_verse1\"></span><strong><sup>1</sup></strong> alpha"
+      "</p></body></html>";
+  auto matthew = study::scanUnits(doc, strlen(doc));
+  matthew.book = 40;
+  auto mark = study::scanUnits(doc, strlen(doc));
+  mark.book = 41;
+
+  // Matthew 4:1 and Mark 4:1 share a chapter:verse id in the real NWT -- 2,417
+  // such collisions exist across the 66 books. Only `book` separates them.
+  const study::Unit inMatthew = study::resolve(matthew, 0);
+  EXPECT_EQ(inMatthew.book, 40);
+  EXPECT_FALSE(study::documentOffsetOf(mark, inMatthew).has_value())
+      << "without the book check a mark in Matthew would paint in Mark";
+}
+
+}  // namespace

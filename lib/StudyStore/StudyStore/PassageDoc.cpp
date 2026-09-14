@@ -57,6 +57,10 @@ void PassageDoc::removeTagEverywhere(const TagId id) {
   }
 }
 
+void PassageDoc::repairDocumentSpine(const size_t index, const uint16_t spineIndex) {
+  if (index < passages_.size()) passages_[index].documentSpine = spineIndex;
+}
+
 size_t PassageDoc::untaggedCount() const {
   size_t n = 0;
   for (const auto& p : passages_) {

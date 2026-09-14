@@ -319,6 +319,28 @@ uint8_t UnitIndexCache::bookFor(const uint16_t spineIndex) {
   return value < 0 ? 0 : static_cast<uint8_t>(value);
 }
 
+std::vector<uint16_t> UnitIndexCache::spineIndicesForBook(const uint8_t book) {
+  std::vector<uint16_t> out;
+  if (!ready_ || book == 0) return out;
+  if (!bookMapBuilt_ && !buildBookMap()) return out;
+
+  auto map = makeUniqueNoThrow<uint8_t[]>(header_.documentCount);
+  if (!map) {
+    LOG_ERR(MODULE, "OOM: book map");
+    return out;
+  }
+
+  HalFile file;
+  if (!Storage.openFileForRead(MODULE, indexPath(), file)) return out;
+  if (!file.seek(header_.bookMapOffset)) return out;
+  if (file.read(map.get(), header_.documentCount) != header_.documentCount) return out;
+
+  for (uint16_t i = 0; i < header_.documentCount; ++i) {
+    if (map[i] == book) out.push_back(i);
+  }
+  return out;
+}
+
 std::string UnitIndexCache::unitText(const uint16_t spineIndex, const study::Unit& unit) {
   const study::DocumentUnits& units = unitsFor(spineIndex);
   const size_t index = study::anchorIndexOf(units, unit);

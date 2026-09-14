@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "StudyStore/UnitIndexFormat.h"
 
@@ -37,6 +38,12 @@ class UnitIndexCache {
   // alone yields only the nav pages, not the chapters -- then persisted, so that
   // cost is paid once per publication and never at open.
   uint8_t bookFor(uint16_t spineIndex);
+
+  // Spine indices belonging to a canonical Bible book, from the persisted map.
+  // Empty outside a Bible, or before the map has been built. Used to find a
+  // passage whose stored spine hint no longer matches the publication on the
+  // card -- a book has at most 150 chapters, so this bounds that search.
+  std::vector<uint16_t> spineIndicesForBook(uint8_t book);
 
   // Visible text of a unit in `spineIndex`, for a fingerprint. Streams the
   // document; does not cache it.

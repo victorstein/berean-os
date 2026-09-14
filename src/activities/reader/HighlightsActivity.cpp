@@ -139,18 +139,19 @@ void HighlightsActivity::jumpToHighlight(const size_t docIndex) {
   if (docIndex >= STUDY.passages().size()) return;
   const auto& entry = STUDY.passages()[docIndex];
 
-  // The stored address is a Unit, so the document offset is resolved now rather
-  // than stored. A passage whose document cannot be indexed has no offset to
-  // jump to; open the document anyway rather than doing nothing.
-  const auto offset = STUDY.documentOffsetFor(docIndex);
+  // The stored address is a Unit, so BOTH the document and the offset are
+  // resolved now rather than trusted. locate() falls back to searching the book
+  // when the stored spine no longer holds, which is what makes a mark survive
+  // the publication being replaced by a different edition.
+  const auto found = STUDY.locate(docIndex);
 
   // hasVisibleTextOffset plus the resolved offset routes through the reader's
   // existing offset-based jump branch (immune to re-pagination); see the class
   // comment for why this bypasses progressChangeResultHandler.
   ProgressChangeResult result;
-  result.spineIndex = static_cast<int>(entry.documentSpine);
-  result.hasVisibleTextOffset = offset.has_value();
-  result.visibleTextOffset = offset.value_or(0);
+  result.spineIndex = static_cast<int>(found ? found->spineIndex : entry.documentSpine);
+  result.hasVisibleTextOffset = found.has_value();
+  result.visibleTextOffset = found ? found->offset : 0;
   setResult(std::move(result));
   finish();
 }
