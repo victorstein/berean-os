@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "StudyStore/UnitIndexFormat.h"
+#include "study/MigrationProgress.h"
 
 class GfxRenderer;
 
@@ -49,6 +50,10 @@ class UnitIndexCache {
   // document; does not cache it.
   std::string unitText(uint16_t spineIndex, const study::Unit& unit);
 
+  // Reported during the one-off book-map build, which is the only part of this
+  // class slow enough for a user to notice.
+  void setProgress(const MigrationProgress& progress) { progress_ = progress; }
+
   bool ready() const { return ready_; }
   const std::string& pubKey() const { return pubKey_; }
 
@@ -65,6 +70,13 @@ class UnitIndexCache {
   GfxRenderer& renderer_;
 
   bool ready_ = false;
+  // 66 books, and the spine sweep that resolves filenames is O(spine x names) --
+  // so a batch trades a little RAM for far fewer sweeps. 192 names is ~12 KB of
+  // std::string and cuts the NWT's ~1,189 chapter links to about six sweeps.
+  static constexpr size_t RESOLVE_BATCH = 192;
+  static constexpr size_t MAX_BIBLE_BOOKS = 66;
+
+  MigrationProgress progress_;
   bool bookMapBuilt_ = false;
   study::UnitIndexHeader header_;
 

@@ -31,6 +31,7 @@
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/boot_sleep/MigrationScreen.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -472,8 +473,33 @@ void setup() {
   // a pre-Phase-1 build still finds the data.
   if (MigrationRunner::pending()) {
     LOG_INF("MAIN", "Migrating study data...");
+
+    // The first migration indexes every document the user has marked and builds
+    // the Bible's spine-to-book map. That is real work, and without a screen the
+    // panel stays white for the whole of it -- which reads as a dead device.
+    static uint16_t migrationStep = 0;
+    static unsigned long lastMigrationPaintMs = 0;
+    migrationStep = 0;
+    lastMigrationPaintMs = millis();
+    migration_screen::draw(renderer, tr(STR_MIGRATING), migrationStep);
+
+    MigrationProgress migrationProgress;
+    migrationProgress.ctx = &renderer;
+    migrationProgress.label = tr(STR_MIGRATING);
+    // Throttled by TIME, not by step count. The migration ticks ~70 times and a
+    // panel refresh is 1-2 s, so painting every tick would take longer than the
+    // work it reports -- the opposite of the point. The interval is above one
+    // refresh so paints never queue up behind each other.
+    migrationProgress.onStep = [](void* ctx, const char* label) {
+      constexpr unsigned long MIGRATION_PAINT_INTERVAL_MS = 2500;
+      const unsigned long now = millis();
+      if (now - lastMigrationPaintMs < MIGRATION_PAINT_INTERVAL_MS) return;
+      lastMigrationPaintMs = now;
+      migration_screen::draw(*static_cast<const GfxRenderer*>(ctx), label, ++migrationStep);
+    };
+
     MigrationRunner::Summary migration;
-    if (!MigrationRunner::runIfPending(migration, renderer)) {
+    if (!MigrationRunner::runIfPending(migration, renderer, migrationProgress)) {
       LOG_ERR("MAIN", "Migration incomplete; legacy store untouched");
     }
     LOG_INF("MAIN", "read=%u written=%u verse=%u para=%u docoff=%u mismatch=%u pending=%u dropped=%u tags=%u",

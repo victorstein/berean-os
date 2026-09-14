@@ -13,6 +13,8 @@
 // the spec calls non-negotiable: a pre-Phase-1 build resolves the ORIGINAL
 // filename, would find nothing, report "safe to save over", and be one highlight
 // away from overwriting the user's data.
+#include "study/MigrationProgress.h"
+
 class GfxRenderer;
 
 namespace MigrationRunner {
@@ -39,7 +41,7 @@ bool pending();
 // Takes the renderer because SpineHtmlStream borrows the framebuffer to draw
 // the indexing popup on a large inflate. Migration runs at boot, before any
 // activity, so main.cpp's global renderer is the one to pass.
-bool runIfPending(Summary& summary, GfxRenderer& renderer);
+bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgress& progress = {});
 
 inline constexpr const char* REPORT_PATH = "/.berean/migration-report.json";
 inline constexpr const char* LEDGER_PATH = "/.berean/migration-ledger.json";

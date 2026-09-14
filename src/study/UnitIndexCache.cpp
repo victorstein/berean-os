@@ -255,7 +255,7 @@ bool UnitIndexCache::buildBookMap() {
 
   std::vector<std::string> books = nav.scanner.take();
   if (books.empty()) return false;
-  if (books.size() > 66) books.resize(66);
+  if (books.size() > MAX_BIBLE_BOOKS) books.resize(MAX_BIBLE_BOOKS);
 
   auto map = makeUniqueNoThrow<uint8_t[]>(header_.documentCount);
   if (!map) {
@@ -264,40 +264,81 @@ bool UnitIndexCache::buildBookMap() {
   }
   memset(map.get(), 0, header_.documentCount);
 
+  // Every filename resolved here goes through ONE forward sweep of the spine.
+  // A sweep is getSpineEntry per item -- two SD seeks, a read and a heap string
+  // each (BookMetadataCache.cpp:520-524) -- so on the NWT that is 3,937 of them.
+  //
+  // Resolving one filename at a time cost a sweep EACH: 66 books plus a second
+  // sweep per book's chapter list is ~127 sweeps, which is minutes of SD I/O
+  // behind a blank screen. Batching keeps it to a handful, because a sweep
+  // matches every pending filename as it goes and stops early once all are
+  // found.
+  std::vector<std::string> pendingNames;
+  std::vector<uint8_t> pendingBooks;
+  pendingNames.reserve(RESOLVE_BATCH);
+  pendingBooks.reserve(RESOLVE_BATCH);
+
+  const auto flush = [&]() {
+    if (pendingNames.empty()) return;
+    auto spines = makeUniqueNoThrow<int[]>(pendingNames.size());
+    if (spines) {
+      epub_->resolveFilenamesToSpineIndices(pendingNames.data(), spines.get(), static_cast<int>(pendingNames.size()));
+      for (size_t i = 0; i < pendingNames.size(); ++i) {
+        if (spines[i] >= 0 && spines[i] < header_.documentCount) map[spines[i]] = pendingBooks[i];
+      }
+    }
+    pendingNames.clear();
+    pendingBooks.clear();
+    progress_.tick();
+    vTaskDelay(1);
+  };
+
+  // Pass 1: the book-nav page's own targets, all in one batch. For a
+  // single-chapter book that target IS the chapter; for the rest it is the
+  // chapter-nav page, whose spine index pass 2 needs.
+  std::vector<int> bookTargetSpine(books.size(), -1);
+  {
+    auto spines = makeUniqueNoThrow<int[]>(books.size());
+    if (!spines) {
+      LOG_ERR(MODULE, "OOM: book targets");
+      return false;
+    }
+    epub_->resolveFilenamesToSpineIndices(books.data(), spines.get(), static_cast<int>(books.size()));
+    for (size_t i = 0; i < books.size(); ++i) {
+      bookTargetSpine[i] = spines[i];
+      // The five single-chapter books (Obadiah, Philemon, 2 John, 3 John, Jude)
+      // have no nav page of their own and point straight at their chapter.
+      if (!BibleNav::isChapterNav(books[i]) && spines[i] >= 0 && spines[i] < header_.documentCount) {
+        map[spines[i]] = static_cast<uint8_t>(i + 1);
+      }
+    }
+    progress_.tick();
+    vTaskDelay(1);
+  }
+
+  // Pass 2: every chapter link from every nav page, accumulated across books so
+  // one sweep resolves many.
   for (size_t i = 0; i < books.size(); ++i) {
     const uint8_t bookNumber = static_cast<uint8_t>(i + 1);
-
-    if (!BibleNav::isChapterNav(books[i])) {
-      // One of the five single-chapter books (Obadiah, Philemon, 2 John,
-      // 3 John, Jude): the book row points straight at its chapter.
-      int spine = -1;
-      epub_->resolveFilenamesToSpineIndices(&books[i], &spine, 1);
-      if (spine >= 0 && spine < header_.documentCount) map[spine] = bookNumber;
-      continue;
-    }
-
-    const int chapterNavSpine = epub_->resolveHrefToSpineIndex(books[i]);
-    if (chapterNavSpine < 0) continue;
+    if (!BibleNav::isChapterNav(books[i]) || bookTargetSpine[i] < 0) continue;
 
     NavContext chapters;
     if (!chapters.scanner.valid()) continue;
-    if (!SpineHtmlStream::stream(epub_, chapterNavSpine, renderer_, feedNav, &chapters)) continue;
+    if (!SpineHtmlStream::stream(epub_, static_cast<int>(bookTargetSpine[i]), renderer_, feedNav, &chapters)) continue;
 
     std::vector<std::string> links = chapters.scanner.take();
     BibleNav::dropBookNavLinks(links);
-    if (links.empty()) continue;
-
-    auto spines = makeUniqueNoThrow<int[]>(links.size());
-    if (!spines) continue;
-    epub_->resolveFilenamesToSpineIndices(links.data(), spines.get(), static_cast<int>(links.size()));
-    for (size_t c = 0; c < links.size(); ++c) {
-      if (spines[c] >= 0 && spines[c] < header_.documentCount) map[spines[c]] = bookNumber;
+    for (auto& link : links) {
+      pendingNames.push_back(std::move(link));
+      pendingBooks.push_back(bookNumber);
+      if (pendingNames.size() >= RESOLVE_BATCH) flush();
     }
 
-    // 66 nav pages is ~66 document reads. The watchdog panics at 5 s and a panic
-    // during a boot-time pass reboots into the same pass.
+    // Yielded every book, not only on the paths that reach the end of the loop
+    // body: the `continue`s above used to skip it entirely.
     vTaskDelay(1);
   }
+  flush();
 
   HalFile file = Storage.open(indexPath().c_str(), O_RDWR);
   if (!file) return false;

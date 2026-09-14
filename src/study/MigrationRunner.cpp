@@ -153,7 +153,7 @@ bool pending() {
   return false;
 }
 
-bool runIfPending(Summary& summary, GfxRenderer& renderer) {
+bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgress& progress) {
   const auto sources = legacySources();
   if (sources.empty()) return true;
 
@@ -237,7 +237,10 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer) {
     std::unique_ptr<UnitIndexCache> index;
     if (sourceAvailable) {
       index = makeUniqueNoThrow<UnitIndexCache>(sharedEpub, pubKey, renderer);
-      if (index && !index->begin()) index.reset();
+      if (index) {
+        index->setProgress(progress);
+        if (!index->begin()) index.reset();
+      }
     }
 
     for (const auto& entry : legacy.highlights()) {
@@ -307,6 +310,7 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer) {
 
       // One yield per document, not per source file: 50 documents at ~30 ms is
       // comfortable, 200 would not be, and the watchdog panics at 5 s.
+      progress.tick();
       vTaskDelay(1);
     }
 
