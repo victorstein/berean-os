@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/victorstein/berean-os/compare/v1.5.0...v1.6.0) (2026-09-14)
+
+
+### Features
+
+* add the publication catalog index format ([3299c67](https://github.com/victorstein/berean-os/commit/3299c67af6254ea8cd00ac20e59f8ae9b55c5875))
+* build and publish the publication catalog index in CI ([79d3e4f](https://github.com/victorstein/berean-os/commit/79d3e4fe6c35a1205b1a628015530face9f2e54e))
+
 ## [1.5.0](https://github.com/victorstein/berean-os/compare/v1.4.0...v1.5.0) (2026-09-14)
 
 
