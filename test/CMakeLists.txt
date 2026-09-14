@@ -77,6 +77,7 @@ add_subdirectory(tag_rows)
 add_subdirectory(return_stack)
 
 add_subdirectory(wol_week_scan)
+add_subdirectory(meeting_week_table)
 
 add_subdirectory(month_name_map)
 
@@ -105,3 +106,5 @@ add_subdirectory(unit_index_format)
 add_subdirectory(pub_key)
 add_subdirectory(nav_key_gestures)
 add_subdirectory(catalog_index)
+add_subdirectory(catalog_archive)
+add_subdirectory(catalog_stamp)

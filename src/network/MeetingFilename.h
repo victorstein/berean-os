@@ -14,3 +14,13 @@
 //
 // Pure: no I/O, no globals.
 std::string meetingPublicationFilename(const char* pubName, const char* issue, const std::string& url);
+
+// "202607" -> "2026-07", the suffix meetingPublicationFilename writes. Empty for
+// anything that is not six digits.
+std::string issueSuffix(const char* issue);
+
+// The " YYYY-MM" a meeting download carries, without the extension, or empty.
+// This is the only marker of a meeting publication that survives on the card:
+// the CDN name is discarded at download time and the symbol appears nowhere in
+// the file, so recognising one after the fact means recognising this suffix.
+std::string meetingIssueSuffixOf(const std::string& filename);

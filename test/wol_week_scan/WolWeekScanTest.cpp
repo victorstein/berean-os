@@ -147,6 +147,21 @@ TEST(MeetingUrls, PadTheWeekAndCarryTheIssue) {
             "GETPUBMEDIALINKS?output=json&pub=mwb&langwritten=S&fileformat=EPUB&issue=202609");
 }
 
+TEST(MeetingUrls, ANonPeriodicalOmitsTheIssueParameterEntirely) {
+  // Buscar downloads by symbol, and most of the catalog has no issue. The API
+  // answers "lff" only when the parameter is absent; sending it empty is a
+  // not-found.
+  EXPECT_EQ(pubMediaUrlForSymbol("lff", "", "S"),
+            "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=lff&langwritten=S&fileformat=EPUB");
+  EXPECT_EQ(pubMediaUrlForSymbol("lff", nullptr, "S"),
+            "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=lff&langwritten=S&fileformat=EPUB");
+}
+
+TEST(MeetingUrls, ASymbolWithAnIssueMatchesTheMeetingForm) {
+  EXPECT_EQ(pubMediaUrlForSymbol("w", "202607", "S"), pubMediaUrl(MeetingPub::Watchtower, "202607", "S"))
+      << "the meeting downloader and Buscar must resolve the same publication the same way";
+}
+
 TEST(MeetingUrls, FilenameComesFromTheLastPathSegment) {
   EXPECT_EQ(filenameFromUrl("https://cfp2.jw-cdn.org/a/717b307/1/o/w_S_202607.epub"), "w_S_202607.epub");
   EXPECT_EQ(filenameFromUrl("mwb_S_202609.epub"), "mwb_S_202609.epub");

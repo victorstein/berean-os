@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "RecentBooksStore.h"
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
 
@@ -44,8 +47,30 @@ class LauncherActivity final : public Activity {
   void activate(Tile tile);
   void openBible();
   void openMeetings();
+  void openSearch();
   void openTagsAndSettings();
-  void drawTile(const TileRect& rect, const char* title, const char* subtitle, bool selected, bool emphasised) const;
+  void drawTile(const TileRect& rect, const char* title, const char* subtitle, bool selected, bool emphasised,
+                const std::string& coverPath, const uint8_t* icon) const;
+  // A publication's own cover when the card has one, else the tile's icon.
+  // Covers are what make the launcher legible at a glance -- a shelf of books
+  // rather than a list of words -- so the icon is the fallback, not the default.
+  void drawTileArt(int x, int y, int w, int h, const std::string& coverPath, const uint8_t* icon) const;
+  void drawCoverTile(const TileRect& rect, const std::string& coverPath, const char* title, const char* subtitle,
+                     const uint8_t* icon, bool selected, float focusBand) const;
+  bool drawCoverFilling(const std::string& coverPath, const TileRect& rect, int visibleHeight, float focusBand) const;
+  void drawCenteredIn(int x, int w, int top, const char* title, const char* subtitle) const;
+  // Draws the cover at its stored size, or returns 0 without drawing. Never
+  // rescales: the thumbnails are dithered 1-bit and resampling destroys them.
+  int drawCoverNative(const std::string& coverPath, int x, int y, int boxWidth, int boxHeight) const;
+  int tileArtHeight(const TileRect& rect, bool hasSubtitle) const;
+  static int coverFillHeight(const TileRect& tile);
+  static std::string coverThumbFor(const std::string& bookPath, int height, bool& generatedAny);
+  // Finds a meeting publication the registry does not know about, for downloads
+  // that predate it. Keyed on the downloader's own filename convention.
+  static std::optional<std::string> findMeetingPublicationOnCard();
+  // Height of a tile's text block, so computeLayout can size a tile around its
+  // contents and drawTile can centre the same block inside it.
+  int tileTextHeight(int titleFont, bool hasSubtitle) const;
 
   // Resolved once on entry: the resume strip needs a book, and the Bible tile
   // needs to know whether one is on the card before offering to open it.
@@ -57,6 +82,9 @@ class LauncherActivity final : public Activity {
 
   std::string biblePath;
   std::string bibleSubtitle;
+  std::string bibleCoverPath;
+  std::string meetingsSubtitle;
+  std::string meetingsCoverPath;
   std::string resumePath;
   std::string resumeTitle;
   bool hasResume = false;
