@@ -37,9 +37,7 @@ size_t split(const std::string_view line, std::string_view* fields, const size_t
 // ASCII-only, deliberately. Folding Spanish accents would need a table this
 // device does not otherwise carry, and JW symbols are ASCII; a user searching
 // "atalaya" still matches "La Atalaya" without it.
-char lowerAscii(const char c) {
-  return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
-}
+char lowerAscii(const char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; }
 
 bool containsFold(const std::string_view haystack, const std::string_view needle) {
   if (needle.empty()) return true;
@@ -110,8 +108,8 @@ bool matches(const Entry& entry, const std::string_view query) {
     if (!term.empty()) {
       sawTerm = true;
       // Every term must hit, so a second word narrows rather than widens.
-      if (!containsFold(entry.title, term) && !containsFold(entry.symbol, term) &&
-          !containsFold(entry.issue, term) && !containsFold(entry.year, term)) {
+      if (!containsFold(entry.title, term) && !containsFold(entry.symbol, term) && !containsFold(entry.issue, term) &&
+          !containsFold(entry.year, term)) {
         return false;
       }
     }

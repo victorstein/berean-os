@@ -1,0 +1,89 @@
+name: Catalog Index
+
+# Publishes the slim publication index the device searches in Buscar.
+#
+# Deliberately NOT a firmware release asset. An 18 KB data change must not
+# require a 5.6 MB OTA and an app0/app1 flash cycle, and it must not ride on the
+# releases/latest semantics that already produced an rc-versus-release ordering
+# problem here. It goes to its own fixed tag instead, on its own schedule.
+
+on:
+  schedule:
+    # Weekly. The catalog changes when publications are released, not daily, and
+    # each run pulls 57.6 MB from someone else's CDN.
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: catalog-index
+  cancel-in-progress: false
+
+jobs:
+  build-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Fetch the previous index
+        continue-on-error: true
+        run: |
+          for lang in S E; do
+            curl -sfL -o "previous-$lang.txt" \
+              "https://github.com/${{ github.repository }}/releases/download/catalog/catalog-$lang.txt" || true
+          done
+
+      - name: Build the Spanish index
+        id: spanish
+        run: |
+          set +e
+          # No --db: this step downloads and inflates catalog.db, which the
+          # English step then reuses.
+          python3 scripts/build_catalog_index.py \
+            --language-id 1 --language-code S \
+            --out catalog-S.txt --previous previous-S.txt
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Build the English index
+        id: english
+        run: |
+          set +e
+          # Reuses the catalog.db the Spanish step already inflated, so the
+          # 57.6 MB transfer happens once per run rather than once per language.
+          python3 scripts/build_catalog_index.py \
+            --language-id 0 --language-code E \
+            --db catalog.db --out catalog-E.txt --previous previous-E.txt
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Publish
+        # Exit 3 from the builder means the records were byte-identical to the
+        # published index, so there is nothing to republish. Any other non-zero
+        # is a real failure and must not silently leave the old index in place
+        # looking fresh.
+        if: steps.spanish.outputs.status == '0' || steps.english.outputs.status == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view catalog --repo "${{ github.repository }}" >/dev/null 2>&1 \
+            || gh release create catalog \
+                 --repo "${{ github.repository }}" \
+                 --title "Publication catalog index" \
+                 --notes "Slim per-language index built from JW Library's published catalog. Symbols, issue codes, years and titles only. Rebuilt weekly; replaced in place, so the download URL is stable." \
+                 --latest=false
+          for f in catalog-S.txt catalog-E.txt; do
+            [ -f "$f" ] && gh release upload catalog "$f" --repo "${{ github.repository }}" --clobber
+          done
+
+      - name: Fail loudly on a real error
+        if: steps.spanish.outputs.status != '0' && steps.spanish.outputs.status != '3'
+        run: |
+          echo "Spanish index build failed with ${{ steps.spanish.outputs.status }}"
+          exit 1

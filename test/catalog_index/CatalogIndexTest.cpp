@@ -30,8 +30,7 @@ TEST(CatalogHeader, ParsesTheProvenanceFields) {
   EXPECT_EQ(h.version, catalog::FORMAT_VERSION);
   EXPECT_EQ(h.language, "S");
   EXPECT_EQ(h.manifestId, "9c7204f8-45e7-43d8-afea-c14ecb035c55");
-  EXPECT_EQ(h.builtOn, "2026-09-12")
-      << "the build date is shown to the user, so stale can be told from empty";
+  EXPECT_EQ(h.builtOn, "2026-09-12") << "the build date is shown to the user, so stale can be told from empty";
 }
 
 TEST(CatalogHeader, RejectsAnythingWithoutTheMagic) {
