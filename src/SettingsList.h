@@ -373,8 +373,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
 
         // Publication download folder: persisted + web-exposed, but category-less
         // so it is hidden from the on-device Settings screen.
-        SettingInfo::String(StrId::STR_DOWNLOAD_FOLDER, &SETTINGS.downloadFolder[0],
-                            sizeof(SETTINGS.downloadFolder), "downloadFolder"),
+        SettingInfo::String(StrId::STR_DOWNLOAD_FOLDER, &SETTINGS.downloadFolder[0], sizeof(SETTINGS.downloadFolder),
+                            "downloadFolder"),
 
         // Frontlight quick-panel state: persisted and web-exposed, but hidden
         // from the on-device Settings screen because the swipe panel owns it.

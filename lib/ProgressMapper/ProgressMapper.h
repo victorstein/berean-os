@@ -6,7 +6,6 @@
 #include <optional>
 #include <string>
 
-
 /**
  * CrossPoint position representation.
  */

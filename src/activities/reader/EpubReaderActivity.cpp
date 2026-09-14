@@ -1265,7 +1265,6 @@ void EpubReaderActivity::renderBook() {
     }
   }
 
-
   if (pendingScreenshot) {
     pendingScreenshot = false;
     ScreenshotUtil::takeScreenshot(renderer);
@@ -1274,12 +1273,9 @@ void EpubReaderActivity::renderBook() {
   if (showBookmarkMessage) {
     GUI.drawPopup(renderer, bookmarkRemoved ? tr(STR_BOOKMARK_REMOVED) : tr(STR_BOOKMARK_ADDED));
   }
-
 }
 
-void EpubReaderActivity::onEndOfBookRendered() {
-  automaticPageTurnActive = false;
-}
+void EpubReaderActivity::onEndOfBookRendered() { automaticPageTurnActive = false; }
 
 bool EpubReaderActivity::applyDeferredReposition() {
   if ((!cachedVisibleTextOffset.has_value() && cachedChapterTotalPageCount == 0) || !section || section->isBuilding()) {
