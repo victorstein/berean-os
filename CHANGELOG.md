@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/victorstein/berean-os/compare/v1.6.0...v1.7.0) (2026-09-14)
+
+
+### Features
+
+* launcher covers, catalog search, and the meetings library ([#14](https://github.com/victorstein/berean-os/issues/14)) ([b1412ef](https://github.com/victorstein/berean-os/commit/b1412ef7405db620da47f9abf208cde1176f652a))
+
 ## [1.6.0](https://github.com/victorstein/berean-os/compare/v1.5.0...v1.6.0) (2026-09-14)
 
 
