@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -23,10 +25,23 @@ class PublicationsActivity final : public UiListActivity {
   void onEnter() override;
 
  private:
+  // Square icon slot the list reserves. A cover generated at exactly this
+  // height is narrower than it, so BitmapMode::Contain fits it at scale 1.0 --
+  // which is the whole point: these thumbnails are dithered 1-bit and any
+  // rescaling turns them to static.
+  static constexpr int THUMB_HEIGHT = 44;
+  // Bounds what a card full of books can pin. Beyond this the rows fall back to
+  // the generic icon rather than growing the buffer without limit.
+  static constexpr size_t MAX_THUMBS = 32;
+
   struct Entry {
     std::string path;
     std::string label;
     std::string subtitle;
+    // BW1 rows, natural orientation, (width+7)/8 per row. Null when the book
+    // has no usable cover.
+    std::unique_ptr<uint8_t[]> thumb;
+    uint16_t thumbWidth = 0;
   };
 
   // Search row, a section header, then one row per publication. The header is
@@ -49,6 +64,9 @@ class PublicationsActivity final : public UiListActivity {
   int entryIndexForRow(int row) const;
 
   void refresh();
+  // Loads the cached cover for `entry`, generating it once if absent. Returns
+  // false when the book has no cover to show.
+  bool loadThumb(Entry& entry, bool& generatedAny);
   void openSearch();
 
   void confirmDelete(size_t entryIndex);

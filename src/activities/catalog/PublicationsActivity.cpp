@@ -1,6 +1,12 @@
 #include "PublicationsActivity.h"
 
+#include <Bitmap.h>
+#include <Epub.h>
+#include <FsHelpers.h>
+#include <HalStorage.h>
 #include <I18n.h>
+#include <Logging.h>
+#include <Memory.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -8,10 +14,15 @@
 #include "CatalogSearchActivity.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
+#include "components/UiAppHelpers.h"
 #include "study/PubKeyRegistry.h"
 #include "util/CardBooks.h"
 
 namespace fui = freeink::ui;
+
+namespace {
+constexpr const char* MODULE = "PUBS";
+}  // namespace
 
 PublicationsActivity::PublicationsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("Publications", renderer, mappedInput, /*wantsTouchLongPress=*/true) {}
@@ -51,6 +62,70 @@ void PublicationsActivity::refresh() {
     }
     entries_.push_back(std::move(entry));
   }
+
+  // Generating a cover opens the EPUB, so it happens once per book and behind a
+  // popup -- the same shape the old home screen used for its recents covers.
+  bool generatedAny = false;
+  Rect popupRect{};
+  for (size_t i = 0; i < entries_.size() && i < MAX_THUMBS; ++i) {
+    const bool hadPopup = generatedAny;
+    if (!loadThumb(entries_[i], generatedAny)) continue;
+    if (generatedAny && !hadPopup) popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+    if (generatedAny) {
+      GUI.fillPopupProgress(renderer, popupRect, static_cast<int>((i + 1) * 100 / entries_.size()));
+    }
+  }
+}
+
+bool PublicationsActivity::loadThumb(Entry& entry, bool& generatedAny) {
+  if (!FsHelpers::hasEpubExtension(entry.path)) return false;
+
+  Epub epub(entry.path, "/.crosspoint");
+  const std::string thumbPath = epub.getThumbBmpPath(THUMB_HEIGHT);
+  if (!Storage.exists(thumbPath.c_str())) {
+    generatedAny = true;
+    // buildIfMissing: a book that has never been opened has no metadata cache,
+    // and generateThumbBmp refuses without one.
+    epub.load(true, true);
+    if (!epub.generateThumbBmp(THUMB_HEIGHT) || !Storage.exists(thumbPath.c_str())) return false;
+  }
+
+  HalFile file;
+  if (!Storage.openFileForRead(MODULE, thumbPath, file)) return false;
+  Bitmap bitmap(file);
+  if (bitmap.parseHeaders() != BmpReaderError::Ok) return false;
+
+  const int width = bitmap.getWidth();
+  const int height = bitmap.getHeight();
+  if (width <= 0 || height <= 0 || width > THUMB_HEIGHT || height != THUMB_HEIGHT) return false;
+
+  const size_t stride = static_cast<size_t>((width + 7) / 8);
+  auto bits = makeUniqueNoThrow<uint8_t[]>(stride * static_cast<size_t>(height));
+  auto packedRow = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>((width + 3) / 4));
+  auto rowScratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(bitmap.getRowBytes()));
+  if (!bits || !packedRow || !rowScratch) {
+    LOG_ERR(MODULE, "OOM: cover thumbnail for %s", entry.path.c_str());
+    return false;
+  }
+  memset(bits.get(), 0, stride * static_cast<size_t>(height));
+
+  for (int row = 0; row < height; ++row) {
+    if (bitmap.readNextRow(packedRow.get(), rowScratch.get()) != BmpReaderError::Ok) return false;
+    // BitmapRef is natural row-major; a bottom-up BMP arrives last row first.
+    const int destRow = bitmap.isTopDown() ? row : height - 1 - row;
+    for (int column = 0; column < width; ++column) {
+      // readNextRow quantises to 2 bits; anything below opaque white is ink.
+      const uint8_t value = packedRow[column / 4] >> (6 - ((column * 2) % 8)) & 0x3;
+      // BW1: a set bit is ink.
+      if (value < 3)
+        bits[static_cast<size_t>(destRow) * stride + static_cast<size_t>(column / 8)] |=
+            static_cast<uint8_t>(0x80u >> (column % 8));
+    }
+  }
+
+  entry.thumb = std::move(bits);
+  entry.thumbWidth = static_cast<uint16_t>(width);
+  return true;
 }
 
 void PublicationsActivity::buildScreen(UiScreen& screen) {
@@ -81,6 +156,12 @@ void PublicationsActivity::buildScreen(UiScreen& screen) {
     fui::ListItem item{};
     item.label = entries_[i].label.c_str();
     if (!entries_[i].subtitle.empty()) item.subtitle = entries_[i].subtitle.c_str();
+    if (entries_[i].thumb) {
+      item.icon = fui::BitmapRef{entries_[i].thumb.get(), entries_[i].thumbWidth, THUMB_HEIGHT, fui::BitmapFormat::BW1,
+                                 /*progmem=*/false};
+    } else {
+      item.icon = listIconFor(UIIcon::Book, 32);
+    }
     // The ROW, not the entry: UiListActivity assigns this straight to
     // nav.selected, so an entry index here would desync the viewport.
     item.actionValue = static_cast<int16_t>(FIRST_BOOK_ROW + i);
@@ -90,6 +171,7 @@ void PublicationsActivity::buildScreen(UiScreen& screen) {
   fui::ListProps props;
   props.items = rowItems_.data();
   props.count = static_cast<uint16_t>(rowItems_.size());
+  props.iconSize = THUMB_HEIGHT;
   props.action = ACTION_ROW;
   // Long-press deletes; the physical-button path stays in loop().
   props.inputMask = fui::InputTouch | fui::InputLongPress;
