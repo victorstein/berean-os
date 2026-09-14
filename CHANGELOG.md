@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/victorstein/berean-os/compare/v1.7.0...v1.7.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* show this week's meeting publication and wait for a usable link ([#16](https://github.com/victorstein/berean-os/issues/16)) ([e87a68e](https://github.com/victorstein/berean-os/commit/e87a68e7b1ba7481fb0cf1e4e7275563584af263))
+
 ## [1.7.0](https://github.com/victorstein/berean-os/compare/v1.6.0...v1.7.0) (2026-09-14)
 
 
