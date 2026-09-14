@@ -3,9 +3,9 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
-#include "CrossPointSettings.h"
 #include "network/MeetingFilename.h"
 #include "study/PubKeyRegistry.h"
+#include "util/CardBooks.h"
 
 namespace {
 
@@ -19,19 +19,11 @@ std::string scanCardForIssue(const MeetingPub pub, const std::string& issue) {
   const std::string suffix = issueSuffix(issue.c_str());
   if (suffix.empty()) return {};
 
-  std::string folder = SETTINGS.downloadFolder[0] != '\0' ? SETTINGS.downloadFolder : "/";
-  while (folder.size() > 1 && folder.back() == '/') folder.pop_back();
-  // Epub keys its cache directory on a hash of the path, so a doubled separator
-  // here would name a different cache than the reader uses for the same file.
-  const std::string prefix = folder == "/" ? "/" : folder + "/";
-
   std::string fallback;
-  for (const String& entry : Storage.listFiles(folder.c_str(), 200)) {
-    const std::string name = entry.c_str();
-    if (meetingIssueSuffixOf(name) != suffix) continue;
+  for (const std::string& path : CardBooks::list()) {
+    if (meetingIssueSuffixOf(path) != suffix) continue;
 
-    const std::string path = name.find('/') == std::string::npos ? prefix + name : name;
-    if (namedLikeTheWatchtower(name) == (pub == MeetingPub::Watchtower)) return path;
+    if (namedLikeTheWatchtower(path) == (pub == MeetingPub::Watchtower)) return path;
     // Right issue, wrong-looking name: keep it only if nothing better turns up,
     // since a publication renamed by hand still beats offering a download of a
     // file that is already there.

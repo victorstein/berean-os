@@ -9,6 +9,7 @@
 
 #include "CrossPointSettings.h"
 #include "RecentBooksStore.h"
+#include "util/BookCacheUtils.h"
 
 namespace {
 
@@ -42,10 +43,6 @@ std::vector<std::string> list() {
   return out;
 }
 
-std::string cachePathFor(const std::string& bookPath) {
-  return "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(bookPath));
-}
-
 bool remove(const std::string& bookPath) {
   if (bookPath.empty()) return false;
 
@@ -57,7 +54,7 @@ bool remove(const std::string& bookPath) {
 
   // Non-fatal: a book with no cache yet has no directory to drop, and one left
   // behind costs space rather than correctness.
-  Storage.removeDir(cachePathFor(bookPath).c_str());
+  Storage.removeDir(bookCachePath(bookPath).c_str());
 
   if (RECENT_BOOKS.removeByPath(bookPath)) RECENT_BOOKS.saveToFile();
   return true;

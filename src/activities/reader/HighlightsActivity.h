@@ -12,11 +12,12 @@
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
 
-// Browse this book's highlights (most recent first) and jump to one, filter
-// them by tag, or delete one. HighlightDoc is passed by reference and is
-// always this ONE book's document -- there is no cross-book list here, and
-// the tag filter only ever cycles through highlightDoc.tags(), this book's
-// own palette.
+// Browse this publication's passages (most recent first) and jump to one,
+// filter them by tag, or delete one. The list is always the ONE open
+// publication's -- there is no cross-publication list here -- while the tag
+// filter cycles StudyStore's palette, which since Phase 1 is global. So a tag
+// coined in another publication appears in the filter and simply matches
+// nothing here.
 //
 // Row 0 is a persistent filter control, not a highlight: tapping/confirming
 // it cycles filterTagIndex_ through nullopt ("All") -> tag 0 -> tag 1 -> ...

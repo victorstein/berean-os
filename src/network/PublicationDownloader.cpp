@@ -33,12 +33,6 @@ constexpr size_t HASH_CHUNK_BYTES = 2048;
 // Hashing several MB off the SD card runs well past the task watchdog window.
 constexpr int HASH_CHUNKS_PER_WATCHDOG_RESET = 64;
 
-// Matches Epub's own key derivation (Epub.h:48): the cache directory is the hash
-// of the full path as passed in, so it moves whenever the file is renamed.
-std::string bookCachePath(const std::string& bookPath) {
-  return "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(bookPath));
-}
-
 void reportPhase(const Hooks& hooks, const char* message) {
   if (hooks.onPhase) hooks.onPhase(hooks.ctx, message);
 }
