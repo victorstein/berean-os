@@ -306,6 +306,14 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   buildPopupPending = false;
 }
 
+void EpubReaderActivity::openHighlightPassageAt(const int touchX, const int touchY) {
+  pendingSelectionAnchorX = touchX;
+  pendingSelectionAnchorY = touchY;
+  openHighlightPassage();
+  pendingSelectionAnchorX = -1;
+  pendingSelectionAnchorY = -1;
+}
+
 void EpubReaderActivity::openHighlightPassage() {
   if (!section) return;
   auto page = section->loadPage(section->currentPage);
@@ -329,7 +337,8 @@ void EpubReaderActivity::openHighlightPassage() {
   startActivityForResult(
       std::make_unique<PassageSelectActivity>(renderer, mappedInput, std::move(page), orientedMarginLeft,
                                               orientedMarginTop, columnRight, static_cast<uint16_t>(currentSpineIndex),
-                                              *epub, *section, static_cast<uint16_t>(section->currentPage)),
+                                              *epub, *section, static_cast<uint16_t>(section->currentPage),
+                                              pendingSelectionAnchorX, pendingSelectionAnchorY),
       [this](const ActivityResult&) { requestUpdate(); });
 }
 
@@ -434,6 +443,19 @@ void EpubReaderActivity::loop() {
   }
 
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
+
+  // Long-press a word to start a selection. Consumed before anything else can
+  // read the contact, and suppressed inside the centre third where a long
+  // contact would be ambiguous with the reader-menu tap.
+  {
+    int longPressX = 0;
+    int longPressY = 0;
+    if (SETTINGS.touchReaderControls && mappedInput.wasScreenLongPress(longPressX, longPressY) &&
+        !ReaderUtils::isInMenuZone(renderer, longPressX, longPressY)) {
+      openHighlightPassageAt(longPressX, longPressY);
+      return;
+    }
+  }
 
   if (automaticPageTurnActive) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||

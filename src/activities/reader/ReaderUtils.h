@@ -126,17 +126,23 @@ inline TouchPageTurn detectTouchPageTurn(GfxRenderer& renderer, const MappedInpu
 // so the centered rectangle remains free in tap mode. The opt-out is only
 // surfaced on home-key boards (SettingsList), where the menu stays reachable
 // through the key's long-press function.
+// The centre third, in both axes. A long contact here is ambiguous with the
+// reader-menu tap, so the selection gesture stays out of it.
+inline bool isInMenuZone(const GfxRenderer& renderer, const int x, const int y) {
+  const int width = renderer.getScreenWidth();
+  const int height = renderer.getScreenHeight();
+  const int zoneWidth = width / 3;
+  const int zoneHeight = height / 3;
+  return x >= zoneWidth && x < width - zoneWidth && y >= zoneHeight && y < height - zoneHeight;
+}
+
 inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
   if (!input.hasTouch()) return false;
   if (!SETTINGS.tapForReaderMenu) return false;
   int x = 0;
   int y = 0;
   if (!input.wasScreenTapped(x, y)) return false;
-  const int width = renderer.getScreenWidth();
-  const int height = renderer.getScreenHeight();
-  const int zoneWidth = width / 3;
-  const int zoneHeight = height / 3;
-  return x >= zoneWidth && x < width - zoneWidth && y >= zoneHeight && y < height - zoneHeight;
+  return isInMenuZone(renderer, x, y);
 }
 
 // Reader menu opens on the menu edge-swipe or a center-third tap. On home-key

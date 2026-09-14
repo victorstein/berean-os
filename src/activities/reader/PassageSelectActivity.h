@@ -40,7 +40,7 @@ class PassageSelectActivity final : public Activity {
  public:
   explicit PassageSelectActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Page> page,
                                  int marginLeft, int marginTop, int columnRight, uint16_t spineIndex, Epub& epub,
-                                 Section& section, uint16_t pageNumber)
+                                 Section& section, uint16_t pageNumber, int anchorTouchX = -1, int anchorTouchY = -1)
       : Activity("PassageSelect", renderer, mappedInput),
         page(std::move(page)),
         marginLeft(marginLeft),
@@ -49,7 +49,9 @@ class PassageSelectActivity final : public Activity {
         spineIndex(spineIndex),
         epub(epub),
         section(section),
-        currentPageNumber(pageNumber) {}
+        currentPageNumber(pageNumber),
+        pendingAnchorX(anchorTouchX),
+        pendingAnchorY(anchorTouchY) {}
 
   void onEnter() override;
   void loop() override;
@@ -125,6 +127,13 @@ class PassageSelectActivity final : public Activity {
   std::vector<HighlightRect> committedRects;
 
   Phase phase = Phase::PickingStart;
+
+  // Set when the selection was opened by long-pressing a word on the reading
+  // surface. onEnter resolves them to a word and skips straight to PickingEnd,
+  // so reading to tagged stays one continuous gesture: the long-press IS the
+  // mode switch, with no mode to enter first.
+  int pendingAnchorX = -1;
+  int pendingAnchorY = -1;
   int cursor = 0;
   // Absolute visible-codepoint offset of the first anchor. Survives a page
   // turn, which the index cannot.

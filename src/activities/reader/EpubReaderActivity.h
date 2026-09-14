@@ -58,6 +58,12 @@ class EpubReaderActivity final : public ReaderActivity {
   // rather than of one book.
   bool highlightsLoaded = false;
 
+  // Where a long press anchored the pending selection, or -1. Lives here rather
+  // than as a parameter because openHighlightPassage is also reached from the
+  // reader menu and the Home-key hold, which carry no touch point.
+  int pendingSelectionAnchorX = -1;
+  int pendingSelectionAnchorY = -1;
+
   // Footnote support
   std::vector<FootnoteEntry> currentPageFootnotes;
   ReturnStack returnStack;
@@ -100,6 +106,9 @@ class EpubReaderActivity final : public ReaderActivity {
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
   void openReaderMenu();
   void openHighlightPassage();
+  // Long-press a word to anchor a selection there. Suppressed inside the centre
+  // menu zone, where a long contact would be ambiguous with the menu tap.
+  void openHighlightPassageAt(int touchX, int touchY);
   void openHighlights();
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void loadCachedBookmarks();

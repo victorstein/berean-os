@@ -67,6 +67,19 @@ void PassageSelectActivity::onEnter() {
     const int initial = closestInRow(static_cast<uint16_t>(rowCount / 2), renderer.getScreenWidth() / 2);
     if (initial >= 0) cursor = initial;
   }
+
+  // Opened by long-pressing a word: anchor there and go straight to picking the
+  // other end, so reading to tagged is one continuous gesture rather than a
+  // mode the user has to enter first.
+  if (pendingAnchorX >= 0 && pendingAnchorY >= 0 && !words.empty()) {
+    const int anchored = wordAt(pendingAnchorX, pendingAnchorY);
+    if (anchored >= 0) {
+      anchorIndex = anchored;
+      cursor = anchored;
+      phase = Phase::PickingEnd;
+    }
+  }
+
   requestUpdate();
 }
 
