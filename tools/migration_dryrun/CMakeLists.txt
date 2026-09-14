@@ -24,6 +24,7 @@ add_executable(migration_dryrun
 
 target_include_directories(migration_dryrun PRIVATE
   ${REPO_ROOT}/lib/StudyStore
+  ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/expat
 )

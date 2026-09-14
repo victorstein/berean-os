@@ -11,8 +11,13 @@
 // unit anchors, one entry per spine document.
 //
 // This is a CACHE and nothing else. Losing it costs a rescan, so it needs
-// corruption DETECTION rather than crash atomicity: a CRC over the document
-// table, checked on open, and the whole file is rebuilt on mismatch.
+// corruption DETECTION rather than crash atomicity. Detection is PER ENTRY: a
+// CRC over each document's anchor block, stored in its own table entry. A
+// single CRC over the whole table would have to be recomputed from a 47 KB read
+// on every document indexed -- more expensive than the scan it protects.
+//
+// A failed check rebuilds that one document. A torn write leaves an entry whose
+// CRC does not match its anchors, which reads exactly like "not yet indexed".
 //
 // Validation is on source file size alone. An earlier design also stored a
 // per-document CRC of the visible text, which required reading, inflating and
@@ -37,9 +42,9 @@ inline constexpr size_t UNIT_INDEX_ANCHOR_BYTES = 8;
 struct UnitIndexHeader {
   uint16_t documentCount = 0;
   uint32_t sourceSize = 0;
-  uint32_t tableCrc = 0;
   uint32_t tableOffset = 0;
-  uint32_t bookMapOffset = 0;  // 0 when the spine-to-book map has not been built
+  uint32_t bookMapOffset = 0;   // 0 when the spine-to-book map has not been built
+  uint32_t anchorsOffset = 0;   // first byte past the fixed-size blocks
 };
 
 struct UnitIndexEntry {
@@ -47,6 +52,7 @@ struct UnitIndexEntry {
   uint16_t anchorCount = 0;
   UnitKind kind = UnitKind::DocumentOffset;
   uint8_t book = 0;
+  uint32_t anchorCrc = 0;  // over this document's anchor block
 
   bool indexed() const { return dataOffset != 0; }
 };
@@ -60,8 +66,8 @@ UnitIndexEntry readEntry(const uint8_t* in);
 void writeAnchors(uint8_t* out, const std::vector<UnitAnchor>& anchors);
 std::vector<UnitAnchor> readAnchors(const uint8_t* in, uint16_t count);
 
-// CRC over a serialised document table, for the header's tableCrc.
-uint32_t tableChecksum(const uint8_t* table, size_t length);
+// CRC over one document's serialised anchor block, for the entry's anchorCrc.
+uint32_t anchorChecksum(const uint8_t* anchors, size_t length);
 
 // True when the EPUB behind this index has been replaced.
 bool headerIsStale(const UnitIndexHeader& h, uint32_t sourceSize);

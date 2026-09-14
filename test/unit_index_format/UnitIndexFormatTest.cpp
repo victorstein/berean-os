@@ -11,9 +11,9 @@ study::UnitIndexHeader sampleHeader() {
   study::UnitIndexHeader h;
   h.documentCount = 3937;
   h.sourceSize = 104004412;
-  h.tableCrc = 0xdeadbeef;
   h.tableOffset = study::UNIT_INDEX_HEADER_BYTES;
   h.bookMapOffset = 0;
+  h.anchorsOffset = 51213;
   return h;
 }
 
@@ -24,9 +24,9 @@ TEST(UnitIndexFormat, RoundTripsAHeaderThroughBytes) {
   ASSERT_TRUE(back.has_value());
   EXPECT_EQ(back->documentCount, 3937);
   EXPECT_EQ(back->sourceSize, 104004412u);
-  EXPECT_EQ(back->tableCrc, 0xdeadbeefu);
   EXPECT_EQ(back->tableOffset, study::UNIT_INDEX_HEADER_BYTES);
   EXPECT_EQ(back->bookMapOffset, 0u);
+  EXPECT_EQ(back->anchorsOffset, 51213u);
 }
 
 TEST(UnitIndexFormat, RoundTripsADocumentEntryWithItsAnchors) {
@@ -35,6 +35,7 @@ TEST(UnitIndexFormat, RoundTripsADocumentEntryWithItsAnchors) {
   e.anchorCount = 2;
   e.kind = study::UnitKind::Verse;
   e.book = 19;
+  e.anchorCrc = 0xc0ffee11;
 
   uint8_t entry[study::UNIT_INDEX_ENTRY_BYTES];
   study::writeEntry(entry, e);
@@ -43,6 +44,7 @@ TEST(UnitIndexFormat, RoundTripsADocumentEntryWithItsAnchors) {
   EXPECT_EQ(backEntry.anchorCount, 2);
   EXPECT_EQ(backEntry.kind, study::UnitKind::Verse);
   EXPECT_EQ(backEntry.book, 19);
+  EXPECT_EQ(backEntry.anchorCrc, 0xc0ffee11u);
   EXPECT_TRUE(backEntry.indexed());
 
   const std::vector<study::UnitAnchor> anchors{{100, 119, 145}, {220, 119, 146}};
@@ -89,16 +91,15 @@ TEST(UnitIndexFormat, DetectsAChangedSourceSizeAsStale) {
   EXPECT_TRUE(study::headerIsStale(h, 104004413));
 }
 
-TEST(UnitIndexFormat, DetectsACorruptedTableViaItsCrc) {
-  std::vector<uint8_t> table(study::UNIT_INDEX_ENTRY_BYTES * 4, 0);
-  study::UnitIndexEntry e;
-  e.dataOffset = 64;
-  e.anchorCount = 5;
-  study::writeEntry(table.data(), e);
+TEST(UnitIndexFormat, DetectsACorruptedAnchorBlockViaItsEntryCrc) {
+  const std::vector<study::UnitAnchor> anchors{{100, 119, 145}, {220, 119, 146}};
+  std::vector<uint8_t> data(anchors.size() * study::UNIT_INDEX_ANCHOR_BYTES);
+  study::writeAnchors(data.data(), anchors);
 
-  const uint32_t good = study::tableChecksum(table.data(), table.size());
-  table[7] ^= 0x01;  // one bit of one entry, as a torn sector would leave it
-  EXPECT_NE(study::tableChecksum(table.data(), table.size()), good);
+  const uint32_t good = study::anchorChecksum(data.data(), data.size());
+  data[3] ^= 0x01;  // one bit, as a torn sector would leave it
+  EXPECT_NE(study::anchorChecksum(data.data(), data.size()), good)
+      << "a wrong offset here paints a mark over the wrong words";
 }
 
 TEST(UnitIndexFormat, ReadsEveryFieldThroughMemcpyOnAnUnalignedBuffer) {

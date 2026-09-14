@@ -26,8 +26,29 @@ std::string extractUnitText(const char* xhtml, size_t length, const DocumentUnit
 // span that does not begin at a unit boundary.
 std::string extractRangeText(const char* xhtml, size_t length, uint32_t from, uint32_t to);
 
-// CRC32 over the whole document's visible codepoints, for unit-index
-// invalidation. Same traversal, so it cannot drift from the offsets.
+// CRC32 over the whole document's visible codepoints. Same traversal, so it
+// cannot drift from the offsets.
 uint32_t documentVisibleCrc(const char* xhtml, size_t length);
+
+// Chunk-fed form, so the firmware can stream a spine item through
+// SpineHtmlStream rather than hold it whole.
+class UnitTextScanner {
+ public:
+  UnitTextScanner();
+  ~UnitTextScanner();
+  UnitTextScanner(const UnitTextScanner&) = delete;
+  UnitTextScanner& operator=(const UnitTextScanner&) = delete;
+
+  bool valid() const { return parser_ != nullptr; }
+  // Capture visible codepoints in [from, to). Must be called before feeding.
+  void setRange(uint32_t from, uint32_t to);
+  bool feed(const char* chunk, size_t length, bool isFinal);
+  std::string take();
+
+ private:
+  void* parser_ = nullptr;  // XML_Parser
+  void* state_ = nullptr;   // State
+  bool failed_ = false;
+};
 
 }  // namespace study

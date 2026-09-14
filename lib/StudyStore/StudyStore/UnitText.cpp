@@ -6,8 +6,8 @@
 #include <new>
 
 #include "StudyStore/UnitFingerprint.h"
-#include "VisibleOffsetCounter.h"
-#include "htmlEntities.h"
+#include "Epub/VisibleOffsetCounter.h"
+#include "Epub/htmlEntities.h"
 
 namespace study {
 namespace {
@@ -62,20 +62,65 @@ void XMLCALL onDefault(void* userData, const XML_Char* s, const int len) {
   }
 }
 
-bool walk(const char* xhtml, const size_t length, State& state) {
+XML_Parser makeParser(State* state) {
   XML_Parser parser = XML_ParserCreate(nullptr);
-  if (!parser) return false;
-  XML_SetUserData(parser, &state);
+  if (!parser) return nullptr;
+  XML_SetUserData(parser, state);
   XML_SetElementHandler(parser, onStart, onEnd);
   XML_SetCharacterDataHandler(parser, onText);
   XML_SetDefaultHandlerExpand(parser, onDefault);
+  return parser;
+}
 
+bool walk(const char* xhtml, const size_t length, State& state) {
+  XML_Parser parser = makeParser(&state);
+  if (!parser) return false;
   const XML_Status status = XML_Parse(parser, xhtml, static_cast<int>(length), 1);
   XML_ParserFree(parser);
   return status != XML_STATUS_ERROR;
 }
 
 }  // namespace
+
+UnitTextScanner::UnitTextScanner() {
+  auto* state = new (std::nothrow) State();
+  if (!state) return;
+  XML_Parser parser = makeParser(state);
+  if (!parser) {
+    delete state;
+    return;
+  }
+  parser_ = parser;
+  state_ = state;
+}
+
+UnitTextScanner::~UnitTextScanner() {
+  if (parser_) XML_ParserFree(static_cast<XML_Parser>(parser_));
+  delete static_cast<State*>(state_);
+}
+
+void UnitTextScanner::setRange(const uint32_t from, const uint32_t to) {
+  if (!state_) return;
+  auto* state = static_cast<State*>(state_);
+  state->lo = from;
+  state->hi = to;
+}
+
+bool UnitTextScanner::feed(const char* chunk, const size_t length, const bool isFinal) {
+  if (!parser_ || failed_) return false;
+  const XML_Status status =
+      XML_Parse(static_cast<XML_Parser>(parser_), chunk, static_cast<int>(length), isFinal ? 1 : 0);
+  if (status == XML_STATUS_ERROR) {
+    failed_ = true;
+    return false;
+  }
+  return true;
+}
+
+std::string UnitTextScanner::take() {
+  if (failed_ || !state_) return {};
+  return std::move(static_cast<State*>(state_)->captured);
+}
 
 std::string extractRangeText(const char* xhtml, const size_t length, const uint32_t from, const uint32_t to) {
   if (to <= from) return {};

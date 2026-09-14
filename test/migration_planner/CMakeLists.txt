@@ -15,6 +15,7 @@ add_executable(MigrationPlannerTest
 
 target_include_directories(MigrationPlannerTest PRIVATE
   ${REPO_ROOT}/lib/StudyStore
+  ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/expat
 )

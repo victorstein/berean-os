@@ -31,9 +31,9 @@ void writeHeader(uint8_t* out, const UnitIndexHeader& h) {
   put16(out + 4, UNIT_INDEX_VERSION);
   put16(out + 6, h.documentCount);
   put32(out + 8, h.sourceSize);
-  put32(out + 12, h.tableCrc);
-  put32(out + 16, h.tableOffset);
-  put32(out + 20, h.bookMapOffset);
+  put32(out + 12, h.tableOffset);
+  put32(out + 16, h.bookMapOffset);
+  put32(out + 20, h.anchorsOffset);
 }
 
 std::optional<UnitIndexHeader> readHeader(const uint8_t* in, const size_t length) {
@@ -44,9 +44,9 @@ std::optional<UnitIndexHeader> readHeader(const uint8_t* in, const size_t length
   UnitIndexHeader h;
   h.documentCount = get16(in + 6);
   h.sourceSize = get32(in + 8);
-  h.tableCrc = get32(in + 12);
-  h.tableOffset = get32(in + 16);
-  h.bookMapOffset = get32(in + 20);
+  h.tableOffset = get32(in + 12);
+  h.bookMapOffset = get32(in + 16);
+  h.anchorsOffset = get32(in + 20);
   return h;
 }
 
@@ -56,6 +56,7 @@ void writeEntry(uint8_t* out, const UnitIndexEntry& e) {
   put16(out + 4, e.anchorCount);
   out[6] = static_cast<uint8_t>(e.kind);
   out[7] = e.book;
+  put32(out + 8, e.anchorCrc);
 }
 
 UnitIndexEntry readEntry(const uint8_t* in) {
@@ -65,6 +66,7 @@ UnitIndexEntry readEntry(const uint8_t* in) {
   const uint8_t kind = in[6];
   e.kind = kind <= static_cast<uint8_t>(UnitKind::Verse) ? static_cast<UnitKind>(kind) : UnitKind::DocumentOffset;
   e.book = in[7];
+  e.anchorCrc = get32(in + 8);
   return e;
 }
 
@@ -87,8 +89,8 @@ std::vector<UnitAnchor> readAnchors(const uint8_t* in, const uint16_t count) {
   return out;
 }
 
-uint32_t tableChecksum(const uint8_t* table, const size_t length) {
-  return crc32End(crc32Update(crc32Begin(), std::string_view(reinterpret_cast<const char*>(table), length)));
+uint32_t anchorChecksum(const uint8_t* anchors, const size_t length) {
+  return crc32End(crc32Update(crc32Begin(), std::string_view(reinterpret_cast<const char*>(anchors), length)));
 }
 
 bool headerIsStale(const UnitIndexHeader& h, const uint32_t sourceSize) { return h.sourceSize != sourceSize; }

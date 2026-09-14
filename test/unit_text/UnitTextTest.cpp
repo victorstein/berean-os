@@ -96,3 +96,24 @@ TEST(UnitText, DocumentCrcIgnoresMarkupThatChangesNoVisibleText) {
 }
 
 }  // namespace
+
+namespace {
+
+TEST(UnitTextScanner, ChunkFedAgreesWithTheWholeBufferExtraction) {
+  const auto units = study::scanUnits(kDoc, strlen(kDoc));
+  ASSERT_EQ(units.anchors.size(), 2u);
+  const std::string whole = study::extractUnitText(kDoc, strlen(kDoc), units, units.anchors[0]);
+
+  study::UnitTextScanner scanner;
+  ASSERT_TRUE(scanner.valid());
+  scanner.setRange(units.anchors[0].offset, units.anchors[1].offset);
+  const size_t length = strlen(kDoc);
+  const size_t third = length / 3;
+  ASSERT_TRUE(scanner.feed(kDoc, third, false));
+  ASSERT_TRUE(scanner.feed(kDoc + third, third, false));
+  ASSERT_TRUE(scanner.feed(kDoc + 2 * third, length - 2 * third, true));
+
+  EXPECT_EQ(scanner.take(), whole) << "the device streams; the host suite does not. They must agree.";
+}
+
+}  // namespace

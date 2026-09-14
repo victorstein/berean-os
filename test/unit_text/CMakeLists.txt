@@ -14,6 +14,7 @@ add_executable(UnitTextTest
 
 target_include_directories(UnitTextTest PRIVATE
   ${REPO_ROOT}/lib/StudyStore
+  ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/expat
 )

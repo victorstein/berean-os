@@ -98,3 +98,41 @@ TEST(UnitAnchorsResolve, RoundTripsAVerseBackToItsDocumentOffset) {
 }
 
 }  // namespace
+
+namespace {
+
+TEST(UnitScanner, ChunkFedAgreesWithTheWholeBufferScan) {
+  const auto whole = study::scanUnits(kBibleDoc, strlen(kBibleDoc));
+
+  study::UnitScanner scanner;
+  ASSERT_TRUE(scanner.valid());
+  const size_t length = strlen(kBibleDoc);
+  const size_t half = length / 2;
+  ASSERT_TRUE(scanner.feed(kBibleDoc, half, false));
+  ASSERT_TRUE(scanner.feed(kBibleDoc + half, length - half, true));
+  const auto streamed = scanner.take();
+
+  EXPECT_EQ(streamed.kind, whole.kind);
+  ASSERT_EQ(streamed.anchors.size(), whole.anchors.size());
+  for (size_t i = 0; i < whole.anchors.size(); ++i) {
+    EXPECT_EQ(streamed.anchors[i].offset, whole.anchors[i].offset) << "at " << i;
+    EXPECT_EQ(streamed.anchors[i].minor, whole.anchors[i].minor) << "at " << i;
+  }
+}
+
+TEST(UnitScanner, AppliesPrecedenceInOneStreamedPass) {
+  study::UnitScanner scanner;
+  ASSERT_TRUE(scanner.valid());
+  ASSERT_TRUE(scanner.feed(kBibleDoc, strlen(kBibleDoc), true));
+  const auto units = scanner.take();
+  EXPECT_EQ(units.kind, study::UnitKind::Verse) << "one pass feeds both scanners; verse still wins";
+}
+
+TEST(UnitScanner, FallsBackToParagraphInOnePass) {
+  study::UnitScanner scanner;
+  ASSERT_TRUE(scanner.valid());
+  ASSERT_TRUE(scanner.feed(kArticleDoc, strlen(kArticleDoc), true));
+  EXPECT_EQ(scanner.take().kind, study::UnitKind::Paragraph);
+}
+
+}  // namespace
