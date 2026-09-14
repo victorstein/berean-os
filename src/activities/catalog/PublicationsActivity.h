@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
+#include "components/OptionPopup.h"
 
 // Everything on the card, with catalog search as an action inside it.
 //
@@ -28,15 +29,34 @@ class PublicationsActivity final : public UiListActivity {
     std::string subtitle;
   };
 
-  // The search row, then one row per publication.
-  int listCount() const override { return 1 + static_cast<int>(entries_.size()); }
+  // Search row, a section header, then one row per publication. The header is
+  // never selected or activated, but it occupies a row index like any other.
+  static constexpr int SEARCH_ROW = 0;
+  static constexpr int HEADER_ROW = 1;
+  static constexpr int FIRST_BOOK_ROW = 2;
+
+  int listCount() const override { return FIRST_BOOK_ROW + static_cast<int>(entries_.size()); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
+  void onRowLongPress(int index) override;
+  bool handleCustomInput() override;
+  void render(RenderLock&&) override;
   const char* headerTitle() const override;
+
+  // Row index -> entries_ index, or -1 for the search and header rows. Every
+  // conversion goes through this: the rows and the publications stopped being
+  // the same numbering the moment a header was inserted between them.
+  int entryIndexForRow(int row) const;
 
   void refresh();
   void openSearch();
 
+  void confirmDelete(size_t entryIndex);
+  void deleteEntry(size_t entryIndex);
+
   std::vector<Entry> entries_;
   std::vector<freeink::ui::ListItem> rowItems_;
+  OptionPopup confirmPopup_;
+  bool confirmingDelete_ = false;
+  size_t pendingDeleteEntry_ = 0;
 };

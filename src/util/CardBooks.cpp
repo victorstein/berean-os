@@ -2,10 +2,13 @@
 
 #include <FsHelpers.h>
 #include <HalStorage.h>
+#include <Logging.h>
 
 #include <algorithm>
+#include <functional>
 
 #include "CrossPointSettings.h"
+#include "RecentBooksStore.h"
 
 namespace {
 
@@ -37,6 +40,27 @@ std::vector<std::string> list() {
   collect("/", out);
 
   return out;
+}
+
+std::string cachePathFor(const std::string& bookPath) {
+  return "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(bookPath));
+}
+
+bool remove(const std::string& bookPath) {
+  if (bookPath.empty()) return false;
+
+  const bool removed = Storage.remove(bookPath.c_str());
+  if (!removed) {
+    LOG_ERR("CARDBOOKS", "Could not delete %s", bookPath.c_str());
+    return false;
+  }
+
+  // Non-fatal: a book with no cache yet has no directory to drop, and one left
+  // behind costs space rather than correctness.
+  Storage.removeDir(cachePathFor(bookPath).c_str());
+
+  if (RECENT_BOOKS.removeByPath(bookPath)) RECENT_BOOKS.saveToFile();
+  return true;
 }
 
 std::string displayStem(const std::string& path) {

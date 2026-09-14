@@ -17,4 +17,15 @@ std::vector<std::string> list();
 // nothing better is known about it.
 std::string displayStem(const std::string& path);
 
+// The reading cache directory for a book, matching Epub's own key derivation
+// (Epub.h:48): a hash of the full path as passed in. Removing a book without
+// this leaves its cached sections behind, and a later book landing on the same
+// path would render from them.
+std::string cachePathFor(const std::string& bookPath);
+
+// Deletes the book and its reading cache, and drops it from recents. The study
+// data under /.berean/ is deliberately left: passages key on publication
+// identity, not on the file, so re-downloading restores the tags.
+bool remove(const std::string& bookPath);
+
 }  // namespace CardBooks
