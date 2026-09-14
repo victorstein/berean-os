@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/victorstein/berean-os/compare/v1.7.1...v1.8.0) (2026-09-14)
+
+
+### Features
+
+* a library for downloaded publications, and a Bible-centred sleep screen ([#18](https://github.com/victorstein/berean-os/issues/18)) ([28c4cdc](https://github.com/victorstein/berean-os/commit/28c4cdc311ffccb069f7d6e1b7d479f25825de45))
+
 ## [1.7.1](https://github.com/victorstein/berean-os/compare/v1.7.0...v1.7.1) (2026-09-14)
 
 
