@@ -112,9 +112,15 @@ void MeetingsActivity::buildScreen(UiScreen& screen) {
     rowItems_[i] = item;
   }
 
+  fui::ListItem refreshItem{};
+  refreshItem.label = tr(STR_MEETING_REFRESH);
+  refreshItem.subtitle = tr(STR_MEETING_REFRESH_HINT);
+  refreshItem.actionValue = static_cast<int16_t>(rows_.size());
+  rowItems_[rows_.size()] = refreshItem;
+
   fui::ListProps props;
   props.items = rowItems_.data();
-  props.count = static_cast<uint16_t>(rows_.size());
+  props.count = static_cast<uint16_t>(rowItems_.size());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;
   syncListViewport(screen, props);
