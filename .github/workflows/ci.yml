@@ -94,14 +94,8 @@ jobs:
         # plain firmware.bin for the C3 X4/X3 binary, firmware-<board>.bin for
         # the S3 boards.
         include:
-          - env: default
-            asset: firmware.bin
-          - env: sticky
-            asset: firmware-sticky.bin
           - env: x4pro
             asset: firmware-x4pro.bin
-          - env: papermono
-            asset: firmware-papermono.bin
     steps:
       - uses: actions/checkout@v6
         with:

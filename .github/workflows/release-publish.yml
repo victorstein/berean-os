@@ -42,14 +42,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - pio_env: gh_release
-            asset: firmware.bin
-          - pio_env: sticky-gh_release
-            asset: firmware-sticky.bin
           - pio_env: x4pro-gh_release
             asset: firmware-x4pro.bin
-          - pio_env: papermono-gh_release
-            asset: firmware-papermono.bin
     steps:
       - uses: actions/checkout@v6
         with:
@@ -109,7 +103,7 @@ jobs:
     needs: [resolve-tag, build-release]
     runs-on: ubuntu-latest
     # Only this fork publishes; a downstream fork of it builds but stays silent.
-    if: github.repository == 'victorstein/crosspoint-x4pro'
+    if: github.repository == 'victorstein/berean-os'
     permissions:
       # A job-level block replaces the workflow's top-level `contents: read`.
       contents: write
