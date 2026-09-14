@@ -54,7 +54,7 @@ class LauncherActivity final : public Activity {
   // rather than a list of words -- so the icon is the fallback, not the default.
   void drawTileArt(int x, int y, int w, int h, const std::string& coverPath, const uint8_t* icon) const;
   void drawBibleTile(const TileRect& rect, bool selected) const;
-  bool drawCoverFilling(const std::string& coverPath, const TileRect& rect) const;
+  bool drawCoverFilling(const std::string& coverPath, const TileRect& rect, int visibleHeight) const;
   void drawCenteredIn(int x, int w, int top, const char* title, const char* subtitle) const;
   // Draws the cover at its stored size, or returns 0 without drawing. Never
   // rescales: the thumbnails are dithered 1-bit and resampling destroys them.

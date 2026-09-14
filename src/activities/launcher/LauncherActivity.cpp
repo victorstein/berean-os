@@ -38,6 +38,10 @@ constexpr int TILE_ICON_SIZE = 32;
 // thumbnail this many times the tile's width in height clears the tile's width
 // for anything in that range; a narrower cover is declined rather than blown up.
 constexpr float NARROWEST_COVER_ASPECT = 0.6f;
+// Where a cover's title sits, as a fraction of its height. Covers are designed
+// with the title high, so this is what the tile aims at rather than the cover's
+// geometric middle.
+constexpr float COVER_TITLE_BAND_CENTRE = 0.25f;
 // Below this a cover is a smudge and an icon is cramped, so the tile drops its
 // art and centres the label instead.
 constexpr int MIN_ART_HEIGHT = TILE_ICON_SIZE + 4;
@@ -236,7 +240,8 @@ void LauncherActivity::drawTileArt(const int x, const int y, const int w, const 
 // GfxRenderer has no clip region and drawBitmap only ever scales DOWN, so the
 // row walk is done here. Resampling is deliberately absent -- these thumbnails
 // are dithered 1-bit and any resampling turns them into static.
-bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const TileRect& rect) const {
+bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const TileRect& rect,
+                                        const int visibleHeight) const {
   if (coverPath.empty()) return false;
   HalFile file;
   if (!Storage.openFileForRead(MODULE, coverPath, file)) return false;
@@ -255,14 +260,22 @@ bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const Tile
   }
 
   const int xOffset = (width - rect.w) / 2;
+  // Vertical crop is aimed rather than anchored. A book puts its title in the
+  // upper part of the cover, so centring the whole cover buries the title above
+  // the crop and anchoring at the top strands it down against the plate;
+  // centring the title band on the artwork that is actually visible -- the tile
+  // less the caption plate covering its foot -- keeps it where the eye lands.
+  const int titleBandCentre = static_cast<int>(static_cast<float>(height) * COVER_TITLE_BAND_CENTRE);
+  const int yOffset = std::clamp(titleBandCentre - visibleHeight / 2, 0, height - rect.h);
+
   for (int row = 0; row < height; ++row) {
     if (bitmap.readNextRow(packedRow.get(), rowScratch.get()) != BmpReaderError::Ok) return false;
     // Rows arrive in file order; a bottom-up BMP delivers the cover's last row
     // first, so the source row has to be resolved before it can be discarded.
     const int sourceRow = bitmap.isTopDown() ? row : height - 1 - row;
-    if (sourceRow >= rect.h) continue;
+    if (sourceRow < yOffset || sourceRow >= yOffset + rect.h) continue;
 
-    const int screenY = rect.y + sourceRow;
+    const int screenY = rect.y + sourceRow - yOffset;
     for (int column = 0; column < rect.w; ++column) {
       const int sourceColumn = column + xOffset;
       const uint8_t value = packedRow[sourceColumn / 4] >> (6 - ((sourceColumn * 2) % 8)) & 0x3;
@@ -277,14 +290,14 @@ bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const Tile
 // plate is opaque because a dithered cover underneath would otherwise shred the
 // glyphs on a 1-bit panel.
 void LauncherActivity::drawBibleTile(const TileRect& rect, const bool selected) const {
-  const bool filled = drawCoverFilling(bibleCoverPath, rect);
+  const int plateHeight = tileTextHeight(UI_10_FONT_ID, true) + 2 * TILE_PADDING;
+  const bool filled = drawCoverFilling(bibleCoverPath, rect, rect.h - plateHeight);
 
   if (!filled) {
     drawTileArt(rect.x, rect.y + TILE_PADDING, rect.w, tileArtHeight(rect, true), {}, BookIcon);
     const int stackedTop = rect.y + rect.h - tileTextHeight(UI_10_FONT_ID, true) - TILE_PADDING;
     drawCenteredIn(rect.x, rect.w, stackedTop, tr(STR_BIBLE), bibleSubtitle.c_str());
   } else {
-    const int plateHeight = tileTextHeight(UI_10_FONT_ID, true) + 2 * TILE_PADDING;
     const int plateTop = rect.y + rect.h - plateHeight;
     renderer.fillRect(rect.x, plateTop, rect.w, plateHeight, false);
     renderer.drawLine(rect.x, plateTop, rect.x + rect.w - 1, plateTop, true);
