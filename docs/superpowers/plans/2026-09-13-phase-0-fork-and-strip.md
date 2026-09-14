@@ -65,9 +65,29 @@ Plus a device smoke test **after the deletions** (Task 12), not only at the end 
 }
 ```
 
-**This only works if the repo has no inherited release state.** The clone carries `.release-please-manifest.json` at `{".":"1.6.0"}`, `version.txt` at `1.6.0`, and the tag `v1.6.0`. Task 3 removes all three *before* the first push; the tag is never pushed. Otherwise release-please reads `1.6.0` from the manifest and cuts `v1.7.0` for a product that has shipped nothing — and `extra-files` rewrites `platformio.ini` back over whatever version Task 2 set.
+**This only works if the repo has no inherited release state.** The clone carries `.release-please-manifest.json` at `{".":"1.6.0"}`, `version.txt` at `1.6.0`, and the tag `v1.6.0`. Task 3 removes all three *before* the first push; the tag is never pushed. Otherwise release-please reads `1.6.0` from the manifest and cuts `v1.7.0` for a product that has shipped nothing — and `extra_files` rewrites `platformio.ini` back over whatever version Task 2 set.
 
-Creating the repository and opening the stein-infra PR are **outward-facing and the orchestrator's gate**, not delegated work.
+The inherited `.github/workflows/release-please.yml` is the sharpest edge of the three: it triggers on push to `main` and **auto-merges its own release PR**, so it cannot survive the first push either.
+
+**Status: done.** stein-infra PR #151 merged 2026-09-14; `victorstein/berean-os` exists, public. Onboarding is deliberately a second PR — not because `main` would be missing (`auto_init = false` creates a bare repo, but `github_repository_file` initialises `main` itself when it writes the first fan-out file, which is what happened), but because the seed must land after the inherited release state is gone.
+
+That apply also created two fan-out resources every managed repo gets — `.github/workflows/pr-title-lint.yml` and `.claude/skills/conventional-pr-titles/SKILL.md` — as two commits on `main`. They were **merged** into this history at `476572fc` rather than force-pushed over, which preserves every SHA in the tree. That matters: `bootstrap_sha` names a commit in this history, and a rebase would have invalidated it.
+
+The follow-up PR's block, with the two fields the crosspoint onboarding proved are needed:
+
+```hcl
+      release_please = {
+        release_type  = "simple"
+        package_name  = "berean-os"
+        seed_version  = "0.0.0"
+        extra_files   = ["platformio.ini"]   # device compares [berean] version, not version.txt
+        bootstrap_sha = "addaa20918400146136a888dcee5a47bb0bdb784"
+      }
+```
+
+`bootstrap_sha` must be the **full 40 characters** — release-please string-compares it against the GraphQL oid — and it names the last *inherited* commit, so the changelog starts at bereanOS's founding commit rather than 1,260 entries it never released.
+
+Creating the repository and opening the stein-infra PRs are **outward-facing and the orchestrator's gate**, not delegated work.
 
 ---
 
@@ -1001,6 +1021,7 @@ Known at time of writing: `docs/contributing/architecture.md:218` links `GOVERNA
 ```gitignore
 .claude/*
 !.claude/agents/
+!.claude/skills/
 ```
 
 - [ ] **Step 6: Verify and commit**
