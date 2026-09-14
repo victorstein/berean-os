@@ -53,7 +53,14 @@ class LauncherActivity final : public Activity {
   // Covers are what make the launcher legible at a glance -- a shelf of books
   // rather than a list of words -- so the icon is the fallback, not the default.
   void drawTileArt(int x, int y, int w, int h, const std::string& coverPath, const uint8_t* icon) const;
-  static std::string coverThumbFor(const RecentBook& book, bool& generatedAny);
+  void drawBibleTile(const TileRect& rect, bool selected) const;
+  void drawCenteredIn(int x, int w, int top, const char* title, const char* subtitle) const;
+  // Draws the cover at its stored size, or returns 0 without drawing. Never
+  // rescales: the thumbnails are dithered 1-bit and resampling destroys them.
+  int drawCoverNative(const std::string& coverPath, int x, int y, int boxWidth, int boxHeight) const;
+  int tileArtHeight(const TileRect& rect, bool hasSubtitle) const;
+  int bibleCoverHeight() const;
+  static std::string coverThumbFor(const RecentBook& book, int height, bool& generatedAny);
   // Height of a tile's text block, so computeLayout can size a tile around its
   // contents and drawTile can centre the same block inside it.
   int tileTextHeight(int titleFont, bool hasSubtitle) const;

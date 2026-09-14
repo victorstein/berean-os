@@ -32,6 +32,7 @@ constexpr const char* MODULE = "LAUNCH";
 constexpr int TILE_GAP = 10;
 constexpr int TILE_PADDING = 8;
 constexpr int TILE_ICON_SIZE = 32;
+constexpr int COVER_INSET = 6;
 // Below this a cover is a smudge and an icon is cramped, so the tile drops its
 // art and centres the label instead.
 constexpr int MIN_ART_HEIGHT = TILE_ICON_SIZE + 4;
@@ -43,8 +44,10 @@ constexpr int BIBLE_TILE_WEIGHT = 2;
 
 void LauncherActivity::onEnter() {
   Activity::onEnter();
-  resolveTargets();
+  // Layout first: a cover thumbnail is generated at exactly the height it will
+  // be drawn at, so resolveTargets needs the tile geometry to ask for.
   computeLayout();
+  resolveTargets();
   requestUpdate();
 }
 
@@ -76,7 +79,7 @@ void LauncherActivity::resolveTargets() {
   if (found != recents.end()) {
     biblePath = found->path;
     bibleSubtitle = utf8SafeSummary(found->title, 40);
-    bibleCoverPath = coverThumbFor(*found, generatedAny);
+    bibleCoverPath = coverThumbFor(*found, bibleCoverHeight(), generatedAny);
   }
 
   // The meeting tile shows the cover of whichever weekly publication is on the
@@ -91,7 +94,8 @@ void LauncherActivity::resolveTargets() {
   const auto meeting = std::find_if(recents.begin(), recents.end(), looksLikeAMeetingPub);
   if (meeting != recents.end()) {
     meetingsSubtitle = utf8SafeSummary(meeting->title, 30);
-    meetingsCoverPath = coverThumbFor(*meeting, generatedAny);
+    meetingsCoverPath =
+        coverThumbFor(*meeting, tileArtHeight(rects[static_cast<size_t>(Tile::Meetings)], true), generatedAny);
   }
 
   // Building a thumbnail leaves the popup's pixels in the framebuffer, and the
@@ -100,20 +104,22 @@ void LauncherActivity::resolveTargets() {
   if (generatedAny) LOG_INF(MODULE, "Generated a missing cover thumbnail");
 }
 
-// Thumbnails are cached on the card at one fixed height, shared with the cover
-// the old home screen drew, so an existing one is reused rather than rebuilt.
-// Generating one opens the EPUB, which for the Bible is slow enough to be worth
-// a popup -- but it happens once per book, not once per visit.
-std::string LauncherActivity::coverThumbFor(const RecentBook& book, bool& generatedAny) {
-  if (book.coverBmpPath.empty()) return {};
-  std::string path = UITheme::getCoverThumbPath(book.coverBmpPath, BaseMetrics::values.homeCoverHeight);
+// The thumbnail is requested at exactly the height it will be drawn at, and is
+// never resampled afterwards. generateThumbBmp emits a DITHERED 1-bit image,
+// and drawBitmap1Bit rescales by point-sampling -- picking every Nth pixel out
+// of a pattern whose whole meaning is the local density of its pixels, which
+// turns a cover into uniform static. Matching the sizes is the only way to
+// render one honestly on a 1-bit panel.
+std::string LauncherActivity::coverThumbFor(const RecentBook& book, const int height, bool& generatedAny) {
+  if (book.coverBmpPath.empty() || height <= 0) return {};
+  std::string path = UITheme::getCoverThumbPath(book.coverBmpPath, height);
   if (Storage.exists(path.c_str())) return path;
 
   if (!FsHelpers::hasEpubExtension(book.path)) return {};
   generatedAny = true;
   Epub epub(book.path, "/.crosspoint");
   epub.load(false, true);
-  if (!epub.generateThumbBmp(BaseMetrics::values.homeCoverHeight)) {
+  if (!epub.generateThumbBmp(height)) {
     // Drop the cover reference so the next visit falls straight through to the
     // icon instead of reopening the book to fail the same way.
     RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
@@ -121,6 +127,16 @@ std::string LauncherActivity::coverThumbFor(const RecentBook& book, bool& genera
   }
   return Storage.exists(path.c_str()) ? path : std::string{};
 }
+
+// The art band of a stacked tile: what is left once the label has its room.
+int LauncherActivity::tileArtHeight(const TileRect& rect, const bool hasSubtitle) const {
+  return rect.h - tileTextHeight(SMALL_FONT_ID, hasSubtitle) - 3 * TILE_PADDING;
+}
+
+// The Bible tile puts its cover beside the label rather than above it, so the
+// cover gets the tile's full height instead of the third left over under a
+// centred caption.
+int LauncherActivity::bibleCoverHeight() const { return rects[static_cast<size_t>(Tile::Bible)].h - 2 * COVER_INSET; }
 
 int LauncherActivity::tileTextHeight(const int titleFont, const bool hasSubtitle) const {
   return renderer.getLineHeight(titleFont) + (hasSubtitle ? renderer.getLineHeight(SMALL_FONT_ID) : 0);
@@ -173,33 +189,81 @@ void LauncherActivity::computeLayout() {
   rects[static_cast<size_t>(Tile::Resume)] = {left, resumeTop, width, resumeHeight};
 }
 
+int LauncherActivity::drawCoverNative(const std::string& coverPath, const int x, const int y, const int boxWidth,
+                                      const int boxHeight) const {
+  if (coverPath.empty()) return 0;
+  HalFile file;
+  if (!Storage.openFileForRead(MODULE, coverPath, file)) return 0;
+
+  Bitmap bitmap(file);
+  if (bitmap.parseHeaders() != BmpReaderError::Ok) return 0;
+  const int width = bitmap.getWidth();
+  const int height = bitmap.getHeight();
+  // Refuse rather than rescale: see coverThumbFor. A cover that does not fit is
+  // a layout change that outran its cached thumbnail, and the icon is the
+  // honest fallback until the new size is generated.
+  if (width <= 0 || height <= 0 || width > boxWidth || height > boxHeight) return 0;
+
+  const int drawX = x + (boxWidth - width) / 2;
+  const int drawY = y + (boxHeight - height) / 2;
+  renderer.drawBitmap(bitmap, drawX, drawY, width, height);
+  renderer.drawRect(drawX, drawY, width, height, 1, true);
+  return width;
+}
+
 void LauncherActivity::drawTileArt(const int x, const int y, const int w, const int h, const std::string& coverPath,
                                    const uint8_t* icon) const {
-  if (!coverPath.empty()) {
-    HalFile file;
-    if (Storage.openFileForRead(MODULE, coverPath, file)) {
-      Bitmap bitmap(file);
-      if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
-        const int maxWidth = w - 2 * TILE_PADDING;
-        // drawBitmap scales down to fit but never up, so mirror that clamp here
-        // or the border below would be drawn around empty space.
-        const float fit = std::min({static_cast<float>(maxWidth) / static_cast<float>(bitmap.getWidth()),
-                                    static_cast<float>(h) / static_cast<float>(bitmap.getHeight()), 1.0f});
-        const int drawWidth = static_cast<int>(static_cast<float>(bitmap.getWidth()) * fit);
-        const int drawHeight = static_cast<int>(static_cast<float>(bitmap.getHeight()) * fit);
-        if (drawWidth > 0 && drawHeight > 0) {
-          const int drawX = x + (w - drawWidth) / 2;
-          const int drawY = y + (h - drawHeight) / 2;
-          renderer.drawBitmap(bitmap, drawX, drawY, drawWidth, drawHeight);
-          renderer.drawRect(drawX, drawY, drawWidth, drawHeight, 1, true);
-          return;
-        }
-      }
-    }
-  }
-
+  if (drawCoverNative(coverPath, x + TILE_PADDING, y, w - 2 * TILE_PADDING, h) > 0) return;
   if (icon == nullptr) return;
   renderer.drawIcon(icon, x + (w - TILE_ICON_SIZE) / 2, y + (h - TILE_ICON_SIZE) / 2, TILE_ICON_SIZE);
+}
+
+// Cover on the left at full tile height, label beside it. A portrait cover in a
+// landscape tile cannot fill it without cropping away the title or stretching
+// the art, so the tile is split instead: the cover gets all the height there
+// is, and the text keeps a white background it stays legible against.
+void LauncherActivity::drawBibleTile(const TileRect& rect, const bool selected) const {
+  renderer.drawRect(rect.x, rect.y, rect.w, rect.h, selected ? 3 : 1, true);
+
+  const int coverWidth =
+      drawCoverNative(bibleCoverPath, rect.x + COVER_INSET, rect.y + COVER_INSET, rect.w / 2, bibleCoverHeight());
+
+  if (coverWidth == 0) {
+    drawTileArt(rect.x, rect.y + TILE_PADDING, rect.w, tileArtHeight(rect, true), {}, BookIcon);
+    const int stackedTop = rect.y + rect.h - tileTextHeight(UI_10_FONT_ID, true) - TILE_PADDING;
+    drawCenteredIn(rect.x, rect.w, stackedTop, tr(STR_BIBLE), bibleSubtitle.c_str());
+    return;
+  }
+
+  const int textLeft = rect.x + COVER_INSET + coverWidth + TILE_PADDING * 2;
+  const int textWidth = rect.x + rect.w - TILE_PADDING - textLeft;
+  if (textWidth <= 0) return;
+
+  const int titleHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  const auto lines = renderer.wrappedText(SMALL_FONT_ID, bibleSubtitle.c_str(), textWidth, 3);
+
+  int y = rect.y + (rect.h - titleHeight - static_cast<int>(lines.size()) * lineHeight) / 2;
+  renderer.drawText(UI_10_FONT_ID, textLeft, y, tr(STR_BIBLE), true, EpdFontFamily::BOLD);
+  y += titleHeight;
+  for (const auto& line : lines) {
+    renderer.drawText(SMALL_FONT_ID, textLeft, y, line.c_str());
+    y += lineHeight;
+  }
+}
+
+void LauncherActivity::drawCenteredIn(const int x, const int w, const int top, const char* title,
+                                      const char* subtitle) const {
+  const int innerWidth = w - 2 * TILE_PADDING;
+  const std::string fittedTitle = renderer.truncatedText(UI_10_FONT_ID, title, innerWidth, EpdFontFamily::BOLD);
+  const int titleWidth = renderer.getTextWidth(UI_10_FONT_ID, fittedTitle.c_str(), EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, x + (w - titleWidth) / 2, top, fittedTitle.c_str(), true, EpdFontFamily::BOLD);
+
+  if (subtitle == nullptr || subtitle[0] == '\0') return;
+  const std::string fitted = renderer.truncatedText(SMALL_FONT_ID, subtitle, innerWidth);
+  const int subtitleWidth = renderer.getTextWidth(SMALL_FONT_ID, fitted.c_str());
+  renderer.drawText(SMALL_FONT_ID, x + (w - subtitleWidth) / 2, top + renderer.getLineHeight(UI_10_FONT_ID),
+                    fitted.c_str());
 }
 
 void LauncherActivity::drawTile(const TileRect& rect, const char* title, const char* subtitle, const bool selected,
@@ -219,7 +283,7 @@ void LauncherActivity::drawTile(const TileRect& rect, const char* title, const c
   // line box's top, so the overflow lands off the bottom of the panel.
   int textTop = rect.y + (rect.h - textHeight) / 2;
 
-  const int artHeight = rect.h - textHeight - 3 * TILE_PADDING;
+  const int artHeight = tileArtHeight(rect, hasSubtitle);
   if (artHeight >= MIN_ART_HEIGHT) {
     drawTileArt(rect.x, rect.y + TILE_PADDING, rect.w, artHeight, coverPath, icon);
     textTop = rect.y + TILE_PADDING + artHeight + TILE_PADDING;
@@ -246,7 +310,7 @@ void LauncherActivity::render(RenderLock&&) {
   renderer.clearScreen();
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_BEREAN));
 
-  drawTile(rects[0], tr(STR_BIBLE), bibleSubtitle.c_str(), selected == 0, true, bibleCoverPath, BookIcon);
+  drawBibleTile(rects[0], selected == 0);
   drawTile(rects[1], tr(STR_MEETINGS), meetingsSubtitle.empty() ? nullptr : meetingsSubtitle.c_str(), selected == 1,
            false, meetingsCoverPath, LibraryIcon);
   drawTile(rects[2], tr(STR_SEARCH), tr(STR_COMING_SOON), selected == 2, false, {}, SearchIcon);
