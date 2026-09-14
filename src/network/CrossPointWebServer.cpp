@@ -317,7 +317,7 @@ void CrossPointWebServer::handleClient() {
         if (strcmp(buffer, "hello") == 0) {
           String hostname = WiFi.getHostname();
           if (hostname.isEmpty()) {
-            hostname = "crosspoint";
+            hostname = "berean";
           }
           String message = "crosspoint (on " + hostname + ");" + String(wsPort);
           udp.beginPacket(udp.remoteIP(), udp.remotePort());
