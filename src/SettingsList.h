@@ -240,6 +240,12 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
     sleepScreenValues[CrossPointSettings::QUICK_RESUME] = StrId::STR_QUICK_RESUME;
     sleepScreenValues[CrossPointSettings::TRANSPARENT_CUSTOM] = StrId::STR_TRANSPARENT;
 
+    // Assigned by enum value, like the others: these persist as ordinals, so a
+    // reordered menu must not silently change which language is downloaded.
+    std::vector<StrId> publicationLanguageValues(CrossPointSettings::PUBLICATION_LANGUAGE_COUNT);
+    publicationLanguageValues[CrossPointSettings::PUB_LANG_SPANISH] = StrId::STR_LANG_SPANISH;
+    publicationLanguageValues[CrossPointSettings::PUB_LANG_ENGLISH] = StrId::STR_LANG_ENGLISH;
+
     std::vector<StrId> statusBarClockValues(CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT);
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_RIGHT] = StrId::STR_DIR_RIGHT;
@@ -358,6 +364,9 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
         SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
                             "backShortToFileBrowser", StrId::STR_CAT_CONTROLS),
+
+        SettingInfo::Enum(StrId::STR_PUBLICATION_LANGUAGE, &CrossPointSettings::publicationLanguage,
+                          std::move(publicationLanguageValues), "publicationLanguage", StrId::STR_CAT_SYSTEM),
 
         // --- System ---
         SettingInfo::Value(

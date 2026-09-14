@@ -67,8 +67,10 @@ class CatalogIndexStore {
   void discardStaged();
 
   // Publication language, and therefore which per-language asset is fetched.
-  // One value for now, matching the meeting downloader's own.
-  static constexpr const char* LANGUAGE = "S";
+  // Read from settings rather than fixed: the cached index path carries it, so
+  // changing the setting stops finding the old file rather than reading an
+  // index in the wrong language.
+  static const char* language();
 
   // The index is 216,708 B uncompressed in Spanish. The budget refuses a wrong
   // or hostile asset before it is allocated, rather than after.

@@ -25,6 +25,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
+  // jw.org's langwritten codes, which are not ISO codes: S is Spanish, E is
+  // English. Persisted by ordinal, so append rather than reorder.
+  enum PUBLICATION_LANGUAGE { PUB_LANG_SPANISH = 0, PUB_LANG_ENGLISH = 1, PUBLICATION_LANGUAGE_COUNT };
+  // The language publications are DOWNLOADED in, which is independent of the
+  // interface language: reading in Spanish with an English UI is a normal setup.
+  static const char* langWritten(uint8_t language) { return language == PUB_LANG_ENGLISH ? "E" : "S"; }
   enum SLEEP_SCREEN_COVER_FILTER {
     NO_FILTER = 0,
     BLACK_AND_WHITE = 1,
@@ -293,6 +299,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t moveFinishedToReadFolder = 0;
   // Short press Back goes to file browser instead of home (0 = disabled, 1 = enabled)
   uint8_t backShortToFileBrowser = 0;
+  uint8_t publicationLanguage = PUB_LANG_SPANISH;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
   // Tilt-based page turning (X3 only — requires QMI8658 IMU)

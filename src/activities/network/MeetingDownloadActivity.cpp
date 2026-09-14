@@ -24,10 +24,8 @@ constexpr fui::ActionId ACTION_CANCEL = 1;
 constexpr int DOWNLOAD_PROGRESS_STEP_PERCENT = 5;
 constexpr unsigned long DOWNLOAD_PROGRESS_MIN_UPDATE_MS = 5000;
 
-// Language the EPUBs are fetched in, used both as the API's langwritten value
-// and as the key to look for under "files" in its response. The week -> issue
-// mapping is language-independent, so the meetings page stays English.
-constexpr const char* DOWNLOAD_LANGUAGE = "S";
+// The week -> issue mapping is language-independent, so the meetings page stays
+// English regardless; only the EPUB request carries the publication language.
 
 constexpr MeetingPub PUBLICATION_ORDER[] = {MeetingPub::Watchtower, MeetingPub::Workbook};
 }  // namespace
@@ -238,7 +236,7 @@ bool MeetingDownloadActivity::downloadPublication(const MeetingPub pub, const ch
   publication::Request request;
   request.symbol = pub == MeetingPub::Watchtower ? "w" : "mwb";
   request.issue = issue;
-  request.language = DOWNLOAD_LANGUAGE;
+  request.language = CrossPointSettings::langWritten(SETTINGS.publicationLanguage);
   request.folder = downloadFolder;
   request.force = forceRedownload;
 
