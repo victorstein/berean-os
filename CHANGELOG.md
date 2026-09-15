@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/victorstein/berean-os/compare/v1.8.0...v1.9.0) (2026-09-15)
+
+
+### Features
+
+* publication language setting, cancellable week scan, and one card walk ([#25](https://github.com/victorstein/berean-os/issues/25)) ([ded48d1](https://github.com/victorstein/berean-os/commit/ded48d173539b9eae75b494bf413707bcc79499f))
+
 ## [1.8.0](https://github.com/victorstein/berean-os/compare/v1.7.1...v1.8.0) (2026-09-14)
 
 
