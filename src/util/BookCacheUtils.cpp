@@ -14,6 +14,8 @@ bool isBookCacheDirectoryName(const char* name) {
   return strncmp(name, EPUB_PREFIX, std::size(EPUB_PREFIX) - 1) == 0;
 }
 
+std::string bookCachePath(const std::string& path) { return Epub(path, "/.crosspoint").getCachePath(); }
+
 void clearBookCache(const std::string& path) {
   if (FsHelpers::hasEpubExtension(path)) {
     Epub(path, "/.crosspoint").clearCache();

@@ -4,6 +4,7 @@
 // HttpDownloader.h pulls Arduino/SdFat, whose macros collide with lwip's
 // ip4_addr.h unless seen first. Pin this order; clang-format would otherwise
 // sort the local header last and break the build.
+#include "CrossPointSettings.h"
 #include "HttpDownloader.h"
 #include <Catalog/CatalogArchive.h>
 #include <HalStorage.h>
@@ -45,12 +46,14 @@ CatalogIndexStore::PsramBuffer CatalogIndexStore::allocatePsram(const size_t byt
   return PsramBuffer(static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
 }
 
-std::string CatalogIndexStore::indexPath() { return std::string(STUDY_DIR) + "/catalog-" + LANGUAGE + ".idx"; }
+const char* CatalogIndexStore::language() { return CrossPointSettings::langWritten(SETTINGS.publicationLanguage); }
+
+std::string CatalogIndexStore::indexPath() { return std::string(STUDY_DIR) + "/catalog-" + language() + ".idx"; }
 
 std::string CatalogIndexStore::stagedPath() { return indexPath() + ".part"; }
 
 std::string CatalogIndexStore::assetUrl() {
-  return std::string("https://github.com/" OTA_RELEASE_REPO "/releases/download/catalog/catalog-") + LANGUAGE +
+  return std::string("https://github.com/" OTA_RELEASE_REPO "/releases/download/catalog/catalog-") + language() +
          ".txt.gz";
 }
 
@@ -162,7 +165,7 @@ CatalogIndexStore::Status CatalogIndexStore::loadFrom(const char* path, PsramBuf
 
   const std::string_view text(reinterpret_cast<const char*>(inflated.get()), inflatedSize);
   const catalog::Header header = catalog::parseHeader(text);
-  if (!catalog::indexAcceptable(header, LANGUAGE)) {
+  if (!catalog::indexAcceptable(header, language())) {
     LOG_ERR(MODULE, "%s is not an index this build reads (version %d, language %.*s)", path, header.version,
             static_cast<int>(header.language.size()), header.language.data());
     return Status::BadFormat;

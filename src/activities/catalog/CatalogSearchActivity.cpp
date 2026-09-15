@@ -392,7 +392,7 @@ void CatalogSearchActivity::downloadBySymbol(const std::string& symbol, const st
   publication::Request request;
   request.symbol = symbol.c_str();
   request.issue = issue.c_str();
-  request.language = CatalogIndexStore::LANGUAGE;
+  request.language = CatalogIndexStore::language();
   request.folder = downloadFolder;
 
   publication::Hooks hooks;

@@ -24,10 +24,8 @@ constexpr fui::ActionId ACTION_CANCEL = 1;
 constexpr int DOWNLOAD_PROGRESS_STEP_PERCENT = 5;
 constexpr unsigned long DOWNLOAD_PROGRESS_MIN_UPDATE_MS = 5000;
 
-// Language the EPUBs are fetched in, used both as the API's langwritten value
-// and as the key to look for under "files" in its response. The week -> issue
-// mapping is language-independent, so the meetings page stays English.
-constexpr const char* DOWNLOAD_LANGUAGE = "S";
+// The week -> issue mapping is language-independent, so the meetings page stays
+// English regardless; only the EPUB request carries the publication language.
 
 constexpr MeetingPub PUBLICATION_ORDER[] = {MeetingPub::Watchtower, MeetingPub::Workbook};
 }  // namespace
@@ -170,19 +168,55 @@ void MeetingDownloadActivity::runSequence() {
 bool MeetingDownloadActivity::scanWeek(const IsoWeek& week, WolWeekScanner& scanner) {
   const std::string url = meetingsPageUrl(week);
   size_t bytes = 0;
-  const bool fetched = HttpDownloader::fetchUrl(url, [&scanner, &bytes](const uint8_t* data, const size_t len) {
-    bytes += len;
-    scanner.feed(reinterpret_cast<const char*>(data), len);
-    // Returning false is reported as FILE_ERROR, which is indistinguishable from
-    // a transport failure, so the whole body is consumed even once both links
-    // have been recovered.
-    return true;
-  });
+  unsigned long lastRepaintMs = 0;
+
+  const bool fetched = HttpDownloader::fetchUrl(
+      url,
+      [this, &scanner, &bytes, &lastRepaintMs](const uint8_t* data, const size_t len) {
+        bytes += len;
+        scanner.feed(reinterpret_cast<const char*>(data), len);
+
+        // The loop task is blocked for the whole scrape, so this is the only
+        // place input can be pumped -- without it the screen sits unresponsive
+        // for as long as the page takes. Cancelling goes through the flag, not
+        // a false return: that reports FILE_ERROR, which is indistinguishable
+        // from a transport failure.
+        mappedInput.update();
+        if (mappedInput.wasReleased(MappedInputManager::Button::Back)) cancelDownload = true;
+        if (mappedInput.wasHomeGesture()) {
+          cancelDownload = true;
+          goHomeAfterCancel = true;
+        }
+        routeTouch(mappedInput);
+
+        // Byte count rather than a percentage: the page is served without a
+        // length often enough that a bar would sit at zero throughout. This is
+        // only here to show the scrape is alive.
+        const unsigned long now = millis();
+        if (now - lastRepaintMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS) {
+          lastRepaintMs = now;
+          char scanned[64];
+          snprintf(scanned, sizeof(scanned), "%s  %u KB", tr(STR_RESOLVING_WEEK), static_cast<unsigned>(bytes / 1024));
+          statusMessage = scanned;
+          requestUpdate(true);
+        }
+        return true;
+      },
+      "", "", &cancelDownload);
 
   // The page is HTML, not an API: log the byte count so a markup change is
   // diagnosable from the serial log rather than just "not found".
   LOG_INF("MEET", "Week page %s: %zu bytes, %d publication(s)", url.c_str(), bytes, scanner.count());
 
+  if (cancelDownload) {
+    LOG_INF("MEET", "Week scan cancelled after %zu bytes", bytes);
+    if (goHomeAfterCancel) {
+      onGoHome();
+    } else {
+      finish();
+    }
+    return false;
+  }
   if (!fetched) {
     fail(tr(STR_DOWNLOAD_FAILED));
     return false;
@@ -238,7 +272,7 @@ bool MeetingDownloadActivity::downloadPublication(const MeetingPub pub, const ch
   publication::Request request;
   request.symbol = pub == MeetingPub::Watchtower ? "w" : "mwb";
   request.issue = issue;
-  request.language = DOWNLOAD_LANGUAGE;
+  request.language = CrossPointSettings::langWritten(SETTINGS.publicationLanguage);
   request.folder = downloadFolder;
   request.force = forceRedownload;
 
