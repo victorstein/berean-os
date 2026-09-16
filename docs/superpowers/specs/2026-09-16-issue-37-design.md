@@ -1,8 +1,9 @@
 # Issue #37 — design: gate screen rotation on a portrait-only device
 
-Pass 0. Builds on
+Pass 0, **reviewed CLEAR** — the pass-0 review's MAJOR and three MINORs are
+applied, and §10 records what changed. Builds on
 `docs/superpowers/research/2026-09-16-issue-37-research.md`; every claim below
-was re-checked against the code in this worktree at `77b5d3ac`.
+was re-checked against the code in this worktree.
 
 Two deviations from the brief are argued for and labelled — **A1/A4** (the gate
 is compile-time, not a `BoardConfig` runtime predicate) and **A5** (`orientation`
@@ -96,7 +97,7 @@ include.
 > not a `BoardConfig` runtime predicate as acceptance criterion 3 asks for.
 > Criterion 3 is not reachable: `BoardConfig.h` lives in the `freeink-sdk`
 > submodule (remote `Free-Ink/freeink-sdk`, pinned `310ec615` per `.gitmodules`),
-> which we cannot push to, and its predicate roster (`BoardConfig.h:1614-1693`)
+> which we cannot push to, and its predicate roster (`BoardConfig.h:1614-1695`)
 > has nothing about orientation. This satisfies the criterion's *intent* — a
 > named capability rather than board identity — and it is not
 > `BoardConfig::isX4Pro()` in disguise, because the derivation is over the
@@ -108,13 +109,20 @@ include.
 > cannot rotate when the renderer and panel plainly can. The thing being gated
 > is a product rule.
 
-> **A2.** An unhandled device set is an `#error`, not a safe default. This adds
-> no new limitation: `src/network/FirmwareBoardTag.cpp:16` already `#error`s any
-> build without `FREEINK_DEVICE_X4PRO`, so the repo cannot build for another
-> board today. Chosen over "absent means rotation stays" because
-> `platformio.ini` carries no `-Wundef` and no `-Werror`, so an undefined macro
-> in `#if` evaluates to 0 with no diagnostic — a default would be silent either
-> way, and the wrong polarity would strip rotation from a board that wanted it.
+> **A2.** An unhandled device set is an `#error`, not a default. The reason is
+> to force a future board to answer the question explicitly: either default
+> would be silent, and both are wrong for *some* board. It is **not** a
+> `-Wundef` argument — the capability is `#ifndef`-guarded, so it is always
+> defined by the time it is tested. (The `-Wundef` point applies one level down,
+> to `FREEINK_DEVICE_X4PRO` itself: `platformio.ini` carries no `-Wundef` and no
+> `-Werror`, so a misspelt device macro would read as 0 with no diagnostic. That
+> is an argument for the `#error` catching the fall-through, which it does.)
+>
+> On precedent: `src/network/FirmwareBoardTag.cpp:16` already `#error`s any build
+> without `FREEINK_DEVICE_X4PRO`, so the firmware cannot build for another board
+> today. But that one sits in a leaf `.cpp` and this one sits in a widely
+> included header, which is a real difference — see the constraint it puts on
+> **A11** in §7.2.
 
 > **A3.** The capability lives in `src/CrossPointSettings.h`, beside the enum it
 > constrains, rather than in a new `DeviceCapabilities.h`. The repo has no
@@ -202,12 +210,23 @@ row, same problem.
 > `"longPressButtonBehavior": 2` survives in the file until the next save; the
 > in-memory value is `OFF` from load onward and any save writes `OFF`.
 
-> **A6.** The reader menu's rotation popup (`EpubReaderMenuActivity.cpp:104-117`)
-> and `orientationLabels` (`EpubReaderMenuActivity.h:81-82`) stay. With the row
-> gone, `activateIndex` can never see `ROTATE_SCREEN`, so this is dead but
-> compiled code. Kept to hold the diff to one line in a file t4 (#38) is editing
-> concurrently. Attack this if the dead code matters more than the conflict
-> surface — removing it is a two-line follow-up, and it would also orphan
+> **A6.** Everything downstream of the row stays. With the row gone, no
+> `menuItems` entry ever carries `ROTATE_SCREEN`, so **two** branches become
+> dead but compiled:
+>
+> - the activation popup, `EpubReaderMenuActivity.cpp:104-117`
+> - the row-value renderer, `EpubReaderMenuActivity.cpp:198-201`
+>   (`menuRowItems[i].value = I18N.get(orientationLabels[pendingOrientation])`)
+>
+> plus the `ROTATE_SCREEN` enumerator (`.h:22`) and `orientationLabels`
+> (`.h:81-82`), which only become removable if both branches go.
+>
+> Kept to hold the diff to one line in a file t4 (#38) is editing concurrently.
+> Attack this if the dead code matters more than the conflict surface, but note
+> the removal is **not** the "two-line follow-up" an earlier draft of this spec
+> claimed: `pendingOrientation` must survive regardless, because `MenuResult`
+> carries it at `EpubReaderMenuActivity.cpp:86` and `:145` and
+> `EpubReaderActivity.cpp:286` reads it. Removing the dead code would orphan
 > nothing (see **A9**).
 
 `EpubReaderMenuActivity.h` needs no change, so the diff touches
@@ -275,6 +294,19 @@ gate:
 > t5 (#27) has claimed. The brief's constraint was written to protect the sleep
 > screen and `ReaderActivity`; pinning the value to `PORTRAIT` protects them just
 > as well, because they only ever needed *a* valid orientation to render.
+>
+> (iv) Strongest of the four, and found in review rather than in the original
+> draft: **this repo already does exactly this, on this exact board, in the very
+> block the brief told me to extend.** The erase at `SettingsList.h:459-467`
+> drops `STR_SUNLIGHT_FADING_FIX`, `STR_FRONT_BTN_FOLLOW_ORIENTATION` and
+> `STR_BACK_SHORT_TO_FILE_BROWSER` on every `hasTouch()` board, and all three
+> are `SettingInfo::Toggle`s with a member pointer and a persisted key —
+> `"fadingFix"` (`:277`), `"frontButtonFollowOrientation"` (`:345-346`),
+> `"backShortToFileBrowser"` (`:365-366`). Since `getSettingsList()` is what
+> `toJson`/`fromJson` iterate, those three fields are **already un-persisted on
+> the X4 Pro today**. So "gate the row" and "un-persist the field" are not two
+> decisions here: they are one, and the brief's own prescribed remedy has the
+> same effect it warns against.
 >
 > Attack this if the intent was that a unit keeps its rotation across the
 > update. If so the fix is (iii) plus one of the entry points staying, which
@@ -363,11 +395,32 @@ constants in a header the host suite does not build, and a test asserting
 > oversight. Attack it if a host test is wanted; making one possible means
 > compiling `SettingsList.h` on the host, which is a materially larger change
 > than this issue.
+>
+> One trap for whoever tries it later: the `#error` of **A2** sits in
+> `src/CrossPointSettings.h`, and the host build defines no `FREEINK_DEVICE_*`
+> (no match for `FREEINK_DEVICE` in `test/CMakeLists.txt`). The first host test
+> to include that header — directly or transitively — trips the `#error` before
+> it compiles anything. Nothing breaks today: no file under `test/` references
+> `CrossPointSettings` at all. The fix at that point is for the host target to
+> define `-DBEREAN_CAP_ROTATION=…` itself, which the `#ifndef` guard exists to
+> allow; it is not a reason to weaken the `#error` now.
 
 ### 7.3 Device smoke test — the human's, and the only real verification
 
-1. Settings → Reader: **no Orientation row**; the rows either side of it
-   (Hyphenation, Extra spacing) are intact and the category still scrolls.
+1. Settings → Reader: the list reads **Text Settings, Manage fonts, Images,
+   Night mode, Customise status bar** — five rows, with **no Orientation row**
+   between Manage fonts and Images. Then open Text Settings and confirm
+   Hyphenation and Extra spacing are still there: they live in that sub-screen,
+   not in Reader.
+
+   Do not expect Hyphenation or Extra spacing on the Reader screen itself.
+   Both carry `.withTextSettings()` (`SettingsList.h:316` and `:323`) and
+   `SettingsActivity.cpp:61` drops every such entry from this category, so the
+   only Reader-category rows that reach the screen are `STR_ORIENTATION`
+   (`SettingsList.h:317-320`), `STR_IMAGES` (`:327-329`) and `STR_NIGHT_MODE`
+   (`:333-334`), framed by three ACTION entries added at
+   `SettingsActivity.cpp:86-90`. `STR_ORIENTATION` having no
+   `.withTextSettings()` is precisely why it is on that screen at all.
 2. Settings → Controls → Long-press behaviour: offers **Off / Chapter skip
    only**. It now cycles on tap instead of opening a popup (§6) — confirm it
    cycles between exactly those two.
@@ -405,3 +458,22 @@ constants in a header the host suite does not build, and a test asserting
 | 2 — `ORIENTATION_CHANGE` gone and its handler unreachable | §4.2 #3 for the option; **A7** for the handler, via the existing clamp |
 | 3 — gate is a capability predicate, not `isX4Pro()` | §4.1, with **A1** recording that the literal `BoardConfig` form is unreachable |
 | 4 — `pio run` succeeds | §7.1.1 |
+
+## 10. Changes from review pass 0
+
+Reviewed at `docs/superpowers/reviews/issue-37-spec-review-0.md` —
+**VERDICT: CLEAR**, 0 BLOCKER, 1 MAJOR, 3 MINOR. All four were verified against
+the code and applied here; none reversed a decision or changed scope.
+
+| Finding | Change |
+| --- | --- |
+| MAJOR 1 — §7.3 step 1 named two rows that cannot be on the Reader screen | Step 1 rewritten against the real screen. Hyphenation and Extra spacing carry `.withTextSettings()` (`SettingsList.h:316`, `:323`) and are dropped from the category by `SettingsActivity.cpp:61`, so the old step asked the tester to confirm a state the firmware cannot produce — a correct build would have read as a failure, and the only check of entry #2 would have gone unperformed. |
+| MINOR 1 — **A2**'s "adds no new limitation" conflated a leaf `.cpp` with a widely included header | **A2** reworded and a constraint added to **A11**: the host build defines no `FREEINK_DEVICE_*`, so the first host test to include `CrossPointSettings.h` trips the `#error`. Latent today — nothing under `test/` references `CrossPointSettings`. |
+| MINOR 2 — **A6**'s dead-code inventory was short and its cost understated | **A6** now lists both dead branches (`EpubReaderMenuActivity.cpp:104-117` and `:198-201`) and retracts "a two-line follow-up": `pendingOrientation` must survive because `MenuResult` carries it (`:86`, `:145`). |
+| MINOR 3 — **A2**'s stated reason argued against an option it had not rejected | **A2** now gives the real reason (force a future board to decide) and puts the `-Wundef` point where it belongs, one level down on `FREEINK_DEVICE_X4PRO`. |
+
+One finding strengthened the design rather than weakening it: **A5(iv)** records
+the review's discovery that `SettingsList.h:459-467` already un-persists three
+keyed settings on this exact board, so gating a row and un-persisting its field
+are one decision in this codebase, not two. That removes the main objection to
+**A5** and is why it stayed CLEAR rather than needing human adjudication.

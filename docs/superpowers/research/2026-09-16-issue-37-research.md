@@ -141,10 +141,11 @@ Acceptance criterion 3 asks for "a `BoardConfig` capability predicate, not
 (`.gitmodules`), pinned at `310ec615`. We cannot push there, so a new
 `BoardConfig::isPortraitOnly()` is out of reach for this task.
 
-The existing roster of runtime predicates is `BoardConfig.h:1614-1693`
+The existing roster of runtime predicates is `BoardConfig.h:1614-1695`
 (`isX4Pro()`, `hasTouch()`, `hasHomeKey()`, `hasPwmFrontlight()`, `hasAudio()`,
-`hasMic()`, `hasBuzzer()`, `hasRtc()`, `hasTempHumidity()`). **None is about
-orientation**, and each derives from a `BoardDescriptor` field we also cannot add.
+`hasMic()`, `hasBuzzer()`, `hasRtc()`, `hasTempHumidity()`, `hasImu()`,
+`hasLeds()`). **None is about orientation**, and each derives from a
+`BoardDescriptor` field we also cannot add.
 
 Three reachable options, all in this repo:
 
