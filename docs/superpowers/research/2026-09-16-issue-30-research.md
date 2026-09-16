@@ -81,7 +81,7 @@ wrong for all three X4 Pro drivers.
 
 `GfxRenderer::displayBuffer` passes `fadingFix` as the driver's `turnOffScreen`
 argument (`lib/GfxRenderer/GfxRenderer.cpp:1721`), and the SSD1677 promotion
-block is gated on `if (!turnOff)` (`Ssd1677Driver.cpp:427`). With `turnOff`
+block is gated on `if (!turnOff)` (`Ssd1677Driver.cpp:428`). With `turnOff`
 true the one-shot is neither applied nor consumed, so a `FAST_REFRESH` stays a
 true DU against a RED plane that holds nothing resembling the sleep frame: deep
 sleep mode 0x03 discards controller RAM (`Ssd1677Driver.cpp:689-692`) and
