@@ -284,7 +284,7 @@ void LauncherActivity::computeLayout() {
   // otherwise leave this tile a pixel short of the ones above and below it.
   rects[static_cast<size_t>(Tile::Search)] = {left + halfWidth + TILE_GAP, y, width - halfWidth - TILE_GAP, unitHeight};
   y += unitHeight + TILE_GAP;
-  rects[static_cast<size_t>(Tile::TagsAndSettings)] = {left, y, width, unitHeight};
+  rects[static_cast<size_t>(Tile::Settings)] = {left, y, width, unitHeight};
 
   rects[static_cast<size_t>(Tile::Resume)] = {left, resumeTop, width, resumeHeight};
 }
@@ -463,7 +463,7 @@ void LauncherActivity::render(RenderLock&&) {
                 MAGAZINE_MASTHEAD_BAND);
   // Buscar has landed, so the tile no longer carries a "coming soon" subtitle.
   drawTile(rects[2], tr(STR_PUBLICATIONS), nullptr, selected == 2, false, {}, SearchIcon);
-  drawTile(rects[3], tr(STR_TAGS_AND_SETTINGS), nullptr, selected == 3, false, {}, Settings2Icon);
+  drawTile(rects[3], tr(STR_SETTINGS_TITLE), nullptr, selected == 3, false, {}, Settings2Icon);
 
   // The resume strip is deliberately a one-line label over its book's title:
   // it is the fast path out of the launcher, not another shelf.
@@ -491,8 +491,8 @@ void LauncherActivity::activate(const Tile tile) {
     case Tile::Search:
       openPublications();
       break;
-    case Tile::TagsAndSettings:
-      openTagsAndSettings();
+    case Tile::Settings:
+      openSettings();
       break;
     case Tile::Resume:
       if (hasResume) activityManager.goToReader(resumePath, /*allowFastInitialRefresh=*/true);
@@ -525,7 +525,7 @@ void LauncherActivity::openPublications() {
   });
 }
 
-void LauncherActivity::openTagsAndSettings() { activityManager.goToSettings(); }
+void LauncherActivity::openSettings() { activityManager.goToSettings(); }
 
 void LauncherActivity::loop() {
   // No mappedInput.update() here. main.cpp's loop already ticked HalGPIO this
