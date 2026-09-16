@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.3](https://github.com/victorstein/berean-os/compare/v1.9.2...v1.9.3) (2026-09-16)
+
+
+### Bug Fixes
+
+* paint the launcher cleanly on the first frame after a wake ([#44](https://github.com/victorstein/berean-os/issues/44)) ([a2457f7](https://github.com/victorstein/berean-os/commit/a2457f751f0547d75a391346a699f29d8b0dccd8)), closes [#30](https://github.com/victorstein/berean-os/issues/30)
+
 ## [1.9.2](https://github.com/victorstein/berean-os/compare/v1.9.1...v1.9.2) (2026-09-16)
 
 
