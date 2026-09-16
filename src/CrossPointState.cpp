@@ -94,3 +94,6 @@ bool CrossPointState::fromJson(JsonVariantConst doc) {
   showBootScreen = doc["showBootScreen"] | true;
   return true;
 }
+
+static_assert(CrossPointState::saveBudget() == 2048,
+              "SAVE_BUDGET is not reaching saveBudget() -- check access and spelling");

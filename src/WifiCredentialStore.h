@@ -41,6 +41,12 @@ class WifiCredentialStore : public PersistableStore<WifiCredentialStore> {
   friend class PersistableStore<WifiCredentialStore>;
 
  public:
+  // 8 networks x (ssid <= 32 B, base64 of a <= 64 B password, two integers).
+  // ~1,700 B worst case. The headroom absorbs a password written through the web
+  // server, which does not bound it (CrossPointWebServer.cpp:1385); the load path
+  // discards anything over MAX_PASSWORD_LENGTH on the next boot (:52-56).
+  static constexpr size_t SAVE_BUDGET = 8192;
+
   static const char* getFilePath() { return "/.crosspoint/wifi.json"; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);

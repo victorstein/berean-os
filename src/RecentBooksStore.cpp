@@ -129,3 +129,6 @@ RecentBook RecentBooksStore::getDataFromBook(std::string path) const {
   }
   return RecentBook{path, "", "", ""};
 }
+
+static_assert(RecentBooksStore::saveBudget() == persist::DEFAULT_SAVE_BUDGET,
+              "RecentBooksStore deliberately keeps the default ceiling -- see the spec's A5");

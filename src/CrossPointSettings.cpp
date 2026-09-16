@@ -370,3 +370,6 @@ int CrossPointSettings::getReaderFontId() const {
       return sans ? NOTOSANS_14_FONT_ID : NOTOSERIF_14_FONT_ID;
   }
 }
+
+static_assert(CrossPointSettings::saveBudget() == 4096,
+              "SAVE_BUDGET is not reaching saveBudget() -- check access and spelling");

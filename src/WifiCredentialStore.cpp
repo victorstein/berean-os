@@ -227,3 +227,6 @@ void WifiCredentialStore::clearAll() {
   saveToFile();
   LOG_DBG("WCS", "Cleared all WiFi credentials");
 }
+
+static_assert(WifiCredentialStore::saveBudget() == 8192,
+              "SAVE_BUDGET is not reaching saveBudget() -- check access and spelling");
