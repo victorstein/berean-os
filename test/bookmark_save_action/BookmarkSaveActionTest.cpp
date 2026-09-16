@@ -5,9 +5,8 @@
 // comment atop util/HighlightFileAction.h for the full reasoning. This suite
 // drives the pure rule; the Storage call sequence around it is device-verified.
 
-#include <gtest/gtest.h>
-
 #include <SaveBudget.h>
+#include <gtest/gtest.h>
 
 #include "util/BookmarkSaveAction.h"
 
