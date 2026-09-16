@@ -73,7 +73,7 @@ void ClockSyncActivity::runSync() {
 
   // Mark as synced so the auto-sync hook stops firing on future WiFi connects.
   SETTINGS.clockHasBeenSynced = 1;
-  SETTINGS.saveToFile();
+  SETTINGS.saveToFileAtomic();
 
   // Read the freshly synced time back for the user-facing confirmation.
   char buf[9];

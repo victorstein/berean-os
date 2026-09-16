@@ -158,20 +158,20 @@ void StatusBarSettingsActivity::handleSelection() {
       optionPopup.show(StrId::STR_PROGRESS_BAR, progressBarNames, PROGRESS_BAR_ITEMS, SETTINGS.statusBarProgressBar,
                        [this](int idx) {
                          SETTINGS.statusBarProgressBar = idx;
-                         SETTINGS.saveToFile();
+                         SETTINGS.saveToFileAtomic();
                        });
       return;
     case ITEM_PROGRESS_BAR_THICKNESS:
       optionPopup.show(StrId::STR_PROGRESS_BAR_THICKNESS, progressBarThicknessNames, PROGRESS_BAR_THICKNESS_ITEMS,
                        SETTINGS.statusBarProgressBarThickness, [this](int idx) {
                          SETTINGS.statusBarProgressBarThickness = idx;
-                         SETTINGS.saveToFile();
+                         SETTINGS.saveToFileAtomic();
                        });
       return;
     case ITEM_TITLE:
       optionPopup.show(StrId::STR_TITLE, titleNames, TITLE_ITEMS, SETTINGS.statusBarTitle, [this](int idx) {
         SETTINGS.statusBarTitle = idx;
-        SETTINGS.saveToFile();
+        SETTINGS.saveToFileAtomic();
       });
       return;
     case ITEM_BATTERY:
@@ -181,7 +181,7 @@ void StatusBarSettingsActivity::handleSelection() {
       optionPopup.show(StrId::STR_XTC_STATUS_BAR, xtcStatusBarNames, XTC_STATUS_BAR_ITEMS, SETTINGS.xtcStatusBarMode,
                        [this](int idx) {
                          SETTINGS.xtcStatusBarMode = idx;
-                         SETTINGS.saveToFile();
+                         SETTINGS.saveToFileAtomic();
                        });
       return;
     case ITEM_CLOCK:
@@ -200,7 +200,7 @@ void StatusBarSettingsActivity::handleSelection() {
     default:
       return;
   }
-  SETTINGS.saveToFile();
+  SETTINGS.saveToFileAtomic();
 }
 
 std::string StatusBarSettingsActivity::rowValueText(const int index) {

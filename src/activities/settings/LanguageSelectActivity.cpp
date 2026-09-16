@@ -56,7 +56,7 @@ void LanguageSelectActivity::activateIndex(const int index) {
   }
 
   SETTINGS.language = langIndex;
-  SETTINGS.saveToFile();
+  SETTINGS.saveToFileAtomic();
 
   // Return to previous page
   finish();
