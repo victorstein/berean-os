@@ -128,7 +128,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
 
   if (selectedAction == MenuAction::NIGHT_MODE) {
     SETTINGS.screenInverted = SETTINGS.screenInverted == 0 ? 1 : 0;
-    SETTINGS.saveToFile();
+    SETTINGS.saveToFileAtomic();
     requestUpdate();
     return;
   }
@@ -137,7 +137,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     const bool lightOn = !Frontlight.isOn();
     Frontlight.setOn(lightOn);
     SETTINGS.frontlightOn = lightOn ? 1 : 0;
-    SETTINGS.saveToFile();
+    SETTINGS.saveToFileAtomic();
     requestUpdate();
     return;
   }

@@ -225,7 +225,7 @@ void BmpViewerActivity::doSetSleepCover() {
 
   if (success) {
     if (!transparentMode) SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
-    SETTINGS.saveToFile();
+    SETTINGS.saveToFileAtomic();
     GUI.drawPopup(renderer, tr(STR_DONE));
   } else {
     GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));

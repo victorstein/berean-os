@@ -56,7 +56,7 @@ void ReaderActivity::onEnter() {
   }
 
   APP_STATE.openEpubPath = bookPath;
-  APP_STATE.saveToFile();
+  APP_STATE.saveToFileAtomic();
   RECENT_BOOKS.addBook(bookPath, getBookTitle(), getBookAuthor(), getBookThumbBmpPath());
   requestUpdate();
 }
@@ -66,7 +66,7 @@ void ReaderActivity::onExit() {
 
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
   APP_STATE.readerActivityLoadCount = 0;
-  APP_STATE.saveToFile();
+  APP_STATE.saveToFileAtomic();
 
   endOfBookOptions.reset();
   endOfBookOptionsReady.store(false, std::memory_order_release);
