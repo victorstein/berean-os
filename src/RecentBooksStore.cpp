@@ -3,6 +3,7 @@
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
+#include "Utf8.h"
 #include <Logging.h>
 
 #include <algorithm>
@@ -51,8 +52,15 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
     recentBooks.erase(it);
   }
 
+  // Get the safe length using the C-style helper
+int titleLen = utf8SafeTruncateBuffer(title.c_str(), 256);
+int authorLen = utf8SafeTruncateBuffer(author.c_str(), 256);
+
+// Use that length to cut the C++ strings
+std::string safeTitle = title.substr(0, titleLen);
+std::string safeAuthor = author.substr(0, authorLen);
   // Add to front
-  recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath});
+  recentBooks.insert(recentBooks.begin(), {path, safeTitle, safeAuthor, coverBmpPath});
 
   // Trim to max size
   if (recentBooks.size() > MAX_RECENT_BOOKS) {
