@@ -147,7 +147,7 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
   RECENT_BOOKS.updatePath(srcPath, dstPath, oldCachePath, newCachePath);
   if (APP_STATE.openEpubPath == srcPath) {
     APP_STATE.openEpubPath = dstPath;
-    APP_STATE.saveToFile();
+    APP_STATE.saveToFileAtomic();
   }
 }
 
@@ -881,7 +881,7 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
   }
 
   SETTINGS.orientation = orientation;
-  SETTINGS.saveToFile();
+  SETTINGS.saveToFileAtomic();
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   section.reset();
 }

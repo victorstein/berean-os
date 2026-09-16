@@ -106,7 +106,7 @@ void LauncherActivity::resolveTargets() {
     // down -- far too late to search for the Bible or open it.
     if (APP_STATE.bibleCoverPath != bibleCoverPath) {
       APP_STATE.bibleCoverPath = bibleCoverPath;
-      APP_STATE.saveToFile();
+      APP_STATE.saveToFileAtomic();
     }
   }
 

@@ -69,7 +69,7 @@ void RecentBooksActivity::onEnter() {
   // Prune entries whose backing files are gone; this is one of two interaction
   // points where the persistent store gets cleaned (the other is addBook).
   if (RECENT_BOOKS.pruneMissing()) {
-    RECENT_BOOKS.saveToFile();
+    RECENT_BOOKS.saveToFileAtomic();
   }
 
   loadRecentBooks();

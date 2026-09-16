@@ -227,7 +227,7 @@ bool SettingsActivity::handleButtons() {
       activeNav().selected = 0;
       requestUpdate();
     } else {
-      SETTINGS.saveToFile();
+      SETTINGS.saveToFileAtomic();
       onGoHome();
     }
     return true;
@@ -263,7 +263,7 @@ void SettingsActivity::toggleCurrentSetting() {
                        currentValue, [this, valuePtr, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
                          SETTINGS.*valuePtr = idx;
                          syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-                         SETTINGS.saveToFile();
+                         SETTINGS.saveToFileAtomic();
                          rebuildSettingsLists();
                          applyUiSettingChange(valuePtr);
                        });
@@ -281,7 +281,7 @@ void SettingsActivity::toggleCurrentSetting() {
       auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-        SETTINGS.saveToFile();
+        SETTINGS.saveToFileAtomic();
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -302,7 +302,7 @@ void SettingsActivity::toggleCurrentSetting() {
       SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
     }
   } else if (setting.type == SettingType::ACTION) {
-    auto resultHandler = [this](const ActivityResult&) { SETTINGS.saveToFile(); };
+    auto resultHandler = [this](const ActivityResult&) { SETTINGS.saveToFileAtomic(); };
 
     switch (setting.action) {
       case SettingAction::RemapFrontButtons:
@@ -326,7 +326,7 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::DownloadFonts:
         startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
                                [this](const ActivityResult&) {
-                                 SETTINGS.saveToFile();
+                                 SETTINGS.saveToFileAtomic();
                                  rebuildSettingsLists();
                                });
         break;
@@ -344,7 +344,7 @@ void SettingsActivity::toggleCurrentSetting() {
         // needs an explicit rebuild here rather than the generic resultHandler.
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput),
                                [this](const ActivityResult&) {
-                                 SETTINGS.saveToFile();
+                                 SETTINGS.saveToFileAtomic();
                                  rebuildSettingsLists();
                                });
         break;
@@ -358,7 +358,7 @@ void SettingsActivity::toggleCurrentSetting() {
   }
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-  SETTINGS.saveToFile();
+  SETTINGS.saveToFileAtomic();
   rebuildSettingsLists();
   applyUiSettingChange(setting.valuePtr);
   activeNav().selected = std::min(ringPos(), settingsCount);
@@ -396,7 +396,7 @@ void SettingsActivity::openSleepTimeoutPicker() {
       [this](const ActivityResult& result) {
         if (!result.isCancelled) {
           SETTINGS.sleepTimeoutMinutes = static_cast<uint8_t>(std::get<IntervalResult>(result.data).value);
-          SETTINGS.saveToFile();
+          SETTINGS.saveToFileAtomic();
         }
         requestUpdate();
       });

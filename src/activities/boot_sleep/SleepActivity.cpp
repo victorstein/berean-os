@@ -443,7 +443,7 @@ bool selectRandomSleepFile(const char* dirPath, const SleepRecentKind recentKind
   selectedPath += "/";
   selectedPath += name.get();
   pushRecentSleepIndex(recentKind, randomFileIndex);
-  APP_STATE.saveToFile();
+  APP_STATE.saveToFileAtomic();
   return true;
 }
 

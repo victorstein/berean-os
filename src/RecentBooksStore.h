@@ -26,6 +26,14 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   friend class PersistableStore<RecentBooksStore>;
 
  public:
+  // Deliberately the shared default rather than a tighter figure. The entry
+  // count is capped at MAX_RECENT_BOOKS, but each entry holds four unbounded
+  // std::strings -- title and author come straight from EPUB metadata with no
+  // truncation on the way in -- so the accepted worst case is 10 x 4 unbounded
+  // strings. A tight ceiling here would refuse a legitimate save on a real book,
+  // and the only symptom would be recents quietly not updating.
+  static constexpr size_t SAVE_BUDGET = persist::DEFAULT_SAVE_BUDGET;
+
   static const char* getFilePath() { return "/.crosspoint/recent.json"; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
