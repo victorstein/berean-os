@@ -36,10 +36,10 @@ class PersistableStoreBase {
   // I/O, and you create a storeMutex/storageMutex ordering hazard. Don't.
   mutable std::mutex storeMutex;
 
-  // fromJson() implementations call this (instead of saveToFile()) when the
+  // fromJson() implementations call this (instead of saving directly) when the
   // on-disk JSON used a legacy shape that was upgraded in memory.
   // loadFromFile() performs the save after releasing storeMutex; calling
-  // saveToFile() from inside fromJson() would deadlock on storeMutex.
+  // saveToFileAtomic() from inside fromJson() would deadlock on storeMutex.
   void requestResave() { resaveRequested = true; }
 
   bool resaveRequested = false;
@@ -93,7 +93,7 @@ class PersistableStoreBase {
  *
  * Concurrency: saveToFile/loadFromFile lock storeMutex, so toJson/fromJson
  * always run under it. fromJson must signal legacy-shape upgrades with
- * requestResave(), never by calling saveToFile() directly (deadlock).
+ * requestResave(), never by calling saveToFileAtomic() directly (deadlock).
  */
 template <typename T>
 class PersistableStore : public PersistableStoreBase {
@@ -121,8 +121,9 @@ class PersistableStore : public PersistableStoreBase {
     return instance;
   }
 
-  // Legacy path: non-atomic, unbudgeted. Kept for the stores that already use
-  // it; new stores use saveToFileAtomic instead.
+  // Legacy path: non-atomic, unbudgeted, and as of #27 it has no store callers
+  // at all. Kept only so a future store cannot reach for it without reading this
+  // comment. Use saveToFileAtomic().
   bool saveToFile() const {
     std::lock_guard<std::mutex> lock(storeMutex);
     JsonDocument doc;

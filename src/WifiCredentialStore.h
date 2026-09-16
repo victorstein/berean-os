@@ -29,7 +29,7 @@ class WifiCredentialStore : public PersistableStore<WifiCredentialStore> {
   std::string lastConnectedSsid;
   // Protects the in-memory strings independently of PersistableStore's file
   // serialization mutex. Readers only hold this briefly and never wait on SD
-  // I/O; saveToFile() snapshots under this mutex from toJson().
+  // I/O; saveToFileAtomic() snapshots under this mutex from toJson().
   mutable std::mutex credentialMutex;
 
   static constexpr size_t MAX_NETWORKS = 8;

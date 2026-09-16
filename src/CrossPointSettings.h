@@ -351,7 +351,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // only a snapshot mixing pre- and post-change fields. That costs at most one
   // e-ink frame drawn with a mixed status bar, which self-corrects on the next
   // refresh. Locking here would instead put a mutex on the render path and
-  // stall it behind the SD write inside saveToFile(). Don't add one back.
+  // stall it behind the SD write inside saveToFileAtomic() -- which now holds
+  // storeMutex across four storageMutex acquisitions, not two. Don't add one back.
   struct StatusBarSpec {
     bool showChapterPageCount = false;
     bool showBookProgressPercent = false;
