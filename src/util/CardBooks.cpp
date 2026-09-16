@@ -56,7 +56,9 @@ bool remove(const std::string& bookPath) {
   // behind costs space rather than correctness.
   Storage.removeDir(bookCachePath(bookPath).c_str());
 
-  if (RECENT_BOOKS.removeByPath(bookPath)) RECENT_BOOKS.saveToFile();
+  // removeByPath persists on success; a second save here would rewrite the file
+  // it just wrote and double the window where recent.json does not exist.
+  RECENT_BOOKS.removeByPath(bookPath);
   return true;
 }
 

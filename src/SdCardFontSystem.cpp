@@ -18,7 +18,7 @@ void snapFontPointSizeTo(const uint8_t availablePointSize) {
   if (availablePointSize == 0 || availablePointSize == SETTINGS.fontPointSize) return;
   LOG_DBG("SDFS", "Font size %u unavailable, snapping to %u", SETTINGS.fontPointSize, availablePointSize);
   SETTINGS.fontPointSize = availablePointSize;
-  SETTINGS.saveToFile();
+  SETTINGS.saveToFileAtomic();
 }
 
 // Built-in UI fonts and their physical point sizes (at 150 DPI, matching the
