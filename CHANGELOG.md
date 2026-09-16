@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.6](https://github.com/victorstein/berean-os/compare/v1.9.5...v1.9.6) (2026-09-16)
+
+
+### Bug Fixes
+
+* label the launcher's fourth tile Settings ([#53](https://github.com/victorstein/berean-os/issues/53)) ([02d9106](https://github.com/victorstein/berean-os/commit/02d9106af16f03508d9494dbaee4e81c43ff40df))
+
 ## [1.9.5](https://github.com/victorstein/berean-os/compare/v1.9.4...v1.9.5) (2026-09-16)
 
 
