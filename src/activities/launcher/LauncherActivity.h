@@ -32,8 +32,8 @@ class LauncherActivity final : public Activity {
 
  private:
   // Order is the navigation order, and the layout order: Bible spans the width,
-  // Meetings and Search share a row, Tags and settings spans the width again.
-  enum class Tile : uint8_t { Bible, Meetings, Search, TagsAndSettings, Resume, COUNT };
+  // Meetings and Search share a row, Settings spans the width again.
+  enum class Tile : uint8_t { Bible, Meetings, Search, Settings, Resume, COUNT };
 
   struct TileRect {
     int x = 0;
@@ -48,7 +48,7 @@ class LauncherActivity final : public Activity {
   void openBible();
   void openMeetings();
   void openPublications();
-  void openTagsAndSettings();
+  void openSettings();
   void drawTile(const TileRect& rect, const char* title, const char* subtitle, bool selected, bool emphasised,
                 const std::string& coverPath, const uint8_t* icon) const;
   // A publication's own cover when the card has one, else the tile's icon.
