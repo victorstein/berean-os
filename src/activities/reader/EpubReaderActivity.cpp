@@ -19,6 +19,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <utility>
 
 #include "../../util/BookmarkFile.h"
 #include "../../util/HighlightFile.h"
@@ -493,10 +494,7 @@ void EpubReaderActivity::loop() {
     switch (SETTINGS.longPressMenuFunction) {
       case CrossPointSettings::LP_MENU_BOOKMARK:
         if (mappedInput.getHeldTime() >= ReaderUtils::BOOKMARK_HOLD_MS) {
-          addBookmark();
-          showBookmarkMessage = true;
-          bookmarkMessageTime = millis();
-          requestUpdate();
+          addBookmark();  // owns the popup: only it knows which of five outcomes happened
           return;
         }
         break;
@@ -524,9 +522,6 @@ void EpubReaderActivity::loop() {
       case CrossPointSettings::LP_MENU_BOOKMARK:
         if (!showBookmarkMessage) {
           addBookmark();
-          showBookmarkMessage = true;
-          bookmarkMessageTime = millis();
-          requestUpdate();
         }
         return;
       case CrossPointSettings::LP_MENU_READER_MENU:
@@ -1275,7 +1270,7 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (showBookmarkMessage) {
-    GUI.drawPopup(renderer, bookmarkRemoved ? tr(STR_BOOKMARK_REMOVED) : tr(STR_BOOKMARK_ADDED));
+    GUI.drawPopup(renderer, bookmarkToastString(bookmarkToast));
   }
 }
 
@@ -1721,6 +1716,25 @@ void EpubReaderActivity::restoreSavedPosition() {
   navigateTo({.spineIndex = pos.spineIndex, .pageNumber = pos.pageNumber}, ReturnPolicy::Preserve);
 }
 
+const char* EpubReaderActivity::bookmarkToastString(const BookmarkToast toast) {
+  switch (toast) {
+    case BookmarkToast::Added:
+      return tr(STR_BOOKMARK_ADDED);
+    case BookmarkToast::Removed:
+      return tr(STR_BOOKMARK_REMOVED);
+    case BookmarkToast::TooLarge:
+    case BookmarkToast::SaveFailed:
+    case BookmarkToast::LoadDisabled:
+      break;
+  }
+  // Bookmarks have no refusal strings of their own; this one is noun-free and
+  // true, so a refusal still reaches the user. Do not name an unlanded key even
+  // in a comment: scripts/gen_i18n.py greps every source file for the
+  // identifier pattern and fails the build on one it cannot find in
+  // english.yaml.
+  return tr(STR_ERROR_GENERAL_FAILURE);
+}
+
 void EpubReaderActivity::loadCachedBookmarks() {
   cachedBookmarks.clear();
   if (cachedBookmarks.capacity() < initialBookmarkCacheCapacity) {
@@ -1731,12 +1745,30 @@ void EpubReaderActivity::loadCachedBookmarks() {
     return;
   }
 
-  BookmarkFile::load(epub->getPath(), cachedBookmarks);
+  // Toast on the TRANSITION, not the result: this runs again on every return
+  // from the bookmarks list, and drawPopup ends in a full e-ink refresh.
+  if (BookmarkFile::load(epub->getPath(), cachedBookmarks) == BookmarkFile::LoadResult::Failed &&
+      !bookmarksSaveDisabled) {
+    bookmarksSaveDisabled = true;
+    LOG_ERR("ERS", "Bookmarks unreadable; saving disabled while this book is open");
+    ReaderUtils::showMessage(renderer, bookmarkToastString(BookmarkToast::LoadDisabled));
+  }
   updateBookmarkFlag();
 }
 
 void EpubReaderActivity::addBookmark() {
   if (!section || !epub) return;
+
+  // Every path from here shows a popup, so arm it once.
+  showBookmarkMessage = true;
+  bookmarkMessageTime = millis();
+
+  if (bookmarksSaveDisabled) {
+    bookmarkToast = BookmarkToast::LoadDisabled;
+    requestUpdate();
+    return;
+  }
+
   LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section ? section->currentPage : -1);
   int currentPage;
   int pageCount;
@@ -1749,16 +1781,27 @@ void EpubReaderActivity::addBookmark() {
   SavedProgressPosition progress = ProgressMapper::toSavedProgress(epub, getCurrentPosition());
   const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, currentPage, pageCount);
 
-  const size_t bookmarkCountBeforeToggle = cachedBookmarks.size();
-  cachedBookmarks.erase(std::remove_if(cachedBookmarks.begin(), cachedBookmarks.end(),
-                                       [&](const BookmarkEntry& b) {
-                                         return bookmarkMatchesProgress(b, currentSpineIndex, currentPage, pageCount,
-                                                                        pageRange);
-                                       }),
-                        cachedBookmarks.end());
-  if (cachedBookmarks.size() != bookmarkCountBeforeToggle) {
-    bookmarkRemoved = true;
-    currentPageBookmarked = false;
+  // Everything a rollback needs: the entries about to be erased, with the index
+  // each sat at. Collected in ascending order, so re-inserting in that order
+  // restores the original positions. A page matches one bookmark unless the
+  // user built overlapping ones, so one slot is the realistic size.
+  std::vector<std::pair<size_t, BookmarkEntry>> erased;
+  erased.reserve(1);
+  for (size_t i = 0; i < cachedBookmarks.size(); ++i) {
+    if (bookmarkMatchesProgress(cachedBookmarks[i], currentSpineIndex, currentPage, pageCount, pageRange)) {
+      erased.emplace_back(i, cachedBookmarks[i]);
+    }
+  }
+  const bool wasBookmarked = !erased.empty();
+
+  if (wasBookmarked) {
+    // Erase by the indices just collected, descending so each erase leaves the
+    // lower ones valid. Re-deriving the match here instead is what would let an
+    // edit to one copy of the rule make the rollback restore a different set
+    // than the one removed.
+    for (auto it = erased.rbegin(); it != erased.rend(); ++it) {
+      cachedBookmarks.erase(cachedBookmarks.begin() + static_cast<std::ptrdiff_t>(it->first));
+    }
   } else {
     std::string pageText;
     if (currentPage >= 0 && currentPage < pageCount) {
@@ -1781,13 +1824,29 @@ void EpubReaderActivity::addBookmark() {
       entry.hasVisibleTextOffset = true;
     }
     cachedBookmarks.insert(cachedBookmarks.begin(), entry);
-    bookmarkRemoved = false;
-    currentPageBookmarked = true;
   }
 
-  if (!BookmarkFile::save(epub->getPath(), cachedBookmarks)) {
-    LOG_ERR("ERS", "Failed to save bookmarks");
+  const BookmarkFile::SaveResult saved = BookmarkFile::save(epub->getPath(), cachedBookmarks);
+  if (saved == BookmarkFile::SaveResult::Ok) {
+    currentPageBookmarked = !wasBookmarked;
+    bookmarkToast = wasBookmarked ? BookmarkToast::Removed : BookmarkToast::Added;
+    requestUpdate();
+    return;
   }
+
+  // Nothing reached the card, so the resident list and the page's flag must go
+  // back to what the card still holds -- otherwise the page reads as bookmarked
+  // for something that will not be there after a reopen.
+  if (wasBookmarked) {
+    for (const auto& [index, entry] : erased) {
+      cachedBookmarks.insert(cachedBookmarks.begin() + static_cast<std::ptrdiff_t>(index), entry);
+    }
+  } else {
+    cachedBookmarks.erase(cachedBookmarks.begin());
+  }
+  updateBookmarkFlag();  // derive the flag from the vector the rollback just restored
+  bookmarkToast = (saved == BookmarkFile::SaveResult::TooLarge) ? BookmarkToast::TooLarge : BookmarkToast::SaveFailed;
+  LOG_ERR("ERS", "Bookmark save refused; rolled the change back");
   requestUpdate();
 }
 

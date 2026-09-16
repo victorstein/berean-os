@@ -7,6 +7,7 @@
 
 #include "../../util/BookmarkFile.h"
 #include "MappedInputManager.h"
+#include "ReaderUtils.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
@@ -30,7 +31,23 @@ void EpubReaderBookmarksActivity::onEnter() {
     return;
   }
 
-  if (!BookmarkFile::load(epubPath, bookmarks)) {
+  const BookmarkFile::LoadResult loaded = BookmarkFile::load(epubPath, bookmarks);
+  if (loaded == BookmarkFile::LoadResult::Failed) {
+    // The file may still hold the user's data and every exit from this screen
+    // can save. Leave before the list exists.
+    //
+    // isCancelled matters: this activity's result handler destructures a
+    // non-cancelled result with std::get<ProgressChangeResult>, and with
+    // -fno-exceptions a bad_variant_access aborts the firmware.
+    LOG_ERR("EPB", "Bookmarks unreadable for %s; not opening the list", epubPath.c_str());
+    ReaderUtils::showMessage(renderer, tr(STR_ERROR_GENERAL_FAILURE));
+    ActivityResult result;
+    result.isCancelled = true;
+    setResult(std::move(result));
+    finish();
+    return;
+  }
+  if (loaded == BookmarkFile::LoadResult::Empty) {
     bookmarks.shrink_to_fit();
   }
   LOG_DBG("EPB", "Loaded %d bookmarks for book: %s", static_cast<int>(bookmarks.size()), epubPath.c_str());
@@ -167,13 +184,24 @@ void EpubReaderBookmarksActivity::showDeleteConfirmation() {
 }
 
 void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
+  if (nav.selected < 0 || nav.selected >= static_cast<int>(bookmarks.size())) return;
+  const size_t index = static_cast<size_t>(nav.selected);
+  const BookmarkEntry erased = bookmarks[index];
+
   bookmarks.erase(bookmarks.begin() + nav.selected);
   // Deleting shifts every later bookmark's index, so the cached subtitles and
   // actionValues must be re-derived, not just trimmed — and before the SD
   // save, so the render task never sees rows aliasing the erased storage.
   rebuildBookmarkRowItems();
-  if (!BookmarkFile::save(epubPath, bookmarks)) {
-    LOG_ERR("EPB", "Failed to save bookmarks after delete");
+  if (BookmarkFile::save(epubPath, bookmarks) != BookmarkFile::SaveResult::Ok) {
+    // The card still holds it, so the list must too. Rebuild again for the same
+    // aliasing reason, in reverse.
+    bookmarks.insert(bookmarks.begin() + static_cast<std::ptrdiff_t>(index), erased);
+    rebuildBookmarkRowItems();
+    LOG_ERR("EPB", "Bookmark delete refused; restored the entry");
+    ReaderUtils::showMessage(renderer, tr(STR_ERROR_GENERAL_FAILURE));
+    requestUpdate(true);
+    return;
   }
 
   // Move selector up if we deleted the last item
