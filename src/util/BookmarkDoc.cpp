@@ -3,6 +3,7 @@
 namespace BookmarkDoc {
 
 void toJson(const std::vector<BookmarkEntry>& bookmarks, JsonDocument& doc) {
+  doc["v"] = FORMAT_VERSION;
   JsonArray arr = doc["bookmarks"].to<JsonArray>();
   for (const auto& bookmark : bookmarks) {
     JsonObject obj = arr.add<JsonObject>();
@@ -21,6 +22,12 @@ void toJson(const std::vector<BookmarkEntry>& bookmarks, JsonDocument& doc) {
 bool fromJson(const JsonVariantConst doc, std::vector<BookmarkEntry>& bookmarks) {
   bookmarks.clear();
   if (!doc.is<JsonObjectConst>()) return false;
+
+  // ArduinoJson's operator| yields the default only when the key is absent or
+  // unconvertible, so an absent "v" reads as 1 (a file written before
+  // versioning) while a written 0 keeps its value and is refused.
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (version <= 0 || version > FORMAT_VERSION) return false;
 
   JsonArrayConst arr = doc["bookmarks"].as<JsonArrayConst>();
   bookmarks.reserve(arr.size());

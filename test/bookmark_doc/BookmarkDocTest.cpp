@@ -72,3 +72,46 @@ TEST(BookmarkDoc, RejectsANonObject) {
   std::vector<BookmarkEntry> out;
   EXPECT_FALSE(BookmarkDoc::fromJson(doc.as<JsonVariantConst>(), out));
 }
+
+TEST(BookmarkDocVersion, ToJsonStampsTheCurrentVersion) {
+  JsonDocument doc;
+  BookmarkDoc::toJson({makeEntry("/body/DocFragment[1]/body", "x", false)}, doc);
+  EXPECT_EQ(doc["v"] | 0, BookmarkDoc::FORMAT_VERSION);
+}
+
+TEST(BookmarkDocVersion, AnAbsentVersionIsReadAsOneWithEveryEntry) {
+  // A file written by CrossPoint, before this field existed.
+  JsonDocument doc;
+  JsonArray arr = doc["bookmarks"].to<JsonArray>();
+  for (int i = 0; i < 3; ++i) {
+    JsonObject obj = arr.add<JsonObject>();
+    obj["xpath"] = "/body/DocFragment[1]/body";
+    obj["percentage"] = 0.5f;
+    obj["summary"] = "legacy";
+    obj["si"] = 0;
+    obj["pc"] = 1;
+    obj["pp"] = 0;
+  }
+
+  std::vector<BookmarkEntry> out;
+  ASSERT_TRUE(BookmarkDoc::fromJson(doc.as<JsonVariantConst>(), out))
+      << "a pre-versioning bookmark file must still load";
+  EXPECT_EQ(out.size(), 3u);
+}
+
+TEST(BookmarkDocVersion, APresentZeroIsRefused) {
+  JsonDocument doc;
+  doc["v"] = 0;
+  doc["bookmarks"].to<JsonArray>();
+  std::vector<BookmarkEntry> out;
+  EXPECT_FALSE(BookmarkDoc::fromJson(doc.as<JsonVariantConst>(), out))
+      << "absent is legacy; a written 0 is a version this build does not know";
+}
+
+TEST(BookmarkDocVersion, AFutureVersionIsRefusedRatherThanReinterpreted) {
+  JsonDocument doc;
+  doc["v"] = BookmarkDoc::FORMAT_VERSION + 1;
+  doc["bookmarks"].to<JsonArray>();
+  std::vector<BookmarkEntry> out;
+  EXPECT_FALSE(BookmarkDoc::fromJson(doc.as<JsonVariantConst>(), out));
+}
