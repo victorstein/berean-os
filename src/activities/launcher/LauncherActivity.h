@@ -22,8 +22,8 @@
 // stays.
 class LauncherActivity final : public Activity {
  public:
-  explicit LauncherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("Launcher", renderer, mappedInput) {}
+  explicit LauncherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool cleanInitialRefresh = false)
+      : Activity("Launcher", renderer, mappedInput), cleanInitialRefresh(cleanInitialRefresh) {}
 
   void onEnter() override;
   void loop() override;
@@ -90,4 +90,10 @@ class LauncherActivity final : public Activity {
   std::string resumePath;
   std::string resumeTitle;
   bool hasResume = false;
+
+  // Set by the wake path when the panel is still showing a frame this activity
+  // did not draw: the sleep screen, after a wake with no Quick Resume frame.
+  // Consumed by the first paint only -- see LauncherRefresh.h.
+  const bool cleanInitialRefresh;
+  bool firstRenderDone = false;
 };
