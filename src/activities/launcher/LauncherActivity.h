@@ -91,9 +91,7 @@ class LauncherActivity final : public Activity {
   std::string resumeTitle;
   bool hasResume = false;
 
-  // Set by the wake path when the panel is still showing a frame this activity
-  // did not draw: the sleep screen, after a wake with no Quick Resume frame.
-  // Consumed by the first paint only -- see LauncherRefresh.h.
+  // Wake-path flag, consumed by the first paint only -- see LauncherRefresh.h.
   const bool cleanInitialRefresh;
   bool firstRenderDone = false;
 };

@@ -11,6 +11,11 @@
 // first paint". That polarity is the one thing a caller can silently invert, and
 // the launcher reads it before setting its own latch, so it is pinned here.
 
+// At namespace scope rather than in a TEST: the compiler settles these, so a
+// case wrapping them could only ever report SUCCEED().
+static_assert(launcherNeedsCleanPaint(true, false));
+static_assert(!launcherNeedsCleanPaint(false, false));
+
 TEST(LauncherRefresh, FirstPaintOfAFlaggedEntryNeedsACleanPaint) { EXPECT_TRUE(launcherNeedsCleanPaint(true, false)); }
 
 TEST(LauncherRefresh, LaterPaintsOfAFlaggedEntryDoNot) { EXPECT_FALSE(launcherNeedsCleanPaint(true, true)); }
@@ -18,10 +23,4 @@ TEST(LauncherRefresh, LaterPaintsOfAFlaggedEntryDoNot) { EXPECT_FALSE(launcherNe
 TEST(LauncherRefresh, AnUnflaggedEntryNeverDoes) {
   EXPECT_FALSE(launcherNeedsCleanPaint(false, false));
   EXPECT_FALSE(launcherNeedsCleanPaint(false, true));
-}
-
-TEST(LauncherRefresh, ResolvesAtCompileTime) {
-  static_assert(launcherNeedsCleanPaint(true, false));
-  static_assert(!launcherNeedsCleanPaint(false, false));
-  SUCCEED();
 }
