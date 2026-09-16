@@ -49,8 +49,10 @@ Hardware facts, confirmed on the bench, are in
 ## What it is becoming
 
 The design target is four sections — **Biblia**, **Reuniones**, **Buscar** and
-**Etiquetas y ajustes** — behind a launcher home screen, a passage address that survives a
+**Ajustes** — behind a launcher home screen, a passage address that survives a
 publication being re-downloaded, and a catalog search that can fetch any publication from jw.org.
+Tagging is reached from the reader, not from that fourth tile: you select a passage and choose its
+tags there.
 That is specified in
 [docs/superpowers/specs/2026-09-13-berean-os-design.md](./docs/superpowers/specs/2026-09-13-berean-os-design.md)
 and phased in [ROADMAP.md](./ROADMAP.md). The screens you see today are still CrossPoint's; they are
