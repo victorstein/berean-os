@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.5](https://github.com/victorstein/berean-os/compare/v1.9.4...v1.9.5) (2026-09-16)
+
+
+### Bug Fixes
+
+* give bookmarks a save budget, an atomic write and a recoverable load ([#47](https://github.com/victorstein/berean-os/issues/47)) ([d043fd8](https://github.com/victorstein/berean-os/commit/d043fd84f8f3fd2185621e4482a7c2af8a9f3ab2)), closes [#28](https://github.com/victorstein/berean-os/issues/28)
+
 ## [1.9.4](https://github.com/victorstein/berean-os/compare/v1.9.3...v1.9.4) (2026-09-16)
 
 
