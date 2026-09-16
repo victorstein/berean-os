@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.7](https://github.com/victorstein/berean-os/compare/v1.9.6...v1.9.7) (2026-09-16)
+
+
+### Documentation
+
+* the launcher's fourth tile is Ajustes, not tags ([#54](https://github.com/victorstein/berean-os/issues/54)) ([f19172a](https://github.com/victorstein/berean-os/commit/f19172a7b46854ee8c55ae8a64c6e98732342fd0))
+
 ## [1.9.6](https://github.com/victorstein/berean-os/compare/v1.9.5...v1.9.6) (2026-09-16)
 
 
