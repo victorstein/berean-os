@@ -11,7 +11,7 @@
 #include "util/BookmarkSaveAction.h"
 
 namespace {
-constexpr size_t BUDGET = 45000;
+constexpr size_t BUDGET = persist::DEFAULT_SAVE_BUDGET;  // 45000
 constexpr size_t CAP = persist::SD_READ_TRUNCATION_CAP;  // 50000
 }  // namespace
 
@@ -30,7 +30,8 @@ TEST(BookmarkSaveAction, OverBudgetAndGrowingRefuses) {
 }
 
 TEST(BookmarkSaveAction, OverBudgetAndShrinkingWrites) {
-  // The pass-0 blocker, pinned: a 230-record legacy file minus one entry.
+  // A 230-record file inherited from a build with no budget, minus one entry:
+  // if this refuses, no delete can ever be persisted and the file is frozen.
   EXPECT_EQ(bookmarkSaveAction(47200, 47400, BUDGET, CAP), BookmarkSaveAction::Write)
       << "an inherited over-budget file must be deletable back under the budget";
   EXPECT_EQ(bookmarkSaveAction(45001, 45002, BUDGET, CAP), BookmarkSaveAction::Write);

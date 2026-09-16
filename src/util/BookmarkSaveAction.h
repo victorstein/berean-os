@@ -18,7 +18,9 @@
 // budget, is refused, and the caller's rollback puts the entry back.
 enum class BookmarkSaveAction : uint8_t { Write, RefuseTooLarge };
 
-// `bytesOnDisk` is the size of the file being replaced, or 0 when none exists.
+// `bytesOnDisk` is the size of the file being replaced; 0 when none exists, and
+// also 0 when the caller has not looked, which is safe because a document at or
+// under `budget` is written whatever is already there.
 // `readCap` is the size past which SDCardManager::readFile returns a silently
 // truncated string; a file exactly at it still reads whole.
 constexpr BookmarkSaveAction bookmarkSaveAction(const size_t measuredBytes, const size_t bytesOnDisk,

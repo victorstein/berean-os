@@ -160,13 +160,12 @@ TEST(BookmarkDocBudget, OneWorstCaseRecordStaysUnderThePinnedCeiling) {
 }
 
 TEST(BookmarkDocBudget, AnOverBudgetDocumentLoadsInFullRatherThanFailing) {
-  // A-5, and the one place BookmarkDoc deliberately diverges from PassageDoc:
-  // "too big to write back" is NOT "unreadable". PassageDoc::fromJson ends
-  // `return measureBytes() <= SAVE_BYTE_BUDGET;` (PassageDoc.cpp:131), which
-  // here would report Failed, latch saving off for the session, and freeze
-  // exactly the 45,000-50,000 byte legacy file the shrink exception exists to
-  // rescue. The divergence is by omission -- fromJson never measures -- so
-  // without this test nothing stops the next person reintroducing it.
+  // "Too big to write back" is NOT "unreadable", which is where BookmarkDoc
+  // deliberately parts company with PassageDoc: PassageDoc::fromJson ends
+  // `return measureBytes() <= SAVE_BYTE_BUDGET;`, and the same line here would
+  // report a load failure, latch saving off, and freeze exactly the
+  // 45,000-50,000 byte file a delete is still able to shrink. fromJson never
+  // measures, and this is what keeps it that way.
   std::vector<BookmarkEntry> many;
   many.reserve(300);
   for (int i = 0; i < 300; ++i) {
@@ -183,8 +182,9 @@ TEST(BookmarkDocBudget, AnOverBudgetDocumentLoadsInFullRatherThanFailing) {
 }
 
 TEST(BookmarkDocBudget, TheBudgetStillHoldsTheRecordCountTheNoCapDecisionRestsOn) {
-  // The figure the "no record cap" decision rests on: the budget must remain a
-  // generous ceiling for a whole-Bible EPUB, not a limit users meet in practice.
+  // The budget is the only limit on how many bookmarks a book may hold, so it
+  // must stay a generous ceiling for a whole-Bible EPUB rather than a limit
+  // users meet in practice.
   std::vector<BookmarkEntry> two{
       makeEntry("/body/DocFragment[27]/body/div[1]/p[14]/text()[1].117", "In the beginning God created the heavens",
                 true),
@@ -200,10 +200,10 @@ TEST(BookmarkDocBudget, TheBudgetStillHoldsTheRecordCountTheNoCapDecisionRestsOn
   const size_t perRecord = measureJson(twoDoc) - measureJson(oneDoc);
   ASSERT_GT(perRecord, 0u);
 
-  // 218 is the figure A-2 rests on: a real summary is capped at 72 bytes, which
-  // makes a full record ~206 bytes and the budget's ceiling ~218. This
-  // fixture's shorter summary measures less per record and so clears 218 with
-  // margin -- the assertion pins the decision, not the fixture.
+  // A real summary is capped at MAX_SUMMARY_BYTES, which makes a full record
+  // ~206 bytes and the budget's ceiling ~218 bookmarks. This fixture's shorter
+  // summary measures less per record and so clears 218 with margin -- the
+  // assertion pins the ceiling, not the fixture.
   EXPECT_GE(BookmarkDoc::SAVE_BYTE_BUDGET / perRecord, 218u)
       << "this record measured " << perRecord << " bytes, so the budget holds "
       << (BookmarkDoc::SAVE_BYTE_BUDGET / perRecord) << " bookmarks";

@@ -47,8 +47,11 @@ class EpubReaderActivity final : public ReaderActivity {
   enum class BookmarkToast : uint8_t { Added, Removed, TooLarge, SaveFailed, LoadDisabled };
   BookmarkToast bookmarkToast = BookmarkToast::Added;
   // Latched when a bookmark file failed to READ: the bytes may still hold the
-  // user's data, so nothing may be written over them for the rest of the
-  // session. Never cleared, exactly like StudyStore's own saveDisabled_.
+  // user's data, so nothing may be written over them for as long as this book
+  // is open. Never cleared. Unlike StudyStore::saveDisabled_, which is a
+  // singleton's and survives closePublication, this activity is constructed per
+  // book open -- which is right, because a bookmark file is per book and one
+  // book's unreadable file must not silence another's.
   bool bookmarksSaveDisabled = false;
   std::vector<BookmarkEntry> cachedBookmarks;
   bool recentsEntryRemoved = false;

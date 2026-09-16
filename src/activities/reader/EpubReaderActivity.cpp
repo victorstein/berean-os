@@ -1740,12 +1740,11 @@ const char* EpubReaderActivity::bookmarkToastString(const BookmarkToast toast) {
     case BookmarkToast::LoadDisabled:
       break;
   }
-  // Bookmarks have no refusal strings of their own yet and this task must not
-  // edit the translation YAML; the three keys they want are named in the PR.
-  // This one is noun-free and true, so a refusal still reaches the user. Do not
-  // name an unlanded key even in a comment: scripts/gen_i18n.py greps every
-  // source file for the identifier pattern and fails the build on one it cannot
-  // find in english.yaml.
+  // Bookmarks have no refusal strings of their own; this one is noun-free and
+  // true, so a refusal still reaches the user. Do not name an unlanded key even
+  // in a comment: scripts/gen_i18n.py greps every source file for the
+  // identifier pattern and fails the build on one it cannot find in
+  // english.yaml.
   return tr(STR_ERROR_GENERAL_FAILURE);
 }
 
@@ -1764,7 +1763,7 @@ void EpubReaderActivity::loadCachedBookmarks() {
   if (BookmarkFile::load(epub->getPath(), cachedBookmarks) == BookmarkFile::LoadResult::Failed &&
       !bookmarksSaveDisabled) {
     bookmarksSaveDisabled = true;
-    LOG_ERR("ERS", "Bookmarks unreadable; saving disabled for this session");
+    LOG_ERR("ERS", "Bookmarks unreadable; saving disabled while this book is open");
     ReaderUtils::showMessage(renderer, bookmarkToastString(BookmarkToast::LoadDisabled));
   }
   updateBookmarkFlag();
@@ -1797,8 +1796,10 @@ void EpubReaderActivity::addBookmark() {
 
   // Everything a rollback needs: the entries about to be erased, with the index
   // each sat at. Collected in ascending order, so re-inserting in that order
-  // restores the original positions.
+  // restores the original positions. A page matches one bookmark unless the
+  // user built overlapping ones, so one slot is the realistic size.
   std::vector<std::pair<size_t, BookmarkEntry>> erased;
+  erased.reserve(1);
   for (size_t i = 0; i < cachedBookmarks.size(); ++i) {
     if (bookmarkMatchesProgress(cachedBookmarks[i], currentSpineIndex, currentPage, pageCount, pageRange)) {
       erased.emplace_back(i, cachedBookmarks[i]);
@@ -1807,12 +1808,13 @@ void EpubReaderActivity::addBookmark() {
   const bool wasBookmarked = !erased.empty();
 
   if (wasBookmarked) {
-    cachedBookmarks.erase(std::remove_if(cachedBookmarks.begin(), cachedBookmarks.end(),
-                                         [&](const BookmarkEntry& b) {
-                                           return bookmarkMatchesProgress(b, currentSpineIndex, currentPage, pageCount,
-                                                                          pageRange);
-                                         }),
-                          cachedBookmarks.end());
+    // Erase by the indices just collected, descending so each erase leaves the
+    // lower ones valid. Re-deriving the match here instead is what would let an
+    // edit to one copy of the rule make the rollback restore a different set
+    // than the one removed.
+    for (auto it = erased.rbegin(); it != erased.rend(); ++it) {
+      cachedBookmarks.erase(cachedBookmarks.begin() + static_cast<std::ptrdiff_t>(it->first));
+    }
   } else {
     std::string pageText;
     if (currentPage >= 0 && currentPage < pageCount) {
@@ -1855,7 +1857,7 @@ void EpubReaderActivity::addBookmark() {
   } else {
     cachedBookmarks.erase(cachedBookmarks.begin());
   }
-  currentPageBookmarked = wasBookmarked;
+  updateBookmarkFlag();  // derive the flag from the vector the rollback just restored
   bookmarkToast = (saved == BookmarkFile::SaveResult::TooLarge) ? BookmarkToast::TooLarge : BookmarkToast::SaveFailed;
   LOG_ERR("ERS", "Bookmark save refused; rolled the change back");
   requestUpdate();
