@@ -28,12 +28,12 @@ mechanism, and it is the one this removal actually rests on:
    byte capacities, computed from the library's own
    `NUM_RAW_DATA_MODULES` / `NUM_ERROR_CORRECTION_CODEWORDS` tables, are
    78 / 271 / 858 / 1732 / 2953. Reader text is mixed case, so the encoder takes
-   the byte-mode branch (`qrcode.c:681`) — the column that does not apply.
-2. **Over-capacity cannot be detected.** `bb_appendBits` (`qrcode.c:213-219`)
+   the byte-mode branch (`qrcode.c:676-682`) — the column that does not apply.
+2. **Over-capacity cannot be detected.** `bb_appendBits` (`qrcode.c:209-215`)
    writes without consulting `BitBucket::capacityBytes`;
-   `encodeDataCodewords` (`qrcode.c:633-691`) never returns a negative mode; and
-   `qrcode_initBytes` (`qrcode.c:779-853`) returns `-1` only on `mode < 0`,
-   otherwise falling through to `return 0` at `qrcode.c:852`. So
+   `encodeDataCodewords` (`qrcode.c:629-687`) never returns a negative mode; and
+   `qrcode_initBytes` (`qrcode.c:775-849`) returns `-1` only on `mode < 0`,
+   otherwise falling through to `return 0` at `qrcode.c:848`. So
    `qrcode_initText` always returns 0, the `if (res == 0)` guard at
    `src/util/QrUtils.cpp:42` is always taken, and the
    `LOG_ERR("QR", "Text too large…")` at `src/util/QrUtils.cpp:64` is dead code
@@ -48,6 +48,11 @@ mechanism, and it is the one this removal actually rests on:
    `Portrait`), `src/activities/reader/QrDisplayActivity.cpp:36` takes
    `480 - 40 = 440`, and `px = min(w,h) / qrcode.size` is integer division
    (`src/util/QrUtils.cpp:44-47`). A V40 code is 177 modules: `440 / 177 = 2`.
+
+All `qrcode.c` line numbers above are **ricmoo/QRCode 0.0.1** as pinned at
+`platformio.ini:152` and resolved into `.pio/libdeps/x4pro/QRCode/src/qrcode.c`
+(872 lines) — not the project's `master`, which is four lines longer and against
+which `:852` lands on a different statement.
 
 The secondary argument — it is a general-reader carryover with no study role — is
 the issue's, and stands, but the defect above is sufficient on its own.
@@ -79,15 +84,31 @@ the user guide. Leave the build green and every other reader-menu row untouched.
 
 Every behavioural decision in this spec, stated so the review can attack it.
 
-**A1 — Acceptance criteria 2 and 3 are restated, not met.** The issue asks for
-`QrUtils.{h,cpp}` deleted and `ricmoo/QRCode` dropped. Both are impossible while
-`CrossPointWebServerActivity` compiles, and it does: `platformio.ini` declares no
-`build_src_filter`, so every translation unit under `src/` is built, and
-`src/activities/ActivityManager.cpp:19,201` include and instantiate the class.
-*Decision:* deliver AC-1 and AC-4 as written, deliver the `QrDisplayActivity` half
-of AC-2, and record AC-2's `QrUtils` half and AC-3 as not achievable.
-*Attack surface:* an orchestrator may prefer to fail the issue rather than
-restate its criteria.
+**A1 — Acceptance criteria 2 and 3 are restated, not met — one because it cannot
+be done, one because it should not be.** The issue asks for `QrUtils.{h,cpp}`
+deleted and `ricmoo/QRCode` dropped. The two are not alike:
+
+- **AC-3 is not achievable.** The library stays linked for the web server.
+  `CrossPointWebServerActivity` compiles: `platformio.ini` declares no
+  `build_src_filter`, so every translation unit under `src/` is built, and
+  `src/activities/ActivityManager.cpp:19,201` include and instantiate the class.
+- **AC-2's `QrUtils` half is achievable, and declined.** `drawQrCode` is a single
+  free function in a namespace (`src/util/QrUtils.h:9-14`, 55 lines of body at
+  `src/util/QrUtils.cpp:11-66`) whose dependencies — `Utf8.h`, `<qrcode.h>`,
+  `Logging.h`, `GfxRenderer`/`Rect` — `CrossPointWebServerActivity.cpp` already
+  has. Once `QrDisplayActivity.cpp:9` goes, its only remaining external include is
+  `CrossPointWebServerActivity.cpp:20`. Relocating the function into an anonymous
+  namespace there would delete `src/util/QrUtils.{h,cpp}` to the letter and keep
+  the build green.
+
+*Decision:* deliver AC-1 and AC-4 as written and the `QrDisplayActivity` half of
+AC-2; record AC-3 as not achievable; **decline** the relocation, because it
+satisfies AC-2's wording while defeating its intent — AC-2 and AC-3 together were
+plainly aimed at removing the *capability*, and moving a file to claim the
+criterion buys nothing while putting churn into the subsystem A2 has just decided
+to leave alone. *Attack surface:* an orchestrator may prefer to fail the issue
+rather than restate its criteria, or may want the relocation done anyway so the
+criterion reads as met.
 
 **A2 — Scope stays at the reader; the web server is a separate question.**
 `CrossPointWebServerActivity` is unreachable from the UI — `goToFileTransfer()`
@@ -100,12 +121,24 @@ side-load path (`docs/webserver.md`, `docs/webserver-endpoints.md`, and the
 consequence of removing a broken menu row. *Attack surface:* someone may argue
 the two removals belong in one change because AC-3 only becomes true together.
 
-**A3 — The flash saving is not the point and will be small.** With the library
-still linked, this change removes `QrDisplayActivity.{h,cpp}` (67 lines) and a
-12-line case. *Decision:* report the `pio run` figure against the 5,318,674 B
-baseline as AC-4 asks, and state plainly that a single-digit-KB delta is the
-expected result, not a shortfall. *Attack surface:* the issue frames dependency
-removal as a deliverable; this reframes it as unavailable.
+**A3 — The flash saving is not the point and will be small, and the issue's
+baseline is not directly comparable.** With the library still linked, this change
+removes `QrDisplayActivity.{h,cpp}` (67 lines) and a 12-line case, so expect a
+single-digit-KB delta — the expected result, not a shortfall. The issue's
+5,318,674 B baseline has **no recorded measurement method**: it appears nowhere in
+the tree but the research note and this spec, and it is *smaller* than both
+figures in `docs/superpowers/notes/phase-0-baseline.md:7,38` (5,628,560 B and
+5,441,200 B, each labelled "`x4pro` dev `firmware.bin`") despite predating three
+feature merges — which points at pio's `Flash: used N bytes` line rather than a
+`firmware.bin` size. Comparing the two would manufacture a ~120 KB movement that
+contradicts the real result. *Decision:* the hand-back records **both**
+`ls -l .pio/build/x4pro/firmware.bin` and pio's `Flash:` line, and states that the
+delta is meaningful only against a figure measured the same way. Note also that
+`BEREAN_VERSION` embeds the branch name and short SHA (`platformio.ini:168`,
+`scripts/git_branch.py`), so byte-exact cross-branch comparison carries a few
+bytes of unavoidable noise. *Attack surface:* the issue frames dependency removal
+as a deliverable; this reframes it as unavailable and declines its baseline as
+unusable without a stated method.
 
 **A4 — The latent unbounded write in `ricmoo/QRCode` is recorded, not fixed.**
 After this change the surviving callers pass 20-50 bytes: `WIFI:T:nopass;S:<ssid>;;`
@@ -187,10 +220,28 @@ binary and the same call, so removing a middle enumerator renumbers the ones
 after it with no on-disk or cross-version consequence. Nothing writes a
 `MenuAction` to SD; there is no format version to bump.
 
-`onReaderMenuConfirm` (`EpubReaderActivity.cpp:687-881`) switches over every
-enumerator with **no `default:` label**. That is load-bearing in our favour: with
-`-Wswitch` the compiler flags the pair falling out of step, so the enumerator and
-its case cannot be removed independently without the build saying so.
+`onReaderMenuConfirm` (`EpubReaderActivity.cpp:687-881`) has **no `default:`
+label**, but it is *not* exhaustive and never has been: it carries 14 cases
+against 16 enumerators. `AUTO_PAGE_TURN` and `ROTATE_SCREEN` have none, because
+`activateIndex` consumes them in the menu activity and returns before `setResult`
+(`EpubReaderMenuActivity.cpp:104-127`, against the single `setResult` at `:145`).
+
+So there is **no `-Wswitch` safety net**, in two independent ways: the switch was
+already non-exhaustive on `main`, and the build enables no warning that would say
+so — `platformio.ini` adds no `-Wall` and nothing anywhere is `-Werror`
+(`grep -cE '\-Wall|\-Werror' platformio.ini` → 0; `.github/workflows/ci.yml`'s
+build job is a bare `pio run`).
+
+What *is* enforced is one-directional:
+
+| Half-applied deletion | Result |
+| --- | --- |
+| enumerator removed, `case` left behind | **hard compile error** — name lookup fails |
+| `case` removed, enumerator left behind | **compiles and ships silently** |
+
+The grep gate is the only thing that catches the silent direction. Keep the
+absence of a `default:` — but for consistency with the file's neighbours, not
+because it preserves a gate it does not preserve.
 
 ## Data and control flow
 
@@ -231,10 +282,14 @@ to a fix here.
   `qrcode_initText` always returns 0. That log line stays in the tree for the web
   server's sake but is now unreachable from any payload that exists. A4 records
   this rather than fixing it.
-- **The compile-time gate is the real error handling.** The `-Wswitch`
-  exhaustiveness of `onReaderMenuConfirm` means a half-applied deletion — the
-  enumerator removed but not the case, or the reverse — fails the build rather
-  than shipping. The implementer must not add a `default:` to silence it.
+- **The compiler catches one half-applied deletion, not both.** Removing the
+  enumerator while leaving its `case` is a hard name-lookup error. Removing the
+  `case` while leaving the enumerator compiles and ships — the switch is already
+  non-exhaustive (14 cases, 16 enumerators) and the build enables no `-Wall`, so
+  no `-Wswitch` diagnostic exists to fire. See "Why the enum edit is safe". The
+  grep gate below is the only guard on the silent direction, and it is therefore
+  a required step, not a convenience. The implementer must not add a `default:` —
+  it would suppress a future diagnostic without adding one today.
 - **No `LOG_ERR` + return false convention applies**, because nothing new can
   fail (`CLAUDE.md`, "Error handling").
 
@@ -248,16 +303,42 @@ and the gates below already assert. The existing suite must still pass unchanged
 **Gates**, in this order, after the last code edit:
 
 ```sh
-~/.platformio/penv/bin/pio run            # AC-4; record the firmware.bin size
-./scripts/i18n_orphans.sh | wc -l         # expect 23 (was 22) — A7
-grep -rn "DISPLAY_QR\|QrDisplayActivity" src lib   # expect no hits
-grep -rn "QrUtils\|qrcode.h" src                   # expect only QrUtils.{h,cpp} + the 3 web-server sites
-PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix  # whole tree, as CI does
+# 1. Build first — it regenerates lib/I18n/I18nKeys.h, which gate 2 greps.
+~/.platformio/penv/bin/pio run
+ls -l .pio/build/x4pro/firmware.bin        # AC-4; also record pio's "Flash:" line
+
+# 2. Completeness. The greps are the only guard on the silent half-deletion.
+grep -rn "DISPLAY_QR\|QrDisplayActivity" src lib    # expect no hits
+grep -rn "QrUtils\|qrcode\.h" src                   # expect 10 lines: 6 in QrUtils.{h,cpp},
+                                                     # 4 in CrossPointWebServerActivity.cpp
+                                                     # (:20 include + :445,:463,:483)
+./scripts/i18n_orphans.sh                            # expect 23 lines (was 22) — A7
+
+# 3. The other two CI jobs. A pure deletion should pass both untouched.
+~/.platformio/penv/bin/pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
+cmake -S test -B build/test -G Ninja && cmake --build build/test && ctest --test-dir build/test
+
+# 4. Format last, over the whole tree, as CI does.
+PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix
 ```
+
+**Order matters for the orphan gate.** `scripts/i18n_orphans.sh` greps `src lib`,
+which includes the build-generated `lib/I18n/I18nKeys.h` (`.gitignore`). That file
+lists only *used* keys and today still contains `STR_DISPLAY_QR`
+(`lib/I18n/I18nKeys.h:420`) — so running the gate against a stale copy reports 22
+and reads as "the deletion added no orphan", the exact inverse of what A7 uses it
+for. Run it after `pio run`, never before. Do not pipe it to `wc -l`: it is
+`set -euo pipefail` and the pipe discards its exit status.
+
+`.github/workflows/ci.yml` gates on four jobs behind `test-status` — `build`,
+`clang-format`, `cppcheck` and `unit-tests`. All four are above; `pio check` and
+the host suite are cheap here precisely because nothing in this change should move
+them.
 
 The `grep` gates are the substitute for a host test. `pio run` alone cannot prove
 the deletion is complete — an orphaned include or a stale reference in a file the
-host suite never compiles would still link.
+host suite never compiles would still link, and as the Error handling section
+records, a deleted `case` with a surviving enumerator compiles silently.
 
 Build **once**, after the last edit. Do not clean, and do not rebuild after
 formatting or documentation-only changes (`CLAUDE.md`, "Testing checklist").
@@ -289,8 +370,11 @@ formatting or documentation-only changes (`CLAUDE.md`, "Testing checklist").
   which `MenuAction` a row carries. Device check 2 is the only thing that catches
   a mismatch that still compiles, which is why it is listed first among the rows
   below the deletion.
-- **AC-3 will read as unmet to anyone reading the issue and not this spec.** The
-  hand-back must lead with A1, not bury it.
+- **AC-2 and AC-3 will both read as unmet to anyone reading the issue and not
+  this spec** — and for different reasons, which the hand-back must keep apart.
+  AC-3 is impossible; AC-2's `QrUtils` half is possible by relocating `drawQrCode`
+  and is *declined*. Claiming both are impossible is disprovable in two minutes
+  and would cost the hand-back its credibility. Lead with A1, do not bury it.
 - **`docs/superpowers/notes/phase-0-baseline.md` records an i18n orphan gate of
   0 that is now 22.** Anyone using that note as an absolute gate will read this
   change as adding 23 orphans. A7 states the delta.
@@ -300,3 +384,25 @@ formatting or documentation-only changes (`CLAUDE.md`, "Testing checklist").
 None blocking. A1 and A2 are decisions for the orchestrator to ratify or
 overturn, and are written as assumptions rather than questions so that the
 default — proceed as specified — is the reviewable one.
+
+---
+
+## Review pass 0 — what changed and why
+
+`docs/superpowers/reviews/issue-38-spec-review-0.md` returned **CLEAR** with
+0 BLOCKER, 2 MAJOR and 5 MINOR. All were applied to this document; none changed
+what gets deleted. Recorded so the next pass does not re-derive them:
+
+| Finding | Change |
+| --- | --- |
+| MAJOR 1 | The `-Wswitch` "compile-time gate" was fiction. The switch carries 14 cases against 16 enumerators (`AUTO_PAGE_TURN`, `ROTATE_SCREEN` never reach it) and the build sets no `-Wall` or `-Werror`. "Why the enum edit is safe" and the Error handling section now state the one-directional enforcement honestly, and the grep gate is promoted from convenience to required. |
+| MAJOR 2 | A1 claimed both AC-2 and AC-3 were impossible. Only AC-3 is. AC-2's `QrUtils` half is achievable by relocating `drawQrCode` into `CrossPointWebServerActivity.cpp`; A1 now *declines* it as churn defeating the criterion's intent, and the Risks bullet keeps the two reasons apart. |
+| MINOR 3 | Every `qrcode.c` citation was against `master`, four lines adrift from the pinned `0.0.1` that actually links — `:852` landed on a different statement. Re-cited against `.pio/libdeps/x4pro/QRCode/src/qrcode.c` and the version is now named. The same correction was applied to the research note. |
+| MINOR 4 | The gate list covered 2 of CI's 4 gating jobs. `pio check` and the host `ctest` suite added. |
+| MINOR 5 | The orphan gate greps the build-generated `lib/I18n/I18nKeys.h`, which still lists `STR_DISPLAY_QR` until `pio run` regenerates it — running it first is a false pass reading 22. Ordering is now explicit and the `wc -l` pipe (which discarded the script's exit status) is gone. |
+| MINOR 6 | A3 had adopted the issue's 5,318,674 B baseline despite the research listing it as unverified. It is smaller than both figures in `phase-0-baseline.md` and is probably pio's `Flash:` line, not a `firmware.bin` size; the hand-back now records both numbers and refuses the comparison without a stated method. |
+| MINOR 7 | The `QrUtils\|qrcode.h` gate's expectation undercounted (10 lines, 4 of them in `CrossPointWebServerActivity.cpp` including its include) and left `.` unescaped. Both fixed. |
+
+The one finding worth carrying forward into implementation: **a deleted `case`
+with a surviving enumerator compiles and ships silently.** Nothing in the build
+catches it. The grep gate is the whole guard.

@@ -85,21 +85,23 @@ Every rung beneath it is wrong. 114 and 395 are exactly the V4 and V10
 *alphanumeric* ECC_LOW capacities; the ladder was built from the wrong column
 of a capacity table, and the comment at `QrUtils.cpp:12-15` ("very rough
 estimate") admits as much. Reader text is mixed case, so
-`isAlphanumeric` (`qrcode.c:126`) is false and the encoder takes the byte-mode
-branch (`qrcode.c:681`) — the column that does not apply.
+`isAlphanumeric` (`qrcode.c:122`) is false and the encoder takes the byte-mode
+branch (`qrcode.c:676-682`) — the column that does not apply.
 
 ### Over-capacity does not fail. It overruns or it lies.
 
-`ricmoo/QRCode @ 0.0.1`, verified against
-`https://raw.githubusercontent.com/ricmoo/QRCode/master/src/qrcode.c`:
+`ricmoo/QRCode @ 0.0.1`. **Line numbers below are the pinned 0.0.1**, read from
+`.pio/libdeps/x4pro/QRCode/src/qrcode.c` (872 lines) — the source that actually
+links. They were first taken from the project's `master`, which is four lines
+longer; that drift was caught in spec review pass 0 and corrected here.
 
-- `bb_appendBits` (`qrcode.c:213-219`) writes `data[offset >> 3] |= ...` with
+- `bb_appendBits` (`qrcode.c:209-215`) writes `data[offset >> 3] |= ...` with
   **no bounds check**. `BitBucket::capacityBytes` is stored by `bb_initBuffer`
   and never read.
-- `encodeDataCodewords` (`qrcode.c:633-691`) returns `MODE_NUMERIC` (0),
+- `encodeDataCodewords` (`qrcode.c:629-687`) returns `MODE_NUMERIC` (0),
   `MODE_ALPHANUMERIC` (1) or `MODE_BYTE` (2). It **never returns negative**.
-- `qrcode_initBytes` (`qrcode.c:779-853`) returns `-1` only on `mode < 0`, and
-  otherwise falls through to `return 0` at `qrcode.c:852`.
+- `qrcode_initBytes` (`qrcode.c:775-849`) returns `-1` only on `mode < 0`, and
+  otherwise falls through to `return 0` at `qrcode.c:848`.
 
 Therefore `qrcode_initText` **always returns 0**. The `if (res == 0)` guard at
 `QrUtils.cpp:42` is always taken and the `LOG_ERR("QR", "Text too large…")` at
@@ -107,7 +109,7 @@ Therefore `qrcode_initText` **always returns 0**. The `if (res == 0)` guard at
 `x4pro-gh_release` (`LOG_LEVEL=0`) it could not be seen even if it did.
 
 What happens instead, by band, with the codeword buffer being the stack VLA
-`codewordBytes[bb_getBufferSizeBytes(moduleCount)]` (`qrcode.c:798`):
+`codewordBytes[bb_getBufferSizeBytes(moduleCount)]` (`qrcode.c:794`):
 
 | Payload bytes | Version chosen | Outcome |
 | --- | --- | --- |
@@ -150,7 +152,7 @@ web-server codes are unaffected: a 33-module V4 code in a 198 px box
 | AC | Status |
 | --- | --- |
 | 1. `DISPLAY_QR` row, enumerator and handler removed | **Achievable.** `EpubReaderMenuActivity.cpp:77`, `EpubReaderMenuActivity.h:26`, `EpubReaderActivity.cpp:828-839` and the include at `EpubReaderActivity.cpp:39` — all confirmed at the quoted lines. |
-| 2. Delete `QrDisplayActivity.{h,cpp}` **and** `QrUtils.{h,cpp}` | **Half achievable.** `QrDisplayActivity` yes; `QrUtils` no — it has three live callers. |
+| 2. Delete `QrDisplayActivity.{h,cpp}` **and** `QrUtils.{h,cpp}` | **Half achievable as written.** `QrDisplayActivity` yes. `QrUtils` has three live callers, so it cannot simply be deleted — though spec review pass 0 established it *could* be deleted by relocating the one 55-line function into `CrossPointWebServerActivity.cpp`. That is a decision to decline, not an impossibility; see A1 in the spec. |
 | 3. Remove `ricmoo/QRCode` from `platformio.ini:152` | **Not achievable.** `QrUtils.cpp:4` includes `<qrcode.h>` and stays. |
 | 4. `pio run` succeeds; flash noted against 5,318,674 B | Achievable, but expect a saving of single-digit KB, not a library's worth. |
 
