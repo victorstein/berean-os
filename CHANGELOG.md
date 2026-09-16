@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.2](https://github.com/victorstein/berean-os/compare/v1.9.1...v1.9.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* gate screen rotation behind a portrait-only capability ([#45](https://github.com/victorstein/berean-os/issues/45)) ([d8e9220](https://github.com/victorstein/berean-os/commit/d8e9220844e027d0abca2248451bddd4478d2bae)), closes [#37](https://github.com/victorstein/berean-os/issues/37)
+
 ## [1.9.1](https://github.com/victorstein/berean-os/compare/v1.9.0...v1.9.1) (2026-09-16)
 
 
