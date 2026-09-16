@@ -81,7 +81,7 @@ new UI. What does not exist is the string. `STR_HIGHLIGHTS_TOO_LARGE` reads
 — wrong noun, and the YAML is another task's. Name the key needed in the
 hand-back and leave the wiring out.
 
-## 5. 45,000 is the wrong ceiling for this store — internal SRAM, not truncation
+## 5. What a document at the budget costs in memory
 
 Measured with the pinned ArduinoJson (v7.4.2, `test/CMakeLists.txt:28-33`) under
 a counting allocator:
@@ -91,29 +91,48 @@ a counting allocator:
 | bookmark JSON at the budget (219 records) | 45,129 |
 | `JsonDocument` pool while parsing it | 53,892 |
 | the `String` holding the file, alive across `deserializeJson` (`PersistableStore.cpp:50-59`) | 45,129 |
-| **concurrent internal heap on load** | **≈99,000** |
+| **concurrent heap on load** (split corrected below — NOT all internal) | **≈99,000** |
 | same shape on save (pool 53,659 + serialised `String`) | ≈99,000 |
 
-ArduinoJson's default allocator is `malloc`, so this is internal SRAM, not
-PSRAM, and it lands inside `EpubReaderActivity` while section render state is
-live. CLAUDE.md's own floor is ~50 KB free heap. `persist::DEFAULT_SAVE_BUDGET`
-is a truncation ceiling, not a RAM budget, and `SaveBudget.h:25` already invites
-a store with a bounded record count to declare a tighter one. **A bookmark
-budget set at 45,000 is a number the device cannot afford to reach.**
+> **CORRECTED 2026-09-16, after `reviews/issue-28-spec-review-0.md`.** The byte
+> counts above are right; the sentence that followed them — "ArduinoJson's
+> default allocator is `malloc`, so this is internal SRAM, not PSRAM" — was
+> wrong for this build, and the ≈99,000 figure must **not** be read as an
+> internal-SRAM total. Corrected split below.
 
-The two precedents in the tree differ, and the choice between them is the
-spec's:
+This firmware sets `CONFIG_SPIRAM_USE_MALLOC=y` and
+`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096`
+(`~/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/sdkconfig:2146-2147`;
+`platformio.ini:91-113`'s `custom_sdkconfig` touches no `SPIRAM_*` key), and
+`heap_caps_realloc_default` routes an allocation larger than that limit to
+`MALLOC_CAP_SPIRAM` (`framework-espidf/components/heap/heap_caps.c`, the
+`size <= malloc_alwaysinternal_limit` branch). The 45,129-byte Arduino `String`
+grows by `realloc` (`framework-arduinoespressif32/cores/esp32/WString.cpp:212`),
+so it lives in **PSRAM**. The `JsonDocument` pool does not: each variant pool is
+at most 4,096 bytes (`ArduinoJson/Configuration.hpp:112-120`) and string nodes
+are individually smaller, so every block takes the internal branch.
 
-- **`TagPaletteFile.cpp:70`** — measure, refuse at `DEFAULT_SAVE_BUDGET`. What
-  the issue asks for. Cheapest, and leaves the ~99 KB peak reachable.
-- **`src/study/PassageFile.cpp:15-43`** — an ArduinoJson reader over `HalFile`,
-  so the 50,000-byte cap does not apply at all, and the peak drops to the pool
-  alone (≈54 KB at 45 KB of JSON). It lives outside
-  `lib/Serialization`, so it is available without touching `PersistableStore`.
+| at a 45,129-byte document | internal SRAM | PSRAM |
+|---|---|---|
+| load | ≈54 KB (pool) | ≈45 KB (the `String`) |
+| save | ≈54 KB (pool) | ≈45 KB (the serialised `String`) |
 
-A record-count bound — a `MAX_BOOKMARKS` that lands the worst-case document
-well under both ceilings — is the only option that makes the refusal
-predictable to the user instead of arriving at an arbitrary byte.
+So the transient internal cost at `persist::DEFAULT_SAVE_BUDGET` is ≈54 KB —
+the same cost `HighlightFile` already pays at the same budget
+(`src/util/HighlightFile.h:42`), not a new one. The conclusion this section
+originally drew from the wrong number — that a bookmark budget of 45,000 is
+"a number the device cannot afford to reach" and needs a `MAX_BOOKMARKS` — does
+not follow, and the spec dropped the record cap because of it.
+
+Two consequences survive the correction:
+
+- **`ESP.getFreeHeap()` alone cannot verify any of this.** It is
+  `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)`
+  (`framework-arduinoespressif32/cores/esp32/Esp.cpp:163-165`), so it cannot see
+  the PSRAM half. Pair it with `ESP.getFreePsram()` (`Esp.cpp:182-187`).
+- **Streaming the read buys less than it appears to.** `src/study/PassageFile.cpp:15-43`'s
+  reader over `HalFile` removes the 50,000-byte cap and the `String` — but the
+  `String` is the PSRAM half, so the internal peak stays at the pool either way.
 
 ## 6. `writeDocToFileAtomic` trades one loss window for another
 
@@ -146,5 +165,6 @@ g++ -std=c++20 -I aj/src -I lib/Utf8 measure.cpp lib/Utf8/Utf8.cpp -o measure
 Byte counts come from `measureJson`, the same function every budgeted store in
 this repo calls. Heap figures come from a counting `ArduinoJson::Allocator`, so
 they are the pool's own accounting rather than an allocator's overhead; **the
-device figure is the human's to confirm with `ESP.getFreeHeap()` around a load
-of a large bookmark file.** Nothing here was run on hardware.
+device figure is the human's to confirm with `ESP.getFreeHeap()` **and**
+`ESP.getFreePsram()` around a load of a large bookmark file — see the correction
+in §5 for why either alone is misleading.** Nothing here was run on hardware.
