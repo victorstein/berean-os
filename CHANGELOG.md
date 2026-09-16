@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/victorstein/berean-os/compare/v1.9.0...v1.9.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* remove Show page as QR, which never produced a scannable code ([#41](https://github.com/victorstein/berean-os/issues/41)) ([4a107d5](https://github.com/victorstein/berean-os/commit/4a107d5ced308b85f661021ced5ebad63e5ccf2e))
+
 ## [1.9.0](https://github.com/victorstein/berean-os/compare/v1.8.0...v1.9.0) (2026-09-15)
 
 
