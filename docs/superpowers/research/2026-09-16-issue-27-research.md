@@ -137,7 +137,7 @@ itself pulls Arduino.h transitively through PersistableStore.h and cannot be
 built here."
 
 `test/save_budget/SaveBudgetTest.cpp` covers `persist::fitsBudget` as pure
-arithmetic (6 cases, including `HonoursAPerStoreBudget` at `:32`). That is the
+arithmetic (5 cases, including `HonoursAPerStoreBudget` at `:32`). That is the
 whole of what the host suite can reach. **A new host test cannot prove this
 change.** Verification is `pio run` plus the device, and the spec should say so
 rather than promise a test.
@@ -163,13 +163,18 @@ Measured from the serialising code, not guessed.
   (`CrossPointSettings.h:274`) and `sdFontFamilyName[32]` (`:293`).
 - **`WifiCredentialStore`** (`WifiCredentialStore.cpp:9-24`): 8 entries × (`ssid`
   ≤ 32 B by 802.11, `password_obf` = base64 of the password, `password_len`,
-  `password_crc32`) + `lastConnectedSsid`. **Caveat:** `MAX_PASSWORD_LENGTH = 64`
-  (`WifiCredentialStore.h:36`) is enforced only on the *load* path
-  (`WifiCredentialStore.cpp:52,60`). `addCredential` (`:112`) does not check it,
-  and no cap on `enteredPassword` (`WifiSelectionActivity.h:77`) was found. The
-  write-side bound is whatever the password entry screen allows, so 64 B is the
-  figure the store *intends*, not one it enforces. Any budget derived from it
-  should carry headroom for that.
+  `password_crc32`) + `lastConnectedSsid`. **Corrected after review pass 0.** The original text here claimed no
+  write-side cap existed; that was wrong and the spec inherited it. There are
+  three producers: the **UI caps at 64** (`WifiSelectionActivity.cpp:352`, and 32
+  for a hidden SSID at `:375`, both enforced at `KeyboardEntryActivity.cpp:250`);
+  the **web server does not cap at all** (`CrossPointWebServer.cpp:1376` checks
+  only that the SSID is non-empty, `:1385` takes the password unbounded, and
+  `:1406,1408,1418` pass it to `addCredential`, which does not check either,
+  `WifiCredentialStore.cpp:112`); and the **load path bounds the steady state**,
+  discarding any credential with `password_len > MAX_PASSWORD_LENGTH` and
+  requesting a resave (`WifiCredentialStore.cpp:52-56`). So an oversized
+  web-written password survives only until the next boot, and the on-disk worst
+  case is computable at ~1.7 KB.
 - **`RecentBooksStore`** (`RecentBooksStore.cpp:11-20`): 10 entries × four
   strings — `path`, `title`, `author`, `coverBmpPath`. The count is bounded
   (`RecentBooksStore.cpp:57-59`, `MAX_RECENT_BOOKS` trim); the strings are not. `title` and `author` come
@@ -193,29 +198,15 @@ hold is roughly twice as long. Nothing waits on it today — that is precisely w
 `PersistableStore.h:31-36` and `CrossPointSettings.h:350-354` are protecting — but
 the margin for a future reader that takes it gets narrower, not wider.
 
-## Environment — both bootstrap steps are missing in this worktree
+## Environment — resolved 2026-09-16, after this note was written
 
-Neither is a code problem; both will stop the implementation phase cold.
+At the time of research the worktree could not build: `freeink-sdk` was
+uninitialised and there was no `.venv`. **Both were fixed outside this branch**
+and the worktree builds. What remains true, and still bites:
 
-```
-$ git submodule status
--310ec61506fc915836db7799a2e7f4fc135a570d freeink-sdk
-```
-
-The leading `-` means `freeink-sdk` is uninitialised — `pio run` cannot build
-until `git submodule update --init --recursive`.
-
-```
-$ ls .venv/bin/clang-format
-ls: .venv/bin/clang-format: No such file or directory
-$ clang-format --version
-zsh: command not found: clang-format
-```
-
-The working agreement's `PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix`
-assumes a `.venv` this worktree does not have. `bin/clang-format-fix:4-12` exits 1
-when no binary is found, and `:26-31` exits 1 for anything older than
-clang-format 21, so this fails loudly rather than passing falsely.
-
-`~/.platformio/penv/bin/pio` is present (PlatformIO Core 6.1.19) — the bare `pio`
-is not on `PATH`, as the working agreement says.
+- `~/.platformio/penv/bin/pio` is the pio entry point; the bare `pio` is not on
+  `PATH`.
+- The format wrapper needs `PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix`.
+  `bin/clang-format-fix:4-12` exits 1 when no binary is found and `:26-31` exits 1
+  below clang-format 21, so a skipped prefix fails loudly rather than passing
+  falsely.
