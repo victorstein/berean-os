@@ -82,7 +82,8 @@ is not clean today. `cleanInitialRefresh` means something again.
   `src/main.cpp:566` would reuse this change's mechanism exactly, but it is an
   edit to `src/main.cpp`, which A7 defers; it rides with that follow-up. Raised
   by review pass 0, MAJOR 2.
-- **A host-test harness for activities.** See A10.
+- **A host-test harness that constructs an activity.** Nothing here does; the
+  suite compiles one include-free header. See A10.
 
 ---
 
@@ -166,13 +167,40 @@ which would ship.
 currently compiles the name transitively through `GfxRenderer.h`; the reference
 file includes it directly (`HomeActivity.cpp:7`).
 
-**A10 — no host test is added.** Every suite under `test/` covers a pure unit
-(parsers, geometry, stores — `test/CMakeLists.txt:51-110`); none constructs an
-activity, because that needs the renderer, the theme, `HalStorage` and `Epub`,
-none of which exist on the host. Testing a two-boolean ternary would mean
-extracting it into a free function the reference implementation does not have —
-inventing a pattern for one line. Verification is the build plus the serial
-check in A8. Attack this if you would rather have the helper.
+**A10 — the decision is extracted into an include-free helper and tested on the
+host.** *Amended after plan review pass 0; the original A10 said no host test was
+added. See "Plan review pass 0" below.*
+
+The unit is `src/activities/launcher/LauncherRefresh.h`, holding one `constexpr
+bool launcherNeedsCleanPaint(bool cleanInitialRefresh, bool firstRenderDone)`,
+with a four-case truth table in `test/launcher_refresh/`.
+
+**Modelled on `src/activities/reader/ReturnStack.h`** and its suite
+`test/return_stack/`. That header's own comment states the idiom this follows:
+"The ring lives here, free of firmware includes, so the wrap arithmetic can be
+tested on the host" (`ReturnStack.h:3-8`). `test/return_stack/CMakeLists.txt:5-7`
+compiles it with `${REPO_ROOT}/src` as the only extra include directory — no
+activity is constructed, no renderer or `HalStorage` is needed. A free-function
+header beside an activity is likewise established:
+`src/activities/reader/ReaderUtils.h:131`.
+
+**The helper takes no includes at all**, which is why it returns `bool` rather
+than `HalDisplay::RefreshMode`: the `bool → HALF/FAST` mapping stays at the call
+site in `LauncherActivity.cpp`. A `RefreshMode` return would also have worked —
+`test/stubs/HalDisplay.h:18-21` already declares the enum and
+`test/pagination/CMakeLists.txt:26` shows how a suite reaches it — and it would
+have put the mapping under test too. The include-free form was chosen anyway, to
+match `ReturnStack.h` exactly and to keep the suite independent of the stub
+directory. The cost is real and is recorded here: **the `? HALF_REFRESH :
+FAST_REFRESH` mapping is not covered by any test.**
+
+What the truth table buys is the polarity, which is the failure this change is
+actually exposed to — spec review pass 0 found exactly that bug once already
+(MINOR 1: a log field that printed the negation of the member it named).
+
+**What the test does not do is verify the fix.** It verifies the decision logic.
+Whether the panel still ghosts is not observable from the host, from the
+firmware build, or from a green suite — see Testing.
 
 **A11 — no interaction with night mode.** `display.setInverted` is applied per
 render by the render task (`ActivityManager.cpp:56-60`), and a polarity change
@@ -184,10 +212,35 @@ that nor disturbs it.
 
 ## Architecture
 
-Three edits, two files plus one header. No new class, no new file, no
-allocation.
+Three edits to existing files, one new header, and one new host suite. No new
+class, no allocation, no heap.
 
-### 1. `src/activities/launcher/LauncherActivity.h`
+### 1. `src/activities/launcher/LauncherRefresh.h` (new)
+
+The whole decision, with no includes, so the suite needs nothing but
+`${REPO_ROOT}/src` on its include path:
+
+```cpp
+#pragma once
+
+// Whether one launcher paint has to be non-differential.
+//
+// cleanInitialRefresh is set by the wake path when the panel is still showing a
+// frame the launcher did not draw: the sleep screen, after a wake that found no
+// Quick Resume frame on the card. A differential refresh cannot clear that, so
+// the first paint of such an entry must not be one. Every later paint in the
+// entry diffs against a baseline the launcher itself drew.
+//
+// firstRenderDone is "this entry has already painted", so the first paint passes
+// false. Lives here, free of firmware includes, so that polarity can be tested
+// on the host -- inverting it costs the wake paint its clean, and nothing the
+// device shows afterwards says which way round it went.
+constexpr bool launcherNeedsCleanPaint(const bool cleanInitialRefresh, const bool firstRenderDone) {
+  return cleanInitialRefresh && !firstRenderDone;
+}
+```
+
+### 2. `src/activities/launcher/LauncherActivity.h`
 
 The constructor gains the parameter and the class gains two members, placed with
 the existing private state:
@@ -205,16 +258,19 @@ the existing private state:
   bool firstRenderDone = false;
 ```
 
-### 2. `src/activities/launcher/LauncherActivity.cpp`
+### 3. `src/activities/launcher/LauncherActivity.cpp`
 
-`#include <HalDisplay.h>` joins the sorted block (A9), and `render`'s tail
-(`LauncherActivity.cpp:473`) becomes (both statements fit the 120-column limit
-in `.clang-format:133`, so this is what the formatter will leave):
+`#include <HalDisplay.h>` joins the angle block (A9) and
+`#include "activities/launcher/LauncherRefresh.h"` the quoted one. `render`'s
+tail (`LauncherActivity.cpp:473`) becomes — verified against
+`clang-format 21.1.8` with this repo's `.clang-format`, so this is exactly what
+the formatter leaves:
 
 ```cpp
-  const auto mode = cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
-  LOG_DBG(MODULE, "Paint: clean=%d firstPaint=%d mode=%s", cleanInitialRefresh ? 1 : 0,
-          firstRenderDone ? 0 : 1, mode == HalDisplay::HALF_REFRESH ? "HALF" : "FAST");
+  const bool cleanPaint = launcherNeedsCleanPaint(cleanInitialRefresh, firstRenderDone);
+  const auto mode = cleanPaint ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
+  LOG_DBG(MODULE, "Paint: clean=%d firstPaint=%d mode=%s", cleanInitialRefresh ? 1 : 0, firstRenderDone ? 0 : 1,
+          cleanPaint ? "HALF" : "FAST");
   renderer.displayBuffer(mode);
   firstRenderDone = true;
 ```
@@ -222,19 +278,25 @@ in `.clang-format:133`, so this is what the formatter will leave):
 `MODULE` is the file's existing tag, `"LAUNCH"` (`LauncherActivity.cpp:39`).
 No `requestUpdate()` follows it — A3.
 
-### 3. `src/activities/ActivityManager.cpp`
+### 4. `src/activities/ActivityManager.cpp`
 
 ```cpp
 void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefresh) {
   // bereanOS's home is the launcher: Bible, Meetings, Buscar, Tags and
   // settings, plus a resume strip. HomeMenuItem describes the old file-centric
-  // home (browser / recents / transfer / settings) and has no counterpart here;
-  // No caller passes anything but HomeMenuItem::NONE; it stays in the
-  // signature so onGoHome's call sites and the default argument need not change.
+  // home (browser / recents / transfer / settings) and has no counterpart here.
+  // No caller passes anything but HomeMenuItem::NONE; it stays in the signature
+  // so onGoHome's call sites and the default argument need not change.
   (void)initialMenuItem;
   replaceActivity(std::make_unique<LauncherActivity>(renderer, mappedInput, cleanInitialRefresh));
 }
 ```
+
+### 5. `test/launcher_refresh/` (new)
+
+One executable, registered with a line appended to `test/CMakeLists.txt`. Include
+path is `${REPO_ROOT}/src` alone — no `test/stubs`, because the header has no
+includes to satisfy. Full contents are in the implementation plan.
 
 ## Control and data flow
 
@@ -320,7 +382,17 @@ Both commands assume the worktree bootstrap is done: `freeink-sdk` initialised
 and `.venv` present (clang-format 21.1.8). It was not, at the time the research
 note was written; that note's bootstrap paragraph is now historical.
 
-**Host.** None, per A10.
+**Host.** `test/launcher_refresh`, per A10 — the four-case truth table over
+`launcherNeedsCleanPaint`. Run with:
+
+```bash
+cmake -S test -B build/test
+cmake --build build/test
+ctest --test-dir build/test --output-on-failure -j
+```
+
+A green suite means the decision logic is right. It says nothing about the
+panel.
 
 **Serial (dev build) — the only check that can prove the wiring.** With
 `python3 scripts/debugging_monitor.py` attached:
@@ -341,6 +413,13 @@ note was written; that note's bootstrap paragraph is now historical.
    `clean=0 firstPaint=1 mode=FAST`.
 5. Watch the paint count: exactly one refresh per launcher entry. A second
    full-screen refresh on entry means A3 was violated.
+
+**What is verified, and what is not.** The host suite verifies the decision
+logic: given the flag and the latch, the right answer comes out. The firmware
+build verifies that the flag reaches the launcher and compiles. Neither of them,
+and no combination of them, verifies that the panel no longer ghosts. That needs
+a person to sleep the device, wake it, and look. A green suite is not this issue
+closed, and the hand-back must say so rather than letting the two be confused.
 
 **Device / optical — outstanding, and cannot be closed by the default unit.**
 On an SSD1677 or UC8179 unit in its default configuration there will be **no
@@ -401,6 +480,24 @@ design itself is unchanged.
   `test/CMakeLists.txt:51-89` → `:51-110`, the real end of the
   `add_subdirectory` block. The same `:427` slip is in research §3 and is
   corrected there in the same commit.
+
+## Plan review pass 0 — the A10 amendment
+
+`docs/superpowers/reviews/issue-30-plan-review-0.md`: `VERDICT: BLOCKER`, one
+blocker, one major, four minors.
+
+The blocker was that the implementation plan extracted the decision into a
+tested helper while this spec still said, in four places, that no host test was
+added. The reviewer verified the plan's counter-evidence and did not dispute the
+reversal on its merits — it blocked because a cleared spec and its plan
+contradicted each other on scope, which is the human's call. **The human ratified
+the amendment**, so A10, the Architecture section, the Non-goal and the Testing
+section above are rewritten to match, and the helper is include-free and modelled
+on `ReturnStack.h` per that same direction.
+
+The review's MINOR 1 also caught this spec asserting that its own `render` snippet
+was what `clang-format` would leave. It was not; the snippet in Architecture §3 is
+now the verified formatter output.
 
 ## Open questions
 
