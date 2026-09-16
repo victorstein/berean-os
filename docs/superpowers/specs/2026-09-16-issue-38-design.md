@@ -323,7 +323,9 @@ grep -rn "QrUtils\|qrcode\.h" src                   # expect 10 lines: 6 in QrUt
 
 # 3. The other two CI jobs. A pure deletion should pass both untouched.
 ~/.platformio/penv/bin/pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
-cmake -S test -B build/test -G Ninja && cmake --build build/test && ctest --test-dir build/test
+cmake -S test -B build/test -DCMAKE_BUILD_TYPE=Release   # NOT -G Ninja: ninja is
+cmake --build build/test                                 # not installed here
+ctest --test-dir build/test --output-on-failure -j
 
 # 4. Format last, over the whole tree, as CI does.
 PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix
@@ -416,6 +418,22 @@ what gets deleted. Recorded so the next pass does not re-derive them:
 | MINOR 5 | The orphan gate greps the build-generated `lib/I18n/I18nKeys.h`, which still lists `STR_DISPLAY_QR` until `pio run` regenerates it — running it first is a false pass reading 22. Ordering is now explicit and the `wc -l` pipe (which discarded the script's exit status) is gone. |
 | MINOR 6 | A3 had adopted the issue's 5,318,674 B baseline despite the research listing it as unverified. It is smaller than both figures in `phase-0-baseline.md` and is probably pio's `Flash:` line, not a `firmware.bin` size; the hand-back now records both numbers and refuses the comparison without a stated method. |
 | MINOR 7 | The `QrUtils\|qrcode.h` gate's expectation undercounted (10 lines, 4 of them in `CrossPointWebServerActivity.cpp` including its include) and left `.` unescaped. Both fixed. |
+
+## Amendments from the plan phase
+
+Writing `docs/superpowers/plans/2026-09-16-issue-38-plan.md` surfaced three more
+corrections to this document, applied above:
+
+| | Change |
+| --- | --- |
+| Completeness grep | The unfiltered `grep -rn "DISPLAY_QR\|QrDisplayActivity" src lib` can never reach zero: `STR_DISPLAY_QR` lives in 31 files under `lib/I18n/translations/` that the non-goals forbid touching, plus the generated `I18nKeys.h`/`I18nStrings.*`. Filtered, it is 13 → 0. |
+| `-G Ninja` | Ninja is not installed on this machine; the host-suite command now uses the default generator, which is verified working. CI installs `ninja-build` and is unaffected. |
+| A3's baseline | No longer a suspicion. A pre-change build reports `Flash: used 5318874 bytes` against a `firmware.bin` of 5,319,376 B — 200 bytes from issue #38's 5,318,674, the gap being `BEREAN_VERSION`'s branch name. The issue's figure is a `Flash:` line, and the comparison is made against the measured one. |
+
+Plan review pass 0 (`docs/superpowers/reviews/issue-38-plan-review-0.md`) returned
+CLEAR with 0 BLOCKER, 2 MAJOR, 7 MINOR; all were applied to the plan, and the two
+spec-affecting ones are in the table above. It re-measured every numeric claim in
+the plan and all of them held.
 
 The one finding worth carrying forward into implementation: **a deleted `case`
 with a surviving enumerator compiles and ships silently.** Nothing in the build
