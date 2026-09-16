@@ -59,7 +59,7 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
     recentBooks.resize(MAX_RECENT_BOOKS);
   }
 
-  saveToFile();
+  saveToFileAtomic();
 }
 
 void RecentBooksStore::updateBook(const std::string& path, const std::string& title, const std::string& author,
@@ -71,7 +71,7 @@ void RecentBooksStore::updateBook(const std::string& path, const std::string& ti
     book.title = title;
     book.author = author;
     book.coverBmpPath = coverBmpPath;
-    saveToFile();
+    saveToFileAtomic();
   }
 }
 
@@ -82,7 +82,7 @@ bool RecentBooksStore::removeByPath(const std::string& path) {
     return false;
   }
   recentBooks.erase(it);
-  if (!saveToFile()) {
+  if (!saveToFileAtomic()) {
     LOG_ERR("RBS", "Failed to persist removal of recent book: %s", path.c_str());
   }
   return true;
@@ -99,7 +99,7 @@ void RecentBooksStore::updatePath(const std::string& oldPath, const std::string&
   if (!oldCachePath.empty() && !it->coverBmpPath.empty() && it->coverBmpPath.rfind(oldCachePath, 0) == 0) {
     it->coverBmpPath = newCachePath + it->coverBmpPath.substr(oldCachePath.size());
   }
-  saveToFile();
+  saveToFileAtomic();
 }
 
 bool RecentBooksStore::isMissing(const RecentBook& book) { return !Storage.exists(book.path.c_str()); }

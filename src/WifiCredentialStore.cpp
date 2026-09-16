@@ -131,7 +131,7 @@ bool WifiCredentialStore::addCredential(const std::string& ssid, const std::stri
       LOG_DBG("WCS", "Added credentials for: %s", ssid.c_str());
     }
   }
-  return saveToFile();
+  return saveToFileAtomic();
 }
 
 bool WifiCredentialStore::removeCredential(const std::string& ssid) {
@@ -146,7 +146,7 @@ bool WifiCredentialStore::removeCredential(const std::string& ssid) {
     LOG_DBG("WCS", "Removed credentials for: %s", ssid.c_str());
     if (ssid == lastConnectedSsid) lastConnectedSsid.clear();
   }
-  return saveToFile();
+  return saveToFileAtomic();
 }
 
 std::optional<WifiCredential> WifiCredentialStore::findCredential(const std::string& ssid) const {
@@ -201,7 +201,7 @@ void WifiCredentialStore::setLastConnectedSsid(const std::string& ssid) {
     if (lastConnectedSsid == ssid) return;
     lastConnectedSsid = ssid;
   }
-  saveToFile();
+  saveToFileAtomic();
 }
 
 std::string WifiCredentialStore::getLastConnectedSsid() const {
@@ -215,7 +215,7 @@ void WifiCredentialStore::clearLastConnectedSsid() {
     if (lastConnectedSsid.empty()) return;
     lastConnectedSsid.clear();
   }
-  saveToFile();
+  saveToFileAtomic();
 }
 
 void WifiCredentialStore::clearAll() {
@@ -224,7 +224,7 @@ void WifiCredentialStore::clearAll() {
     credentials.clear();
     lastConnectedSsid.clear();
   }
-  saveToFile();
+  saveToFileAtomic();
   LOG_DBG("WCS", "Cleared all WiFi credentials");
 }
 
