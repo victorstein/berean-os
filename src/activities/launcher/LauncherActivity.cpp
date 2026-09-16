@@ -5,6 +5,7 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
+#include <HalDisplay.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -20,6 +21,7 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "activities/catalog/PublicationsActivity.h"
+#include "activities/launcher/LauncherRefresh.h"
 #include "activities/network/MeetingsActivity.h"
 #include "components/UITheme.h"
 #include "components/icons/book.h"
@@ -104,7 +106,7 @@ void LauncherActivity::resolveTargets() {
     // down -- far too late to search for the Bible or open it.
     if (APP_STATE.bibleCoverPath != bibleCoverPath) {
       APP_STATE.bibleCoverPath = bibleCoverPath;
-      APP_STATE.saveToFile();
+      APP_STATE.saveToFileAtomic();
     }
   }
 
@@ -470,7 +472,12 @@ void LauncherActivity::render(RenderLock&&) {
     drawTile(resume, tr(STR_CONTINUE_READING), resumeTitle.c_str(), selected == 4, false, {}, nullptr);
   }
 
-  renderer.displayBuffer();
+  const bool cleanPaint = launcherNeedsCleanPaint(cleanInitialRefresh, firstRenderDone);
+  const auto mode = cleanPaint ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
+  LOG_DBG(MODULE, "Paint: clean=%d firstPaint=%d mode=%s", cleanInitialRefresh ? 1 : 0, firstRenderDone ? 0 : 1,
+          cleanPaint ? "HALF" : "FAST");
+  renderer.displayBuffer(mode);
+  firstRenderDone = true;
 }
 
 void LauncherActivity::activate(const Tile tile) {

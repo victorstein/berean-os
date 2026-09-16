@@ -70,11 +70,12 @@ std::vector<EpubReaderMenuActivity::MenuItem> EpubReaderMenuActivity::buildMenuI
   if (Frontlight.present()) {
     items.push_back({MenuAction::FRONTLIGHT, StrId::STR_FRONTLIGHT});
   }
+#if BEREAN_CAP_ROTATION
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
+#endif
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
   items.push_back({MenuAction::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON});
-  items.push_back({MenuAction::DISPLAY_QR, StrId::STR_DISPLAY_QR});
   items.push_back({MenuAction::GO_HOME, StrId::STR_GO_HOME_BUTTON});
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
   return items;
@@ -128,7 +129,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
 
   if (selectedAction == MenuAction::NIGHT_MODE) {
     SETTINGS.screenInverted = SETTINGS.screenInverted == 0 ? 1 : 0;
-    SETTINGS.saveToFile();
+    SETTINGS.saveToFileAtomic();
     requestUpdate();
     return;
   }
@@ -137,7 +138,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     const bool lightOn = !Frontlight.isOn();
     Frontlight.setOn(lightOn);
     SETTINGS.frontlightOn = lightOn ? 1 : 0;
-    SETTINGS.saveToFile();
+    SETTINGS.saveToFileAtomic();
     requestUpdate();
     return;
   }

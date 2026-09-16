@@ -5,6 +5,23 @@
 
 #include <cstdint>
 
+// Whether screen rotation is OFFERED to the user. The renderer's rotation
+// support is untouched; this gates only the three places that exposed it.
+//
+// The X4 Pro's Left/Right nav buttons are a fixed physical pair and the panel
+// cannot report which way is up, so a rotated frame and a fixed mapping cannot
+// both be right. A future board must answer this question for itself rather
+// than inherit the answer -- hence the #error rather than a default. (A build
+// with no device at all is already caught earlier, by BoardConfig.h; this
+// catches a build for a DIFFERENT device, which BoardConfig accepts.)
+#ifndef BEREAN_CAP_ROTATION
+#if FREEINK_DEVICE_X4PRO
+#define BEREAN_CAP_ROTATION 0
+#else
+#error "BEREAN_CAP_ROTATION: unhandled device set; decide whether this board offers rotation"
+#endif
+#endif
+
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
   // Private constructor for singleton
@@ -351,7 +368,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // only a snapshot mixing pre- and post-change fields. That costs at most one
   // e-ink frame drawn with a mixed status bar, which self-corrects on the next
   // refresh. Locking here would instead put a mutex on the render path and
-  // stall it behind the SD write inside saveToFile(). Don't add one back.
+  // stall it behind the SD write inside saveToFileAtomic() -- which now holds
+  // storeMutex across four storageMutex acquisitions, not two. Don't add one back.
   struct StatusBarSpec {
     bool showChapterPageCount = false;
     bool showBookProgressPercent = false;
@@ -382,6 +400,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // passing it in keeps a spec from ever existing in a half-filled state.
   // Unlocked for the same reason as statusBarSpec(); see the note above.
   ReaderRenderSpec readerRenderSpec(uint16_t viewportWidth, uint16_t viewportHeight) const;
+
+  // One key per SettingsList.h row plus nine written by hand in toJson();
+  // values are almost all single bytes. ~1,600 B worst case.
+  static constexpr size_t SAVE_BUDGET = 4096;
 
   static const char* getFilePath() { return "/.crosspoint/settings.json"; }
   void toJson(JsonDocument& doc) const;

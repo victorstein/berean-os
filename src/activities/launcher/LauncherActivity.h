@@ -22,8 +22,8 @@
 // stays.
 class LauncherActivity final : public Activity {
  public:
-  explicit LauncherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("Launcher", renderer, mappedInput) {}
+  explicit LauncherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool cleanInitialRefresh = false)
+      : Activity("Launcher", renderer, mappedInput), cleanInitialRefresh(cleanInitialRefresh) {}
 
   void onEnter() override;
   void loop() override;
@@ -90,4 +90,8 @@ class LauncherActivity final : public Activity {
   std::string resumePath;
   std::string resumeTitle;
   bool hasResume = false;
+
+  // Wake-path flag, consumed by the first paint only -- see LauncherRefresh.h.
+  const bool cleanInitialRefresh;
+  bool firstRenderDone = false;
 };

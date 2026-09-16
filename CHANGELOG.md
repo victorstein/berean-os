@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.9.4](https://github.com/victorstein/berean-os/compare/v1.9.3...v1.9.4) (2026-09-16)
+
+
+### Bug Fixes
+
+* save every persisted store atomically, within a budget ([#42](https://github.com/victorstein/berean-os/issues/42)) ([5d2a34f](https://github.com/victorstein/berean-os/commit/5d2a34f0eb9b6d457d8aa5eb8950716237d0ca28)), closes [#27](https://github.com/victorstein/berean-os/issues/27)
+
+## [1.9.3](https://github.com/victorstein/berean-os/compare/v1.9.2...v1.9.3) (2026-09-16)
+
+
+### Bug Fixes
+
+* paint the launcher cleanly on the first frame after a wake ([#44](https://github.com/victorstein/berean-os/issues/44)) ([a2457f7](https://github.com/victorstein/berean-os/commit/a2457f751f0547d75a391346a699f29d8b0dccd8)), closes [#30](https://github.com/victorstein/berean-os/issues/30)
+
+## [1.9.2](https://github.com/victorstein/berean-os/compare/v1.9.1...v1.9.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* gate screen rotation behind a portrait-only capability ([#45](https://github.com/victorstein/berean-os/issues/45)) ([d8e9220](https://github.com/victorstein/berean-os/commit/d8e9220844e027d0abca2248451bddd4478d2bae)), closes [#37](https://github.com/victorstein/berean-os/issues/37)
+
+## [1.9.1](https://github.com/victorstein/berean-os/compare/v1.9.0...v1.9.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* remove Show page as QR, which never produced a scannable code ([#41](https://github.com/victorstein/berean-os/issues/41)) ([4a107d5](https://github.com/victorstein/berean-os/commit/4a107d5ced308b85f661021ced5ebad63e5ccf2e))
+
+## [1.9.0](https://github.com/victorstein/berean-os/compare/v1.8.0...v1.9.0) (2026-09-15)
+
+
+### Features
+
+* publication language setting, cancellable week scan, and one card walk ([#25](https://github.com/victorstein/berean-os/issues/25)) ([ded48d1](https://github.com/victorstein/berean-os/commit/ded48d173539b9eae75b494bf413707bcc79499f))
+
 ## [1.8.0](https://github.com/victorstein/berean-os/compare/v1.7.1...v1.8.0) (2026-09-14)
 
 

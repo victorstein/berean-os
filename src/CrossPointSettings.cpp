@@ -340,7 +340,7 @@ void CrossPointSettings::clearSdFontFamily() {
   sdFontFamilyName[0] = '\0';
   fontPointSize =
       snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES), fontPointSize);
-  saveToFile();
+  saveToFileAtomic();
 }
 
 int CrossPointSettings::getReaderFontId() const {
@@ -370,3 +370,6 @@ int CrossPointSettings::getReaderFontId() const {
       return sans ? NOTOSANS_14_FONT_ID : NOTOSERIF_14_FONT_ID;
   }
 }
+
+static_assert(CrossPointSettings::saveBudget() == 4096,
+              "SAVE_BUDGET is not reaching saveBudget() -- check access and spelling");

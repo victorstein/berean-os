@@ -120,7 +120,7 @@ void migrateCdnNamedCopy(const std::string& folder, const std::string& url, cons
   RECENT_BOOKS.updatePath(srcPath, destPath, oldCachePath, newCachePath);
   if (APP_STATE.openEpubPath == srcPath) {
     APP_STATE.openEpubPath = destPath;
-    APP_STATE.saveToFile();
+    APP_STATE.saveToFileAtomic();
   }
 
   LOG_INF(MODULE, "Renamed %s -> %s", srcPath.c_str(), destPath.c_str());

@@ -219,7 +219,7 @@ bool handleX4ProFrontlightDoubleClick() {
   const bool lightOn = !Frontlight.isOn();
   Frontlight.setOn(lightOn);
   SETTINGS.frontlightOn = lightOn ? 1 : 0;
-  SETTINGS.saveToFile();
+  SETTINGS.saveToFileAtomic();
   LOG_INF("LIGHT", "Frontlight toggled %s by power-button double-click", lightOn ? "on" : "off");
   return true;
 }
@@ -260,7 +260,7 @@ void enterDeepSleep(bool fromTimeout = false) {
   // it visible until the first useful reader or home paint replaces it.
   APP_STATE.showBootScreen = false;
 
-  APP_STATE.saveToFile();
+  APP_STATE.saveToFileAtomic();
 
   // Commit to sleeping before goToSleep() runs the outgoing activity's onExit():
   // a WiFi activity would otherwise silentRestart() here and reboot instead.
@@ -518,7 +518,7 @@ void setup() {
       // before any painting so a hang in the blocking paint path can't strand
       // us in a splashless-with-no-frame loop on the next boot.
       APP_STATE.showBootScreen = true;
-      APP_STATE.saveToFile();
+      APP_STATE.saveToFileAtomic();
       if (Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer()) {
         const bool useDifferentialRefresh = gpio.deviceIsX3();
         if (useDifferentialRefresh) {
@@ -574,7 +574,7 @@ void setup() {
     const auto path = APP_STATE.openEpubPath;
     APP_STATE.openEpubPath = "";
     APP_STATE.readerActivityLoadCount++;
-    APP_STATE.saveToFile();
+    APP_STATE.saveToFileAtomic();
     activityManager.goToReader(path, allowFastInitialReaderRefresh);
   }
 

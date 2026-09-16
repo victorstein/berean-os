@@ -37,7 +37,6 @@
 #include "MappedInputManager.h"
 #include "PassageSelectActivity.h"
 #include "ProgressMapper.h"
-#include "QrDisplayActivity.h"
 #include "ReaderActivity.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
@@ -149,7 +148,7 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
   RECENT_BOOKS.updatePath(srcPath, dstPath, oldCachePath, newCachePath);
   if (APP_STATE.openEpubPath == srcPath) {
     APP_STATE.openEpubPath = dstPath;
-    APP_STATE.saveToFile();
+    APP_STATE.saveToFileAtomic();
   }
 }
 
@@ -820,18 +819,6 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       openHighlights();
       break;
     }
-    case EpubReaderMenuActivity::MenuAction::DISPLAY_QR: {
-      if (section && section->currentPage >= 0 && section->currentPage < section->pageCount) {
-        std::string fullText = section->getTextFromSectionFile();
-        if (!fullText.empty()) {
-          startActivityForResult(std::make_unique<QrDisplayActivity>(renderer, mappedInput, fullText),
-                                 [this](const ActivityResult&) { openReaderMenu(); });
-          break;
-        }
-      }
-      requestUpdate();
-      break;
-    }
     case EpubReaderMenuActivity::MenuAction::GO_HOME: {
       onGoHome();
       return;
@@ -889,7 +876,7 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
   }
 
   SETTINGS.orientation = orientation;
-  SETTINGS.saveToFile();
+  SETTINGS.saveToFileAtomic();
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   section.reset();
 }
