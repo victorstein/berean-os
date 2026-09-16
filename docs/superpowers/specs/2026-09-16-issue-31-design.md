@@ -98,11 +98,22 @@ listed in the issue.** The issue's list was measured on `main` before `4a107d5c`
 and `d043fd84` merged; the brief itself says "re-derive the list yourself". The
 re-derivation (research §2, §7) found exactly one difference: `STR_DISPLAY_QR`
 is now an orphan, which is what acceptance criterion 3 asks for. Three
-independent checks back the set: no key is kept alive by a comment alone, none
+independent checks back the set: no key is kept alive by a comment alone; none
 of the 22 is referenced anywhere in `src/`, `lib/`, `test/`, `scripts/` or
-`freeink-sdk/`, and `git grep` across all thirteen local branches — including the
-live `feature/buscar-catalog-search` worktree — finds none of them in any
-`src/**` or `lib/**` source. *Decision:* remove exactly these 22:
+`freeink-sdk/` **on `main`**; and no local branch *introduces* a new reference to
+any of them. That third check needs stating precisely, because the raw grep is
+not empty: eight branches still carry the pre-`4a107d5c` QR code and so reference
+`STR_DISPLAY_QR` at `src/activities/reader/EpubReaderMenuActivity.cpp:77` and
+`src/activities/reader/QrDisplayActivity.cpp:34` — among them
+`feature/buscar-catalog-search`, `feature/publications-library`,
+`fix/27-atomic-store-saves`, `fix/30-launcher-wake-refresh` and
+`fix/37-gate-screen-rotation` — and the abandoned `docs/berean-os-design` branch
+predates the Phase 0 strip and carries all 22. Every one of those is a branch
+that has not yet caught up with `main`, not a branch reviving the key: `main`,
+`refactor/38-remove-qr-display`, `fix/28-bookmark-save-budget` and this branch
+are all clean. None resurrects a reference unless it is merged without first
+rebasing past `4a107d5c` — in which case Error handling case 1 fails the build
+loudly. *Decision:* remove exactly these 22:
 
 `STR_ADD_SERVER`, `STR_CALIBRE_URL_HINT`, `STR_CHECKING_WIFI`,
 `STR_DELETE_SERVER`, `STR_DISPLAY_QR`, `STR_ERROR_MSG`, `STR_FETCH_FEED_FAILED`,
@@ -194,9 +205,13 @@ $ ./scripts/i18n_orphans.sh | wc -l
 Same YAMLs, same sources, same commit. The #38 plan hit this from the other side
 (`2026-09-16-issue-38-design.md:418`). *Decision:* keep the script as-is and
 require the gate to run **after** `pio run`, expecting **1** line
-(`orphan: STR_HIGHLIGHTS_TOO_LARGE`), never piped through `wc -l` in a way that
-discards its exit status. Fixing the script means editing `scripts/`, outside the
-allowed scope, and the fix belongs with whoever owns the gate. *Attack surface:*
+(`orphan: STR_HIGHLIGHTS_TOO_LARGE`). **Assert on its stdout, never on its exit
+status:** the script ends in a `grep | while read … echo` loop
+(`i18n_orphans.sh:9-13`) and so exits 0 whether it prints 0 orphans or 23,
+despite the `set -euo pipefail` on line 7. Wiring it into a `set -e` runner
+without reading its output is a gate that passes unconditionally. Fixing the
+script means editing `scripts/`, outside the allowed scope, and the fix belongs
+with whoever owns the gate. *Attack surface:*
 a gate that reads 0 or 23 by accident is a bad gate, and a reviewer may want it
 excluded from the verification set rather than used with a caveat.
 
@@ -218,8 +233,15 @@ sed -i '' '/^STR_LOADING/d'  "$f"     # also deletes STR_LOADING_POPUP and
 
 *Decision:* every pattern carries the trailing colon; no sorting, no
 re-indenting, no trailing-whitespace cleanup, no touching a file's final newline.
-A pure line delete makes `git diff --stat` a checkable artefact (see the expected
-per-file counts in Architecture). *Attack surface:* `sed -i ''` is the BSD
+That last clause has one named beneficiary: **`arabic.yaml` is the only file with
+no terminating newline** (`tail -c 1` is non-empty). Its last line,
+`STR_RECOVERY_MODE_HINT`, is not on the removal list, so a line delete preserves
+the anomaly — but any implementation that reads and rewrites a whole file
+(`splitlines()` + `'\n'.join()` + a trailing newline, the obvious portable form)
+would silently append one, turning gate 5's "0 insertions" into 1 and adding a
+`\ No newline at end of file` hunk that reads as scope creep. A pure line delete
+makes `git diff --stat` a checkable artefact (see the expected per-file counts in
+Architecture). *Attack surface:* `sed -i ''` is the BSD
 spelling and is wrong on Linux; a plan that hardcodes it is host-specific. A
 reviewer may prefer a Python edit for portability.
 
@@ -316,8 +338,10 @@ every file.
 | **total** | **666** | **11,377 → 10,711** |
 
 `22 × 32 = 704` is the wrong number and a plan that asserts it fails on its own
-arithmetic: `danish`, `dutch` and `romanian` never had the five OPDS server keys;
-`finnish` also lacks `STR_DISPLAY_QR`; `orangutan` lacks nine.
+arithmetic: `danish`, `dutch` and `romanian` never had the five OPDS server keys,
+nor `STR_NO_SERVERS` or `STR_TAP_TO_RETRY` — seven each; `finnish` lacks those
+seven plus `STR_DISPLAY_QR`; `orangutan` lacks nine. **Derive every per-file
+count from the table above, never by multiplication.**
 
 ### What cannot move
 
@@ -455,10 +479,21 @@ for k in _language_name _language_code _order; do
 done
 
 # 5. Shape of the diff (A6): a pure line delete, 666 lines, no insertions.
-git diff --stat -- lib/I18n/translations/          # expect 32 files, 666 deletions, 0 insertions
-git diff -- lib/I18n/translations/ | grep -c '^+[^+]'   # expect 0
+git diff --stat -- lib/I18n/translations/   # expect 32 files, 666 deletions, 0 insertions
+#    `--stat`'s own "0 insertions(+)" is the signal. Do NOT assert with a bare
+#    `git diff … | grep -c '^+[^+]'`: grep -c exits 1 when it matches nothing,
+#    so under `set -e` that gate kills the run exactly when the change is clean.
+[ "$(git diff -- lib/I18n/translations/ | grep -c '^+[^+]' || true)" -eq 0 ]
 
 # 6. Build. It regenerates lib/I18n/I18nKeys.h, which gate 7 greps (A5).
+#    If this reports `bad interpreter: .../penv/bin/python`, that is a host
+#    problem, not this change: the venv's `python` is a symlink into Homebrew's
+#    python@3.14, and a Homebrew point upgrade orphans it if it names a Cellar
+#    path. It currently points at the upgrade-stable
+#    /opt/homebrew/opt/python@3.14/bin/python3.14 and `pio --version` reports
+#    PlatformIO Core 6.1.19. Repair by re-pointing that symlink, or run
+#    `PYTHONPATH="$HOME/.platformio/penv/lib/python3.14/site-packages" \
+#       python3 -m platformio run`.
 ~/.platformio/penv/bin/pio run
 #    expect "Stripping 1 unused string(s) from output." and "String keys: 420",
 #    SUCCESS, and a Flash figure unchanged from the 5,314,782 B baseline
@@ -528,3 +563,26 @@ restatement of criterion 5 is accepted.
    the issue's stated goal arguably says yes.
 3. **A4 — should `AGENTS.md:336,709` be corrected in this PR?** Two lines, out of
    scope, and stale the moment this merges.
+
+---
+
+## Review pass 0 — what changed and why
+
+`docs/superpowers/reviews/issue-31-spec-review-0.md` returned **CLEAR** with 2
+MAJOR and 4 MINOR findings, all fixed inline above. Each was re-derived before
+being applied; one was applied in a corrected form, and that difference is
+recorded here rather than buried.
+
+| # | Finding | Applied as |
+|---|---|---|
+| MAJOR 1 | A1 claimed `git grep` across the local branches finds none of the 22 in any `src/**` or `lib/**` source. **False.** | A1's third check rewritten. The original sweep used `git grep -E "…\b"`, and `\b` is undefined in POSIX ERE, so the pattern matched nothing on every branch and the emptiness was an artefact of the regex, not a property of the tree. Re-derived with `git grep -w`: eight branches reference `STR_DISPLAY_QR`, and `docs/berean-os-design` carries all 22. The removal set does not move — `main` is clean and all eight simply predate `4a107d5c` — but the sentence now says that instead of overclaiming. |
+| MAJOR 2 | Gate 6's `~/.platformio/penv/bin/pio run` was unexecutable (`bad interpreter`) — the venv `python` symlink pointed at a Homebrew Cellar path (`python@3.14/3.14.5`) that a point upgrade had removed. | Applied **as a troubleshooting note, not as a repair step**, because the condition no longer holds: the symlink was repaired during the review window and now targets the upgrade-stable `/opt/homebrew/opt/python@3.14/bin/python3.14`; `~/.platformio/penv/bin/pio --version` reports PlatformIO Core 6.1.19 and exits 0. Prescribing a repair for a healthy tool would be its own defect. The failure mode is real and recurrent, so gate 6 now names it and says it is a host problem. The review's independently-routed build reproduced the `5,314,782 B` / `64,052 B` baseline exactly, which is the number that mattered. |
+| MINOR 3 | A5's "never discard its exit status" caveat protects nothing: `i18n_orphans.sh` exits 0 with 23 orphans. | A5 now says to assert on stdout and names why (`i18n_orphans.sh:9-13` ends in an echoing `while` loop, so `set -euo pipefail` on line 7 cannot help). Confirmed: `./scripts/i18n_orphans.sh >/dev/null; echo $?` → `0` with 23 orphans present. |
+| MINOR 4 | Gate 5's `git diff … \| grep -c '^+[^+]'` exits 1 exactly when it passes, killing a `set -e` runner on the green path. | Gate 5 rewritten to a `[ … -eq 0 ]` test with `\|\| true`, and `--stat`'s own "0 insertions(+)" named as the real signal. Confirmed: `bash -c 'set -e; … \| grep -c "^+[^+]"; echo SURVIVED'` prints `0`, never `SURVIVED`, and exits 1. |
+| MINOR 5 | Architecture prose said `danish`/`dutch`/`romanian` "never had the five OPDS server keys" — which yields 17 and contradicts the table's 15 two lines above. | Corrected to seven (the five server keys plus `STR_NO_SERVERS` and `STR_TAP_TO_RETRY`), with an explicit instruction to derive per-file counts from the table rather than by multiplication. Confirmed: `danish` lacks 7 → 15, `finnish` 8 → 14, `orangutan` 9 → 13, matching every table row. |
+| MINOR 6 | `arabic.yaml` is the only file with no trailing newline; A6's "don't touch the final newline" held only by luck, and A6's own suggested Python alternative would break gate 5. | A6 now names the file, why the line delete is safe there (its last line, `STR_RECOVERY_MODE_HINT`, is not on the removal list), and what a whole-file rewriter must preserve. Confirmed: `arabic.yaml` is the sole `tail -c 1` non-empty file of the 32. |
+
+Not changed, and why: the reviewer explicitly declined to raise A2's restatement
+of acceptance criterion 5, A3's 17 out-of-scope keys, and A4's knowingly-stale
+`AGENTS.md` example, recording each as a stated trade-off rather than a defect.
+Open Question 1 therefore stands as written and is still the human's call.
