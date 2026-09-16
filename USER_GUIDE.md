@@ -137,7 +137,6 @@ Tap the centre third of the page. The menu lists, depending on the publication:
 - **Auto turn** — pages per minute
 - **Go to %** — jump by percentage
 - **Take screenshot** — writes a BMP to `screenshots/`
-- **Show page as QR** — the current position as a QR code
 - **Go home**
 - **Delete book cache** — forces a re-index of this publication on next open
 
