@@ -126,12 +126,18 @@ A **launcher** home screen — four tiles and a resume strip:
 │  │Sem 14-20 │ │ Catálogo  │  │
 │  └──────────┘ └───────────┘  │
 │  ┌────────────────────────┐  │
-│  │ Etiquetas y ajustes    │  │
+│  │ Ajustes                │  │
 │  └────────────────────────┘  │
 ├──────────────────────────────┤
 │ Seguir leyendo · Sal 119:145 │
 └──────────────────────────────┘
 ```
+
+> **Superseded, 2026-09-16.** This tile was specified as "Etiquetas y ajustes" and shipped
+> under that label. Tag management landed in the reader instead — you select a passage and
+> choose its tags there (issue #20, closed) — so nothing tag-related is reachable behind this
+> tile. It was relabelled to "Ajustes" in #53, and the diagram above reflects that. The rest of
+> this section is the original design and is left as written.
 
 A launcher is a screen you pass *through*, and on e-ink every pass costs a full
 panel refresh. The resume strip is what pays for that: the common case — waking

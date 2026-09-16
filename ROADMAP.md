@@ -61,7 +61,7 @@ there.
 
 **Goal:** the device stops looking like a general e-reader.
 
-- A launcher home screen: four tiles — Biblia, Reuniones, Buscar, Etiquetas y ajustes — and a resume
+- A launcher home screen: four tiles — Biblia, Reuniones, Buscar, Ajustes — and a resume
   strip. The common case, waking the device to carry on reading, is one tap and never touches the
   tiles.
 - The new input model: long-press Right to confirm, Left+Right as a hard-bound Back that routes
