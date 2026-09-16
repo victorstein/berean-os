@@ -1416,7 +1416,9 @@ void CrossPointWebServer::handlePostWifiNetwork() {
     LOG_DBG("WEB", "Updated Wi-Fi network at index %d (SSID: %s)", idx, ssid.c_str());
   } else {
     if (!WIFI_STORE.addCredential(ssid, password)) {
-      server->send(400, "text/plain", "Cannot add network (limit reached)");
+      // Covers the network limit, a budget refusal and an SD write failure --
+      // addCredential returns the same false for all three.
+      server->send(400, "text/plain", "Cannot add network");
       return;
     }
     LOG_DBG("WEB", "Added Wi-Fi network: %s", ssid.c_str());
