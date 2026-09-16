@@ -49,7 +49,7 @@ the research note separates them because they have different weights:
    three driver internals happen to arrange it. `freeink-sdk` is a submodule
    this repo does not own, the property is stated nowhere in its public API, and
    `HalDisplay::begin`'s own comment claims the opposite for the seamless path
-   (`lib/hal/HalDisplay.cpp:22-26`, and `src/main.cpp:453-456`). Making the
+   (`lib/hal/HalDisplay.cpp:22-26`, and `src/main.cpp:454-457`). Making the
    request explicit does not remove every dependence on those internals — see
    A1 on UC8279 — but it puts the intent where the intent is held, and on
    SSD1677 with `fadingFix` it is what makes the paint clean at all.
@@ -71,7 +71,7 @@ is not clean today. `cleanInitialRefresh` means something again.
 - **Touching `HomeActivity`.** It is the reference to read, not to edit; its
   removal is #29.
 - **Touching the sleep path, the Quick Resume frame, or `freeink-sdk`.**
-- **Correcting the stale comment at `src/main.cpp:453-456`.** See A7.
+- **Correcting the stale comment at `src/main.cpp:454-457`.** See A7.
 - **The `BootResume::Silent` route (`src/main.cpp:566`).** It reaches the
   launcher in the same state the flag describes — the code's own comment says
   the panel "keeps showing the pre-reboot popup until that first paint lands"
@@ -251,12 +251,12 @@ the existing private state:
 ```
 
 ```cpp
-  // Set when the panel is still showing a frame this activity did not draw --
-  // the sleep screen, after a wake with no Quick Resume frame. The first paint
-  // must then be non-differential; every later one is an ordinary fast refresh.
   const bool cleanInitialRefresh;
   bool firstRenderDone = false;
 ```
+
+Comment text for that block is in the implementation plan, which is
+authoritative for it.
 
 ### 3. `src/activities/launcher/LauncherActivity.cpp`
 
@@ -399,10 +399,12 @@ panel.
 
 1. Sleep screen set to anything but Quick Resume (default is `DARK`,
    `src/CrossPointSettings.h:207`). Sleep, wake. Expect
-   `[DBG] LAUNCH Paint: clean=1 firstPaint=1 mode=HALF`, and exactly one `Paint:`
-   line for that entry. Other `LAUNCH` lines are normal and expected —
+   `[DBG] [LAUNCH] Paint: clean=1 firstPaint=1 mode=HALF`, and exactly one
+   `Paint:` line for that entry. `logPrintf` prefixes a millisecond field
+   (`lib/Logging/Logging.cpp:47`), so grep `Paint:` rather than matching a whole
+   line. Other `LAUNCH` lines are normal and expected —
    `resolveTargets` logs the meeting publication and any generated thumbnail
-   (`LauncherActivity.cpp:124,136,219`), and `LOG_INF` survives at both log
+   (`LauncherActivity.cpp:124,136,218`), and `LOG_INF` survives at both log
    levels (`lib/Logging/Logging.h:51-55`).
 2. Press a nav button on the launcher. Expect `clean=1 firstPaint=0 mode=FAST` — the
    latch held.
@@ -503,7 +505,7 @@ now the verified formatter output.
 
 Both were answered in review pass 0 and are recorded here as decided, not open.
 
-1. **A7 — correcting `src/main.cpp:453-456`.** Follow-up, not this change.
+1. **A7 — correcting `src/main.cpp:454-457`.** Follow-up, not this change.
    Correcting it properly means importing the research note's driver analysis
    into `main.cpp`, and the brief scopes this change to the launcher and the
    manager. MAJOR 2's one-token fix rides with it.

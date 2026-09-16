@@ -127,7 +127,7 @@ leading `^\[\d+\]` to a wall-clock stamp; it does not touch `[DBG] [LAUNCH]`. A 
 diffs against the quoted string finds nothing and has no way to tell "the log format differs" from
 "the flag never arrived", which is the one thing steps 7b.1–7b.4 exist to distinguish.
 
-**Evidence.** `lib/Logging/Logging.cpp:76-90` (`logPrintf`), `lib/Logging/Logging.h:57-58`
+**Evidence.** `lib/Logging/Logging.cpp:39-47` (`logPrintf` and its prefix), `lib/Logging/Logging.h:57-58`
 (`LOG_DBG` → `logPrintf("DBG", origin, format "\n", ...)`), `scripts/debugging_monitor.py:307`.
 
 **Concrete fix.** In `plan.md:499-500` and `plan.md:502,504,506`, quote the real shape once and match
@@ -176,17 +176,17 @@ defers the test file.
 **Problem.** `LauncherActivity.cpp:219` is `return {};`; the `LOG_DBG(MODULE, "No cover thumbnail for
 %s", ...)` is at `:218`. `src/main.cpp:453` is a blank line; the comment runs `:454-457`. (`:124` and
 `:136` are correct — the meeting-publication `LOG_INF` and the generated-thumbnail `LOG_INF`.) Both
-slips are inherited from `spec.md:405` and `spec.md:74,151`, and the spec carries a third of the same
-kind at `spec.md:328`, which cites `LauncherActivity.cpp:544,548` for the button-press
-`requestUpdate()` calls that are at `:543` and `:547`. The repo's evidence rule
-(CLAUDE.md, Agent rules) is a file *and a line* that has been read, and pass-0 spec review MINOR 4
-already swept this spec once for exactly this class of slip.
+slips are inherited from `spec.md:405` and `spec.md:74,151`. The repo's evidence rule (CLAUDE.md,
+Agent rules) is a file *and a line* that has been read, and pass-0 spec review MINOR 4 already swept
+this spec once for exactly this class of slip. (The spec's other flow citations do hold: I checked
+`LauncherActivity.cpp:510,517` and `:544,548` — all four are the `requestUpdate()` calls claimed.)
 
-**Evidence.** `sed -n '217,221p' src/activities/launcher/LauncherActivity.cpp`,
-`sed -n '451,458p' src/main.cpp`, `sed -n '541,549p' src/activities/launcher/LauncherActivity.cpp`.
+**Evidence.** `sed -n '217,221p' src/activities/launcher/LauncherActivity.cpp` puts the `LOG_DBG` on
+218 and `return {};` on 219; `sed -n '451,458p' src/main.cpp` puts the comment on 454-457 with 453
+blank.
 
 **Concrete fix.** `plan.md:501` → `:124,136,218`; `plan.md:551` → `src/main.cpp:454-457`; and the
-matching corrections at `spec.md:405`, `spec.md:74,151` and `spec.md:328`.
+matching corrections at `spec.md:405` and `spec.md:74,151`.
 
 ---
 
@@ -208,7 +208,7 @@ matching corrections at `spec.md:405`, `spec.md:74,151` and `spec.md:328`.
 - **No unused-variable warning when `LOG_DBG` vanishes** at `LOG_LEVEL=1`: `cleanPaint` feeds `mode`
   and `mode` feeds `renderer.displayBuffer(mode)`.
 - **`bin/clang-format-fix` reaches the new files at step 6** because they are tracked by then —
-  `git ls-files --exclude-standard` (`bin/clang-format-fix:44`) lists tracked files only, and steps 1
+  `git ls-files --exclude-standard` (`bin/clang-format-fix:45`) lists tracked files only, and steps 1
   and 3 commit them first. Had step 6 run before those commits it would have skipped them silently.
 - **Step 6's conditional `style: clang-format` commit is the right shape**: `git add -A src test`
   covers both trees the plan writes to, and the plan tells the implementer to check `git status
