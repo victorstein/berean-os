@@ -35,9 +35,11 @@ inline constexpr size_t MAX_SUMMARY_BYTES = 72;
 
 // Ceiling for one serialised record plus the document wrapper, pinned by
 // BookmarkDocTest. The worst case measures 386 bytes against the ArduinoJson
-// version test/CMakeLists.txt pins; the headroom absorbs a serialiser
-// formatting change, NOT a new field. Adding a field to BookmarkEntry lowers
-// how many bookmarks fit in SAVE_BYTE_BUDGET and must fail here first.
+// version test/CMakeLists.txt pins, so the 34 bytes of headroom absorb a
+// serialiser formatting change but not a string-shaped addition to
+// BookmarkEntry, which is what this catches. A small numeric field slips
+// under it; re-measure deliberately when adding one, because every field
+// lowers how many bookmarks fit in SAVE_BYTE_BUDGET.
 inline constexpr size_t MAX_RECORD_BYTES = 420;
 
 void toJson(const std::vector<BookmarkEntry>& bookmarks, JsonDocument& doc);

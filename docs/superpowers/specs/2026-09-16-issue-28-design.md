@@ -427,8 +427,10 @@ modifies a file — that is `bookmarkSaveAction`'s contract, inherited from
 The brief forbids editing the YAML and says to use `STR_HIGHLIGHTS_TOO_LARGE` if it fits. It does
 not: it reads "This book already has too many highlights" and would tell a user who pressed *Toggle
 Bookmark* about highlights. So all three ship pointing at `STR_ERROR_GENERAL_FAILURE` ("Error:
-General failure", `english.yaml:201`) — noun-free and true — routed through one function,
-`bookmarkToastString()`, so the swap is three lines in one file. The hand-back names the keys. This
+General failure", `english.yaml:201`) — noun-free and true. The reader's three go through one
+function, `bookmarkToastString()`; the bookmarks list calls `tr()` directly at its two sites, because
+it has no five-way toast to route. The swap is therefore three lines in `EpubReaderActivity` plus two
+calls in `EpubReaderBookmarksActivity`. The hand-back names the keys. This
 is a knowingly poor message shipped to keep criterion 3 met rather than silently dropped.
 
 ---
