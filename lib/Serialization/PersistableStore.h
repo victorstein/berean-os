@@ -121,9 +121,8 @@ class PersistableStore : public PersistableStoreBase {
     return instance;
   }
 
-  // Legacy path: non-atomic, unbudgeted, and as of #27 it has no store callers
-  // at all. Kept only so a future store cannot reach for it without reading this
-  // comment. Use saveToFileAtomic().
+  // Non-atomic and unbudgeted, with no store callers. Kept so that reaching for
+  // it has to be deliberate; stores use saveToFileAtomic().
   bool saveToFile() const {
     std::lock_guard<std::mutex> lock(storeMutex);
     JsonDocument doc;
