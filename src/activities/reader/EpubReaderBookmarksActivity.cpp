@@ -30,7 +30,7 @@ void EpubReaderBookmarksActivity::onEnter() {
     return;
   }
 
-  if (!BookmarkFile::load(epubPath, bookmarks)) {
+  if (BookmarkFile::load(epubPath, bookmarks) != BookmarkFile::LoadResult::Loaded) {
     bookmarks.shrink_to_fit();
   }
   LOG_DBG("EPB", "Loaded %d bookmarks for book: %s", static_cast<int>(bookmarks.size()), epubPath.c_str());
@@ -172,7 +172,7 @@ void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
   // actionValues must be re-derived, not just trimmed — and before the SD
   // save, so the render task never sees rows aliasing the erased storage.
   rebuildBookmarkRowItems();
-  if (!BookmarkFile::save(epubPath, bookmarks)) {
+  if (BookmarkFile::save(epubPath, bookmarks) != BookmarkFile::SaveResult::Ok) {
     LOG_ERR("EPB", "Failed to save bookmarks after delete");
   }
 

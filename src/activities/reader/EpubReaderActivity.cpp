@@ -1798,7 +1798,7 @@ void EpubReaderActivity::addBookmark() {
     currentPageBookmarked = true;
   }
 
-  if (!BookmarkFile::save(epub->getPath(), cachedBookmarks)) {
+  if (BookmarkFile::save(epub->getPath(), cachedBookmarks) != BookmarkFile::SaveResult::Ok) {
     LOG_ERR("ERS", "Failed to save bookmarks");
   }
   requestUpdate();
