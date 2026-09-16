@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.4](https://github.com/victorstein/berean-os/compare/v1.9.3...v1.9.4) (2026-09-16)
+
+
+### Bug Fixes
+
+* save every persisted store atomically, within a budget ([#42](https://github.com/victorstein/berean-os/issues/42)) ([5d2a34f](https://github.com/victorstein/berean-os/commit/5d2a34f0eb9b6d457d8aa5eb8950716237d0ca28)), closes [#27](https://github.com/victorstein/berean-os/issues/27)
+
 ## [1.9.3](https://github.com/victorstein/berean-os/compare/v1.9.2...v1.9.3) (2026-09-16)
 
 
