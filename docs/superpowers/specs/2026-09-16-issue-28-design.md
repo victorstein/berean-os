@@ -1,6 +1,7 @@
 # Bookmarks: a save budget, an atomic write, and a load that cannot be overwritten
 
-**Date:** 2026-09-16 (pass 1 — revised after `docs/superpowers/reviews/issue-28-spec-review-0.md`)
+**Date:** 2026-09-16 (revised after `reviews/issue-28-spec-review-0.md`, then after
+`reviews/issue-28-spec-review-1.md`)
 **Status:** SPEC — not implemented
 **Issue:** #28, "Bookmarks have no save budget and no atomic write"
 **Target:** bereanOS, `x4pro` (ESP32-S3, 8 MB PSRAM)
@@ -27,6 +28,22 @@ half-applied.
 | **MINOR 5** — "enforced the same way" was untrue of a cap living outside the doc class | Moot: the cap is gone. |
 | **MINOR 6** — test item 5 inverted its donor's point | Rewritten, and the byte guard's real job is now stated. |
 | **MINOR 7** — six citation drifts | Fixed throughout. |
+
+### Applied from pass 1's review (verdict `CLEAR`: 1 MAJOR, 7 MINORs, 0 BLOCKERs)
+
+Pass 1 confirmed both pass-0 blockers and the major as genuinely fixed, having traced each through
+the code. Its own findings are applied here:
+
+| Review finding | Change |
+|---|---|
+| **MAJOR 1** — pass 0's test rewording was written for a spec that still had `MAX_BOOKMARKS`; applied after the cap was dropped it left `test/bookmark_doc/` asserting a worst-case *document* that no longer exists and could never fail | §Testing items 5–6 replaced with a per-record ceiling and the ≈218-record figure A-2 rests on, plus an explicit statement of why there is no worst-case-document test and why `MAX_XPATH_DEPTH` does not bound the stored field |
+| **MINOR 2** — "exactly at the cap writes" contradicts `bookmarkSaveAction` | Item 6 reworded: at the cap only the shrink arm writes, and that arm is unreachable because such a file loads `Failed` |
+| **MINOR 3** — A-1 refuses to spend the margin, A-3 spends all of it | Both sides now say so: the margin is headroom for future record-shape changes, and A-3 explains why the write path itself needs none |
+| **MINOR 4** — the (b) rejection claimed the only recovery is pulling the SD card | Corrected: the file browser can delete the whole file with hidden files shown, but that loses every bookmark and is unreachable while the launcher finds a Bible |
+| **MINOR 5** — the new stat-then-write is two `storageMutex` acquisitions | Single-writer premise stated on `BookmarkFile.h`, with the owning task named |
+| **MINOR 6** — the load-failed toast would re-fire on every return through `loadCachedBookmarks()` | Guarded on the latch transition, not the result |
+| **MINOR 7** — two supporting claims did not check out | Both corrected: `highlightSaveAction` has one user (its load-side sibling has three), and `PassageDoc.cpp` is not evidence of flash-neutrality because `measureBytes()` calls `measureJson` |
+| **MINOR 8** — CLAUDE.md storage rule 3 was declined without being named | Named in the rejection, with why declining it is still right |
 
 **The research note is amended, not left to rot.** Research §5 asserted ≈99 KB of *internal* SRAM
 at the budget. This build sets `CONFIG_SPIRAM_USE_MALLOC=y` with
@@ -78,9 +95,11 @@ shown as if it had been, and a file that is already too big can still be deleted
 - **Editing `lib/I18n/translations/*.yaml`.** Another task owns them (brief constraint). See A-7.
 - **Touching `lib/Serialization/PersistableStore.{h,cpp}`.** Brief constraint, and nothing here
   needs it.
-- **Widening the shared `highlightSaveAction`.** Three stores depend on it
-  (`src/util/HighlightFile.cpp:76`, and `src/study/PassageFile.cpp:72` uses its load-side sibling).
-  The shrink exception is bookmark-local.
+- **Widening the shared `highlightSaveAction`.** Only one store uses it today
+  (`src/util/HighlightFile.cpp:76`), but its load-side sibling `highlightLoadAction` has three
+  (`HighlightFile.cpp:40`, `src/study/PassageFile.cpp:72`, `src/study/TagPaletteFile.cpp:39`), and
+  the two live in one header. The shrink exception is a bookmark rule, not a store rule, so it stays
+  bookmark-local rather than growing parameters onto a helper other stores include.
 
 ---
 
@@ -113,8 +132,12 @@ shown as if it had been, and a file that is already too big can still be deleted
 
 **`BookmarkDoc.cpp` does not instantiate the JSON serializer.** It builds and reads a `JsonDocument`;
 `serializeJson`/`deserializeJson` stay inside `PersistableStore.cpp`, which is that class's stated
-purpose (`lib/Serialization/PersistableStore.h:13-21`). `HighlightDoc.cpp` and `PassageDoc.cpp` are
-the proof this is flash-neutral.
+purpose (`lib/Serialization/PersistableStore.h:13-21`). `HighlightDoc.cpp` is the precedent:
+it builds and reads a document and never measures one. `PassageDoc.cpp` is **not** — its
+`measureBytes()` calls `measureJson` (`PassageDoc.cpp:134-137`), pulling exactly the template
+`PersistableStore.h:16-20` exists to keep out of per-store TUs. `BookmarkDoc` escapes that because
+A-5 means `fromJson` never measures: the only `measureJson` call is in `BookmarkFile::save`, which
+already includes `PersistableStore.h`.
 
 **The `.tmp` decision logic is reused, not rewritten.** `highlightLoadAction()`
 (`src/util/HighlightFileAction.h:34-47`) is already shared across stores: `src/study/PassageFile.cpp`
@@ -167,6 +190,8 @@ reason — headroom under the 50,000 read cap. The reviewer's option of raising 
 so the loadable and saveable bands coincide is **rejected**: that 5,000-byte margin is what stands
 between a miscount — a field added to `BookmarkEntry`, an escape-heavy summary, a serialiser
 change — and silent truncation, which is unrecoverable. Simplicity is not worth trading for it.
+The margin's job is headroom for *future* changes to the record shape, not for the write path
+itself; A-3 spends it on one path for the reason given there.
 
 **A-2 — no record cap.** Pass 0 proposed `MAX_BOOKMARKS = 64` on the strength of research §5's
 ≈99 KB internal-SRAM figure. That figure was wrong (see *What changed*), and neither issue #28 nor
@@ -234,9 +259,15 @@ did not have.**
   `CrossPointWebServerActivity`, its only caller is `HomeActivity::onFileTransferOpen()`
   (`src/activities/home/HomeActivity.cpp:325`), and `HomeActivity` is never instantiated anywhere in
   `src/` — it survives only as the `isHomeActivity()` check at `ActivityManager.cpp:77`. That is
-  issue #29, "The web server stack is unreachable, and the dev side-load path with it". **Under (b)
-  the real recovery path is physically removing the SD card and editing the file on a computer**,
-  which is not a recovery path this fix may hand a user.
+  issue #29, "The web server stack is unreachable, and the dev side-load path with it". The one
+  on-device path that does exist is far worse than it sounds: Settings → show hidden files
+  (`src/SettingsList.h:376`) → File Browser → delete the whole file
+  (`src/activities/home/FileBrowserActivity.cpp:56, 170`). **That destroys every bookmark for the
+  book**, and it is not reachable at all while the launcher finds a Bible, since the browser is
+  only opened from `LauncherActivity::openBible()` when no Bible-looking book is in recents
+  (`src/activities/launcher/LauncherActivity.cpp:498-503`). So under (b) a user whose Bible
+  bookmarks file is over budget has no on-device recovery at all, and off-device means pulling the
+  SD card. A-3 is preferred because it recovers one record at a time.
 
 ---
 
@@ -281,6 +312,15 @@ permanent.
 
 `SaveResult` is `{Ok, TooLarge, WriteFailed}`, copied from `HighlightFile.h:37`.
 
+**Single-writer, and `BookmarkFile.h` must say so.** `HalStorage` serialises each *call*, not a
+sequence: the `bytesOnDisk` probe takes and releases `storageMutex`, and so does every call inside
+`writeDocToFileAtomic`. A second writer could therefore change the file between the measurement and
+the write and make the shrink decision race. The owning task is the main/UI task — all four call
+sites are reader-side activities (`EpubReaderActivity.cpp:1747, 1801`,
+`EpubReaderBookmarksActivity.cpp:33, 175`). `BookmarkFile.h` carries `HighlightFile.h:16-18`'s note
+verbatim, extended with this hazard, which is also what CLAUDE.md's storage rule 5 ("name its owning
+task") asks for.
+
 ### `EpubReaderActivity` — the latch
 
 `loadCachedBookmarks()` (`:1737-1749`) keeps the result and, on `Failed`, sets a new
@@ -288,16 +328,21 @@ permanent.
 store nine lines later (`:240`, then `:247-250`):
 
 ```cpp
-if (BookmarkFile::load(epub->getPath(), cachedBookmarks) == BookmarkFile::LoadResult::Failed) {
-  bookmarksSaveDisabled = true;
+if (BookmarkFile::load(epub->getPath(), cachedBookmarks) == BookmarkFile::LoadResult::Failed &&
+    !bookmarksSaveDisabled) {
+  bookmarksSaveDisabled = true;                              // toast on the TRANSITION, not the result
   ReaderUtils::showMessage(renderer, tr(/* A-7 */));
 }
 ```
 
 The latch is a session property, like `StudyStore::saveDisabled_`, whose survival across
 `closePublication` is explained at `src/study/StudyStore.cpp:58-62`. `loadCachedBookmarks()` is also
-called on return from the progress-change flow (`:689`); a `Failed` there latches too, and the latch
-is never cleared.
+called on return from the progress-change flow (`:689`), which is why the toast is guarded on the
+latch transition rather than on the result: `GUI.drawPopup` ends in `renderer.displayBuffer()`
+(`src/components/themes/BaseTheme.cpp:853`), a full e-ink refresh, and under a persistent SD fault
+an unguarded toast would fire on every return from the bookmarks list immediately before
+`openReaderMenu()` repaints. The latch is never cleared, so the message is shown exactly once per
+session.
 
 ### `EpubReaderActivity::addBookmark()` — refuse, then roll back
 
@@ -391,10 +436,15 @@ is a knowingly poor message shipped to keep criterion 3 met rather than silently
 ## Rejected alternatives
 
 - **Stream the read** (`src/study/PassageFile.cpp:15-49`'s `HalFileReader` over `HalFile`). It
-  removes the 50,000-byte cap entirely. Rejected: with the corrected memory picture it buys almost
-  nothing in internal SRAM — the `String` it eliminates is in PSRAM, and the ≈54 KB pool it does not
-  eliminate is the internal cost. It would also mean duplicating a file-local class into a second TU
-  or promoting it to a shared header, in a data-loss fix. Revisit if the budget is ever raised.
+  removes the 50,000-byte cap entirely. **This declines CLAUDE.md's storage rule 3** — *"Stream, not
+  `Storage.readFile`, if it can exceed ~40 KB"* — which at a 45,000-byte budget this store can, and
+  which `PassageFile` follows. Declined deliberately: streaming removes the read cap but not the
+  budget refusal, so the shrink exception (A-3) would be needed either way and the
+  loadable-but-unsaveable band would still exist; with the corrected memory picture it also buys
+  almost nothing in internal SRAM, because the `String` it eliminates is in PSRAM and the ≈54 KB
+  pool it does not eliminate is the internal cost. It would mean duplicating a file-local class into
+  a second TU or promoting it to a shared header, in a data-loss fix. Revisit whenever the budget
+  moves, or with issue #29.
 - **Raising `SAVE_BYTE_BUDGET` to ~49,000** — A-1.
 - **Read-only over budget** — A-3, and issue #29 is why.
 - **A record cap** — A-2.
@@ -415,7 +465,10 @@ is a knowingly poor message shipped to keep criterion 3 met rather than silently
    entry must write.
 4. Over the read cap refuses even when shrinking.
 5. `bytesOnDisk == 0` (no file yet) refuses anything over budget.
-6. Exactly at the budget, and exactly at the cap, both write.
+6. Exactly at the budget writes whatever `bytesOnDisk` is. Exactly at the read cap writes **only**
+   on the shrink arm (`bytesOnDisk > readCap`) and refuses otherwise — and that arm is unreachable
+   in practice, because a file over the cap reads back truncated, loads `Failed` and latches saving
+   off before `save()` is ever called. The boundary is pinned anyway, with that note in the test.
 
 **Host — `test/bookmark_doc/`**, modelled on `test/highlight_doc/` (which compiles
 `lib/Epub/Epub/HighlightDoc.cpp` and `lib/Utf8/Utf8.cpp` against `ArduinoJson` and
@@ -425,14 +478,24 @@ is a knowingly poor message shipped to keep criterion 3 met rather than silently
 2. `"v"` absent parses as v1 with all entries (A-4) — the legacy-file regression guard.
 3. `"v": 0` and `"v": 2` are both refused; `"v": 1` is accepted.
 4. `fromJson` on an over-budget document keeps every entry and reports success (A-5).
-5. Worst case — 16-deep xpath (`MAX_XPATH_DEPTH`, `ProgressMapper.cpp:141`), four-digit indices, a
-   summary of characters JSON escapes — is measured and **asserted to fit under the read cap with
-   its margin recorded**, so a new field on `BookmarkEntry` fails here first. This deliberately
-   inverts `HighlightDocTest.cpp:190-193`, which asserts its worst case does *not* fit: highlights
-   have a count cap that cannot bound bytes, bookmarks have no count cap, so for bookmarks the byte
-   budget is the only bound and the test must prove it is a real one.
-6. `summary` longer than `MAX_SUMMARY_BYTES` in the file is re-bounded without splitting a UTF-8
+5. **Per-record cost, pinned.** One realistic-worst record — a deep xpath with four-digit indices, a
+   fully escaped 72-byte summary, `vo` present — is measured and asserted under a pinned per-record
+   ceiling, with the measured value in the failure message. A new field on `BookmarkEntry` fails
+   here first, which is the one thing this suite can usefully guard.
+6. **The figure A-2 rests on.** `SAVE_BYTE_BUDGET / bytesPerRecord` is still at least the ≈218
+   records §Budget quotes. Dropping the record cap rests on that number and nothing else tests it.
+7. `summary` longer than `MAX_SUMMARY_BYTES` in the file is re-bounded without splitting a UTF-8
    sequence.
+
+There is deliberately **no** worst-case-*document* test here, and `HighlightDocTest.cpp:167-193` is
+not a donor for one. That test builds a document at `HighlightDoc::MAX_HIGHLIGHTS`
+(`HighlightDocTest.cpp:178`); a count cap is what makes "the worst case" a finite object, and A-2
+removes it. A document assertion would carry ~49,500 bytes of slack and could never fail. The byte
+bound is `bookmarkSaveAction`, pinned exhaustively by the suite above. Nor would `MAX_XPATH_DEPTH`
+bound such a document: `parseXPathSteps` merely stops reading after 16 steps
+(`ProgressMapper.cpp:168`) while `buildParagraphXPath` emits one segment per ancestor with no limit
+(`lib/ProgressMapper/ChapterXPathResolver.cpp:55-57`) — which is exactly why §Format says the field
+is unbounded.
 
 Registered in `test/CMakeLists.txt` beside the other `add_subdirectory` lines.
 
