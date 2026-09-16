@@ -43,7 +43,13 @@ class EpubReaderActivity final : public ReaderActivity {
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
-  bool bookmarkRemoved = false;
+  // Which message the bookmark popup shows. addBookmark() is the only writer.
+  enum class BookmarkToast : uint8_t { Added, Removed, TooLarge, SaveFailed, LoadDisabled };
+  BookmarkToast bookmarkToast = BookmarkToast::Added;
+  // Latched when a bookmark file failed to READ: the bytes may still hold the
+  // user's data, so nothing may be written over them for the rest of the
+  // session. Never cleared, exactly like StudyStore's own saveDisabled_.
+  bool bookmarksSaveDisabled = false;
   std::vector<BookmarkEntry> cachedBookmarks;
   bool recentsEntryRemoved = false;
   unsigned long bookmarkMessageTime = 0UL;
@@ -113,6 +119,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void loadCachedBookmarks();
   void addBookmark();
+  static const char* bookmarkToastString(BookmarkToast toast);
   void updateBookmarkFlag();
 
   // What a navigation does to the return stack. Clear is the default so a new
