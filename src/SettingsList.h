@@ -314,10 +314,12 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled, "hyphenationEnabled",
                             StrId::STR_CAT_READER)
             .withTextSettings(),
+#if BEREAN_CAP_ROTATION
         SettingInfo::Enum(
             StrId::STR_ORIENTATION, &CrossPointSettings::orientation,
             {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW},
             "orientation", StrId::STR_CAT_READER),
+#endif
         SettingInfo::Toggle(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing,
                             "extraParagraphSpacing", StrId::STR_CAT_READER)
             .withTextSettings(),
