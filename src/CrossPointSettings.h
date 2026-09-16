@@ -5,6 +5,23 @@
 
 #include <cstdint>
 
+// Whether screen rotation is OFFERED to the user. The renderer's rotation
+// support is untouched; this gates only the three places that exposed it.
+//
+// The X4 Pro's Left/Right nav buttons are a fixed physical pair and the panel
+// cannot report which way is up, so a rotated frame and a fixed mapping cannot
+// both be right. A future board must answer this question for itself rather
+// than inherit the answer -- hence the #error rather than a default. (A build
+// with no device at all is already caught earlier, by BoardConfig.h; this
+// catches a build for a DIFFERENT device, which BoardConfig accepts.)
+#ifndef BEREAN_CAP_ROTATION
+#if FREEINK_DEVICE_X4PRO
+#define BEREAN_CAP_ROTATION 0
+#else
+#error "BEREAN_CAP_ROTATION: unhandled device set; decide whether this board offers rotation"
+#endif
+#endif
+
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
   // Private constructor for singleton
