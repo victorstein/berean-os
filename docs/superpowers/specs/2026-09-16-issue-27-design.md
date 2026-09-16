@@ -355,7 +355,7 @@ comments name `saveToFile()` and go stale; the change fixes all four:
   at `:1406,1408,1418` and answers `400 "Cannot add network (limit reached)"`
   (`:1419-1421`) or `400 "Failed to update Wi-Fi network"` (`:1412`). After this
   change a budget refusal reaches `:1419` and is reported as a limit that was not
-  reached. **Fix it in this change**: widen `:1420` to `"Cannot add network"`.
+  reached. **Fix it in this change**: widen `:1419` to `"Cannot add network"`.
   One line, in a file this change already converts (`:1320`).
 
 ---
