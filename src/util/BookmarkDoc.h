@@ -33,6 +33,13 @@ inline constexpr size_t SAVE_BYTE_BUDGET = persist::DEFAULT_SAVE_BUDGET;
 // file on an SD card is not a trusted input, so the load path re-bounds it.
 inline constexpr size_t MAX_SUMMARY_BYTES = 72;
 
+// Ceiling for one serialised record plus the document wrapper, pinned by
+// BookmarkDocTest. The worst case measures 386 bytes against the ArduinoJson
+// version test/CMakeLists.txt pins; the headroom absorbs a serialiser
+// formatting change, NOT a new field. Adding a field to BookmarkEntry lowers
+// how many bookmarks fit in SAVE_BYTE_BUDGET and must fail here first.
+inline constexpr size_t MAX_RECORD_BYTES = 420;
+
 void toJson(const std::vector<BookmarkEntry>& bookmarks, JsonDocument& doc);
 
 // Fills `bookmarks` from `doc`. Returns false only when the document is not an
