@@ -115,3 +115,27 @@ TEST(BookmarkDocVersion, AFutureVersionIsRefusedRatherThanReinterpreted) {
   std::vector<BookmarkEntry> out;
   EXPECT_FALSE(BookmarkDoc::fromJson(doc.as<JsonVariantConst>(), out));
 }
+
+TEST(BookmarkDocSummary, AnOverlongSummaryInTheFileIsReBoundedOnACodepointBoundary) {
+  // 40 three-byte codepoints = 120 bytes, over MAX_SUMMARY_BYTES. A raw byte
+  // cut would land mid-sequence and produce invalid UTF-8 that the next save
+  // would serialise.
+  std::string wide;
+  for (int i = 0; i < 40; ++i) wide += "世";  // CJK, 3 bytes each
+
+  JsonDocument doc;
+  doc["v"] = BookmarkDoc::FORMAT_VERSION;
+  JsonObject obj = doc["bookmarks"].to<JsonArray>().add<JsonObject>();
+  obj["xpath"] = "/body/DocFragment[1]/body";
+  obj["percentage"] = 0.5f;
+  obj["summary"] = wide;
+  obj["si"] = 0;
+  obj["pc"] = 1;
+  obj["pp"] = 0;
+
+  std::vector<BookmarkEntry> out;
+  ASSERT_TRUE(BookmarkDoc::fromJson(doc.as<JsonVariantConst>(), out));
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_LE(out[0].summary.size(), BookmarkDoc::MAX_SUMMARY_BYTES);
+  EXPECT_EQ(out[0].summary.size() % 3, 0u) << "cut on a codepoint boundary, not a byte one";
+}

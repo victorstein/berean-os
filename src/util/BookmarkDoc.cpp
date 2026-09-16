@@ -1,5 +1,7 @@
 #include "BookmarkDoc.h"
 
+#include <Utf8.h>
+
 namespace BookmarkDoc {
 
 void toJson(const std::vector<BookmarkEntry>& bookmarks, JsonDocument& doc) {
@@ -38,7 +40,7 @@ bool fromJson(const JsonVariantConst doc, std::vector<BookmarkEntry>& bookmarks)
     // std::string converter drags a copy of the serializer into flash.
     bookmark.xpath = obj["xpath"] | "";
     bookmark.percentage = obj["percentage"] | static_cast<float>(0);
-    bookmark.summary = obj["summary"] | "";
+    bookmark.summary = utf8SafeSummary(obj["summary"] | "", MAX_SUMMARY_BYTES);
     bookmark.computedSpineIndex = obj["si"] | static_cast<uint16_t>(0);
     bookmark.computedChapterPageCount = obj["pc"] | static_cast<uint16_t>(0);
     bookmark.computedChapterProgress = obj["pp"] | static_cast<uint16_t>(0);
