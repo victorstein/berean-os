@@ -5,8 +5,8 @@
 
 #include <cstdint>
 
-// Whether screen rotation is OFFERED to the user. The renderer's rotation
-// support is untouched; this gates only the three places that exposed it.
+// Whether screen rotation is OFFERED to the user. Independent of the renderer's
+// rotation support, which every board keeps.
 //
 // The X4 Pro's Left/Right nav buttons are a fixed physical pair and the panel
 // cannot report which way is up, so a rotated frame and a fixed mapping cannot
