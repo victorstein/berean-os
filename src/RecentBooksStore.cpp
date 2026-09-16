@@ -59,7 +59,9 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
     recentBooks.resize(MAX_RECENT_BOOKS);
   }
 
-  saveToFileAtomic();
+  if (!saveToFileAtomic()) {
+    LOG_ERR("RBS", "Failed to persist added recent book: %s", path.c_str());
+  }
 }
 
 void RecentBooksStore::updateBook(const std::string& path, const std::string& title, const std::string& author,
@@ -71,7 +73,9 @@ void RecentBooksStore::updateBook(const std::string& path, const std::string& ti
     book.title = title;
     book.author = author;
     book.coverBmpPath = coverBmpPath;
-    saveToFileAtomic();
+    if (!saveToFileAtomic()) {
+      LOG_ERR("RBS", "Failed to persist metadata update for: %s", path.c_str());
+    }
   }
 }
 
@@ -99,7 +103,9 @@ void RecentBooksStore::updatePath(const std::string& oldPath, const std::string&
   if (!oldCachePath.empty() && !it->coverBmpPath.empty() && it->coverBmpPath.rfind(oldCachePath, 0) == 0) {
     it->coverBmpPath = newCachePath + it->coverBmpPath.substr(oldCachePath.size());
   }
-  saveToFileAtomic();
+  if (!saveToFileAtomic()) {
+    LOG_ERR("RBS", "Failed to persist path change: %s -> %s", oldPath.c_str(), newPath.c_str());
+  }
 }
 
 bool RecentBooksStore::isMissing(const RecentBook& book) { return !Storage.exists(book.path.c_str()); }
