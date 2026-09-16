@@ -130,10 +130,15 @@ the tree but the research note and this spec, and it is *smaller* than both
 figures in `docs/superpowers/notes/phase-0-baseline.md:7,38` (5,628,560 B and
 5,441,200 B, each labelled "`x4pro` dev `firmware.bin`") despite predating three
 feature merges — which points at pio's `Flash: used N bytes` line rather than a
-`firmware.bin` size. Comparing the two would manufacture a ~120 KB movement that
-contradicts the real result. *Decision:* the hand-back records **both**
-`ls -l .pio/build/x4pro/firmware.bin` and pio's `Flash:` line, and states that the
-delta is meaningful only against a figure measured the same way. Note also that
+`firmware.bin` size. **Confirmed during planning:** a pre-change build of this
+worktree reports `Flash: used 5318874 bytes` against a `firmware.bin` of
+5,319,376 B — 200 bytes from the issue's number, the gap explained by
+`BEREAN_VERSION` carrying this branch's longer name. The issue's baseline is a
+`Flash:` figure. Comparing it to a `firmware.bin` size would manufacture a
+~120 KB movement that contradicts the real result. *Decision:* the hand-back records **both**
+`ls -l .pio/build/x4pro/firmware.bin` and pio's `Flash:` line, and compares
+against the measured 5,318,874 B `Flash:` baseline rather than the issue's
+number, since only the former was measured here the same way. Note also that
 `BEREAN_VERSION` embeds the branch name and short SHA (`platformio.ini:168`,
 `scripts/git_branch.py`), so byte-exact cross-branch comparison carries a few
 bytes of unavoidable noise. *Attack surface:* the issue frames dependency removal
@@ -308,7 +313,9 @@ and the gates below already assert. The existing suite must still pass unchanged
 ls -l .pio/build/x4pro/firmware.bin        # AC-4; also record pio's "Flash:" line
 
 # 2. Completeness. The greps are the only guard on the silent half-deletion.
-grep -rn "DISPLAY_QR\|QrDisplayActivity" src lib    # expect no hits
+grep -rn "DISPLAY_QR\|QrDisplayActivity" src lib \
+  --include='*.cpp' --include='*.h' | grep -v "I18nKeys.h\|I18nStrings"
+                                                     # expect no hits (13 before)
 grep -rn "QrUtils\|qrcode\.h" src                   # expect 10 lines: 6 in QrUtils.{h,cpp},
                                                      # 4 in CrossPointWebServerActivity.cpp
                                                      # (:20 include + :445,:463,:483)
@@ -321,6 +328,13 @@ cmake -S test -B build/test -G Ninja && cmake --build build/test && ctest --test
 # 4. Format last, over the whole tree, as CI does.
 PATH="$PWD/.venv/bin:$PATH" ./bin/clang-format-fix
 ```
+
+**The completeness grep must exclude the YAMLs and the generated i18n files.**
+`STR_DISPLAY_QR` is defined in 31 files under `lib/I18n/translations/`, which the
+non-goals forbid touching, and in the generated `lib/I18n/I18nKeys.h` and
+`I18nStrings.*` — so an unfiltered `grep … src lib` can never reach zero. The
+filtered form above returns 13 lines before the change and must return 0 after.
+(Found while writing the plan; the plan uses the corrected form.)
 
 **Order matters for the orphan gate.** `scripts/i18n_orphans.sh` greps `src lib`,
 which includes the build-generated `lib/I18n/I18nKeys.h` (`.gitignore`). That file
