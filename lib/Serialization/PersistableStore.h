@@ -169,8 +169,8 @@ class PersistableStore : public PersistableStoreBase {
       doResave = resaveRequested;
       resaveRequested = false;
     }
-    // Deliberately outside the lock: saveToFile() takes storeMutex itself.
-    if (ok && doResave && !saveToFile()) {
+    // Deliberately outside the lock: saveToFileAtomic() takes storeMutex itself.
+    if (ok && doResave && !saveToFileAtomic()) {
       LOG_ERR("PERSIST", "Failed to resave %s after format update", T::getFilePath());
     }
     return ok;
