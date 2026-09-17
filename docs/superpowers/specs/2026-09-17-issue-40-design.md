@@ -97,10 +97,39 @@ publication never renders differently. The widest reachable surface is the
 (`lib/GfxRenderer/GfxRenderer.cpp:1777-1788`). Every other surface already caps
 the same field far lower — 48 bytes at `src/activities/launcher/LauncherActivity.cpp:83`
 and `src/activities/catalog/PublicationsActivity.cpp:56`, 40 at `:103`, 30 at `:132`.
-Real publication titles in this device's scope measure 39-72 bytes
-("Traducción del Nuevo Mundo de las Santas Escrituras (revisión de 2019)" = 72).
+Real publication titles in this device's scope, with their byte counts — these
+are test 4's fixtures, listed here so the cap is checked against named strings
+rather than a remembered range:
+
+| Bytes | Title |
+|---|---|
+| 72 | `Traducción del Nuevo Mundo de las Santas Escrituras (revisión de 2019)` |
+| 66 | `Guía de actividades para la reunión Vida y Ministerio Cristianos` |
+| 63 | `La Atalaya anunciando el Reino de Jehová (edición de estudio)` |
+| 60 | `New World Translation of the Holy Scriptures (2013 Revision)` |
+| 59 | `The Watchtower Announcing Jehovah's Kingdom (Study Edition)` |
+| 39 | `¿Qué nos enseña realmente la Biblia?` |
+
 128 is ~1.8× the longest of those, and ~2.7× the largest cap any other surface
 applies.
+
+*`title` is not display-only, and that changes the frame this assumption reasons
+in.* The launcher picks which book the **Bible tile** opens by substring-matching
+it (`src/activities/launcher/LauncherActivity.cpp:96-99`):
+
+```cpp
+return book.path.find("nwt") != std::string::npos || book.title.find("Nuevo Mundo") != std::string::npos ||
+       book.title.find("New World") != std::string::npos;
+```
+
+Both halves of this change touch that input — truncation can remove a marker past
+the cap, and `utf8SafeSummary`'s whitespace collapse rewrites the matched text.
+The cap must therefore also sit above where those markers occur: byte 14 of the
+72-byte Spanish title and byte 4 of the 60-byte English one. 128 clears both with
+large margin, so the number does not move — but "above what the widest surface can
+render" was never sufficient on its own for a field that is also parsed, and test
+4b exists to keep it honest.
+*Corrected after review pass 0 (MAJOR 2, MINOR 5).*
 *Attack it:* the row is ~700 px wide (800 px screen, `contentSidePadding = 20` in
 all three themes — `src/components/themes/BaseTheme.h:142`, `lyra/LyraTheme.h:17`,
 `roundedraff/RoundedRaffTheme.h:20` — less a 32 px icon,
@@ -114,9 +143,11 @@ of budget and changes nothing else.
 
 **A2 — `MAX_AUTHOR_BYTES = 96`.**
 *Why:* same reasoning, one surface. `author` renders only as the row subtitle
-(`RecentBooksActivity.cpp:40`), truncated at the same width. Real values measure
-38-52 bytes ("Watchtower Bible and Tract Society of New York, Inc." = 52); 96 is
-~1.8× the longest, symmetric with A1.
+(`RecentBooksActivity.cpp:40`), truncated at the same width, and nothing parses
+it. Real values, test 4's fixtures for this field: `Watchtower Bible and Tract
+Society of New York, Inc.` (52), `Watch Tower Bible and Tract Society of
+Pennsylvania` (51), `Asociación de los Testigos de Jehová` (38). 96 is ~1.8× the
+longest, symmetric with A1.
 *Attack it:* a multi-author sideloaded EPUB could exceed 96. The visible result is
 an ellipsis in a subtitle that was already being ellipsised.
 
@@ -137,6 +168,18 @@ it is under the cap. That is a second behaviour change beyond truncation. It is
 the right one: the launcher already applies exactly this transform to this exact
 field (`LauncherActivity.cpp:83`), so the normalised form is what the user
 already sees there, and a newline in an OPF title renders as a box today.
+**But the two steps interact badly and this change persists the result.** The
+collapse runs first (`lib/Utf8/Utf8.cpp:186-192`) and `std::unique` keeps the
+*first* character of a run; the `'\n'` removal runs second (`:193`). When a
+whitespace run *begins* with a newline the survivor is the newline, which is then
+erased with no space put back: `"Despertad!\n No. 1"` becomes
+`"Despertad!No. 1"`. Today the Recents row renders the raw string and shows the
+words separated; afterwards it shows them jammed. This is accepted, not
+overlooked — fixing `utf8SafeSummary` would change `LauncherActivity.cpp:83`,
+`PassageDoc.cpp:28-29`, `HighlightDoc.cpp:62-63` and `BookmarkDoc.cpp:43` at the
+same time, which is a separate change to a shared helper. It is in the
+before/after table and in human-test item 1.
+*Added after review pass 0 (MINOR 6).*
 Note the known limit — `utf8SafeSummary`'s whitespace predicate is `std::isspace`,
 which is ASCII-only, so U+00A0 and U+202F survive (see
 `memory/highlight-passage-extraction-differs-offline-vs-device.md`). They count
@@ -144,17 +187,26 @@ against the byte cap as 2-3 bytes each. Harmless here; worth knowing.
 
 **A4 — the caps are applied at three write paths, not the one the issue names.**
 *Why:* the issue names `addBook` (`src/RecentBooksStore.cpp:42`). There are two
-more. `updateBook` (`:67-80`) assigns `book.title = title; book.author = author;`
-from `HomeActivity.cpp:75`. `fromJson` (`:31-34`) reads both back off the SD card
-with no bound at all. Bounding only `addBook` leaves the store unbounded and the
-derived budget false. `BookmarkDoc.h:31-32` states the load-side rule directly —
-*"A file on an SD card is not a trusted input, so the load path re-bounds it"* —
-and `BookmarkDoc.cpp:43` implements it.
-*Attack it:* this is scope the issue did not ask for. It is not optional: without
-the load-side bound, a `recent.json` written by 1.9.10 with ten 4,000-byte titles
-loads in full and then refuses every subsequent save forever, which is the
-"legacy file cannot shrink" trap already recorded for bookmarks
-(`memory/bookmark-save-budget-shrink-exception.md`, issue #28).
+more, and they are not equally important.
+
+**`fromJson` (`:31-34`) is the one that matters.** It reads both fields back off
+the SD card with no bound at all, and the card is not a trusted input —
+`BookmarkDoc.h:31-32` states the rule directly (*"A file on an SD card is not a
+trusted input, so the load path re-bounds it"*) and `BookmarkDoc.cpp:43`
+implements it. Bounding only `addBook` leaves the store unbounded and the derived
+budget false.
+
+**`updateBook` (`:67-80`) is bounded as defence in depth.** It assigns
+`book.title = title; book.author = author;`, and its only caller is
+`HomeActivity.cpp:75` — inside the activity this spec's Non-goals show is never
+instantiated. It is public API on the shell, so it must not be able to store an
+unbounded string, but no argument here rests on it.
+*Corrected after review pass 0 (MINOR 2): the original text cited
+`HomeActivity.cpp:75` as a live write path, contradicting this spec's own
+Non-goals.*
+*Attack it:* this is scope the issue did not ask for. It is not optional — see
+the load walkthrough under **Data and control flow** for the band it rescues and
+the band nothing can.
 
 **A5 — a load that truncated anything calls `requestResave()`.**
 *Why:* A4 shrinks over-long entries in memory at load. Without a resave the file
@@ -163,10 +215,16 @@ something else writes. `requestResave()` exists for precisely this — *"fromJso
 implementations call this when the on-disk JSON used a legacy shape that was
 upgraded in memory"* (`lib/Serialization/PersistableStore.h:40-44`), performed
 after the lock is released (`:194-197`).
-*Attack it:* it costs one SD write on the first boot after upgrade for any user
-with an over-long title, and zero after that, because the flag is set only when a
-string actually changed. A blanket resave every boot would be wrong; this is not
-that.
+*Attack it:* it costs one SD write for any user with an over-long title, and zero
+after that, because the flag is set only when a string actually changed. A blanket
+resave every load would be wrong; this is not that. **The "zero after that" holds
+only if the resave succeeds.** If it fails, the file on disk is unchanged, so the
+next load normalises the same strings, sets the flag again and retries — and
+`loadFromFile` is not a per-boot call: `main.cpp:413`,
+`LauncherActivity.cpp:77` and `PublicationsActivity.cpp:45` all invoke it, so a
+persistent write failure means one logged, failing write attempt per entry to the
+launcher or to Publications. The in-memory list is correct throughout.
+*Added after review pass 0 (MINOR 4).*
 
 **A6 — `path` is not truncated. Its contribution to the budget is an explicit
 allowance of 512 bytes, `PATH_BUDGET_ALLOWANCE`.**
@@ -205,8 +263,22 @@ would break the 57-byte derivation; today both pass a `/.crosspoint`-shaped path
 *Why:* measured against ArduinoJson 7.4.2 (research §4): 128 bytes of `"` or `\`
 serialise to 256, 128 bytes of 4-byte UTF-8 serialise to 128, and 128 bytes of
 `0x01` serialise to 128 — this version does **not** `\u`-escape control
-characters, so 2 is the true worst case and `"`/`\` are the only characters that
-reach it. Neither can appear in a path: `lfnReservedChar`
+characters in general. The full two-byte set is `"`, `\`, `\b`, `\f`, `\n`,
+`\r`, `\t` (`ArduinoJson/Json/EscapeSequence.hpp:34`), and `utf8SafeSummary`
+leaves an interior `\t` or `\r` in place, so the set is wider than `"`/`\` — all
+of it is still covered by a factor of 2.
+**The one exception is NUL, which serialises to six.**
+`ArduinoJson/Json/TextFormatter.hpp:57-65` falls through to
+`writeRaw("\u0000")` for `c == 0`, and `toJson` assigns a `std::string`
+(`RecentBooksStore.cpp:16-17`), which ArduinoJson stores length-aware, so an
+embedded NUL would survive to the serialiser; 128 NULs measure 776 bytes. It is
+unreachable — XML 1.0 forbids U+0000 so no OPF title can carry one, and the load
+path reads `obj["title"] | ""` as `const char*`, which stops at the first NUL —
+but "unreachable" is not a thing to leave resting on an argument. `normalise`
+erases `'\0'` before capping, and test 11 asserts it, which makes the factor of 2
+enforced rather than assumed.
+*Corrected after review pass 0 (MINOR 1): the original claimed 2 was the true
+worst case and `"`/`\` the only characters reaching it. Both were wrong.* Neither can appear in a path: `lfnReservedChar`
 (`SdFat/src/common/FsStructs.h:108-111`, SdFat 2.3.1 per its
 `library.properties`) rejects `"`, `\` and everything below `0x20` for both exFAT
 names and FAT LFN, so a path read off this card cannot contain one.
@@ -237,7 +309,16 @@ below and yields **11,421**. `BookmarkDoc.h:35-42` chose the other way
 of slack in a comment; deriving avoids that conversation entirely because every
 allowance is already generous and named.
 *Attack it:* an odd-looking constant invites someone to "tidy" it. The
-`static_assert` and the test comments have to say it is derived.
+`static_assert` and the test comments have to say it is derived. And because
+test 11 builds its fixture from the same constants `worstCaseBytes()` sums,
+the worst case measures **exactly** 11,421 and fits by zero bytes —
+`persist::fitsBudget` is `<=` (`lib/Serialization/SaveBudget.h:26`). That is the
+deliberate consequence of deriving rather than rounding, and it means any future
+ArduinoJson formatting change fails CI even if it cannot affect real data.
+`BookmarkDoc.h:36-42` bought slack instead and had to explain it in a comment.
+Whoever hits that failure should raise a named allowance, never loosen the
+assertion.
+*Added after review pass 0 (MINOR 7).*
 
 **A11 — the shape moves to `src/util/RecentBooksDoc.{h,cpp}` and `RecentBook` to
 `src/RecentBook.h`; `RecentBooksStore` becomes the shell.**
@@ -264,15 +345,21 @@ translation units — GCC emits `.isra` clones per TU at ~0.5 KB each.
 *Attack it:* the host test *does* call `measureJson`, which is fine — it is not
 firmware.
 
-**A13 — `test/CMakeLists.txt` is not edited by this change; its one added line
-goes in the PR body.**
-*Why:* `.claude/agents/data-dev.md` names it a shared append point and says to
-report the line rather than edit it.
-*Attack it:* repo history goes the other way — #47 (`d043fd84`), #64 (`6156de32`)
-and #65 (`5bf4cb9b`) each committed their own `add_subdirectory(...)` line. Until
-that line lands the new suite does not run in CI, which makes the whole guard
-inert. This is the assumption most likely to be overturned, and overturning it
-costs one line.
+**A13 — `add_subdirectory(recent_books_doc)` IS committed to `test/CMakeLists.txt`,
+after `bookmark_doc` (`test/CMakeLists.txt:114`), and is also called out in the PR
+body.**
+*Why:* `.claude/agents/data-dev.md:22-27` names the file a shared append point and
+says to report the line rather than edit it — but that rule exists to stop two
+*parallel* agents colliding in it, and this is a single PR on its own branch with
+both sibling tasks already landed. Repo history is unanimous the other way: #47
+(`d043fd84`), #64 (`6156de32`) and #65 (`5bf4cb9b`) each committed their own line.
+Withholding it ships a test suite that never runs, which is strictly worse than
+the collision the rule protects against.
+*Reversed at review pass 0.* The original A13 held to report-don't-edit and
+conceded in a "Known gap" that the entire CI guard would be inert. The reviewer
+answered open question 3 against it on exactly that ground.
+*Attack it:* if the orchestrator is running another `data` task that appends to
+this file, the line collides and must be rebased. That is a one-line conflict.
 
 ---
 
@@ -328,9 +415,10 @@ constexpr size_t worstCaseBytes() {
 // Derived, not rounded (A10). Recompute it, do not tidy it.
 inline constexpr size_t SAVE_BUDGET = worstCaseBytes();
 
-// UTF-8-safe normalisation of the display fields. Returns true when it changed
-// anything, which is what drives the load-side resave (A5). path and
-// coverBmpPath are left alone.
+// UTF-8-safe normalisation of the display fields: erases any embedded NUL (the
+// one byte ArduinoJson expands 6x -- A8), then caps via utf8SafeSummary. Returns
+// true when it changed anything, which is what drives the load-side resave (A5).
+// path and coverBmpPath are left alone.
 bool normalise(RecentBook& book);
 
 void toJson(const std::vector<RecentBook>& books, JsonDocument& doc);
@@ -432,17 +520,40 @@ RECENT_BOOKS.loadFromFile()          main.cpp:413, LauncherActivity.cpp:77,
                                      PublicationsActivity.cpp:45
   └─ PersistableStore<T>::loadFromFile          PersistableStore.h:179
        ├─ readDocFromFileAdopting                                   :186
+       │    └─ NOT Ok  → return false, fromJson never runs             :186-188
        ├─ RecentBooksStore::fromJson
-       │    └─ RecentBooksDoc::fromJson(doc, books, needsResave)
-       │         └─ per entry: cap at MAX_RECENT_BOOKS, normalise()
-       ├─ if (needsResave) requestResave()          PersistableStore.h:44
-       └─ (lock released) saveToFileAtomic()                    :194-197
+       │    ├─ RecentBooksDoc::fromJson(doc, books, needsResave)
+       │    │    └─ per entry: cap at MAX_RECENT_BOOKS, normalise()
+       │    └─ if (needsResave) requestResave()     PersistableStore.h:44
+       ├─ reads resaveRequested under the lock                        :191
+       └─ (lock released) saveToFileAtomic()                      :194-197
 ```
 
-A `recent.json` written by 1.9.10 with ten 4,000-byte titles therefore: loads in
-full, shrinks in memory, and is rewritten once — never refused. Without A4+A5 it
-would load at ~80 KB, already past `SD_READ_TRUNCATION_CAP`, and be unsavable
-forever.
+**The band A4+A5 rescue.** A `recent.json` that 1.9.10 was able to write sits at
+or under 45,000 bytes (`RecentBooksStore.h:35` + `PersistableStore.h:170-175`
+already refuse above that). A file above the new 11,421 and under that ceiling —
+say ten entries with ~1,800-byte titles, ≈ 37 KB — reads and parses fine, and
+therefore *does* reach `fromJson`. Without A4+A5 it would load whole and then
+refuse every subsequent save forever: the "legacy file cannot shrink" trap
+already recorded for bookmarks (`memory/bookmark-save-budget-shrink-exception.md`,
+issue #28). With them it loads, shrinks in memory, and is rewritten once.
+
+**The band nothing can rescue, and why it does not exist.** A file over
+`persist::SD_READ_TRUNCATION_CAP` (50,000) never reaches `fromJson` at all.
+`SDCardManager::readFile` stops at `constexpr size_t maxSize = 50000` and returns
+a silently truncated `String`
+(`freeink-sdk/libs/hardware/SDCardManager/src/SDCardManager.cpp:201-208`);
+`deserializeJson` then fails mid-token and the read classifies as `ParseError`
+(`PersistableStore.cpp:50-59`, `lib/Serialization/DocReadStatus.h:17-21`), so
+`loadFromFile` returns false at `PersistableStore.h:186-188` before `fromJson`
+runs. No normalisation, no resave — the list initialises empty and the next
+`addBook` overwrites the card copy. That is a data-loss path, not a save refusal,
+and **this change neither creates nor fixes it**. It is unreachable because no
+shipped build can write such a file: the 45,000 budget has been enforced since
+#27.
+*Corrected after review pass 0 (MAJOR 1). The original claimed an ~80 KB file
+"loads in full, shrinks, and is rewritten once", which the read path makes
+impossible, and attributed it to a build that could not have written it.*
 
 ### What the user sees
 
@@ -450,8 +561,10 @@ forever.
 |---|---|
 | A 300-byte title: stored whole, ellipsised by the row | Stored as 128 bytes, ellipsised by the row |
 | `"Awake!   2026"` | `"Awake! 2026"` (A3) |
+| `"Despertad!\n No. 1"` — words separated | `"Despertad!No. 1"` — words jammed (A3; the helper erases the newline without substituting a space) |
 | 10 entries, long titles: saved at up to 45,000 B | Refused above 11,421 B — unreachable with the caps applied |
-| A legacy over-long file | Shrunk and rewritten once on first load |
+| A legacy file between 11,421 and 45,000 B | Shrunk and rewritten once on first load |
+| A file over 50,000 B | Unchanged: unloadable before and after (see above) — no shipped build can write one |
 
 ---
 
@@ -480,7 +593,16 @@ Per `CLAUDE.md`'s "`LOG_ERR` + return false" default, and unchanged from today:
   and would latch saving off.
 - **Resave failure after a load-time shrink.** `loadFromFile` already logs it and
   still returns the load's own result (`PersistableStore.h:195-197`). The
-  in-memory list is correct either way; the next `addBook` retries the write.
+  in-memory list is correct either way. Retry is not "the next `addBook`" —
+  every `loadFromFile` re-normalises the unchanged file, sets the flag again and
+  tries again, and that call happens on entry to the launcher
+  (`LauncherActivity.cpp:77`) and to Publications (`PublicationsActivity.cpp:45`)
+  as well as at boot (`main.cpp:413`). A persistently failing card therefore costs
+  one logged, failing write attempt per screen entry. *Corrected after review
+  pass 0 (MINOR 4).*
+- **A file the read path cannot parse at all.** Out of this change's reach:
+  `loadFromFile` returns false before `fromJson` (`PersistableStore.h:186-188`).
+  See the load walkthrough.
 
 ---
 
@@ -501,10 +623,18 @@ TDD order — each test is written and seen to fail before the code that passes 
    ≤ 128 with `size % 3 == 0`. Mirrors `BookmarkDocTest.cpp:118-140`, which is
    the test that proves a raw byte cut was not used.
 3. `NormaliseCapsAuthor` — the same for 96.
-4. `NormaliseLeavesRealTitlesAlone` — the six real publication titles from A1
-   (39-72 bytes) and three real authors (38-52) come back byte-identical. This is
-   the test that makes A1/A2 a *display* decision rather than a number; if a cap
-   is lowered carelessly it fails here first.
+4. `NormaliseLeavesRealTitlesAlone` — the six titles tabulated in A1 (39-72
+   bytes) and the three authors listed in A2 (38-52) come back byte-identical.
+   This is the test that makes A1/A2 a *display* decision rather than a number; if
+   a cap is lowered carelessly it fails here first. The fixtures are the exact
+   strings in those two lists, not a remembered range.
+4b. `NormaliseKeepsTheBibleHeuristicsMarkers` — after `normalise`, the real NWT
+   titles in both languages still satisfy `find("Nuevo Mundo") != npos` /
+   `find("New World") != npos`, and so does a variant carrying an interior double
+   space. `title` is the Bible tile's selector as well as a label
+   (`LauncherActivity.cpp:96-99`), and test 4's byte-identity check passes happily
+   on short titles while a lowered cap silently breaks the tile for the long one.
+   *Added after review pass 0 (MAJOR 2).*
 5. `NormaliseNeverTouchesPathOrCoverBmpPath` — a 600-byte path survives whole
    (A6). Without this, "truncate the strings" invites someone to truncate all four
    and silently delete entries via `pruneMissing`.
@@ -522,7 +652,12 @@ TDD order — each test is written and seen to fail before the code that passes 
     `MAX_AUTHOR_BYTES` of `\`, a `PATH_BUDGET_ALLOWANCE`-byte path and a
     `COVER_PATH_BUDGET_ALLOWANCE`-byte cover, built through the **real**
     `RecentBooksDoc::toJson`, then `EXPECT_LE(measureJson(doc), SAVE_BUDGET)`.
-    A string-shaped field added to `RecentBook` fails this.
+    A string-shaped field added to `RecentBook` fails this. **It fits by exactly
+    zero bytes** (A10) — the fixture is built from the same constants the budget
+    sums, so the failure message must print the measured figure and say to raise a
+    named allowance rather than loosen the assertion. A second assertion in this
+    test pins A8's NUL handling: a title containing `'\0'` normalises with the NUL
+    erased, so no field can reach the serialiser's 6-byte `\u0000` path.
 12. `TheBudgetIsTighterThanTheDefaultAndClearOfTheReadCap` —
     `SAVE_BUDGET < persist::DEFAULT_SAVE_BUDGET < persist::SD_READ_TRUNCATION_CAP`.
     Pins that the issue's second half actually happened.
@@ -547,17 +682,18 @@ TDD order — each test is written and seen to fail before the code that passes 
 
 1. A publication with a genuinely long title still shows a sensible, ellipsised
    row in **Recents** and a sensible resume tile on the **launcher**. This is the
-   A1/A2 judgement and no host test can make it.
+   A1/A2 judgement and no host test can make it. Look specifically for a title
+   whose words have run together: a newline in the OPF is erased without a space
+   in its place (A3), and Recents renders the raw string today.
 2. Upgrading over an existing `/.crosspoint/recent.json`: the list survives, and
-   serial shows at most one resave (A5), not one per boot.
-3. Opening ten books in a row leaves `recent.json` well under 11,421 bytes — check
+   serial shows exactly one resave (A5) — then none on the next launcher entry.
+   A resave line on *every* entry to the launcher or Publications means the write
+   is failing, not that the flag is stuck.
+3. The **Bible tile** still opens the NWT after the upgrade — it selects on the
+   title's text (`LauncherActivity.cpp:96-99`), which this change rewrites.
+4. Opening ten books in a row leaves `recent.json` well under 11,421 bytes — check
    the file size on the card.
-4. No `PERSIST` refusal line appears in normal use.
-
-### Known gap
-
-Until the `add_subdirectory(recent_books_doc)` line reaches `test/CMakeLists.txt`
-(A13), none of the above runs in CI. The line is in the PR body.
+5. No `PERSIST` refusal line appears in normal use.
 
 ---
 
@@ -566,20 +702,52 @@ Until the `add_subdirectory(recent_books_doc)` line reaches `test/CMakeLists.txt
 | Risk | Mitigation |
 |---|---|
 | A cap clips a title the row could have shown (A1) | Caps sit ~1.8× above real titles and ~2.7× above every other surface's cap; test 4 pins real titles; the issue accepts this class of change |
+| A cap or the whitespace collapse breaks the Bible tile's title match (A1, MAJOR 2) | Markers sit at byte 14 / byte 4 of real NWT titles, far under 128; test 4b pins marker survival |
+| A newline in an OPF title jams two words together (A3, MINOR 6) | Pre-existing helper behaviour, now persisted; in the before/after table and human-test item 1. Fixing it means changing a helper four other call sites share |
 | A >512-byte path makes saves fail silently (A6) | ~7× realistic paths; test 13 shows the headroom; raising the constant is a one-line change |
 | `utf8SafeSummary` normalises whitespace as well as truncating (A3) | The launcher already applies the identical transform to this field (`LauncherActivity.cpp:83`) |
 | The derived 11,421 gets "tidied" to a round number | Two `static_assert`s and a comment saying it is derived |
-| The new suite never runs (A13) | Called out as the known gap; one line resolves it |
+| The `test/CMakeLists.txt` line collides with a parallel `data` task (A13) | A one-line rebase; the alternative — withholding it — ships a suite CI never runs |
 | The doc split churns a "good first issue" | One-for-one mirror of `BookmarkDoc`; no behaviour of its own |
 
 ---
 
-## Open questions for the review
+## Review pass 0 — what changed and why
 
-1. **A6 is the weakest point.** Is a 512-byte path allowance the right trade, or
-   should `PATH_BUDGET_ALLOWANCE` be 1024 (budget → 16,541, still 2.7× tighter
-   than today) to buy margin the user can never notice?
-2. **A1's cap is unmeasured against the row.** Is 128 right, or should this wait
-   on an actual `getTextWidth` measurement on device before the number is fixed?
-3. **A13** — commit the `test/CMakeLists.txt` line as #47, #64 and #65 all did,
-   or hold to `.claude/agents/data-dev.md`?
+Review: `docs/superpowers/reviews/issue-40-spec-review-0.md`. **VERDICT: CLEAR**
+— 0 BLOCKERs, 2 MAJORs, 7 MINORs, all nine applied above. The reviewer
+independently recompiled the arithmetic against the pinned ArduinoJson 7.4.2 and
+reproduced 12, 541 and 11,421 exactly, so no number moved.
+
+| Finding | Change |
+|---|---|
+| MAJOR 1 | The legacy-rescue walkthrough was rewritten. The old "~80 KB file loads in full and is rewritten once" cannot happen — `readFile` truncates at 50,000 and `loadFromFile` returns false before `fromJson` — and no shipped build could have written it. A4/A5 stand; they rescue the 11,421-45,000 band, and the over-cap band is named as a pre-existing data-loss path this change neither creates nor fixes. |
+| MAJOR 2 | A1 no longer frames the cap as display-only: `title` is also the Bible tile's selector (`LauncherActivity.cpp:96-99`). 128 still clears the markers with margin, and test 4b now pins marker survival. |
+| MINOR 1 | A8 corrected — the two-byte set is wider than `"`/`\`, and NUL is 6×, not 2×. `normalise` now erases `'\0'`, pinned in test 11, so the factor is enforced rather than argued. |
+| MINOR 2 | A4 reordered: `fromJson` is the write path the argument rests on; `updateBook`'s only caller is inside the uninstantiated `HomeActivity` and it is bounded as defence in depth. |
+| MINOR 3 | The load diagram nests `requestResave()` inside `RecentBooksStore::fromJson`, where the protected member is actually reachable. |
+| MINOR 4 | A5 and Error handling now say a failed resave retries on every `loadFromFile` — per screen entry, not per boot. |
+| MINOR 5 | A1 and A2 tabulate test 4's six titles and three authors verbatim instead of citing a range with no source. |
+| MINOR 6 | `utf8SafeSummary` erases `\n` without substituting a space, jamming words. Now in A3, the before/after table, the Risks table and human-test item 1. |
+| MINOR 7 | A10 records that the worst case fits by exactly zero bytes, and that the fix for a future failure is a raised named allowance, never a looser assertion. |
+
+**A13 was reversed.** The spec originally withheld the
+`add_subdirectory(recent_books_doc)` line from `test/CMakeLists.txt` per
+`.claude/agents/data-dev.md:22-27` and conceded in a "Known gap" that the CI
+guard would therefore be inert. The reviewer answered open question 3 against
+that on the ground the rule exists to stop *parallel* agents colliding, which is
+not this case, and that #47, #64 and #65 all committed their own line. The line
+is now committed and still called out in the PR body.
+
+### The other two open questions, answered
+
+1. **A6 — `PATH_BUDGET_ALLOWANCE` stays 512.** Today's 45,000 budget already
+   imposes the same class of limit at ~4,400 bytes per path, so the failure mode
+   is moved rather than introduced; 512 is two full FAT LFN components and ~7× a
+   realistic path. Raising it to 1024 costs 5,120 bytes of a budget whose point is
+   to be tight, against a scenario nobody has produced. The lever stays documented.
+2. **A1 — 128 ships without a device measurement.** Every other surface caps this
+   field at 30-48 bytes, `truncatedText` ellipsises anything longer at the row
+   regardless, and the issue accepts this class of change explicitly. Gating a
+   good-first-issue on hardware for a number with 1.8× headroom is not worth it;
+   test 4b is the cheaper guard.
