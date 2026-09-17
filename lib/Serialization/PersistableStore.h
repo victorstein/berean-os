@@ -183,7 +183,7 @@ class PersistableStore : public PersistableStoreBase {
       std::lock_guard<std::mutex> lock(storeMutex);
       resaveRequested = false;
       JsonDocument doc;
-      if (!readDocFromFile(T::getFilePath(), doc)) {
+      if (readDocFromFileAdopting(T::getFilePath(), doc) != DocReadStatus::Ok) {
         return false;
       }
       ok = static_cast<T*>(this)->fromJson(doc.as<JsonVariantConst>());
