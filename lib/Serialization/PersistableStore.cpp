@@ -77,10 +77,14 @@ DocReadStatus PersistableStoreBase::readDocFromFileAdopting(const char* path, Js
     case TempAdoptionAction::PromoteTempAndUseIt:
       // Promote first: the rename is what rescues the only surviving copy. The
       // primary path is Missing, so nothing here can be overwritten.
-      if (!Storage.rename(tmpPath.c_str(), path)) {
+      if (Storage.rename(tmpPath.c_str(), path)) {
+        LOG_INF("PERSIST", "Recovered %s from an interrupted write", path);
+      } else {
+        // Still Ok: the document is in hand and the .tmp survives for the next
+        // boot to retry. Only the rename failed, so do not claim a recovery --
+        // that log line is what the on-device test reads as "the file is back".
         LOG_ERR("PERSIST", "Failed to promote %s into place", tmpPath.c_str());
       }
-      LOG_INF("PERSIST", "Recovered %s from an interrupted write", path);
       break;
     case TempAdoptionAction::DeleteTempReportEmpty:
       // deserializeJson leaves the partially parsed document behind, and callers

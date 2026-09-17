@@ -92,7 +92,7 @@ Every row of the spec's files-touched table (`:212-225`) is present:
   `adoptedReadStatus` (`:48-59`, new).
 - `src/util/HighlightFileAction.h` — load half gone, save half untouched, `<DocReadStatus.h>`
   dropped, **no shim** (spec MINOR 3 / A-2). Confirmed: it does not include `<TempAdoption.h>`.
-- `PersistableStore.h:69-89` declares `readDocFromFileAdopting` with the single-task invariant in
+- `PersistableStore.h:69-88` declares `readDocFromFileAdopting` with the single-task invariant in
   the comment (this is plan-review MAJOR 2's fix, and it is really there, not only in the PR body);
   `:186` switches `loadFromFile`.
 - `PersistableStore.cpp:63-101` defines it, matching the spec's pseudocode line for line.
@@ -116,7 +116,7 @@ Every row of the spec's files-touched table (`:212-225`) is present:
 | Finding | Evidence in the tree |
 |---|---|
 | plan MAJOR 1 (delete the donor tests *before* emptying the header, or the commit does not compile) | commit order is `1dd18a3a` (test move) → `19627b67` (header retire) |
-| plan MAJOR 2 (the single-task invariant must appear in a step, not only in the spec) | `PersistableStore.h:80-88` |
+| plan MAJOR 2 (the single-task invariant must appear in a step, not only in the spec) | `PersistableStore.h:80-87` |
 | plan MINOR 3 (do not repoint the two signposts whose referent did not move) | `src/util/BookmarkSaveAction.h:9` and `test/bookmark_save_action/BookmarkSaveActionTest.cpp:5` are untouched in the diff |
 | plan MINOR 4 (`HighlightFile.h:34` has no content to edit) | only `:10-15` changed |
 | plan MINOR 6 (`pio check` never run; CI fails on `low`) | re-run here: no defects |
@@ -139,10 +139,10 @@ take that from the spec. `ActivityManager::renderTaskLoop` (`ActivityManager.cpp
 - `PubKeyRegistry::lookup` ← `StudyStore.cpp:34`, `MigrationRunner.cpp:223`,
   `PublicationsActivity.cpp:59` (inside `refresh()`, called from `onEnter`).
 - `MeetingWeekCache::load` ← `LauncherActivity.cpp:150` (via `thisWeeksMeetingPublication`) and
-  `MeetingsActivity.cpp:43` (inside `refresh()`, called from `onEnter()` at `:34`).
+  `MeetingsActivity.cpp:43` (inside `refresh()`, called from `onEnter()` at `:32`).
 
 The invariant holds, and the constraint it imposes on any future background task is recorded where
-the next implementer will hit it (`PersistableStore.h:80-88`), not only in the PR body.
+the next implementer will hit it (`PersistableStore.h:80-87`), not only in the PR body.
 
 ## Divergences that are explained
 
@@ -170,9 +170,9 @@ the next implementer will hit it (`PersistableStore.h:80-88`), not only in the P
   registry over a corrupt-but-present file rather than merge onto what parsed. The comment at
   `:86-90` says exactly this at the point it happens.
 - **`loadFromFile` is behaviour-preserving at the boundary.** `readDocFromFile` was
-  `readDocFromFileChecked(...) == Ok` (`PersistableStore.cpp:103-105`), so `!= Ok` is the same
+  `readDocFromFileChecked(...) == Ok` (`PersistableStore.cpp:104-106`), so `!= Ok` is the same
   predicate plus adoption. `readDocFromFile` now has zero callers and is kept, which is A-7 and
-  mirrors `saveToFile`'s stated rationale (`PersistableStore.h:145-146`).
+  mirrors `saveToFile`'s stated rationale (`PersistableStore.h:146-147`).
 - **Lock ordering is unchanged.** `loadFromFile` already held `storeMutex` across a
   `storageMutex`-taking read; adoption adds two more `storageMutex` acquisitions (`exists`,
   `rename`) on the `Missing` branch only, and introduces no lock the read path did not already hold.
@@ -215,5 +215,3 @@ quoted.
 Fix MINORs 1-2 inline, then proceed.
 
 VERDICT: CLEAR
-BLOCKERS: 0
-MAJORS: 0
