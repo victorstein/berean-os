@@ -8,7 +8,7 @@
 
 #include <string>
 
-#include "util/HighlightFileAction.h"
+#include <TempAdoption.h>
 
 namespace {
 
@@ -36,16 +36,16 @@ LoadResult load(study::TagPalette& palette) {
     }
   }
 
-  switch (highlightLoadAction(primaryStatus, tempExists, tempParsed)) {
-    case HighlightLoadAction::UseLoaded:
+  switch (tempAdoptionAction(primaryStatus, tempExists, tempParsed)) {
+    case TempAdoptionAction::UseLoaded:
       if (palette.fromJson(primaryJson.as<JsonVariantConst>())) return LoadResult::Loaded;
       LOG_ERR(MODULE, "Rejected %s (future format version?)", primaryPath.c_str());
       return LoadResult::Failed;
 
-    case HighlightLoadAction::ReportEmpty:
+    case TempAdoptionAction::ReportEmpty:
       return LoadResult::Empty;
 
-    case HighlightLoadAction::PromoteTempAndUseIt: {
+    case TempAdoptionAction::PromoteTempAndUseIt: {
       if (!Storage.rename(tmpPath.c_str(), primaryPath.c_str())) {
         LOG_ERR(MODULE, "Failed to promote %s into place", tmpPath.c_str());
       }
@@ -53,11 +53,11 @@ LoadResult load(study::TagPalette& palette) {
       return LoadResult::Failed;
     }
 
-    case HighlightLoadAction::DeleteTempReportEmpty:
+    case TempAdoptionAction::DeleteTempReportEmpty:
       Storage.remove(tmpPath.c_str());
       return LoadResult::Empty;
 
-    case HighlightLoadAction::ReportFailed:
+    case TempAdoptionAction::ReportFailed:
       return LoadResult::Failed;
   }
   return LoadResult::Failed;

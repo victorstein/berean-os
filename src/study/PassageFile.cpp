@@ -5,7 +5,7 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 
-#include "util/HighlightFileAction.h"
+#include <TempAdoption.h>
 
 namespace {
 
@@ -69,16 +69,16 @@ LoadResult load(const std::string& pubKey, study::PassageDoc& doc) {
     if (tempExists) tempParsed = readInto(tmpPath, tempJson) == DocReadStatus::Ok;
   }
 
-  switch (highlightLoadAction(primaryStatus, tempExists, tempParsed)) {
-    case HighlightLoadAction::UseLoaded:
+  switch (tempAdoptionAction(primaryStatus, tempExists, tempParsed)) {
+    case TempAdoptionAction::UseLoaded:
       if (doc.fromJson(primaryJson.as<JsonVariantConst>())) return LoadResult::Loaded;
       LOG_ERR(MODULE, "Rejected %s (future format version, or over budget)", primaryPath.c_str());
       return LoadResult::Failed;
 
-    case HighlightLoadAction::ReportEmpty:
+    case TempAdoptionAction::ReportEmpty:
       return LoadResult::Empty;
 
-    case HighlightLoadAction::PromoteTempAndUseIt: {
+    case TempAdoptionAction::PromoteTempAndUseIt: {
       // Promote first: the rename is what rescues the only surviving copy of
       // the user's data. The primary path is Missing, so nothing can be lost.
       if (!Storage.rename(tmpPath.c_str(), primaryPath.c_str())) {
@@ -89,11 +89,11 @@ LoadResult load(const std::string& pubKey, study::PassageDoc& doc) {
       return LoadResult::Failed;
     }
 
-    case HighlightLoadAction::DeleteTempReportEmpty:
+    case TempAdoptionAction::DeleteTempReportEmpty:
       Storage.remove(tmpPath.c_str());
       return LoadResult::Empty;
 
-    case HighlightLoadAction::ReportFailed:
+    case TempAdoptionAction::ReportFailed:
       return LoadResult::Failed;
   }
   return LoadResult::Failed;

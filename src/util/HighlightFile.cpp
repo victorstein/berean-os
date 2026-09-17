@@ -5,6 +5,7 @@
 #include <Logging.h>
 #include <PathFlatten.h>
 #include <PersistableStore.h>
+#include <TempAdoption.h>
 
 #include "HighlightFileAction.h"
 
@@ -37,16 +38,16 @@ LoadResult load(const std::string& bookPath, HighlightDoc& doc) {
     }
   }
 
-  switch (highlightLoadAction(primaryStatus, tempExists, tempParsed)) {
-    case HighlightLoadAction::UseLoaded:
+  switch (tempAdoptionAction(primaryStatus, tempExists, tempParsed)) {
+    case TempAdoptionAction::UseLoaded:
       if (doc.fromJson(primaryJson.as<JsonVariantConst>())) return LoadResult::Loaded;
       LOG_ERR("HLFILE", "Rejected %s (future format version?)", path.c_str());
       return LoadResult::Failed;
 
-    case HighlightLoadAction::ReportEmpty:
+    case TempAdoptionAction::ReportEmpty:
       return LoadResult::Empty;
 
-    case HighlightLoadAction::PromoteTempAndUseIt: {
+    case TempAdoptionAction::PromoteTempAndUseIt: {
       // Promote first: the rename is what rescues the only surviving copy of
       // the user's data. Do this before trusting the parsed content, so a
       // validation failure below can never leave the rescue undone -- the
@@ -59,11 +60,11 @@ LoadResult load(const std::string& bookPath, HighlightDoc& doc) {
       return LoadResult::Failed;
     }
 
-    case HighlightLoadAction::DeleteTempReportEmpty:
+    case TempAdoptionAction::DeleteTempReportEmpty:
       Storage.remove(tmpPath.c_str());
       return LoadResult::Empty;
 
-    case HighlightLoadAction::ReportFailed:
+    case TempAdoptionAction::ReportFailed:
       return LoadResult::Failed;
   }
   return LoadResult::Failed;
