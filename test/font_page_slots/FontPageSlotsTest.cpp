@@ -111,3 +111,34 @@ TEST(FontPageSlots, StyleFallbackCollapsesToOneSlot) {
 
   EXPECT_EQ(decompressor.usedPageSlots(), 1);
 }
+
+TEST(FontPageSlots, SlotsFullIsVisibleToTheCaller) {
+  FontDecompressor decompressor;
+
+  // Distinct addresses, identical content — all pointer-keyed accounting sees.
+  EpdFontData fonts[FontDecompressor::MAX_PAGE_SLOTS + 1];
+  for (auto& font : fonts) font = notoserif_12_regular;
+
+  for (uint8_t i = 0; i < FontDecompressor::MAX_PAGE_SLOTS; i++) {
+    EXPECT_EQ(decompressor.prewarmCache(&fonts[i], SAMPLE), 0) << "slot " << int{i};
+  }
+  ASSERT_EQ(decompressor.usedPageSlots(), FontDecompressor::MAX_PAGE_SLOTS);
+
+  // The cap check is before the increment (FontDecompressor.cpp:255), so the
+  // last slot allocates and only the one past it is refused. -1 is the
+  // slots-full sentinel; nothing is allocated and no slot is consumed.
+  EXPECT_LT(decompressor.prewarmCache(&fonts[FontDecompressor::MAX_PAGE_SLOTS], SAMPLE), 0);
+  EXPECT_EQ(decompressor.usedPageSlots(), FontDecompressor::MAX_PAGE_SLOTS);
+}
+
+TEST(FontPageSlots, TheCapCoversOneFamilysFourStyles) {
+  // Why four is enough: only the eight compressed Noto reading families take a
+  // slot, the status bar and UI fonts are uncompressed, SD fonts take the
+  // SdCardFont path, and one reading family is on screen at a time. So the
+  // ceiling is one family's four styles. If a second compressed family is ever
+  // drawn on one screen this stops being true — and FontCacheManager will log
+  // which font it refused.
+  static_assert(FontDecompressor::MAX_PAGE_SLOTS >= 4,
+                "one reading family's R/B/I/BI must fit simultaneously");
+  EXPECT_GE(FontDecompressor::MAX_PAGE_SLOTS, 4);
+}
