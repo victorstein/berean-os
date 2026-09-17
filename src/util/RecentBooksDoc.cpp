@@ -55,6 +55,7 @@ bool fromJson(const JsonVariantConst doc, std::vector<RecentBook>& books, bool& 
     book.title = obj["title"] | "";
     book.author = obj["author"] | "";
     book.coverBmpPath = obj["coverBmpPath"] | "";
+    if (normalise(book)) needsResave = true;
     books.push_back(std::move(book));
   }
   return true;

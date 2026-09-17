@@ -197,3 +197,23 @@ TEST(RecentBooksDocNormalise, KeepsTheBibleHeuristicsMarkers) {
     EXPECT_TRUE(matches) << "the Bible tile can no longer find this title: " << book.title;
   }
 }
+
+TEST(RecentBooksDoc, FromJsonReBoundsAnOverlongTitleFromTheCard) {
+  // A file 1.9.10 was able to write: under the old 45,000-byte budget, over the
+  // new one. It must shrink on load, not be refused on the next save.
+  JsonDocument doc;
+  JsonObject obj = doc["books"].to<JsonArray>().add<JsonObject>();
+  obj["path"] = "/books/b.epub";
+  obj["title"] = std::string(1800, 'x');
+  obj["author"] = std::string(1800, 'y');
+  obj["coverBmpPath"] = "/.crosspoint/epub_1/thumb_[HEIGHT].bmp";
+
+  std::vector<RecentBook> out;
+  bool needsResave = false;
+  ASSERT_TRUE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave));
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(out[0].title.size(), RecentBooksDoc::MAX_TITLE_BYTES);
+  EXPECT_EQ(out[0].author.size(), RecentBooksDoc::MAX_AUTHOR_BYTES);
+  EXPECT_EQ(out[0].path, "/books/b.epub") << "the key must survive a load-side re-bound";
+  EXPECT_TRUE(needsResave) << "the shrunken entries have to reach the card";
+}
