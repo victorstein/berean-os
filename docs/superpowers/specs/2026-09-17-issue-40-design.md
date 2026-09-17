@@ -215,10 +215,24 @@ something else writes. `requestResave()` exists for precisely this — *"fromJso
 implementations call this when the on-disk JSON used a legacy shape that was
 upgraded in memory"* (`lib/Serialization/PersistableStore.h:40-44`), performed
 after the lock is released (`:194-197`).
-*Attack it:* it costs one SD write for any user with an over-long title, and zero
-after that, because the flag is set only when a string actually changed. A blanket
-resave every load would be wrong; this is not that. **The "zero after that" holds
-only if the resave succeeds.** If it fails, the file on disk is unchanged, so the
+*Attack it:* it costs **at most two** SD writes for any user with an over-long
+title, and zero after that, because the flag is set only when a string actually
+changed. A blanket resave every load would be wrong; this is not that.
+
+Two, not one, because `normalise` is not idempotent when the cap lands on
+whitespace. `utf8SafeSummary` trims *before* it truncates
+(`lib/Utf8/Utf8.cpp:193-198` then the cut at `:199`), so a cut landing just after a
+space returns a string that still ends in one; the next load trims that space and
+reports a change again. Measured on the host — a 128-byte title with a space at
+byte 127: pass 1 `changed=1 size=128`, pass 2 `changed=1 size=127`, pass 3
+`changed=0`. It converges, it is not a loop, and the in-memory list is correct
+throughout. Making it idempotent would mean re-trimming after the cut inside
+`utf8SafeSummary`, the shared helper A3 deliberately refuses to touch for the sake
+of four other call sites.
+*Corrected after PR intent review pass 0 (MINOR 1), which caught that "exactly one
+resave" would have told the human tester a healthy device was broken.*
+
+**And "zero after that" holds only if the resave succeeds.** If it fails, the file on disk is unchanged, so the
 next load normalises the same strings, sets the flag again and retries — and
 `loadFromFile` is not a per-boot call: `main.cpp:413`,
 `LauncherActivity.cpp:77` and `PublicationsActivity.cpp:45` all invoke it, so a
@@ -686,9 +700,9 @@ TDD order — each test is written and seen to fail before the code that passes 
    whose words have run together: a newline in the OPF is erased without a space
    in its place (A3), and Recents renders the raw string today.
 2. Upgrading over an existing `/.crosspoint/recent.json`: the list survives, and
-   serial shows exactly one resave (A5) — then none on the next launcher entry.
-   A resave line on *every* entry to the launcher or Publications means the write
-   is failing, not that the flag is stuck.
+   serial shows **at most two** resaves (A5) — then none on subsequent launcher
+   entries. Two is normal when a cap lands on a space; a resave line on *every*
+   entry to the launcher or Publications means the write is failing.
 3. The **Bible tile** still opens the NWT after the upgrade — it selects on the
    title's text (`LauncherActivity.cpp:96-99`), which this change rewrites.
 4. Opening ten books in a row leaves `recent.json` well under 11,421 bytes — check
@@ -702,7 +716,7 @@ TDD order — each test is written and seen to fail before the code that passes 
 | Risk | Mitigation |
 |---|---|
 | A cap clips a title the row could have shown (A1) | Caps sit ~1.8× above real titles and ~2.7× above every other surface's cap; test 4 pins real titles; the issue accepts this class of change |
-| A cap or the whitespace collapse breaks the Bible tile's title match (A1, MAJOR 2) | Markers sit at byte 14 / byte 4 of real NWT titles, far under 128; test 4b pins marker survival |
+| A cap or the whitespace collapse breaks the Bible tile's title match (A1, MAJOR 2) | Markers sit at byte 16 / byte 0 of real NWT titles, far under 128; test 4b pins marker survival |
 | A newline in an OPF title jams two words together (A3, MINOR 6) | Pre-existing helper behaviour, now persisted; in the before/after table and human-test item 1. Fixing it means changing a helper four other call sites share |
 | A >512-byte path makes saves fail silently (A6) | ~7× realistic paths; test 13 shows the headroom; raising the constant is a one-line change |
 | `utf8SafeSummary` normalises whitespace as well as truncating (A3) | The launcher already applies the identical transform to this field (`LauncherActivity.cpp:83`) |
@@ -751,3 +765,27 @@ is now committed and still called out in the PR body.
    regardless, and the issue accepts this class of change explicitly. Gating a
    good-first-issue on hardware for a number with 1.8× headroom is not worth it;
    test 4b is the cheaper guard.
+
+---
+
+## PR intent review pass 0 — what changed and why
+
+Review: `docs/superpowers/reviews/issue-40-pr-review-intent-0.md`. **VERDICT: CLEAR**
+— 0 BLOCKERs, 0 MAJORs, 2 MINORs, both applied. No code changed: both findings were
+documentation accuracy in artifacts this PR ships.
+
+| Finding | Change |
+|---|---|
+| MINOR 1 | A5 promised "exactly one resave", and the PR's device-check item told the tester that more than one meant a failing write. `normalise` is not idempotent when the cap lands on whitespace — `utf8SafeSummary` trims before it truncates, so a cut just after a space leaves a trailing space the next load trims. It converges at two. Reproduced on the host (pass 1 `changed=1 size=128`, pass 2 `changed=1 size=127`, pass 3 `changed=0`) before rewording. A5 and the device check now say "at most two, then none", with the mechanism. The PR body was edited to match, since that is what the tester reads. |
+| MINOR 2 | The Risks table said the Bible-tile markers sit at "byte 14 / byte 4"; A1 and `src/util/RecentBooksDoc.h:31-32` correctly say byte 16 / byte 0. Stale text from spec review pass 0. Corrected. |
+
+The reviewer verified rather than read: 591/591 host tests, a forced recompile of
+`RecentBooksStore.cpp` so both `static_assert`s were actually evaluated (`x4pro`
+SUCCESS), a clean `clang-format-fix`, and `ci.yml` as independent evidence that
+withholding the `add_subdirectory` line would have shipped a suite CI never runs.
+
+Recorded as accepted and **not** findings: `PATH_BUDGET_ALLOWANCE` being an
+allowance rather than an enforced bound (A6, answered as spec-review open question
+1); the `BookmarkDoc`-shaped split on a good-first-issue (A11); `utf8SafeSummary`
+jamming words around a newline (A3); and the committed `test/CMakeLists.txt` line
+(A13).
