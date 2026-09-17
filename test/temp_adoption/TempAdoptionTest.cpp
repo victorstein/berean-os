@@ -60,13 +60,11 @@ TEST(AdoptedReadStatus, AnUnusableTempStillReportsMissing) {
 }
 
 TEST(AdoptedReadStatus, PreservesUnreadable) {
-  EXPECT_EQ(adoptedReadStatus(DocReadStatus::Unreadable, TempAdoptionAction::ReportFailed),
-            DocReadStatus::Unreadable);
+  EXPECT_EQ(adoptedReadStatus(DocReadStatus::Unreadable, TempAdoptionAction::ReportFailed), DocReadStatus::Unreadable);
 }
 
 TEST(AdoptedReadStatus, PreservesParseError) {
-  EXPECT_EQ(adoptedReadStatus(DocReadStatus::ParseError, TempAdoptionAction::ReportFailed),
-            DocReadStatus::ParseError);
+  EXPECT_EQ(adoptedReadStatus(DocReadStatus::ParseError, TempAdoptionAction::ReportFailed), DocReadStatus::ParseError);
 }
 
 TEST(AdoptedReadStatus, ANonMissingPrimaryIsNeverReportedMissing) {

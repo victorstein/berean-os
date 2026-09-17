@@ -4,7 +4,6 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <PersistableStore.h>
-
 #include <TempAdoption.h>
 
 namespace {

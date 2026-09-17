@@ -5,10 +5,9 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
+#include <TempAdoption.h>
 
 #include <string>
-
-#include <TempAdoption.h>
 
 namespace {
 
