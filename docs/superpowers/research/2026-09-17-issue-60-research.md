@@ -17,7 +17,7 @@ Issue #60 carries two independent findings. They are researched separately below
 | The setting's storage + enum | `src/CrossPointSettings.h` (`longPressButtonBehavior`) |
 | The `700 ms` threshold | `src/activities/reader/ReaderUtils.h:18` (`SKIP_HOLD_MS = 700`) |
 | Branch site — EPUB reader | `src/activities/reader/EpubReaderActivity.cpp:605-627` |
-| Branch site — plain reader | `src/activities/reader/ReaderActivity.cpp:144-146` |
+| ~~Branch site — plain reader~~ | ~~`ReaderActivity.cpp:144-146`~~ — **CORRECTED 2026-09-17 (spec review 0, MAJOR 2): dead code.** `ReaderActivity::loop()` (`:131`) has no caller; `EpubReaderActivity` is the only subclass (`EpubReaderActivity.h:19`) and its override (`EpubReaderActivity.cpp:368`) never chains. |
 | Held time, as the reader sees it | `src/MappedInputManager.cpp:322-328` → `lib/hal/HalGPIO.cpp:236-239` |
 | The synthesis that decides it | `lib/Input/Input/NavKeyGestures.{h,cpp}` |
 | The touch path that still works | `src/activities/reader/ReaderUtils.h:120` (`result.heldMs = gpio.lastTouchHeldMs()`) |
@@ -59,10 +59,25 @@ board, not just numerically.
 
 ### What the setting still does
 
-1. **Touch long-press still reaches it.** `EpubReaderActivity.cpp:605` and
-   `ReaderActivity.cpp:144` both prefer `touch.heldMs` when the turn came from a
-   tap zone, and `ReaderUtils.h:120` fills that from `gpio.lastTouchHeldMs()` —
-   a real duration, never substituted. Confirmed by reading all three.
+1. ~~**Touch long-press still reaches it.**~~ **WRONG — CORRECTED 2026-09-17
+   (spec review 0, BLOCKER 1).** This stopped at `ReaderUtils.h:120` and never
+   asked whether the contact survives long enough to be read there. It does not,
+   in any touch mode:
+   - `TOUCH_READER_OFF` — `detectTouchPageTurn` returns early
+     (`ReaderUtils.h:79-81`); no touch page turns exist.
+   - `TOUCH_READER_SWIPE` — the swipe path returns before `heldMs` is assigned,
+     leaving it 0, and says so: *"A slow swipe never becomes a long-press
+     chapter skip"* (`ReaderUtils.h:84-93`).
+   - `TOUCH_READER_ON` / `_INVERTED_TAP` — `EpubReaderActivity.cpp:450-457`
+     consumes any long press outside the centre third, which is the whole of
+     both page-turn zones (`ReaderUtils.h:108-112,131-137`), and returns. It
+     fires while the finger is down at `TOUCH_LONG_PRESS_MS = 500`
+     (`freeink-sdk/.../InputManager.h:399`), and `wasScreenLongPress` calls
+     `gpio.suppressTouchContact()` (`src/MappedInputManager.cpp:155-163`), so the
+     lift yields no tap either. Every surviving tap reports `heldMs < 500 < 700`.
+
+   Chapter skip is therefore unreachable by **any** deliberate input on this
+   board, not only by the buttons.
 2. **It silently changes press-vs-release paging.** `ReaderUtils.h:53`:
    `usePress = (longPressButtonBehavior == OFF)`. Setting it to Chapter skip
    flips the whole reader from `wasPressed` to `wasReleased`. On this board that
