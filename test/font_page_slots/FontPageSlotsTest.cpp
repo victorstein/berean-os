@@ -31,14 +31,11 @@ namespace {
 // preview string (lib/I18n/translations/spanish.yaml:94).
 constexpr const char* SAMPLE = "Benjamín pidió una bebida de kiwi y fresa.";
 
-// Why four slots is enough: only the eight compressed Noto reading families take
-// one, the status bar and UI fonts are uncompressed, SD fonts take the
-// SdCardFont path, and one reading family is on screen at a time — so the
-// ceiling is one family's R/B/I/BI. If a second compressed family is ever drawn
-// on one screen this stops holding, and FontCacheManager logs which font it
-// refused. At namespace scope rather than in a TEST, the way
-// test/launcher_refresh does it: the compiler settles this, so a case wrapping
-// it could only ever report SUCCEED().
+// One reading family's R/B/I/BI must fit simultaneously; FontDecompressor.h's
+// MAX_PAGE_SLOTS declaration carries the argument for why that is the ceiling.
+// At namespace scope rather than in a TEST, the way test/launcher_refresh does
+// it: the compiler settles this, so a case wrapping it could only ever report
+// SUCCEED().
 static_assert(FontDecompressor::MAX_PAGE_SLOTS >= 4, "one reading family's R/B/I/BI must fit simultaneously");
 
 }  // namespace

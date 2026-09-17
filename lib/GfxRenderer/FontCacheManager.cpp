@@ -12,19 +12,19 @@ FontCacheManager::FontCacheManager(const std::map<int, EpdFontFamily>& fontMap,
 
 void FontCacheManager::setFontDecompressor(FontDecompressor* d) { fontDecompressor_ = d; }
 
-void FontCacheManager::clearCache() {
+void FontCacheManager::releaseBuiltinGlyphCache() {
   if (fontDecompressor_) fontDecompressor_->clearCache();
+}
+
+void FontCacheManager::clearCache() {
+  releaseBuiltinGlyphCache();
   for (auto& [id, font] : sdCardFonts_) {
     font->clearCache();
   }
 }
 
-void FontCacheManager::releaseBuiltinGlyphCache() {
-  if (fontDecompressor_) fontDecompressor_->clearCache();
-}
-
 void FontCacheManager::releaseSdFontCaches() {
-  if (fontDecompressor_) fontDecompressor_->clearCache();
+  releaseBuiltinGlyphCache();
   for (auto& [id, font] : sdCardFonts_) {
     font->releaseResidentCaches();
   }
@@ -51,11 +51,8 @@ void FontCacheManager::prewarmCache(int fontId, const char* utf8Text, uint8_t st
     if (!data || !data->groups) continue;
     const int missed = fontDecompressor_->prewarmCache(data, utf8Text);
     if (missed < 0) {
-      // Slots full. Unreachable with the current font set — only the compressed
-      // reading families take a slot and one is on screen at a time — so this
-      // means a new caller prewarming outside a PrewarmScope, or a second
-      // compressed family on one screen. Recoverable: getBitmap falls back to
-      // the hot group.
+      // Unreachable with the current font set — see FontDecompressor::MAX_PAGE_SLOTS
+      // for why. Recoverable either way: getBitmap falls back to the hot group.
       LOG_ERR("FCM", "Page slots full: font %d style %d not prewarmed", fontId, i);
     } else if (missed > 0) {
       LOG_DBG("FCM", "prewarmCache: %d glyph(s) not cached for style %d", missed, i);
@@ -99,11 +96,8 @@ void FontCacheManager::recordText(const char* text, int fontId, EpdFontFamily::S
       break;
     }
   }
-  // All scan entries taken: not batched. An SD font falls back to the per-string
-  // prewarm in GfxRenderer; a built-in gets none — both prewarmFallbackText
-  // overloads are no-ops for a built-in id (GfxRenderer.cpp:230-233, and :252-260
-  // which delegates to the guard at :264-266) — so it degrades to getBitmap's
-  // hot-group path instead.
+  // All slots taken: not batched — the string falls back to the per-string
+  // prewarm in GfxRenderer during the real draw pass.
   if (!entry) return;
 
   entry->text += text;
