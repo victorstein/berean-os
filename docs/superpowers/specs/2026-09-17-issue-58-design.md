@@ -1,12 +1,13 @@
 # Font prewarm page slots — close the leak, tell the truth about the cap
 
 **Date:** 2026-09-17
-**Status:** Design v2 (supersedes v1; see "Review pass 0" below)
+**Status:** Design v3 (v1 → v2 after a BLOCKER; v2 → v3 after pass 1's MAJOR)
 **Target:** bereanOS, `x4pro` build target (ESP32-S3, 8 MB PSRAM, 800x480 e-ink)
 **Delivery:** `origin` (victorstein/berean-os), branch `fix/58-font-prewarm-slots`
 **Closes:** #58
 **Builds on:** `docs/superpowers/research/2026-09-17-issue-58-research.md`
-**Review:** `docs/superpowers/reviews/issue-58-spec-review-0.md` (BLOCKER, 2/3/5)
+**Reviews:** `issue-58-spec-review-0.md` (BLOCKER, 2/3/5) and
+`issue-58-spec-review-1.md` (CLEAR, 0/1/5), both under `docs/superpowers/reviews/`
 **Modelled on:** `docs/superpowers/specs/2026-09-16-issue-38-design.md` — the
 nearest existing example: a small surgical change whose spec carries
 Problem / Goal / Non-goals / Assumptions / Architecture / Data and control flow /
@@ -116,9 +117,9 @@ the line that does fire says nothing actionable.
 
 ## Goal
 
-1. A settings session cannot accumulate page slots. After any number of preview
-   re-prewarms, the live slot count attributable to the preview is exactly one
-   generation (1 slot, or 2 with focus reading on).
+1. A settings session cannot accumulate page slots: after any number of preview
+   re-prewarms the live count is exactly one generation (1 slot, or 2 with focus
+   reading on), and it is **zero once the screen closes**.
 2. `MAX_PAGE_SLOTS` and its two comments state what a slot actually is and what
    assumption makes 4 sufficient, so the next person to add a compressed font to
    a non-reading screen is warned in the place they will look.
@@ -287,10 +288,13 @@ value is the contract.
 `FontDecompressor.h:27` currently says "the number of glyphs that couldn't be
 loaded (0 on full success)". A5 adds a fourth path that returns `0` for "already
 warm", which is not a glyph count. *Decision:* the doc comment becomes explicit —
-`-1` slots full (nothing allocated), `0` prewarmed or already warm, `>0` glyphs
-that could not be loaded — and states that "already warm" does **not** re-scan
-the new text, so glyphs the first call did not need are served from the hot
-group. *Attack surface:* a reviewer may want a distinct sentinel (e.g. `-2`) for
+`-1` slots full (nothing allocated); `0` nothing to do — an uncompressed font
+(`:252`), empty text or no needed glyph (`:330`) — or already warm, or fully
+prewarmed; `>0` glyphs that could not be loaded. It also states that "already
+warm" does **not** re-scan the new text, so glyphs the first call did not need
+are served from the hot group. The four distinct `0` paths are enumerated
+deliberately: pass 0's MINOR 10 objected to `0` reporting a success that is not
+one, and three of those four cached nothing. *Attack surface:* a reviewer may want a distinct sentinel (e.g. `-2`) for
 "already warm" so the two successes are separable; that buys nothing today since
 no caller branches on it.
 
@@ -343,8 +347,9 @@ is explicit and I am following it.
 slot-starved (A3). Two adjacent facts recorded so the plan phase does not
 "improve" them: (a) a built-in font that misses the `MAX_SCAN_FONTS` cap gets no
 per-string prewarm, because both `GfxRenderer::prewarmFallbackText` overloads
-return early unless the id is in `sdCardFonts_` (`GfxRenderer.cpp:230-232`,
-`:264-266`) — it degrades to `getBitmap`'s hot-group path, which is still
+are no-ops for a built-in id (`GfxRenderer.cpp:230-233`; the second overload,
+`:252-260`, has no lookup of its own and delegates to the guard at `:264-266`
+via `ensureSdGlyphsResident` at `:258`) — it degrades to `getBitmap`'s hot-group path, which is still
 graceful but is not what `FontCacheManager.cpp:91-93` says; (b) the idle
 prewarm's `PrewarmScope` is destroyed at the closing brace of its own `if` block
 (`EpubReaderActivity.cpp:387-393`), so the built-in page slots it just built are
@@ -355,10 +360,51 @@ What the idle prewarm actually buys is SD mini-glyph retention
 leave the idle-prewarm behaviour alone and file it as R5. *Attack surface:* a
 reviewer may want (b) fixed here rather than recorded.
 
+**A12 — `TextSettingsActivity` gains an `onExit` that releases the last
+generation.** *New in v3, from review pass 1's MAJOR 1.* The class declares only
+`onEnter` (`src/activities/settings/TextSettingsActivity.h:26`, defined at
+`.cpp:59`) and has no `onExit` override at all, so today nothing reclaims the
+preview's final slot when `exitActivity()` deletes the activity
+(`src/main.cpp`, the lifecycle in CLAUDE.md). CLAUDE.md's activity rule is
+explicit: "Anything allocated in `onEnter()` MUST be freed in `onExit()`."
+*Decision:*
+
+```cpp
+void TextSettingsActivity::onExit() {
+  if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseBuiltinGlyphCache();
+  UiTabListActivity::onExit();
+}
+```
+
+`UiTabListActivity` does not override `onExit` either, so that call resolves to
+`Activity::onExit()` (`src/activities/Activity.h:32`); naming the direct base
+mirrors what `onEnter` already does at `TextSettingsActivity.cpp:60`. The
+sibling settings screens that do override it — `ClearCacheActivity.cpp:28`,
+`ButtonRemapActivity.cpp:34` — are `Activity` subclasses and call
+`Activity::onExit()` directly, which is the same pattern one level up.
+
+*Why this is not over-reach:* without it, A1's release-before-acquire leaves one
+generation owned by nobody. It is bounded, and several existing transitions
+happen to reclaim it — the reader's next `PrewarmScope`
+(`EpubReaderActivity.cpp:1342-1349`), `BibleNavigationActivity.cpp:54`,
+`EpubReaderChapterSelectionActivity.cpp:33`, and the heap-critical
+`releaseSdFontCaches()` calls at `CalibreConnectActivity.cpp:90`,
+`CrossPointWebServerActivity.cpp:76` and `SleepActivity.cpp:481`, all of which
+route through `FontCacheManager.cpp:23` → `fontDecompressor_->clearCache()`. So
+it is not a leak and not a crash risk. It is an allocation with no owner, in a
+spec whose entire subject is that defect. *Attack surface:* a reviewer may call
+this scope creep on a screen the issue does not name, or prefer the alternative —
+weaken the Architecture invariant to "release-before-acquire bounds the preview
+at one generation; the last is reclaimed by the next `PrewarmScope`" and ship
+nothing here. That is one honest sentence instead of one line of code; I chose
+the code because CLAUDE.md states the rule and a `onExit` that exists is cheaper
+to keep true than an invariant with a carve-out.
+
 ## Architecture
 
-Four files change plus three new test files. No new dependency, no new on-disk
-format, no new cross-cutting mechanism, no constant changes value.
+Seven files change plus five new ones — one shared test stub and four in the new
+suite. No new dependency, no new on-disk format, no new cross-cutting mechanism,
+no constant changes value.
 
 ```
 lib/EpdFont/FontDecompressor.h        MAX_PAGE_SLOTS comment rewritten (:10)      [A4]
@@ -373,6 +419,7 @@ lib/GfxRenderer/FontCacheManager.cpp  releaseBuiltinGlyphCache() body           
                                       fix the inaccurate comment at :91-93        [A11]
 src/activities/settings/
   TextSettingsPreview.cpp             release before prewarm; comment updated     [A1]
+  TextSettingsActivity.{h,cpp}        onExit() releases the last generation       [A12]
 
 test/stubs/Arduino.h                  new: millis() / micros()                    [A9]
 test/font_page_slots/CMakeLists.txt   new suite                                   [A9]
@@ -390,11 +437,27 @@ test/font_page_slots/UzlibChecksumStubs.c                                       
 | One slot per `EpdFontData` | `FontDecompressor::prewarmCache` dedupe (A5) |
 | Releasing slots around a render | `FontCacheManager::PrewarmScope` (unchanged) |
 | Releasing slots outside a render | `FontCacheManager::releaseBuiltinGlyphCache()` (A2) |
+| Releasing the preview's last generation | `TextSettingsActivity::onExit()` (A12) |
 | Saying which font was refused | `FontCacheManager::prewarmCache` (A6) |
 
 The invariant the whole change rests on, stated once: **a page slot is owned by
 whoever created it, and every creator must have a release.** `PrewarmScope` has
-one; `renderPreview` does not.
+one; the settings preview has none.
+
+Meeting it takes two halves, because `renderPreview` is a free function called
+per redraw and cannot own a lifetime:
+
+- **Between redraws** — `renderPreview` releases before it acquires (A1), which
+  bounds the preview at one live generation however long the user stays.
+- **At screen close** — `TextSettingsActivity` releases in `onExit` (A12), which
+  takes that last generation to zero.
+
+Release-before-acquire alone would leave the final generation — the one allocated
+on the last setting the user touched — owned by nobody: ~4.5 KB, or ~9 KB with
+focus reading on, surviving in the process-lifetime `FontDecompressor`
+(`src/main.cpp:46`) until some unrelated screen happens to clear the cache. That
+is the same class of defect this spec exists to fix, so it does not ship half
+done.
 
 ## Data and control flow
 
@@ -437,6 +500,15 @@ held by three dead fonts. After: the live count returns to 0 and rises to exactl
 the mask's width on every key change, whatever the user does on that screen and
 for however long.
 
+Leaving the screen:
+
+```
+TextSettingsActivity::onExit()      [NEW A12]
+  fcm->releaseBuiltinGlyphCache();              -> usedPageSlots() == 0
+  UiTabListActivity::onExit();
+exitActivity() deletes the activity
+```
+
 The `if (key != layout.key)` guard is untouched, so a redraw that changes no
 setting still does no work — release included. The release is inside the guard,
 which is what keeps the file's documented invariant (`:90-95`) true: after the
@@ -466,6 +538,7 @@ Per CLAUDE.md's four patterns.
 | Per-group temp buffer OOM or inflate failure | unchanged: `free(tempBuf)`, `missed++`, continue (`:471-485`) | 2 |
 | `fontDecompressor_` null in `releaseBuiltinGlyphCache()` | no-op, no log — mirrors `clearCache()` (`:16`) and `releaseSdFontCaches()` (`:23`) | — |
 | `getFontCacheManager()` null in `renderPreview` | already guarded (`TextSettingsPreview.cpp:106`); the release goes inside the same `if` | — |
+| `getFontCacheManager()` null in `TextSettingsActivity::onExit` | same guard shape; the base `onExit` still runs (A12) | — |
 
 No new failure mode is introduced. Nothing added here allocates: the release
 frees, the dedupe is a pointer comparison over at most 4 entries, the accessor
@@ -522,13 +595,23 @@ spans three groups and so exercises the extraction loop rather than one group.
 | `OneSlotPerDistinctFontData` | two `prewarmCache` calls with the same `fontData` leave `usedPageSlots() == 1` | today it is 2, and `stats.pageBufferBytes` doubles |
 | `AlreadyWarmDoesNotReallocate` | the second call leaves `stats.pageBufferBytes` unchanged and returns `0` | today it allocates a second, unreachable buffer |
 | `PreviewLoopDoesNotAccumulate` | five scope-less prewarms of five distinct fonts, each preceded by `releaseBuiltinGlyphCache()`, leave `usedPageSlots() == 1` | `releaseBuiltinGlyphCache()` does not exist; without it the count reaches 4 and the fifth returns `-1` |
-| `SlotsFullIsVisibleToTheCaller` | the fifth distinct font returns `< 0` and `usedPageSlots()` is still 4 | `-1` is returned today but untested and unobservable — this pins A6/A7 |
-| `UncompressedFontTakesNoSlot` | a `groups == nullptr` font leaves `usedPageSlots() == 0` and returns `0` | passes today — the regression guard on the fact v1 got wrong |
+| `SlotsFullIsVisibleToTheCaller` | the fifth distinct font returns `< 0` and `usedPageSlots()` is still 4 | `-1` is returned today but untested — this pins **A7** only; see the note below |
+| `UncompressedFontTakesNoSlot` | a `groups == nullptr` font leaves `usedPageSlots() == 0` (asserted against `FontDecompressor::prewarmCache`) | passes today — the regression guard on the fact v1 got wrong |
 | `ScopeReleasesEverySlot` | `PrewarmScope` construct/destruct leaves 0 | passes today; regression guard on the path that works |
 | `StyleFallbackCollapsesToOneSlot` | `EpdFontFamily(regular, nullptr, nullptr, nullptr)` at mask `0x0F` leaves 1 slot, not 4 | today it is 4. **Not a live scenario** — every compressed family ships four styles (A5) — but a real unit test of the `FCM → EpdFontFamily → FD` composition |
 
 TDD order per CLAUDE.md and the repo workflow: each row's test is written and run
-**red** before the corresponding change, then run **green**. `UncompressedFontTakesNoSlot`
+**red** before the corresponding change, then run **green**.
+
+**What this suite cannot reach, stated plainly.** It pins the primitives, not the
+call sites. A6 — `FontCacheManager::prewarmCache` distinguishing `missed < 0` and
+naming the font and style — is unobservable here on both counts: that function
+returns `void` (`FontCacheManager.h:24`) and `test/stubs/Logging.h` expands
+`LOG_ERR`/`LOG_DBG` to nothing. And `PreviewLoopDoesNotAccumulate` exercises the
+release-then-prewarm primitive, **not** `textsettings::renderPreview`, which needs
+`GfxRenderer`, `SETTINGS` and `I18N` and is not host-testable. The one-line caller
+edit that is the whole fix, and A6's log line, are covered only by tester steps 1
+and 2. `UncompressedFontTakesNoSlot`
 and `ScopeReleasesEverySlot` are green from the start and are labelled as guards,
 not as evidence of a fix.
 
@@ -582,10 +665,13 @@ neutral.
    comfortably past the old cap of four — with `LOG_LEVEL=2`. Before: `[ERR]
    [FDC] All 4 page buffer slots full` from the fifth change on. After: nothing.
 2. **The heap stops falling.** `ESP.getFreeHeap()` on entering Text settings and
-   after each of six changes. Before: ~4.5 KB lower per change, ~13.5 KB down
-   after four. After: **one slot's worth (~4.5 KB) below the on-entry reading and
-   then stable** — not back to the entry value, because the live slot is real and
-   wanted. A tester who expects "flat" will read a working fix as broken.
+   after each of six changes, **and once more after leaving the screen**. Before:
+   ~4.5 KB lower per change, ~13.5 KB down after four, and the residue survives
+   the exit. After: **one slot's worth (~4.5 KB) below the on-entry reading and
+   then stable** while the screen is up — not back to the entry value, because
+   the live slot is real and wanted; a tester who expects "flat" here will read a
+   working fix as broken — and **back to the on-entry value once Text settings is
+   closed** (A12).
    Caveat: the page buffer measured 3,969 bytes, just under the 4,096-byte PSRAM
    auto-routing threshold; a longer preview string in another language would
    cross it and land in PSRAM, which changes what this reading shows.
@@ -641,16 +727,36 @@ correct.
 
 | Finding | Change |
 | --- | --- |
-| **BLOCKER 1** | v1's headline "live reader-path defect" (a page drawing R/B/I/BI denies the status bar's prewarm) **cannot occur**: `notosans_8_regular` and both Ubuntu UI families are uncompressed, `groups == nullptr` (`notosans_8_regular.h:3667-3669`), and `FontCacheManager.cpp:47` filters them out. 32 of 37 built-in headers are grouped; the 5 that are not are exactly the non-reading fonts. Real slot demand per scan pass is 4, and the cap is 4. **`MAX_PAGE_SLOTS 4 → 16` is dropped**, with it the `static_assert` (whose arithmetic was wrong — `MAX_SCAN_FONTS × 4` bounds calls, not slots) and the `MAX_SCAN_FONTS` visibility change. Goal 2, A3, A10 and R1 rewritten; Problem §2 now says the constant is right and its comment is wrong. The escalated scope question is decided in A3 rather than sent to the human: keeping 4 is the narrower option, it is what CLAUDE.md's resource-justification rule requires absent a demonstrated bug, and the regret is asymmetric. |
+| **BLOCKER 1** | v1's headline "live reader-path defect" (a page drawing R/B/I/BI denies the status bar's prewarm) **cannot occur**: `notosans_8_regular` and both Ubuntu UI families are uncompressed, `groups == nullptr` (`notosans_8_regular.h:3667-3669`), and `FontCacheManager.cpp:47` filters them out. 32 of 37 built-in headers are grouped; the 5 that are not are exactly the non-reading fonts. Real slot demand per scan pass is 4, and the cap is 4. **`MAX_PAGE_SLOTS 4 → 16` is dropped**, with it the `static_assert` (whose arithmetic was wrong — `MAX_SCAN_FONTS × 4` bounds calls, not slots) and the `MAX_SCAN_FONTS` visibility change. Goal 2, A3, A11 and R1 rewritten; Problem §2 now says the constant is right and its comment is wrong. The escalated scope question is decided in A3 rather than sent to the human: keeping 4 is the narrower option, it is what CLAUDE.md's resource-justification rule requires absent a demonstrated bug, and the regret is asymmetric. |
 | **BLOCKER 2** | The fixture was that same group-less font, so `prewarmCache` returned at `:252` and all seven tests would have observed `usedPageSlots() == 0` and passed vacuously. Fixture is now `notoserif_12_regular.h` (grouped, `groupCount = 13` at `:3708-3710`, and at 270,097 B actually the smallest header — v1's stated size reason was also wrong). Two tests were added, `AlreadyWarmDoesNotReallocate` and `UncompressedFontTakesNoSlot`, the latter a permanent guard on the fact v1 got wrong. |
 | **MAJOR 3** | The listed test sources do not link: `lib/uzlib/src` vendors only `tinflate.c`, and `uzlib_uncompress_chksum` (`:630`) calls `uzlib_adler32`/`uzlib_crc32` (`:642,646`), declared at `uzlib.h:165,167` and defined nowhere. Confirmed independently: `nm` on `.pio/build/x4pro/firmware.elf` finds zero occurrences of all three symbols — the firmware link strips the dead function. A9 now adds `UzlibChecksumStubs.c` and records why the `--gc-sections` alternative was rejected. |
 | **MAJOR 4** | v1's Problem §3 duplicate-slot waste is unreachable for the same reason as BLOCKER 1: the only style-incomplete families are the uncompressed ones, and every compressed family ships four styles. A5 is reframed from fix to guard and says a reviewer may reasonably ask for it to be dropped; Goal 4 is now a property, not a leak; the `StyleFallbackCollapsesToOneSlot` test row is labelled "not a live scenario". |
 | **MAJOR 5** | CI has five jobs, not two. The gate list said `pio check`, which **exits 0 regardless of defects**, where `ci.yml:95` runs it with `--fail-on-defect low/medium/high`. Firmware gates corrected; the `unit-tests` job (`:168-194`) added to "What CI runs", which also sharpens A10. |
 | **MINOR 6** | Per-slot cost was understated ~50%. Measured on the host: 3,969 + 516 = **4,485 bytes**, 43 glyphs. Problem §1 restated; tester step 2's "After: flat" was wrong and would make a working fix read as broken — it now says "~4.5 KB below entry and then stable", with the PSRAM-threshold caveat. |
 | **MINOR 7** | `test/CMakeLists.txt` is append-ordered, not alphabetical (it ends `launcher_refresh, bookmark_save_action, bookmark_doc`). A10 now says append at the end. |
-| **MINOR 8** | "A fifth font id degrades to the per-string prewarm" is true only for SD fonts — both `prewarmFallbackText` overloads return early unless the id is in `sdCardFonts_` (`GfxRenderer.cpp:230-232,264-266`). Non-goals corrected, and A11 adds fixing the inaccurate source comment at `FontCacheManager.cpp:91-93`, which is three lines from code this change touches. |
+| **MINOR 8** | "A fifth font id degrades to the per-string prewarm" is true only for SD fonts — both `prewarmFallbackText` overloads are no-ops for a built-in id (`GfxRenderer.cpp:230-233`; the second, `:252-260`, delegates to `:264-266` via `:258`). Non-goals corrected, and A11 adds fixing the inaccurate source comment at `FontCacheManager.cpp:91-93`, which is three lines from code this change touches. |
 | **MINOR 9** | A11 no longer claims "a fifth prewarm now succeeds" (there is none), and records that the idle prewarm's scope destructs at its own closing brace (`EpubReaderActivity.cpp:387-393`), freeing the built-in slots it just built. Filed as R5(b), not fixed. |
 | **MINOR 10** | A7 is new: the return contract is documented as three values, and "already warm" is stated not to re-scan the new text. |
+
+## Review pass 1 — what changed and why
+
+`docs/superpowers/reviews/issue-58-spec-review-1.md` returned **CLEAR** with
+0 BLOCKER, 1 MAJOR and 5 MINOR. All six are applied here; none reverses a
+decision. The reviewer independently re-derived pass 0's findings rather than
+assuming them, reproduced the uzlib link failure, the fixture swap and the
+4,485-byte measurement from scratch, and confirmed A3's reversal by closing a
+hole this spec left implicit: a second *compressed* font id cannot join a reader
+scan pass, because `GfxRenderer::setFallbackFont` is only ever handed an SD font
+id (`src/SdCardFontSystem.cpp:166`, `GfxRenderer.h:168-169`).
+
+| Finding | Change |
+| --- | --- |
+| **MAJOR 1** | A1's release-before-acquire never releases the *last* generation, and `TextSettingsActivity` has no `onExit` at all (`TextSettingsActivity.h:26` declares only `onEnter`), so ~4.5 KB — ~9 KB with focus reading — outlived the screen. The Architecture section stated an absolute ownership invariant the design did not meet. **New A12** adds the one-line `onExit`; the invariant is now stated as two halves (between redraws, at screen close) with the reclaim points named; Goal 1, the ownership table, the flow section, the error-handling table and tester step 2 all updated. Took the reviewer's preferred fix rather than the reword, because CLAUDE.md states the rule outright. |
+| **MINOR 2** | `SlotsFullIsVisibleToTheCaller` claimed to pin A6, which is unobservable from the suite: `FontCacheManager::prewarmCache` is `void` (`FontCacheManager.h:24`) and `test/stubs/Logging.h` expands the log macros to nothing. Row now pins A7 only; `UncompressedFontTakesNoSlot` says which function it asserts against; and a new paragraph states plainly that the suite pins the primitives while the `renderPreview` edit and A6's log line are covered only by tester steps 1 and 2. |
+| **MINOR 3** | A7 enumerated three return values, but `0` is returned from four places — including `:252` (uncompressed font, which the suite depends on) and `:330` (no needed glyph), neither of which cached anything. The contract now names all four paths. |
+| **MINOR 4** | "Four files change plus three new test files" contradicted its own list (five modified, five new). Corrected to five modified and five new, and A12 then takes it to seven modified (`TextSettingsActivity.{h,cpp}` is two files). |
+| **MINOR 5** | The pass-0 table mixed v1 and v2 assumption numbers: the BLOCKER 1 row said "A10" for the reader-path assumption, which v2 renumbered to A11 (A10 is now the `test/CMakeLists.txt` question). Fixed to v2 numbering. |
+| **MINOR 6** | A11 cited `GfxRenderer.cpp:230-232,264-266` for "both overloads return early". The first guard is `:230-233`; the second overload is `:252-260` and has no lookup of its own — it reaches `:264-266` through `ensureSdGlyphsResident` at `:258`. Re-cited, and the delegation is named. |
 
 ## Open questions for the review
 
@@ -658,8 +764,11 @@ correct.
    escalated, on the grounds that it is the narrower option and CLAUDE.md's
    resource rules answer it. If the orchestrator wants 16 shipped as insurance,
    say so — it is one constant and one comment.
-2. **A5.** Keep the dedupe as a guard with no reachable caller, or drop it?
-3. **A6.** Is dropping the `FDC` line acceptable, given a future direct caller of
+2. **A12.** Is a one-line `onExit` on a screen the issue does not name the right
+   call, or should the Architecture invariant simply have been reworded to admit
+   a last generation owned by nobody? Pass 1 offered both; I took the code.
+3. **A5.** Keep the dedupe as a guard with no reachable caller, or drop it?
+4. **A6.** Is dropping the `FDC` line acceptable, given a future direct caller of
    `FontDecompressor` that ignores the return value would then be silent?
-4. **A10.** Follow `ui-dev.md` and ship a suite CI does not run yet, or commit the
+5. **A10.** Follow `ui-dev.md` and ship a suite CI does not run yet, or commit the
    one-line `test/CMakeLists.txt` append and accept the collision risk?
