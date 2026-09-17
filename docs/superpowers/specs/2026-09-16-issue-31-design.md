@@ -176,7 +176,7 @@ met until both go.
 of the i18n rule (`CLAUDE.md` is a symlink to `AGENTS.md`). Deleting the key
 leaves the coding standard demonstrating `tr()` with a key that no longer exists.
 On the merits the key should still go: `STR_LOADING_POPUP` ("Loading",
-`english.yaml:35`) is live at six sites — `src/main.cpp:184,197`,
+`english.yaml:34`) is live at six sites — `src/main.cpp:184,197`,
 `src/activities/home/HomeActivity.cpp:70`,
 `src/activities/util/BmpViewerActivity.cpp:99,195`,
 `src/activities/catalog/PublicationsActivity.cpp:73` — so nothing that wants a
@@ -221,7 +221,7 @@ is not otherwise reformatted.** Checked across all 32 files: every non-blank lin
 matches `^KEY: value`. There are no comments, no blank-line section headers, no
 multi-line or folded values, and no duplicate keys within a file (research §9).
 The removable keys are interleaved with live ones — `STR_ADD_SERVER` at
-`english.yaml:334` sits between `STR_STEP_HINT_SIDE` and `STR_SERVER_NAME`, not
+`english.yaml:333` sits between `STR_STEP_HINT_SIDE` and `STR_SERVER_NAME`, not
 in an OPDS block — so a line delete leaves no orphaned header. The precedent is
 `docs/superpowers/plans/2026-09-13-phase-0-fork-and-strip.md:844`, and its
 trailing colon is load-bearing:
@@ -339,10 +339,12 @@ every file.
 | **total** | **666** | **11,375 → 10,709** |
 
 `22 × 32 = 704` is the wrong number and a plan that asserts it fails on its own
-arithmetic: `danish`, `dutch` and `romanian` never had the five OPDS server keys,
-nor `STR_NO_SERVERS` or `STR_TAP_TO_RETRY` — seven each; `finnish` lacks those
-seven plus `STR_DISPLAY_QR`; `orangutan` lacks nine. **Derive every per-file
-count from the table above, never by multiplication.**
+arithmetic. `danish`, `dutch` and `romanian` each lack the same seven —
+`STR_ADD_SERVER`, `STR_DELETE_SERVER`, `STR_SERVER_NAME`, `STR_NO_SERVERS`,
+`STR_TAP_TO_RETRY`, `STR_NEXT_PAGE` and `STR_PREV_PAGE`; `STR_NO_SERVER_URL` is
+not among them, all three files have it. `finnish` lacks those seven plus
+`STR_DISPLAY_QR`; `orangutan` lacks nine. **Derive every per-file count from the
+table above, never by multiplication.**
 
 ### What cannot move
 
@@ -634,8 +636,14 @@ the total without touching the unused count:
   the simulated edit on the rebased tree: exit 0, no differences.
 - **A5's orphan-gate asymmetry.** Still 23 lines after a stripped generate, 0
   after an unstripped one.
-- **Every `file:line` citation in this spec.** None of the cited files were
-  touched by the four commits except the two YAMLs, and neither is cited by line.
+- **Every `file:line` citation in this spec, with two corrections.** None of the
+  cited files were touched by the four commits except the two YAMLs — and
+  `english.yaml` *is* cited by line, twice. `02d9106a` deleted
+  `STR_TAGS_AND_SETTINGS` from line 11, shifting everything below it up by one,
+  so A4's `english.yaml:35` became `:34` and A6's `:334` became `:333`. Both are
+  corrected above. The substance of each survived the shift:
+  `STR_ADD_SERVER` still sits between `STR_STEP_HINT_SIDE` and `STR_SERVER_NAME`,
+  so A6's "interleaved with live ones, not in an OPDS block" argument holds.
 
 The flash baseline fell by 96 B purely because one used string left the tables —
 nothing to do with this change, and the "a moving flash figure is a failure
@@ -644,4 +652,12 @@ signal" rule in the Testing strategy is measured against the new number.
 **Superseded:** the `5,314,782 B` figure quoted in the MAJOR 2 row of "Review
 pass 0" above is a true record of what was measured then, and is no longer the
 baseline. Use 5,314,686 B.
+
+**Plan review pass 1** (`docs/superpowers/reviews/issue-31-plan-review-1.md`,
+verdict CLEAR) raised two findings against this document, both applied above:
+the `english.yaml` line citations in A4 and A6 were stale by one after
+`02d9106a` (`:35`→`:34`, `:334`→`:333`), and the account of which seven keys
+`danish`/`dutch`/`romanian` lack named the wrong set — the counts were right,
+the composition was not. The corrected list is in "The removal set, and what
+each file loses".
 
