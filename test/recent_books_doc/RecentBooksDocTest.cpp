@@ -217,3 +217,63 @@ TEST(RecentBooksDoc, FromJsonReBoundsAnOverlongTitleFromTheCard) {
   EXPECT_EQ(out[0].path, "/books/b.epub") << "the key must survive a load-side re-bound";
   EXPECT_TRUE(needsResave) << "the shrunken entries have to reach the card";
 }
+
+// ArduinoJson 7.4.2 emits raw bytes for control characters but expands NUL to a
+// six-byte \u escape, three times ESCAPE_FACTOR. ArduinoJson stores a
+// std::string length-aware, so an embedded NUL would reach the serialiser.
+// Unreachable today (XML 1.0 forbids U+0000, and the load path reads through
+// const char*), which is exactly why it is erased rather than argued about.
+TEST(RecentBooksDocNormalise, ErasesEmbeddedNuls) {
+  RecentBook book;
+  book.path = "/books/b.epub";
+  book.title = std::string("ab\0cd", 5);
+  book.author = std::string("ef\0gh", 5);
+
+  EXPECT_TRUE(RecentBooksDoc::normalise(book));
+  EXPECT_EQ(book.title, "abcd");
+  EXPECT_EQ(book.author, "efgh");
+  EXPECT_EQ(book.title.find('\0'), std::string::npos);
+}
+
+// The real guard. Built through the REAL toJson, from the same constants
+// worstCaseBytes() sums, so it fits by exactly zero bytes. A string-shaped field
+// added to RecentBook fails this.
+TEST(RecentBooksDocBudget, AWorstCaseDocumentFitsTheDerivedBudget) {
+  std::vector<RecentBook> books;
+  for (size_t i = 0; i < RecentBooksDoc::MAX_RECENT_BOOKS; ++i) {
+    books.push_back(makeBook(std::string(RecentBooksDoc::PATH_BUDGET_ALLOWANCE, 'p').c_str(),
+                             std::string(RecentBooksDoc::MAX_TITLE_BYTES, '"').c_str(),
+                             std::string(RecentBooksDoc::MAX_AUTHOR_BYTES, '\\').c_str(),
+                             std::string(RecentBooksDoc::COVER_PATH_BUDGET_ALLOWANCE, 'c').c_str()));
+  }
+
+  JsonDocument doc;
+  RecentBooksDoc::toJson(books, doc);
+  const size_t measured = measureJson(doc);
+
+  EXPECT_LE(measured, RecentBooksDoc::SAVE_BUDGET)
+      << "the worst case measured " << measured << " bytes against a budget of " << RecentBooksDoc::SAVE_BUDGET
+      << "; raise a named allowance in RecentBooksDoc.h deliberately rather than loosening this assertion";
+  EXPECT_EQ(measured, RecentBooksDoc::SAVE_BUDGET)
+      << "the budget is derived from these exact constants, so it fits by zero bytes; a change here is a real change";
+}
+
+// A refusal must be unreachable in the field, or the tightened budget is the
+// silent failure #27 declined to accept.
+TEST(RecentBooksDocBudget, ARealisticStoreUsesAFractionOfTheBudget) {
+  std::vector<RecentBook> books;
+  for (size_t i = 0; i < RecentBooksDoc::MAX_RECENT_BOOKS; ++i) {
+    books.push_back(makeBook("/Publicaciones/Atalaya/Edicion de estudio/2026/w_S_202601.epub",
+                             "Traducción del Nuevo Mundo de las Santas Escrituras (revisión de 2019)",
+                             "Watchtower Bible and Tract Society of New York, Inc.",
+                             "/.crosspoint/epub_12345678901234567890/thumb_[HEIGHT].bmp"));
+  }
+
+  JsonDocument doc;
+  RecentBooksDoc::toJson(books, doc);
+  const size_t measured = measureJson(doc);
+
+  EXPECT_LT(measured, RecentBooksDoc::SAVE_BUDGET / 3)
+      << "ten realistic entries measured " << measured << " bytes against a budget of " << RecentBooksDoc::SAVE_BUDGET
+      << "; the headroom is what makes a refusal unreachable in normal use";
+}

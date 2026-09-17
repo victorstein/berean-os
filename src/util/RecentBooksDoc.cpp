@@ -7,6 +7,16 @@
 namespace RecentBooksDoc {
 namespace {
 
+// ArduinoJson stores a std::string length-aware, so an embedded NUL survives to
+// the serialiser and expands to a six-byte \u escape, which would break
+// ESCAPE_FACTOR. Erasing is cheaper than arguing that it cannot happen.
+bool eraseNuls(std::string& field) {
+  const auto it = std::remove(field.begin(), field.end(), '\0');
+  if (it == field.end()) return false;
+  field.erase(it, field.end());
+  return true;
+}
+
 // utf8SafeSummary collapses whitespace runs, strips newlines, trims, and caps on
 // a codepoint boundary. It clamps before calling utf8SafeTruncateBuffer, which
 // indexes buf[len - 1] without checking the buffer is that long (Utf8.cpp:148).
@@ -22,7 +32,9 @@ bool capField(std::string& field, const size_t maxBytes) {
 bool normalise(RecentBook& book) {
   // capField(...) || changed, never changed || capField(...): the second form
   // short-circuits and would skip the author once the title had changed.
-  bool changed = capField(book.title, MAX_TITLE_BYTES);
+  bool changed = eraseNuls(book.title);
+  changed = eraseNuls(book.author) || changed;
+  changed = capField(book.title, MAX_TITLE_BYTES) || changed;
   changed = capField(book.author, MAX_AUTHOR_BYTES) || changed;
   return changed;
 }
