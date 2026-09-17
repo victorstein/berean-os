@@ -4,7 +4,9 @@
 #include <FontDecompressor.h>
 #include <EpdFontFamily.h>
 
+#include <iterator>
 #include <map>
+#include <vector>
 
 #include "builtinFonts/notoserif_12_regular.h"
 #include "builtinFonts/notosans_8_regular.h"
@@ -141,4 +143,34 @@ TEST(FontPageSlots, TheCapCoversOneFamilysFourStyles) {
   static_assert(FontDecompressor::MAX_PAGE_SLOTS >= 4,
                 "one reading family's R/B/I/BI must fit simultaneously");
   EXPECT_GE(FontDecompressor::MAX_PAGE_SLOTS, 4);
+}
+
+TEST(FontPageSlots, PreviewLoopDoesNotAccumulate) {
+  FontDecompressor decompressor;
+
+  EpdFontData fonts[5];
+  for (auto& font : fonts) font = notoserif_12_regular;
+
+  std::map<int, EpdFontFamily> fontMap;
+  std::vector<EpdFont> owned;
+  owned.reserve(std::size(fonts));
+  for (size_t i = 0; i < std::size(fonts); i++) {
+    owned.emplace_back(&fonts[i]);
+  }
+  for (size_t i = 0; i < std::size(fonts); i++) {
+    fontMap.emplace(static_cast<int>(i), EpdFontFamily(&owned[i]));
+  }
+  const std::map<int, SdCardFont*> noSdFonts;
+
+  FontCacheManager manager(fontMap, noSdFonts);
+  manager.setFontDecompressor(&decompressor);
+
+  // The Text-settings preview shape: prewarm once per setting change, outside
+  // any PrewarmScope. Without a release the count climbs 1,2,3,4 and the fifth
+  // change is refused — issue #58. Releasing first bounds it at one generation.
+  for (size_t i = 0; i < std::size(fonts); i++) {
+    manager.releaseBuiltinGlyphCache();
+    manager.prewarmCache(static_cast<int>(i), SAMPLE, 0x01);
+    EXPECT_EQ(decompressor.usedPageSlots(), 1) << "after change " << i;
+  }
 }

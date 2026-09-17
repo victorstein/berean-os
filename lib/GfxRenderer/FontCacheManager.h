@@ -16,6 +16,11 @@ class FontCacheManager {
   void setFontDecompressor(FontDecompressor* d);
 
   void clearCache();
+  // Release the built-in fonts' page slots and hot group, leaving every SD
+  // font's caches untouched. For a caller that prewarms outside a PrewarmScope
+  // and must not evict SD glyphs — see TextSettingsPreview.cpp. Narrower than
+  // clearCache(), which also resets every SdCardFont.
+  void releaseBuiltinGlyphCache();
   // Release every rebuildable SD-font cache (mini glyph/kern arenas, kern/lig
   // class tables, overflow rings, advance tables) while keeping the fonts
   // loaded. Everything faults back in on demand. For heap-critical transitions
