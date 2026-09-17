@@ -63,3 +63,51 @@ TEST(FontPageSlots, ScopeReleasesEverySlot) {
   // which is what keeps the reader's slot count at zero between renders.
   EXPECT_EQ(decompressor.usedPageSlots(), 0);
 }
+
+TEST(FontPageSlots, OneSlotPerDistinctFontData) {
+  FontDecompressor decompressor;
+
+  ASSERT_EQ(decompressor.prewarmCache(&notoserif_12_regular, SAMPLE), 0);
+  ASSERT_EQ(decompressor.usedPageSlots(), 1);
+
+  // getBitmap() breaks after the first slot matching fontData
+  // (FontDecompressor.cpp:173), so a second slot for the same font is dead
+  // weight: unreachable, and its glyphs fall through to the hot group anyway.
+  EXPECT_EQ(decompressor.prewarmCache(&notoserif_12_regular, SAMPLE), 0);
+  EXPECT_EQ(decompressor.usedPageSlots(), 1);
+}
+
+TEST(FontPageSlots, AlreadyWarmDoesNotReallocate) {
+  FontDecompressor decompressor;
+
+  ASSERT_EQ(decompressor.prewarmCache(&notoserif_12_regular, SAMPLE), 0);
+  const uint32_t bytesAfterFirst = decompressor.getStats().pageBufferBytes;
+  ASSERT_GT(bytesAfterFirst, 0u);
+
+  decompressor.prewarmCache(&notoserif_12_regular, SAMPLE);
+
+  // Asserted as a relation, not an absolute: regenerating a font header would
+  // change the byte count but must never make a repeat call allocate again.
+  EXPECT_EQ(decompressor.getStats().pageBufferBytes, bytesAfterFirst);
+}
+
+TEST(FontPageSlots, StyleFallbackCollapsesToOneSlot) {
+  FontDecompressor decompressor;
+  EpdFont regular(&notoserif_12_regular);
+  EpdFontFamily regularOnly(&regular);  // no bold, italic or bold-italic
+
+  std::map<int, EpdFontFamily> fonts;
+  fonts.emplace(1, regularOnly);
+  const std::map<int, SdCardFont*> noSdFonts;
+
+  FontCacheManager manager(fonts, noSdFonts);
+  manager.setFontDecompressor(&decompressor);
+
+  // EpdFontFamily::getFont falls back to regular for an absent style
+  // (EpdFontFamily.cpp:8-18), so all four mask bits resolve to one EpdFontData.
+  // Not a state this firmware can reach — every compressed family ships four
+  // styles — but it pins the FCM -> EpdFontFamily -> FD composition.
+  manager.prewarmCache(1, SAMPLE, 0x0F);
+
+  EXPECT_EQ(decompressor.usedPageSlots(), 1);
+}
