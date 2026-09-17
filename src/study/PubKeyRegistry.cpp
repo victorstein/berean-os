@@ -20,7 +20,7 @@ bool record(const std::string& bookPath, const study::RegisteredPub& pub) {
   if (bookPath.empty() || pub.symbol.empty()) return false;
 
   JsonDocument doc;
-  PersistableStoreBase::readDocFromFileChecked(PATH, doc);
+  PersistableStoreBase::readDocFromFileAdopting(PATH, doc);
   const int version = doc["v"] | 0;
   if (version > FORMAT_VERSION) {
     LOG_ERR(MODULE, "Refusing to rewrite a newer registry format");
@@ -49,7 +49,7 @@ bool record(const std::string& bookPath, const study::RegisteredPub& pub) {
 // is exactly the case the meeting tile has to cover.
 std::optional<std::string> findBySymbol(std::initializer_list<std::string_view> symbols, const std::string_view issue) {
   JsonDocument doc;
-  if (PersistableStoreBase::readDocFromFileChecked(PATH, doc) != DocReadStatus::Ok) return std::nullopt;
+  if (PersistableStoreBase::readDocFromFileAdopting(PATH, doc) != DocReadStatus::Ok) return std::nullopt;
   if ((doc["v"] | 0) > FORMAT_VERSION) return std::nullopt;
 
   const JsonObjectConst entries = doc["p"];
@@ -75,7 +75,7 @@ std::optional<study::RegisteredPub> lookup(const std::string& bookPath) {
   if (bookPath.empty()) return std::nullopt;
 
   JsonDocument doc;
-  if (PersistableStoreBase::readDocFromFileChecked(PATH, doc) != DocReadStatus::Ok) return std::nullopt;
+  if (PersistableStoreBase::readDocFromFileAdopting(PATH, doc) != DocReadStatus::Ok) return std::nullopt;
   if ((doc["v"] | 0) > FORMAT_VERSION) return std::nullopt;
 
   const JsonVariantConst entry = doc["p"][bookPath];

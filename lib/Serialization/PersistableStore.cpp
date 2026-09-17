@@ -60,6 +60,51 @@ DocReadStatus PersistableStoreBase::readDocFromFileChecked(const char* path, Jso
   return classifyDocRead(true, false, false);
 }
 
+DocReadStatus PersistableStoreBase::readDocFromFileAdopting(const char* path, JsonDocument& doc) {
+  const DocReadStatus primary = readDocFromFileChecked(path, doc);
+
+  bool tempExists = false;
+  bool tempParsed = false;
+  std::string tmpPath;
+  if (primary == DocReadStatus::Missing) {
+    tmpPath = std::string(path) + ".tmp";
+    tempExists = Storage.exists(tmpPath.c_str());
+    if (tempExists) tempParsed = readDocFromFileChecked(tmpPath.c_str(), doc) == DocReadStatus::Ok;
+  }
+
+  const TempAdoptionAction action = tempAdoptionAction(primary, tempExists, tempParsed);
+  switch (action) {
+    case TempAdoptionAction::PromoteTempAndUseIt:
+      // Promote first: the rename is what rescues the only surviving copy. The
+      // primary path is Missing, so nothing here can be overwritten.
+      if (Storage.rename(tmpPath.c_str(), path)) {
+        LOG_INF("PERSIST", "Recovered %s from an interrupted write", path);
+      } else {
+        // Still Ok: the document is in hand and the .tmp survives for the next
+        // boot to retry. Only the rename failed, so do not claim a recovery --
+        // that log line is what the on-device test reads as "the file is back".
+        LOG_ERR("PERSIST", "Failed to promote %s into place", tmpPath.c_str());
+      }
+      break;
+    case TempAdoptionAction::DeleteTempReportEmpty:
+      // deserializeJson leaves the partially parsed document behind, and callers
+      // that ignore the status read it immediately. Deliberately NOT extended to
+      // the ReportFailed arm: clearing there would make a read-modify-write
+      // caller overwrite a corrupt-but-present file instead of merging onto what
+      // did parse.
+      doc.clear();
+      // The .tmp is left alone on purpose. Removing it buys nothing -- the next
+      // save truncates it, since SDCardManager::writeFile removes the
+      // destination before re-creating it -- and a transient SD read failure is
+      // indistinguishable from an empty file, so deleting here could destroy the
+      // only surviving copy.
+      break;
+    default:
+      break;
+  }
+  return adoptedReadStatus(primary, action);
+}
+
 bool PersistableStoreBase::readDocFromFile(const char* path, JsonDocument& doc) {
   return readDocFromFileChecked(path, doc) == DocReadStatus::Ok;
 }

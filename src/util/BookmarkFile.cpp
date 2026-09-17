@@ -5,11 +5,11 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
+#include <TempAdoption.h>
 
 #include "BookmarkDoc.h"
 #include "BookmarkSaveAction.h"
 #include "BookmarkUtil.h"
-#include "HighlightFileAction.h"
 
 namespace {
 
@@ -52,8 +52,8 @@ LoadResult load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmar
 
   // The .tmp decision is shared across stores; PassageFile and TagPaletteFile
   // switch on the same helper.
-  switch (highlightLoadAction(primaryStatus, tempExists, tempParsed)) {
-    case HighlightLoadAction::UseLoaded:
+  switch (tempAdoptionAction(primaryStatus, tempExists, tempParsed)) {
+    case TempAdoptionAction::UseLoaded:
       if (BookmarkDoc::fromJson(primaryJson.as<JsonVariantConst>(), bookmarks)) {
         LOG_DBG(MODULE, "Loaded %zu bookmarks from file", bookmarks.size());
         return LoadResult::Loaded;
@@ -61,10 +61,10 @@ LoadResult load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmar
       LOG_ERR(MODULE, "Rejected %s (future format version?)", path.c_str());
       return LoadResult::Failed;
 
-    case HighlightLoadAction::ReportEmpty:
+    case TempAdoptionAction::ReportEmpty:
       return LoadResult::Empty;
 
-    case HighlightLoadAction::PromoteTempAndUseIt: {
+    case TempAdoptionAction::PromoteTempAndUseIt: {
       // Promote first: the rename is what rescues the only surviving copy of
       // the user's data. The primary path is Missing, so nothing can be lost.
       if (!Storage.rename(tmpPath.c_str(), path.c_str())) {
@@ -75,11 +75,11 @@ LoadResult load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmar
       return LoadResult::Failed;
     }
 
-    case HighlightLoadAction::DeleteTempReportEmpty:
+    case TempAdoptionAction::DeleteTempReportEmpty:
       Storage.remove(tmpPath.c_str());
       return LoadResult::Empty;
 
-    case HighlightLoadAction::ReportFailed:
+    case TempAdoptionAction::ReportFailed:
       return LoadResult::Failed;
   }
   return LoadResult::Failed;
