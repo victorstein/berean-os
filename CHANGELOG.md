@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.9](https://github.com/victorstein/berean-os/compare/v1.9.8...v1.9.9) (2026-09-17)
+
+
+### Bug Fixes
+
+* adopt an orphaned .tmp so an interrupted atomic write is recoverable ([#64](https://github.com/victorstein/berean-os/issues/64)) ([6156de3](https://github.com/victorstein/berean-os/commit/6156de32407ac7f9e80167d0bb0c14c1f92cd730)), closes [#51](https://github.com/victorstein/berean-os/issues/51)
+
 ## [1.9.8](https://github.com/victorstein/berean-os/compare/v1.9.7...v1.9.8) (2026-09-17)
 
 
