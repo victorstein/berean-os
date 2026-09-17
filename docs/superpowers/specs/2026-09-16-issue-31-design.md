@@ -1,7 +1,8 @@
 # Strip the unused translation keys
 
 **Date:** 2026-09-16
-**Status:** Design v1
+**Status:** Design v2 — rebased onto `39fb1aef` after plan review pass 0; see
+"Rebase onto 39fb1aef" at the end for every figure that moved
 **Target:** bereanOS, `x4pro` build target (ESP32-S3, 8 MB PSRAM, 800x480 e-ink)
 **Delivery:** `origin` (victorstein/berean-os), branch `refactor/31-unused-i18n-keys`
 **Closes:** #31
@@ -21,7 +22,7 @@ source file references:
 
 ```
 $ python3 scripts/gen_i18n.py lib/I18n/translations lib/I18n/ --verbose
-  Total: 443  |  Used in code: 420  |  Never used: 23
+  Total: 442  |  Used in code: 419  |  Never used: 23
 ```
 
 Most are OPDS, Calibre and general-reader leftovers that the Phase 0 strip
@@ -40,7 +41,7 @@ baseline build:
   Stripping 23 unused string(s) from output.
 Code generation complete!
   Languages: 32
-  String keys: 420
+  String keys: 419
 ```
 
 So the firmware is already clean and **this change cannot save a byte of flash**.
@@ -145,7 +146,7 @@ one, and #28's rejection was of *reusing* the string for bookmarks, not of the
 string existing. Consequence, measured on a scratch copy of the edit:
 
 ```
-  Total: 421  |  Used in code: 420  |  Never used: 1
+  Total: 420  |  Used in code: 419  |  Never used: 1
 ```
 
 **Criterion 5 therefore reads, for this task: exactly one unused key remains, it
@@ -194,10 +195,10 @@ that file lists a key depends only on whether the run that produced it stripped.
 Reproduced on unchanged sources:
 
 ```
-# after `gen_i18n.py … --strip-unused` (what pio run leaves: 420 StrIds)
+# after `gen_i18n.py … --strip-unused` (what pio run leaves: 419 StrIds)
 $ ./scripts/i18n_orphans.sh | wc -l
       23
-# after `gen_i18n.py …` with no flag    (443 StrIds)
+# after `gen_i18n.py …` with no flag    (442 StrIds)
 $ ./scripts/i18n_orphans.sh | wc -l
        0
 ```
@@ -295,14 +296,14 @@ lib/I18n/translations/*.yaml        32 files, the committed source
         |  load_translations()      key list taken from english.yaml ALONE;
         |                           other languages fill in, missing -> English
         v
-  string_keys (443) + translations
+  string_keys (442) + translations
         |
         |  find_used_string_keys()  regex over src/ lib/ *.cpp *.h *.c
         |  report_unused_keys()     -> unused_set (23)
         |
         |  if strip_unused:         gen_i18n.py:916-923  <-- ALWAYS true in a build
         v
-  string_keys (420)
+  string_keys (419)
         |
         v
   I18nKeys.h / I18nStrings.h / I18nStrings.cpp     gitignored, rebuilt every time
@@ -311,7 +312,7 @@ lib/I18n/translations/*.yaml        32 files, the committed source
   I18n::get(StrId)                 lib/I18n/I18n.cpp:15-28
 ```
 
-The load-bearing property: **the 420-key output is a fixed point.** Deleting the
+The load-bearing property: **the 419-key output is a fixed point.** Deleting the
 22 from the YAML moves work from the `strip_unused` filter to the source files
 and changes the output not at all (A7). That is what makes this a documentation
 change wearing a code change's clothes, and it is why the testing strategy is
@@ -324,18 +325,18 @@ every file.
 
 | File | lines deleted | keys before → after |
 |---|---|---|
-| `english.yaml` | 22 | 446 → 424 |
+| `english.yaml` | 22 | 445 → 423 |
 | `arabic`, `belarusian`, `bosnian`, `czech`, `french`, `german`, `hungarian`, `indonesia`, `lithuanian`, `portuguese-BR`, `portuguese-PT`, `slovak`, `slovenian`, `swedish`, `turkish`, `ukrainian`, `vietnamese` | 22 each | 366 → 344 |
 | `catalan`, `kazakh`, `valencian` | 22 each | 367 → 345 |
 | `italian` | 22 | 365 → 343 |
 | `russian` | 22 | 363 → 341 |
 | `norwegian` | 22 | 368 → 346 |
 | `hebrew`, `polish` | 22 each | 374 → 352 |
-| `spanish` | 22 | 413 → 391 |
+| `spanish` | 22 | 412 → 390 |
 | `danish`, `dutch`, `romanian` | 15 each | 274 → 259 |
 | `finnish` | 14 | 244 → 230 |
 | `orangutan` | 13 | 285 → 272 |
-| **total** | **666** | **11,377 → 10,711** |
+| **total** | **666** | **11,375 → 10,709** |
 
 `22 × 32 = 704` is the wrong number and a plan that asserts it fails on its own
 arithmetic: `danish`, `dutch` and `romanian` never had the five OPDS server keys,
@@ -360,7 +361,7 @@ Three things a reviewer might expect to break, verified not to:
   which the non-goals forbid.
 - **`CHARACTER_SETS` does not change, and nothing reads it anyway.**
   `compute_character_set` (`gen_i18n.py:424`) runs inside `generate_strings_cpp`,
-  i.e. *after* the strip, so it is already computed from 420 keys. Separately,
+  i.e. *after* the strip, so it is already computed from 419 keys. Separately,
   `I18n::getCharacterSet` (`lib/I18n/I18n.cpp:53-60`) has zero callers in `src/`
   or `lib/` — it is dead API.
 
@@ -380,19 +381,19 @@ because it was never stored separately.
 pio run
   -> pre:scripts/gen_i18n.py          platformio.ini:131
   -> main(strip_unused=True)          gen_i18n.py:1001
-  -> load_translations()              443 keys from english.yaml
-  -> find_used_string_keys(src, lib)  420 referenced
+  -> load_translations()              442 keys from english.yaml
+  -> find_used_string_keys(src, lib)  419 referenced
   -> unused_set = 23                  "Stripping 23 unused string(s) from output."
-  -> generate_*()                     420 keys emitted
+  -> generate_*()                     419 keys emitted
 ```
 
 **After**, the same build:
 
 ```
-  -> load_translations()              421 keys from english.yaml
-  -> find_used_string_keys(src, lib)  420 referenced
+  -> load_translations()              420 keys from english.yaml
+  -> find_used_string_keys(src, lib)  419 referenced
   -> unused_set = 1                   "Stripping 1 unused string(s) from output."
-  -> generate_*()                     420 keys emitted   <-- byte-identical (A7)
+  -> generate_*()                     419 keys emitted   <-- byte-identical (A7)
 ```
 
 **At runtime**, nothing changes and no path is added or removed. A screen calls
@@ -421,7 +422,7 @@ fail. Each is listed with the gate that catches it.
 **Case 2 is the one that justifies the whole testing strategy.** Verified by
 injecting it: deleting `STR_TAGS_AND_SETTINGS` ("Etiquetas y ajustes") from
 `spanish.yaml` alone leaves the generator at exit 0 with no `CRITICAL` and the
-same 420-key count, and English silently substitutes for Spanish on that screen.
+same 419-key count, and English silently substitutes for Spanish on that screen.
 The diff catches it:
 
 ```
@@ -495,8 +496,8 @@ git diff --stat -- lib/I18n/translations/   # expect 32 files, 666 deletions, 0 
 #    `PYTHONPATH="$HOME/.platformio/penv/lib/python3.14/site-packages" \
 #       python3 -m platformio run`.
 ~/.platformio/penv/bin/pio run
-#    expect "Stripping 1 unused string(s) from output." and "String keys: 420",
-#    SUCCESS, and a Flash figure unchanged from the 5,314,782 B baseline
+#    expect "Stripping 1 unused string(s) from output." and "String keys: 419",
+#    SUCCESS, and a Flash figure unchanged from the 5,314,686 B baseline
 
 # 7. Orphan gate — AFTER the build, never before (A5). Expect one line.
 ./scripts/i18n_orphans.sh
@@ -523,12 +524,12 @@ found.
 edits no C/C++; combined with gate 2 proving the generated C++ is identical, a
 `pio check` result cannot differ from the baseline by construction.
 
-**The baseline for gate 6**, measured on `c48e3ec7` with the YAMLs untouched:
+**The baseline for gate 6**, measured on `39fb1aef` with the YAMLs untouched:
 
 ```
 RAM:   [==        ]  19.5% (used 64052 bytes from 327680 bytes)
-Flash: [========  ]  81.1% (used 5314782 bytes from 6553600 bytes)
-========================= [SUCCESS] Took 212.56 seconds =========================
+Flash: [========  ]  81.1% (used 5314686 bytes from 6553600 bytes)
+========================= [SUCCESS] Took 47.41 seconds =========================
 ```
 
 **A moving flash figure is a failure signal, not a win.** Gate 2 asserts the
@@ -586,3 +587,61 @@ Not changed, and why: the reviewer explicitly declined to raise A2's restatement
 of acceptance criterion 5, A3's 17 out-of-scope keys, and A4's knowingly-stale
 `AGENTS.md` example, recording each as a stated trade-off rather than a defect.
 Open Question 1 therefore stands as written and is still the human's call.
+
+---
+
+## Rebase onto `39fb1aef` — what moved, and what did not
+
+Plan review pass 0 (`docs/superpowers/reviews/issue-31-plan-review-0.md`) returned
+BLOCKER on a drift this spec shared: it was written against `c48e3ec7`, and `main`
+moved four commits past that base while the plan was being drafted. The
+orchestrator settled it — **rebase** — and this branch now sits on `39fb1aef`
+(release 1.9.7). Every figure in this spec was re-derived on that base rather
+than adjusted arithmetically.
+
+**Exactly one of the four commits touches this task's files.** `02d9106a`
+("label the launcher's fourth tile Settings") deleted `STR_TAGS_AND_SETTINGS`
+from `english.yaml` and `spanish.yaml`, the launcher tile it labelled having been
+relabelled to `STR_SETTINGS_TITLE`. It was a **used** key, which is why it left
+the total without touching the unused count:
+
+| | `c48e3ec7` | `39fb1aef` |
+|---|---|---|
+| `String keys` | 443 | **442** |
+| `Used in code` | 420 | **419** |
+| `Never used` | 23 | **23 — unchanged** |
+| build output after strip | 420 keys | **419 keys** |
+| after this change | 421 keys / 1 unused | **420 keys / 1 unused** |
+| `english.yaml` | 446 → 424 | **445 → 423** |
+| `spanish.yaml` | 413 → 391 | **412 → 390** |
+| all other 30 files | — | **unchanged** |
+| total key lines | 11,377 → 10,711 | **11,375 → 10,709** |
+| Flash baseline | 5,314,782 B | **5,314,686 B** |
+| RAM baseline | 64,052 B | 64,052 B — unchanged |
+
+**What did not move, re-derived and confirmed:**
+
+- **The removal set.** The same 23 unused keys, name for name, and therefore the
+  same 22 after A2 keeps `STR_HIGHLIGHTS_TOO_LARGE`. This was the figure most
+  worth checking, and the orchestrator asked explicitly to be told if it had
+  changed: it has not.
+- **666 deletions across 32 files**, and the per-file counts (22 for 27 files, 15
+  for `danish`/`dutch`/`romanian`, 14 for `finnish`, 13 for `orangutan`).
+  `STR_TAGS_AND_SETTINGS` was never on the removal list, so the arithmetic in
+  "The removal set, and what each file loses" is untouched apart from the two
+  "keys before → after" cells above.
+- **A7's byte-identity.** `diff -r` over `--strip-unused` output, before and after
+  the simulated edit on the rebased tree: exit 0, no differences.
+- **A5's orphan-gate asymmetry.** Still 23 lines after a stripped generate, 0
+  after an unstripped one.
+- **Every `file:line` citation in this spec.** None of the cited files were
+  touched by the four commits except the two YAMLs, and neither is cited by line.
+
+The flash baseline fell by 96 B purely because one used string left the tables —
+nothing to do with this change, and the "a moving flash figure is a failure
+signal" rule in the Testing strategy is measured against the new number.
+
+**Superseded:** the `5,314,782 B` figure quoted in the MAJOR 2 row of "Review
+pass 0" above is a true record of what was measured then, and is no longer the
+baseline. Use 5,314,686 B.
+
