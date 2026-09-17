@@ -22,7 +22,7 @@ supporting argument underneath three of them.
 
 | Review finding | Change |
 |---|---|
-| **MAJOR 1** — A-4's corollary "every writer measures" is false: `MigrationRunner::appendLedger` (`:72-83`) has no budget gate, and the ledger is a file this change newly adopts. *(The review also named `writeReport`; that half is wrong — it gates at `MigrationRunner.cpp:117-121`, stopping rows at `DEFAULT_SAVE_BUDGET - 2048` and setting `truncated`. Corrected here, not carried forward.)* | Corollary replaced with the claim that is actually load-bearing (§Why promotion is safe). The missing gate is the one follow-up #63 does not already cover. The second half — that the new delete arm would *remove* an over-cap orphan that survives today — is fixed by **A-12**. |
+| **MAJOR 1** — A-4's corollary "every writer measures" is false: `MigrationRunner::appendLedger` (`:72-83`) has no budget gate, and the ledger is a file this change newly adopts. *(The review also named `writeReport`; that half is wrong — it gates at `MigrationRunner.cpp:117-121`, stopping rows at `DEFAULT_SAVE_BUDGET - 2048` and setting `truncated`. Corrected here, not carried forward.)* | Corollary replaced with the claim that is actually load-bearing (§Why promotion is safe). The missing gate is covered by #63. The second half — that the new delete arm would *remove* an over-cap orphan that survives today — is fixed by **A-12**. |
 | **MAJOR 2** — A-1's second reason is spent by the design's own call-site list, and cites `storeMutex` for a `storageMutex` rule | A-1 reason #2 rewritten: the `.tmp.tmp` problem carries the decision alone, and the three direct callers now get a positive reason to adopt. Citation corrected to `.claude/agents/data-dev.md:51`. |
 | **MAJOR 3** — the Concurrency section analyses an unreachable race; there is no download task | §Concurrency replaced with the measured task map and a single-task **invariant**. I found one more stale claim than the review did: there is no web server task either (see below). |
 | **MINOR 1** — the `LOG_INF` is *not* compiled out of release | A-8 rewritten. `platformio.ini:188` is `-DLOG_LEVEL=1`; the line ships, deliberately. |
@@ -372,8 +372,7 @@ statement is narrower: **a `.tmp` larger than `SDCardManager::readFile`'s 50,000
 (`SDCardManager.cpp:202`) reads back truncated and cannot parse, so it can never be promoted.** No
 budget re-check is needed on the read side because an over-budget `.tmp` is unreachable from the
 promote arm, not because every writer gates. `appendLedger`'s missing gate is the same class of defect
-`lib/Serialization/SaveBudget.h:5-14` exists to prevent, and is the one piece of the follow-up list
-that **#63 does not already cover**.
+`lib/Serialization/SaveBudget.h:5-14` exists to prevent, and is covered by **#63**.
 
 ### Concurrency
 
@@ -569,11 +568,11 @@ this line CI passes while the 12 new tests never run.
 
 What the PR description carries besides the CMake line:
 
-1. **#63**, already filed, covers the read-status half — `PubKeyRegistry.cpp:23` and
-   `MigrationRunner.cpp:74` discarding the status and overwriting what they could not read. The PR
-   references it; it does not propose it.
-2. **Not** in #63, and worth its own issue: `MigrationRunner::appendLedger` (`:72-83`) writes through
-   `writeDocToFileAtomic` with no budget gate at all.
-3. Two stale comments this work verified: CLAUDE.md's `LOG_LEVEL=0` claim for `x4pro-gh_release`
+1. **#63** covers both halves of the `MigrationRunner` / `PubKeyRegistry` gap this work found: the
+   read-status defect (`PubKeyRegistry.cpp:23`, `MigrationRunner.cpp:74` discarding the status and
+   overwriting what they could not read) and `appendLedger`'s missing budget gate (`:72-83`). It
+   also records that `writeReport` is **not** an instance and should be left alone. One reference;
+   nothing further to file.
+2. Two stale comments this work verified: CLAUDE.md's `LOG_LEVEL=0` claim for `x4pro-gh_release`
    (`platformio.ini:187-188` says otherwise) and `PersistableStore.h:29-30`'s "web server task"
    (there is none — `handleClient()` is loop-task).
