@@ -31,6 +31,16 @@ namespace {
 // preview string (lib/I18n/translations/spanish.yaml:94).
 constexpr const char* SAMPLE = "Benjamín pidió una bebida de kiwi y fresa.";
 
+// Why four slots is enough: only the eight compressed Noto reading families take
+// one, the status bar and UI fonts are uncompressed, SD fonts take the
+// SdCardFont path, and one reading family is on screen at a time — so the
+// ceiling is one family's R/B/I/BI. If a second compressed family is ever drawn
+// on one screen this stops holding, and FontCacheManager logs which font it
+// refused. At namespace scope rather than in a TEST, the way
+// test/launcher_refresh does it: the compiler settles this, so a case wrapping
+// it could only ever report SUCCEED().
+static_assert(FontDecompressor::MAX_PAGE_SLOTS >= 4, "one reading family's R/B/I/BI must fit simultaneously");
+
 }  // namespace
 
 TEST(FontPageSlots, UncompressedFontTakesNoSlot) {
@@ -85,7 +95,7 @@ TEST(FontPageSlots, AlreadyWarmDoesNotReallocate) {
   const uint32_t bytesAfterFirst = decompressor.getStats().pageBufferBytes;
   ASSERT_GT(bytesAfterFirst, 0u);
 
-  decompressor.prewarmCache(&notoserif_12_regular, SAMPLE);
+  EXPECT_EQ(decompressor.prewarmCache(&notoserif_12_regular, SAMPLE), 0);
 
   // Asserted as a relation, not an absolute: regenerating a font header would
   // change the byte count but must never make a repeat call allocate again.
@@ -130,17 +140,6 @@ TEST(FontPageSlots, SlotsFullIsVisibleToTheCaller) {
   // slots-full sentinel; nothing is allocated and no slot is consumed.
   EXPECT_LT(decompressor.prewarmCache(&fonts[FontDecompressor::MAX_PAGE_SLOTS], SAMPLE), 0);
   EXPECT_EQ(decompressor.usedPageSlots(), FontDecompressor::MAX_PAGE_SLOTS);
-}
-
-TEST(FontPageSlots, TheCapCoversOneFamilysFourStyles) {
-  // Why four is enough: only the eight compressed Noto reading families take a
-  // slot, the status bar and UI fonts are uncompressed, SD fonts take the
-  // SdCardFont path, and one reading family is on screen at a time. So the
-  // ceiling is one family's four styles. If a second compressed family is ever
-  // drawn on one screen this stops being true — and FontCacheManager will log
-  // which font it refused.
-  static_assert(FontDecompressor::MAX_PAGE_SLOTS >= 4, "one reading family's R/B/I/BI must fit simultaneously");
-  EXPECT_GE(FontDecompressor::MAX_PAGE_SLOTS, 4);
 }
 
 TEST(FontPageSlots, PreviewLoopDoesNotAccumulate) {
