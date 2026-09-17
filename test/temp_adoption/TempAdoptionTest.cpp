@@ -81,7 +81,11 @@ TEST(AdoptedReadStatus, ANonMissingPrimaryIsNeverReportedMissing) {
           EXPECT_NE(reported, DocReadStatus::Missing)
               << "primary=" << static_cast<int>(primary) << " exists=" << tempExists << " parsed=" << tempParsed;
         }
-        if (primary == DocReadStatus::Ok) EXPECT_EQ(reported, DocReadStatus::Ok);
+        if (primary == DocReadStatus::Ok) {
+          // Braced deliberately: gtest's EXPECT_* expands to an if/else, so an
+          // unbraced body trips GCC's -Wdangling-else (clang does not warn).
+          EXPECT_EQ(reported, DocReadStatus::Ok);
+        }
       }
     }
   }
