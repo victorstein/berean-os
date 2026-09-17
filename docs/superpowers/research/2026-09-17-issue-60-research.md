@@ -20,7 +20,7 @@ Issue #60 carries two independent findings. They are researched separately below
 | ~~Branch site — plain reader~~ | ~~`ReaderActivity.cpp:144-146`~~ — **CORRECTED 2026-09-17 (spec review 0, MAJOR 2): dead code.** `ReaderActivity::loop()` (`:131`) has no caller; `EpubReaderActivity` is the only subclass (`EpubReaderActivity.h:19`) and its override (`EpubReaderActivity.cpp:368`) never chains. |
 | Held time, as the reader sees it | `src/MappedInputManager.cpp:322-328` → `lib/hal/HalGPIO.cpp:236-239` |
 | The synthesis that decides it | `lib/Input/Input/NavKeyGestures.{h,cpp}` |
-| The touch path that still works | `src/activities/reader/ReaderUtils.h:120` (`result.heldMs = gpio.lastTouchHeldMs()`) |
+| ~~The touch path that still works~~ | ~~`ReaderUtils.h:120`~~ — **CORRECTED 2026-09-17 (spec review 0, BLOCKER 1): no touch mode reaches it either.** `heldMs` is real here, but the contact never survives to be read: see the corrected item under *What the setting still does*. |
 
 `SettingsList.h:349-358` already carries the `#if BEREAN_CAP_ROTATION` split the
 issue describes: the `_ORIENTATION` option is compiled out on this board, so the
@@ -33,8 +33,8 @@ live option list is **Off / Chapter skip** only. Verified by reading the lines.
 `wasPressed` and `wasReleased` for `BTN_UP`/`BTN_DOWN` return `synthesisedEdge()`
 and nothing else (`HalGPIO.cpp:210-225`).
 
-`NavKeyGestures::updateKey` (`NavKeyGestures.cpp:22-31`) resolves a key **on
-release**, into exactly one of two events:
+`NavKeyGestures::updateKey` (`NavKeyGestures.cpp:12-32`; the resolve is the
+single line `:29`) decides a key **on release**, into exactly one of two events:
 
 - `elapsed >= HOLD_MS (850)` → `NavEvent::Synth` → emitted as `BTN_BACK` (left)
   or `BTN_CONFIRM` (right) (`HalGPIO.cpp:193-201`). **No page event is emitted at
@@ -67,14 +67,16 @@ board, not just numerically.
      (`ReaderUtils.h:79-81`); no touch page turns exist.
    - `TOUCH_READER_SWIPE` — the swipe path returns before `heldMs` is assigned,
      leaving it 0, and says so: *"A slow swipe never becomes a long-press
-     chapter skip"* (`ReaderUtils.h:84-93`).
-   - `TOUCH_READER_ON` / `_INVERTED_TAP` — `EpubReaderActivity.cpp:450-457`
-     consumes any long press outside the centre third, which is the whole of
-     both page-turn zones (`ReaderUtils.h:108-112,131-137`), and returns. It
-     fires while the finger is down at `TOUCH_LONG_PRESS_MS = 500`
-     (`freeink-sdk/.../InputManager.h:399`), and `wasScreenLongPress` calls
-     `gpio.suppressTouchContact()` (`src/MappedInputManager.cpp:155-163`), so the
-     lift yields no tap either. Every surviving tap reports `heldMs < 500 < 700`.
+     chapter skip"* (`ReaderUtils.h:84-94`).
+   - `TOUCH_READER_ON` / `_INVERTED_TAP` — `EpubReaderActivity.cpp:451-459`
+     (the test is `:454-455`) consumes any long press outside the centre third,
+     which is the whole of both page-turn zones
+     (`ReaderUtils.h:108-112`, `:131-137`), and returns. It fires while the
+     finger is down at `TOUCH_LONG_PRESS_MS = 500`
+     (`freeink-sdk/libs/hardware/InputManager/include/InputManager.h:399`), and
+     `wasScreenLongPress` (`src/MappedInputManager.cpp:155-164`) calls
+     `gpio.suppressTouchContact()` at `:161`, so the lift yields no tap either.
+     Every surviving tap reports `heldMs < 500 < 700`.
 
    Chapter skip is therefore unreachable by **any** deliberate input on this
    board, not only by the buttons.
@@ -152,9 +154,15 @@ Two, both landed:
 - The usage scan is a **raw regex over file text**:
   `re.compile(r"\bSTR_[A-Za-z0-9_]+\b")` at `scripts/gen_i18n.py:267`, applied to
   every `.cpp`/`.h`/`.c` under `src` and `lib` (`gen_i18n.py:272-285`). Comments
-  are not excluded. Practical consequence for this issue: **a retired `STR_*`
-  name left behind in a comment still counts as used**, so the unused-key report
-  will not catch it. The generated files are skipped via `_GENERATED_FILENAMES`.
+  are not excluded, so a retired `STR_*` name left behind in a comment still
+  counts as used. **CORRECTED 2026-09-17 (spec review 0, MINOR 5):** the
+  consequence is not a silent skew of the unused-key report — it is a build
+  failure. Once the key is gone from `english.yaml` the generator classifies it
+  as used-but-missing and prints
+  `CRITICAL: … used in source but missing from english.yaml`, then `sys.exit(1)`
+  (`gen_i18n.py:873-881`), failing `pio run` at the `pre:` step
+  (`platformio.ini:131`). The generated files are skipped via
+  `_GENERATED_FILENAMES`.
 - The existing English strings are
   `STR_LONG_PRESS_BEHAVIOR: "Long-press button behavior"`,
   `_OFF: "OFF"`, `_SKIP: "Chapter skip"`, `_ORIENTATION: "Orientation change"`
@@ -233,13 +241,15 @@ The repo already uses both forms: `static_assert` for invariants
 surface as `.claude/agents/ui-dev.md` defines it, and that file says not to touch
 the input layer "without an explicit instruction". Issue #60 names
 `MappedInputManager.cpp:377-393` directly, which is that instruction. Finding 2
-is confined to that one function; Finding 1's preferred shape (see spec) touches
-only `src/SettingsList.h` and `lib/I18n/translations/`.
-
-`lib/I18n/translations/*.yaml` is listed as report-do-not-edit in
-`ui-dev.md`, but the batch instruction for this task states the #31 key purge
-(`70041d90`) has landed and the directory is now free to edit. Taking the newer
-instruction.
+is confined to that one function. **CORRECTED 2026-09-17:** Finding 1's shape
+changed after spec review 0 from a reword to a capability gate, so it now touches
+`src/CrossPointSettings.h` and `src/SettingsList.h` and **no translation file at
+all** — the gated `StrId`s stay in source text, which is what keeps them "used"
+for `gen_i18n.py:267`. See the spec's §4a and §9 for the current list. Gating the
+entry also removes `longPressButtonBehavior` from the persistence schema, since
+`toJson`/`fromJson` iterate `getSettingsList()` (`CrossPointSettings.cpp:66,113`),
+which makes `src/CrossPointSettings.*` and `src/SettingsList.h` `data-dev`'s
+surface as well as `ui`'s.
 
 ## Environment, measured
 
