@@ -40,3 +40,21 @@ constexpr TempAdoptionAction tempAdoptionAction(const DocReadStatus primary, con
       return tempParsed ? TempAdoptionAction::PromoteTempAndUseIt : TempAdoptionAction::DeleteTempReportEmpty;
   }
 }
+
+// What an adopting read reports to its caller. ReportFailed keeps the primary's
+// own status: DocReadStatus.h:6-7 requires callers to tell Missing (safe to
+// overwrite) from Unreadable/ParseError (never overwrite), so this must not
+// flatten them.
+constexpr DocReadStatus adoptedReadStatus(const DocReadStatus primary, const TempAdoptionAction action) {
+  switch (action) {
+    case TempAdoptionAction::UseLoaded:
+    case TempAdoptionAction::PromoteTempAndUseIt:
+      return DocReadStatus::Ok;
+    case TempAdoptionAction::ReportEmpty:
+    case TempAdoptionAction::DeleteTempReportEmpty:
+      return DocReadStatus::Missing;
+    case TempAdoptionAction::ReportFailed:
+    default:
+      return primary;
+  }
+}
