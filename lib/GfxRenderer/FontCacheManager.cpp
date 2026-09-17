@@ -99,8 +99,11 @@ void FontCacheManager::recordText(const char* text, int fontId, EpdFontFamily::S
       break;
     }
   }
-  // All slots taken: not batched — the string falls back to the per-string
-  // prewarm in GfxRenderer during the real draw pass.
+  // All scan entries taken: not batched. An SD font falls back to the per-string
+  // prewarm in GfxRenderer; a built-in gets none — both prewarmFallbackText
+  // overloads are no-ops for a built-in id (GfxRenderer.cpp:230-233, and :252-260
+  // which delegates to the guard at :264-266) — so it degrades to getBitmap's
+  // hot-group path instead.
   if (!entry) return;
 
   entry->text += text;
