@@ -49,8 +49,15 @@ void FontCacheManager::prewarmCache(int fontId, const char* utf8Text, uint8_t st
     auto style = static_cast<EpdFontFamily::Style>(i);
     const EpdFontData* data = fontMap_.at(fontId).getData(style);
     if (!data || !data->groups) continue;
-    int missed = fontDecompressor_->prewarmCache(data, utf8Text);
-    if (missed > 0) {
+    const int missed = fontDecompressor_->prewarmCache(data, utf8Text);
+    if (missed < 0) {
+      // Slots full. Unreachable with the current font set — only the compressed
+      // reading families take a slot and one is on screen at a time — so this
+      // means a new caller prewarming outside a PrewarmScope, or a second
+      // compressed family on one screen. Recoverable: getBitmap falls back to
+      // the hot group.
+      LOG_ERR("FCM", "Page slots full: font %d style %d not prewarmed", fontId, i);
+    } else if (missed > 0) {
       LOG_DBG("FCM", "prewarmCache: %d glyph(s) not cached for style %d", missed, i);
     }
   }

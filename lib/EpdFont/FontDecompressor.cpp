@@ -259,9 +259,10 @@ int FontDecompressor::prewarmCache(const EpdFontData* fontData, const char* utf8
     if (pageSlots[s].fontData == fontData) return 0;
   }
 
-  // Allocate the next available slot (caller must call freePageBuffer/clearCache to reset)
+  // Allocate the next available slot (caller must call freePageBuffer/clearCache to reset).
+  // -1 is the slots-full signal; the caller logs it, since only it knows the font id
+  // and style — a raw fontData pointer needs an ELF symbol dump to identify.
   if (pageSlotCount >= MAX_PAGE_SLOTS) {
-    LOG_ERR("FDC", "All %u page buffer slots full, cannot prewarm fontData=%p", MAX_PAGE_SLOTS, (void*)fontData);
     return -1;
   }
   PageSlot& slot = pageSlots[pageSlotCount];
