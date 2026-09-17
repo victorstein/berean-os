@@ -104,6 +104,11 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
                        .hyphenation = SETTINGS.hyphenationEnabled != 0};
   if (key != layout.key) {
     if (auto* fcm = renderer.getFontCacheManager()) {
+      // Release before acquiring: this prewarm runs outside a PrewarmScope, and
+      // page slots are freed by nothing else. Without this, every setting change
+      // consumed a slot for good and the fifth exhausted the cap (#58). The
+      // built-in-only release keeps the SD invariant above true.
+      fcm->releaseBuiltinGlyphCache();
       fcm->prewarmCache(fontId, I18N.get(StrId::STR_FONT_PREVIEW_TEXT), SETTINGS.focusReadingEnabled ? 0x03 : 0x01);
     }
     relayout(layout, renderer, fontId, textWidth);

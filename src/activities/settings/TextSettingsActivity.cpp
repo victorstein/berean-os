@@ -1,5 +1,6 @@
 #include "TextSettingsActivity.h"
 
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
 
@@ -255,6 +256,17 @@ const char* TextSettingsActivity::confirmLabelText() const {
     default:
       return tr(STR_SELECT);
   }
+}
+
+// The preview's prewarm runs outside a PrewarmScope and releases only on its
+// next run (TextSettingsPreview.cpp), so the generation built for the last
+// setting the user touched would outlive this activity in the process-lifetime
+// FontDecompressor. Release it here, where the lifecycle says it belongs.
+void TextSettingsActivity::onExit() {
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->releaseBuiltinGlyphCache();
+  }
+  UiTabListActivity::onExit();
 }
 
 void TextSettingsActivity::render(RenderLock&&) {

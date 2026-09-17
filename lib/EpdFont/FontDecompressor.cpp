@@ -5,6 +5,7 @@
 #include <Utf8.h>
 
 #include <cstdlib>
+#include <cstring>
 
 FontDecompressor::~FontDecompressor() { deinit(); }
 
@@ -251,9 +252,18 @@ int32_t FontDecompressor::findGlyphIndex(const EpdFontData* fontData, uint32_t c
 int FontDecompressor::prewarmCache(const EpdFontData* fontData, const char* utf8Text) {
   if (!fontData || !fontData->groups || !utf8Text) return 0;
 
-  // Allocate the next available slot (caller must call freePageBuffer/clearCache to reset)
+  // Already warm. A second slot for the same font would be unreachable anyway:
+  // getBitmap() stops at the first slot matching fontData. Note this does NOT
+  // re-scan utf8Text, so glyphs the first call did not need are served from the
+  // hot group.
+  for (uint8_t s = 0; s < pageSlotCount; s++) {
+    if (pageSlots[s].fontData == fontData) return 0;
+  }
+
+  // Allocate the next available slot (caller must call freePageBuffer/clearCache to reset).
+  // -1 is the slots-full signal; the caller logs it, since only it knows the font id
+  // and style — a raw fontData pointer needs an ELF symbol dump to identify.
   if (pageSlotCount >= MAX_PAGE_SLOTS) {
-    LOG_ERR("FDC", "All %u page buffer slots full, cannot prewarm fontData=%p", MAX_PAGE_SLOTS, (void*)fontData);
     return -1;
   }
   PageSlot& slot = pageSlots[pageSlotCount];

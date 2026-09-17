@@ -12,15 +12,19 @@ FontCacheManager::FontCacheManager(const std::map<int, EpdFontFamily>& fontMap,
 
 void FontCacheManager::setFontDecompressor(FontDecompressor* d) { fontDecompressor_ = d; }
 
-void FontCacheManager::clearCache() {
+void FontCacheManager::releaseBuiltinGlyphCache() {
   if (fontDecompressor_) fontDecompressor_->clearCache();
+}
+
+void FontCacheManager::clearCache() {
+  releaseBuiltinGlyphCache();
   for (auto& [id, font] : sdCardFonts_) {
     font->clearCache();
   }
 }
 
 void FontCacheManager::releaseSdFontCaches() {
-  if (fontDecompressor_) fontDecompressor_->clearCache();
+  releaseBuiltinGlyphCache();
   for (auto& [id, font] : sdCardFonts_) {
     font->releaseResidentCaches();
   }
@@ -45,8 +49,12 @@ void FontCacheManager::prewarmCache(int fontId, const char* utf8Text, uint8_t st
     auto style = static_cast<EpdFontFamily::Style>(i);
     const EpdFontData* data = fontMap_.at(fontId).getData(style);
     if (!data || !data->groups) continue;
-    int missed = fontDecompressor_->prewarmCache(data, utf8Text);
-    if (missed > 0) {
+    const int missed = fontDecompressor_->prewarmCache(data, utf8Text);
+    if (missed < 0) {
+      // Unreachable with the current font set — see FontDecompressor::MAX_PAGE_SLOTS
+      // for why. Recoverable either way: getBitmap falls back to the hot group.
+      LOG_ERR("FCM", "Page slots full: font %d style %d not prewarmed", fontId, i);
+    } else if (missed > 0) {
       LOG_DBG("FCM", "prewarmCache: %d glyph(s) not cached for style %d", missed, i);
     }
   }

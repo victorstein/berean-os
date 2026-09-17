@@ -7,7 +7,14 @@
 class FontDecompressor {
  public:
   static constexpr uint16_t MAX_PAGE_GLYPHS = 512;
-  static constexpr uint8_t MAX_PAGE_SLOTS = 4;  // One per font style (R/B/I/BI)
+  // One slot per distinct EpdFontData prewarmed in a scan pass — NOT one per
+  // style. Four is enough because only the compressed reading families take a
+  // slot at all: the status bar and UI fonts are uncompressed (groups ==
+  // nullptr) and are filtered out in FontCacheManager::prewarmCache, SD fonts
+  // take the SdCardFont path, and one reading family is on screen at a time, so
+  // one family x four styles is the ceiling. Drawing a second compressed family
+  // on one screen breaks that; FontCacheManager logs which font it refused.
+  static constexpr uint8_t MAX_PAGE_SLOTS = 4;
 
   FontDecompressor() = default;
   ~FontDecompressor();
@@ -22,9 +29,18 @@ class FontDecompressor {
   // Free all cached data (page buffer + hot group).
   void clearCache();
 
+  // Page slots currently held. Live state, deliberately not in Stats: resetStats()
+  // would wipe it. Used by the host slot-accounting suite and for diagnosis.
+  uint8_t usedPageSlots() const { return pageSlotCount; }
+
   // Pre-scan UTF-8 text and extract needed glyph bitmaps into a flat page buffer.
   // Each group is decompressed once into a temp buffer; only needed glyphs are kept.
-  // Returns the number of glyphs that couldn't be loaded (0 on full success).
+  // Returns:
+  //   -1  no free slot. Nothing allocated; the caller logs it (it knows the font).
+  //    0  nothing to do (uncompressed font, empty text, or no needed glyph),
+  //       already warm, or fully prewarmed. "Already warm" does NOT re-scan the
+  //       new text, so glyphs the first call did not need come from the hot group.
+  //   >0  number of glyphs that couldn't be loaded.
   int prewarmCache(const EpdFontData* fontData, const char* utf8Text);
 
   struct Stats {
@@ -47,8 +63,9 @@ class FontDecompressor {
   Stats stats;
   InflateReader inflateReader;
 
-  // Page buffer slots: each style gets its own flat glyph buffer with sorted lookup.
-  // Up to MAX_PAGE_SLOTS (4) styles can be prewarmed simultaneously.
+  // Page buffer slots: each distinct font gets its own flat glyph buffer with
+  // sorted lookup. Up to MAX_PAGE_SLOTS distinct fonts can be prewarmed
+  // simultaneously; prewarmCache() returns early if one is already resident.
   struct PageGlyphEntry {
     uint32_t glyphIndex;
     uint32_t bufferOffset;

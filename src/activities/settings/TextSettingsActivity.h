@@ -24,6 +24,7 @@ class TextSettingsActivity final : public UiTabListActivity {
                        Tab initialTab = Tab::Family);
 
   void onEnter() override;
+  void onExit() override;
   void render(RenderLock&&) override;
 
  private:
