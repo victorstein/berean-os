@@ -52,7 +52,7 @@ std::vector<std::string> legacySources() {
 std::vector<std::string> readLedger() {
   std::vector<std::string> done;
   JsonDocument doc;
-  if (PersistableStoreBase::readDocFromFileChecked(MigrationRunner::LEDGER_PATH, doc) != DocReadStatus::Ok) {
+  if (PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc) != DocReadStatus::Ok) {
     return done;
   }
   for (const JsonVariantConst v : doc["done"].as<JsonArrayConst>()) {
@@ -71,7 +71,7 @@ bool ledgerContains(const std::vector<std::string>& ledger, const std::string& n
 
 bool appendLedger(const std::string& name, const uint16_t passages) {
   JsonDocument doc;
-  PersistableStoreBase::readDocFromFileChecked(MigrationRunner::LEDGER_PATH, doc);
+  PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
   if (!doc["done"].is<JsonArray>()) doc["done"].to<JsonArray>();
 
   const auto row = doc["done"].as<JsonArray>().add<JsonObject>();

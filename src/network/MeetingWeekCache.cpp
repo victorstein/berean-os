@@ -20,7 +20,7 @@ bool load(MeetingWeekTable& out) {
   out.clear();
 
   JsonDocument doc;
-  if (PersistableStoreBase::readDocFromFileChecked(PATH, doc) != DocReadStatus::Ok) return false;
+  if (PersistableStoreBase::readDocFromFileAdopting(PATH, doc) != DocReadStatus::Ok) return false;
   if ((doc["v"] | 0) > FORMAT_VERSION) {
     LOG_ERR(MODULE, "Refusing to read a newer week cache format");
     return false;
