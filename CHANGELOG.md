@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.8](https://github.com/victorstein/berean-os/compare/v1.9.7...v1.9.8) (2026-09-17)
+
+
+### Refactor
+
+* drop 22 unreferenced translation keys ([#57](https://github.com/victorstein/berean-os/issues/57)) ([70041d9](https://github.com/victorstein/berean-os/commit/70041d902906dfed8bd02bef72f0206667fb272e)), closes [#31](https://github.com/victorstein/berean-os/issues/31)
+
 ## [1.9.7](https://github.com/victorstein/berean-os/compare/v1.9.6...v1.9.7) (2026-09-16)
 
 
