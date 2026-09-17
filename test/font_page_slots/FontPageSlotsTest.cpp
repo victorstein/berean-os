@@ -40,3 +40,26 @@ TEST(FontPageSlots, UncompressedFontTakesNoSlot) {
   EXPECT_EQ(decompressor.prewarmCache(&notosans_8_regular, SAMPLE), 0);
   EXPECT_EQ(decompressor.getStats().pageBufferBytes, 0u);
 }
+
+TEST(FontPageSlots, ScopeReleasesEverySlot) {
+  FontDecompressor decompressor;
+  EpdFont regular(&notoserif_12_regular);
+  EpdFontFamily family(&regular);
+
+  std::map<int, EpdFontFamily> fonts;
+  fonts.emplace(1, family);
+  const std::map<int, SdCardFont*> noSdFonts;
+
+  FontCacheManager manager(fonts, noSdFonts);
+  manager.setFontDecompressor(&decompressor);
+
+  {
+    auto scope = manager.createPrewarmScope();
+    manager.prewarmCache(1, SAMPLE, 0x01);
+    EXPECT_EQ(decompressor.usedPageSlots(), 1);
+  }
+
+  // PrewarmScope's destructor calls clearCache() (FontCacheManager.cpp:131),
+  // which is what keeps the reader's slot count at zero between renders.
+  EXPECT_EQ(decompressor.usedPageSlots(), 0);
+}

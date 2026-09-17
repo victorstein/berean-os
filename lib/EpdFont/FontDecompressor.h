@@ -22,6 +22,10 @@ class FontDecompressor {
   // Free all cached data (page buffer + hot group).
   void clearCache();
 
+  // Page slots currently held. Live state, deliberately not in Stats: resetStats()
+  // would wipe it. Used by the host slot-accounting suite and for diagnosis.
+  uint8_t usedPageSlots() const { return pageSlotCount; }
+
   // Pre-scan UTF-8 text and extract needed glyph bitmaps into a flat page buffer.
   // Each group is decompressed once into a temp buffer; only needed glyphs are kept.
   // Returns the number of glyphs that couldn't be loaded (0 on full success).
