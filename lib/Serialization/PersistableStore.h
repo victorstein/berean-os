@@ -9,6 +9,7 @@
 
 #include "DocReadStatus.h"
 #include "SaveBudget.h"
+#include "TempAdoption.h"
 
 /**
  * @brief Non-template core of PersistableStore.
@@ -64,6 +65,27 @@ class PersistableStoreBase {
 
   // As readDocFromFile, but reports why the read failed.
   static DocReadStatus readDocFromFileChecked(const char* path, JsonDocument& doc);
+
+  // Crash-safe counterpart to readDocFromFileChecked, and the read-side partner
+  // of writeDocToFileAtomic. When `path` is absent but `<path>.tmp` is present
+  // and parses, that .tmp is by construction the most recent complete write --
+  // an interrupted rename between PersistableStore.cpp:38 and :39 -- so it is
+  // renamed into place and used. An unparseable .tmp is reported as "nothing
+  // there" and left on the card; see the call site for why it is not deleted.
+  //
+  // Prefer this wherever losing the file matters. readDocFromFileChecked stays
+  // for callers that must read literally the path they name -- the three study
+  // files pass it their own `<path>.tmp`.
+  //
+  // This is the first read path in this firmware that RENAMES. It is safe
+  // without a lock of its own only because every reader and writer of the
+  // adopting files runs on the Arduino loop task; the CRTP stores additionally
+  // hold storeMutex, but /.berean/pubkeys.json, migration-ledger.json and
+  // meeting-weeks.json rely on that single-task property alone. If a background
+  // task ever touches /.berean/, give those files a mutex or move them back to
+  // readDocFromFileChecked -- otherwise an adopting read on one task can rename
+  // the .tmp another task is still writing.
+  static DocReadStatus readDocFromFileAdopting(const char* path, JsonDocument& doc);
 
  protected:
   /**
