@@ -8,10 +8,11 @@
 
 // Storage shell for a book's highlights: moves bytes between HighlightDoc and
 // /.crosspoint/highlights/. All format rules live in HighlightDoc; the .tmp
-// promotion decision, the never-overwrite-on-failure rule and the save budget
-// check live in util/HighlightFileAction.h so they can be host-tested even
-// though this file (which reaches Arduino.h through PersistableStore.h)
-// cannot be built on the host. See that header for why.
+// promotion decision and the never-overwrite-on-failure rule live in
+// Serialization/TempAdoption.h, and the save budget check in
+// util/HighlightFileAction.h, so they can be host-tested even though this file
+// (which reaches Arduino.h through PersistableStore.h) cannot be built on the
+// host. See util/HighlightFileAction.h for why.
 //
 // Single-writer only: the static helpers here take no lock. If the web
 // server ever writes highlights alongside the main task, add a mutex --
