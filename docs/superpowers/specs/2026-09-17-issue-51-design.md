@@ -22,7 +22,7 @@ supporting argument underneath three of them.
 
 | Review finding | Change |
 |---|---|
-| **MAJOR 1** — A-4's corollary "every writer measures" is false: `MigrationRunner::appendLedger` (`:72-83`) and `writeReport` (`:137`) have no budget gate, and the ledger is a file this change newly adopts | Corollary replaced with the claim that is actually load-bearing (§Why promotion is safe). The missing gate joins A-9's follow-up issue. The second half — that the new delete arm would *remove* an over-cap orphan that survives today — is fixed by **A-12**. |
+| **MAJOR 1** — A-4's corollary "every writer measures" is false: `MigrationRunner::appendLedger` (`:72-83`) has no budget gate, and the ledger is a file this change newly adopts. *(The review also named `writeReport`; that half is wrong — it gates at `MigrationRunner.cpp:117-121`, stopping rows at `DEFAULT_SAVE_BUDGET - 2048` and setting `truncated`. Corrected here, not carried forward.)* | Corollary replaced with the claim that is actually load-bearing (§Why promotion is safe). The missing gate is the one follow-up #63 does not already cover. The second half — that the new delete arm would *remove* an over-cap orphan that survives today — is fixed by **A-12**. |
 | **MAJOR 2** — A-1's second reason is spent by the design's own call-site list, and cites `storeMutex` for a `storageMutex` rule | A-1 reason #2 rewritten: the `.tmp.tmp` problem carries the decision alone, and the three direct callers now get a positive reason to adopt. Citation corrected to `.claude/agents/data-dev.md:51`. |
 | **MAJOR 3** — the Concurrency section analyses an unreachable race; there is no download task | §Concurrency replaced with the measured task map and a single-task **invariant**. I found one more stale claim than the review did: there is no web server task either (see below). |
 | **MINOR 1** — the `LOG_INF` is *not* compiled out of release | A-8 rewritten. `platformio.ini:188` is `-DLOG_LEVEL=1`; the line ships, deliberately. |
@@ -87,7 +87,7 @@ left alone (A-12) and the load reports "nothing there", exactly as today.
   line only — see A-8.
 - **Refactoring the four existing adopters onto the new shared helper.** See A-6.
 - **Fixing `PubKeyRegistry::record` and `MigrationRunner::appendLedger` ignoring `Unreadable` /
-  `ParseError`.** See A-9; it is a different trigger and gets its own issue.
+  `ParseError`.** See A-9. A different trigger, and already filed as **#63**.
 - **Deleting a `.tmp` at all, from the new function.** See A-12. A `.tmp` beside a *present*
   primary is never even looked at — see A-5.
 - **Reporting recovery to callers** via a new `DocReadStatus` value. See A-8.
@@ -111,7 +111,7 @@ left alone (A-12) and the load reports "nothing there", exactly as today.
 | **A-6** | The four existing adopters (`HighlightFile`, `BookmarkFile`, `TagPaletteFile`, `PassageFile`) keep their own switch and are **not** migrated onto the new helper. Their `.tmp` reads stay on the non-adopting `readDocFromFileChecked`. | §Call sites |
 | **A-7** | `readDocFromFile` (the `bool` wrapper, `PersistableStore.h:63`, `.cpp:63-65`) loses its only caller and is **kept**, mirroring `saveToFile`'s stated rationale at `PersistableStore.h:124-125`. | §Call sites |
 | **A-8** | Recovery is reported by `LOG_INF` only. No new `DocReadStatus` value, no return-channel change, no toast. | §Error handling |
-| **A-9** | `PubKeyRegistry::record` and `MigrationRunner::appendLedger` keep ignoring a non-`Ok` read status. This change fixes their `.tmp` case and nothing else. | §Call sites |
+| **A-9** | `PubKeyRegistry::record` and `MigrationRunner::appendLedger` keep ignoring a non-`Ok` read status. This change fixes their `.tmp` case and nothing else. Already filed as **#63**. | §Call sites |
 | **A-10** | After a `.tmp` that fails to parse, `doc` is explicitly cleared before returning `Missing`, so a caller that ignores the status cannot read a half-parsed document. | §Error handling |
 | **A-11** | The six load-side tests move to a new `test/temp_adoption/` suite; the three save-side tests stay in `test/highlight_file/`. The `add_subdirectory(temp_adoption)` line in `test/CMakeLists.txt` is **reported in the PR description, not committed** (`.claude/agents/data-dev.md:22-27`, "Shared files — report, do not edit"). | §Testing |
 | **A-12** | **`readDocFromFileAdopting` never deletes the `.tmp`.** It diverges here from the four existing adopters, which do. New in pass 1. | §A-12 |
@@ -214,7 +214,7 @@ have nothing to do with highlights stop including a highlights header.
 | File | Change |
 |---|---|
 | `lib/Serialization/TempAdoption.h` | **new** — `TempAdoptionAction`, `tempAdoptionAction` (moved), `adoptedReadStatus` (new) |
-| `src/util/HighlightFileAction.h` | load half removed; includes `<TempAdoption.h>`; save half unchanged |
+| `src/util/HighlightFileAction.h` | load half removed; save half unchanged. **No shim** — it does not include `<TempAdoption.h>` |
 | `lib/Serialization/PersistableStore.h` | declare `readDocFromFileAdopting`; `loadFromFile` calls it |
 | `lib/Serialization/PersistableStore.cpp` | define `readDocFromFileAdopting` |
 | `src/util/HighlightFile.cpp`, `src/util/BookmarkFile.cpp`, `src/study/TagPaletteFile.cpp`, `src/study/PassageFile.cpp` | rename-only |
@@ -222,11 +222,11 @@ have nothing to do with highlights stop including a highlights header.
 | `test/temp_adoption/` | **new** suite |
 | `test/highlight_file/HighlightFileActionTest.cpp` | load tests removed; header comment (`:1-12`) no longer describes a `.tmp` decision it does not contain |
 | `test/highlight_file/CMakeLists.txt:1-4` | comment names the load decision; reword to the save half |
-| `src/util/HighlightFile.h:12,34`, `src/util/BookmarkSaveAction.h:9`, `test/bookmark_save_action/BookmarkSaveActionTest.cpp:5` | signposts pointing at `util/HighlightFileAction.h` as the home of the load rule; repoint to `Serialization/TempAdoption.h` |
+| `src/util/HighlightFile.h:12` | the one signpost naming `util/HighlightFileAction.h` as the home of the **load rule**; repoint to `Serialization/TempAdoption.h`. `src/util/BookmarkSaveAction.h:9` and `test/bookmark_save_action/BookmarkSaveActionTest.cpp:5` also name that header but point at its *no-host-stub* reasoning, which stays there — leave both. `HighlightFile.h:33`'s `readDocFromFile` mention is not stale either (A-7 keeps the function) |
 
-The five signpost edits are comment-only, but CLAUDE.md requires comments written for the merged
-state, so leaving them is not an option: they would send the next reader to a file that no longer
-holds the rule.
+That edit is comment-only, but CLAUDE.md requires comments written for the merged state, so leaving
+it is not an option: it would send the next reader to a file that no longer holds the rule. The
+neighbouring signposts are deliberately **not** repointed — see the table.
 
 ---
 
@@ -363,14 +363,17 @@ empty, leave the bytes alone (A-12). A zero-byte `.tmp` reads as `Unreadable`
 So there is no window in which a `.tmp` is partial *and* parseable, for any of the four rows.
 
 **On the budget.** Pass 0 claimed the adopted document is within the save budget "because every
-writer measures". That is false: `MigrationRunner::appendLedger` (`:72-83`) and `writeReport`
-(`:137`) have no `measureJson` and no `persist::fitsBudget` between their read and their
-`writeDocToFileAtomic`, and the ledger is a file this change newly adopts. The true and sufficient
+writer measures". That is false: `MigrationRunner::appendLedger` (`:72-83`) has no `measureJson` and
+no `persist::fitsBudget` between its read at `:74` and its `writeDocToFileAtomic` at `:82`, and the
+ledger is a file this change newly adopts. (`MigrationRunner::writeReport` *does* gate — it stops
+adding rows once `measureJson(doc)` passes `DEFAULT_SAVE_BUDGET - 2048` and declares
+`doc["truncated"]`, `MigrationRunner.cpp:117-121` — so it is one exposed writer, not two.) The true and sufficient
 statement is narrower: **a `.tmp` larger than `SDCardManager::readFile`'s 50,000-byte cap
 (`SDCardManager.cpp:202`) reads back truncated and cannot parse, so it can never be promoted.** No
 budget re-check is needed on the read side because an over-budget `.tmp` is unreachable from the
-promote arm, not because every writer gates. `MigrationRunner`'s missing gate is the same class of
-defect `lib/Serialization/SaveBudget.h:5-14` exists to prevent and joins A-9's follow-up issue.
+promote arm, not because every writer gates. `appendLedger`'s missing gate is the same class of defect
+`lib/Serialization/SaveBudget.h:5-14` exists to prevent, and is the one piece of the follow-up list
+that **#63 does not already cover**.
 
 ### Concurrency
 
@@ -457,7 +460,8 @@ those same two lines. Pass 0 inherited the error from it. The doc fix joins the 
 **A-9, what stays broken.** `PubKeyRegistry::record:23` and `MigrationRunner::appendLedger:74` will
 still read-modify-write over a primary that exists but is `Unreadable` or `ParseError`. That is a
 different trigger — a corrupt file, not an interrupted write — and fixing it changes when a
-download is allowed to record. Out of scope; **the PR description files it as a follow-up issue.**
+download is allowed to record. Out of scope, and **already filed as #63**; the PR description
+references it rather than proposing it.
 
 ---
 
@@ -542,7 +546,8 @@ issue's own suggestion is the test:
 4. Reboot. **Expected:** the setting survives, serial shows
    `INF PERSIST Recovered /.crosspoint/settings.json from an interrupted write`, and the `.tmp` is
    gone.
-5. Repeat with the `.tmp` hand-truncated: expected `Missing`, defaults, `.tmp` deleted.
+5. Repeat with the `.tmp` hand-truncated: expected `Missing`, defaults, and the `.tmp` **still on
+   the card** — A-12.
 6. `ESP.getFreeHeap()` before and after boot load, unchanged within noise — this change adds one
    short-lived `std::string` on the `Missing` branch only.
 
@@ -562,13 +567,13 @@ Per `.claude/agents/data-dev.md:22-27`, the orchestrator applies it. **This is b
 cosmetic:** CI configures and runs the host suite (`.github/workflows/ci.yml:188-194`), so without
 this line CI passes while the 12 new tests never run.
 
-Two follow-up issues the PR description also files:
+What the PR description carries besides the CMake line:
 
-1. `MigrationRunner::appendLedger` (`:72-83`) and `writeReport` (`:137`) write through
-   `writeDocToFileAtomic` with no budget gate — the defect `SaveBudget.h:5-14` exists to prevent.
-   Together with A-9: `PubKeyRegistry::record:23` and `appendLedger:74` discard the read status and
-   read-modify-write over a corrupt-but-present file. Both belong in one issue, because A-10's note
-   explains why the status fix and the partial-document fix must land together.
-2. Two stale comments this work verified: CLAUDE.md's `LOG_LEVEL=0` claim for `x4pro-gh_release`
+1. **#63**, already filed, covers the read-status half — `PubKeyRegistry.cpp:23` and
+   `MigrationRunner.cpp:74` discarding the status and overwriting what they could not read. The PR
+   references it; it does not propose it.
+2. **Not** in #63, and worth its own issue: `MigrationRunner::appendLedger` (`:72-83`) writes through
+   `writeDocToFileAtomic` with no budget gate at all.
+3. Two stale comments this work verified: CLAUDE.md's `LOG_LEVEL=0` claim for `x4pro-gh_release`
    (`platformio.ini:187-188` says otherwise) and `PersistableStore.h:29-30`'s "web server task"
    (there is none — `handleClient()` is loop-task).
