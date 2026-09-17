@@ -100,3 +100,50 @@ TEST(RecentBooksDoc, FromJsonToleratesAMissingBooksKey) {
   EXPECT_TRUE(out.empty()) << "fromJson must clear the target first";
   EXPECT_FALSE(needsResave);
 }
+
+TEST(RecentBooksDocNormalise, CapsTitleOnACodepointBoundary) {
+  // 60 three-byte codepoints = 180 bytes, over MAX_TITLE_BYTES. A raw byte cut
+  // would land mid-sequence and produce invalid UTF-8 that the next save
+  // serialises. 128 is not a multiple of 3, so a correct cut lands at 126.
+  std::string wide;
+  for (int i = 0; i < 60; ++i) wide += "\xe4\xb8\x96";  // U+4E16
+
+  RecentBook book = makeBook("/books/b.epub", wide.c_str(), "", "");
+  EXPECT_TRUE(RecentBooksDoc::normalise(book));
+  EXPECT_LE(book.title.size(), RecentBooksDoc::MAX_TITLE_BYTES);
+  EXPECT_EQ(book.title.size() % 3, 0u) << "cut on a codepoint boundary, not a byte one";
+  EXPECT_EQ(book.title.size(), 126u);
+}
+
+TEST(RecentBooksDocNormalise, CapsAuthorOnACodepointBoundary) {
+  std::string wide;
+  for (int i = 0; i < 60; ++i) wide += "\xe4\xb8\x96";
+
+  RecentBook book = makeBook("/books/b.epub", "", wide.c_str(), "");
+  EXPECT_TRUE(RecentBooksDoc::normalise(book));
+  EXPECT_LE(book.author.size(), RecentBooksDoc::MAX_AUTHOR_BYTES);
+  EXPECT_EQ(book.author.size() % 3, 0u);
+}
+
+// path is the store's key. Truncating it would make pruneMissing() delete the
+// entry on the next boot, so "bound the strings" must never be extended to it.
+TEST(RecentBooksDocNormalise, NeverTouchesPathOrCoverBmpPath) {
+  const std::string longPath = "/" + std::string(599, 'p');
+  const std::string longCover = "/" + std::string(599, 'c');
+
+  RecentBook book = makeBook(longPath.c_str(), "t", "a", longCover.c_str());
+  RecentBooksDoc::normalise(book);
+  EXPECT_EQ(book.path, longPath);
+  EXPECT_EQ(book.coverBmpPath, longCover);
+}
+
+// The return value is what gates the load-side resave: rewriting the file every
+// time nothing changed would be wrong.
+TEST(RecentBooksDocNormalise, ReportsWhetherItChangedAnything) {
+  RecentBook shortBook = makeBook("/books/b.epub", "La Atalaya", "Watch Tower", "/c.bmp");
+  EXPECT_FALSE(RecentBooksDoc::normalise(shortBook));
+
+  RecentBook longBook = makeBook("/books/b.epub", std::string(400, 'x').c_str(), "a", "/c.bmp");
+  EXPECT_TRUE(RecentBooksDoc::normalise(longBook));
+  EXPECT_EQ(longBook.title.size(), RecentBooksDoc::MAX_TITLE_BYTES);
+}
