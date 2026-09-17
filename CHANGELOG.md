@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.10](https://github.com/victorstein/berean-os/compare/v1.9.9...v1.9.10) (2026-09-17)
+
+
+### Bug Fixes
+
+* stop the text-settings preview leaking font page slots ([#65](https://github.com/victorstein/berean-os/issues/65)) ([5bf4cb9](https://github.com/victorstein/berean-os/commit/5bf4cb9bf2a2668b2e742171efda0b5a3e7a3b3d)), closes [#58](https://github.com/victorstein/berean-os/issues/58)
+
 ## [1.9.9](https://github.com/victorstein/berean-os/compare/v1.9.8...v1.9.9) (2026-09-17)
 
 
