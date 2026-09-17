@@ -1,15 +1,14 @@
-#include <gtest/gtest.h>
-
+#include <EpdFontFamily.h>
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
-#include <EpdFontFamily.h>
+#include <gtest/gtest.h>
 
 #include <iterator>
 #include <map>
 #include <vector>
 
-#include "builtinFonts/notoserif_12_regular.h"
 #include "builtinFonts/notosans_8_regular.h"
+#include "builtinFonts/notoserif_12_regular.h"
 
 // A page slot holds one font's glyph bitmaps for one screenful of text. Four
 // exist (FontDecompressor::MAX_PAGE_SLOTS), and the only releaser is
@@ -140,8 +139,7 @@ TEST(FontPageSlots, TheCapCoversOneFamilysFourStyles) {
   // ceiling is one family's four styles. If a second compressed family is ever
   // drawn on one screen this stops being true — and FontCacheManager will log
   // which font it refused.
-  static_assert(FontDecompressor::MAX_PAGE_SLOTS >= 4,
-                "one reading family's R/B/I/BI must fit simultaneously");
+  static_assert(FontDecompressor::MAX_PAGE_SLOTS >= 4, "one reading family's R/B/I/BI must fit simultaneously");
   EXPECT_GE(FontDecompressor::MAX_PAGE_SLOTS, 4);
 }
 
