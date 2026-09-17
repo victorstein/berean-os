@@ -6,12 +6,11 @@
 #include <vector>
 
 #include "RecentBook.h"
+#include "util/RecentBooksDoc.h"
 
 class RecentBooksStore : public PersistableStore<RecentBooksStore> {
  private:
   std::vector<RecentBook> recentBooks;
-
-  static constexpr int MAX_RECENT_BOOKS = 10;
 
   RecentBooksStore() = default;
   ~RecentBooksStore() = default;
@@ -19,19 +18,18 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   friend class PersistableStore<RecentBooksStore>;
 
  public:
-  // Deliberately the shared default rather than a tighter figure. The entry
-  // count is capped at MAX_RECENT_BOOKS, but each entry holds four unbounded
-  // std::strings -- title and author come straight from EPUB metadata with no
-  // truncation on the way in -- so the accepted worst case is 10 x 4 unbounded
-  // strings. A tight ceiling here would refuse a legitimate save on a real book,
-  // and the only symptom would be recents quietly not updating.
-  static constexpr size_t SAVE_BUDGET = persist::DEFAULT_SAVE_BUDGET;
+  // Derived from RecentBooksDoc's field caps rather than the shared default:
+  // title and author are bounded on the way in and on the way back off the card,
+  // path and coverBmpPath carry explicit allowances, and the entry count is
+  // capped -- so the worst case is a real figure. See worstCaseBytes().
+  static constexpr size_t SAVE_BUDGET = RecentBooksDoc::SAVE_BUDGET;
 
   static const char* getFilePath() { return "/.crosspoint/recent.json"; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 
-  // Add a book to the recent list (moves to front if already exists)
+  // Add a book to the recent list (moves to front if already exists).
+  // title and author are normalised to RecentBooksDoc's caps before storing.
   void addBook(const std::string& path, const std::string& title, const std::string& author,
                const std::string& coverBmpPath);
 
