@@ -3,7 +3,6 @@
 #include <ArduinoJson.h>
 
 #include <cstddef>
-#include <string>
 #include <vector>
 
 #include "../RecentBook.h"

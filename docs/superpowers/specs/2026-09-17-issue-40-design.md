@@ -789,3 +789,33 @@ allowance rather than an enforced bound (A6, answered as spec-review open questi
 1); the `BookmarkDoc`-shaped split on a good-first-issue (A11); `utf8SafeSummary`
 jamming words around a newline (A3); and the committed `test/CMakeLists.txt` line
 (A13).
+
+---
+
+## PR quality review pass 0 — what changed and why
+
+Review: `docs/superpowers/reviews/issue-40-pr-review-quality-0.md`. **VERDICT: CLEAR**
+— 0 BLOCKERs, 0 MAJORs, 2 MINORs, both applied.
+
+| Finding | Change |
+|---|---|
+| MINOR 1 | The load path structurally depends on `normalise()` reaching a fixed point — `loadFromFile()` runs on every entry to the launcher and to Publications, so a non-converging `normalise()` would mean an atomic SD write on every home-screen entry, forever, on a battery device. That property was delegated to device verification and is host-testable. Added `ConvergesWithinTwoPasses`, and an assertion in `KeepsTheBibleHeuristicsMarkers` that a whitespace-only change is still reported — the change that causes the *second* resave was exercised but its return value discarded. |
+| MINOR 2 | `src/util/RecentBooksDoc.h` included `<string>`, which it never names; `BookmarkDoc.h`, the model, does not. Removed. |
+
+The convergence fixture is not vacuous: measured, the title cap (128) lands on a
+letter but the author cap (96) lands on a space, so pass 1 reports a change, pass 2
+trims the trailing space and reports another, and pass 3 is the no-op the test
+asserts. That is exactly the two-pass behaviour the intent review's MINOR 1
+documented.
+
+Recorded as considered and cleared, so a later pass does not reopen them: the
+always-true `fromJson` bool (kept for the CRTP contract at `PersistableStore.h`);
+the deliberate zero budget headroom against `BookmarkDoc`'s 34 bytes of slack —
+stricter than the sibling, not looser, and safe because ArduinoJson is pinned in
+both `platformio.ini` and `test/CMakeLists.txt`; three per-store budget-sizing
+mechanisms now existing, each answering a different question and sanctioned by
+`PersistableStore.h`; `normalise()`'s discarded return on the two save paths; and
+comment density.
+
+Host suite after the change: **592/592**. `pio run` (`x4pro`) SUCCESS.
+`./bin/clang-format-fix` over the whole tree: no changes.

@@ -196,6 +196,32 @@ TEST(RecentBooksDocNormalise, KeepsTheBibleHeuristicsMarkers) {
         book.title.find("Nuevo Mundo") != std::string::npos || book.title.find("New World") != std::string::npos;
     EXPECT_TRUE(matches) << "the Bible tile can no longer find this title: " << book.title;
   }
+
+  // The double-space title is changed by the collapse alone, with no truncation.
+  // That is the change which causes the second resave, so pin that normalise()
+  // reports it — CapsTitleOnACodepointBoundary only covers the length-driven one.
+  RecentBook collapsed = makeBook("/books/nwt.epub", titles[1], "", "");
+  EXPECT_TRUE(RecentBooksDoc::normalise(collapsed)) << "a whitespace-only change must still be reported";
+}
+
+// normalise() must reach a fixed point, and the load path depends on it:
+// loadFromFile() runs on every entry to the launcher (LauncherActivity.cpp:77)
+// and to Publications (PublicationsActivity.cpp:45), so a normalise() that kept
+// reporting a change would mean an atomic SD write on every home-screen entry,
+// forever, on a battery device.
+//
+// Two passes, not one: utf8SafeSummary trims BEFORE it truncates
+// (Utf8.cpp:193-199), so a cut landing just after a space leaves a trailing space
+// that the next pass trims. The third pass is what must be a no-op.
+TEST(RecentBooksDocNormalise, ConvergesWithinTwoPasses) {
+  std::string spaced;
+  while (spaced.size() < 400) spaced += "ab ";
+
+  RecentBook book = makeBook("/books/b.epub", spaced.c_str(), spaced.c_str(), "");
+  EXPECT_TRUE(RecentBooksDoc::normalise(book));
+  RecentBooksDoc::normalise(book);  // absorbs the trailing-space trim, if the cut left one
+  EXPECT_FALSE(RecentBooksDoc::normalise(book))
+      << "a third pass must be a no-op, or the launcher resaves recent.json on every entry";
 }
 
 TEST(RecentBooksDoc, FromJsonReBoundsAnOverlongTitleFromTheCard) {
