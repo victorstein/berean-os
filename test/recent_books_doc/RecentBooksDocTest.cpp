@@ -147,3 +147,53 @@ TEST(RecentBooksDocNormalise, ReportsWhetherItChangedAnything) {
   EXPECT_TRUE(RecentBooksDoc::normalise(longBook));
   EXPECT_EQ(longBook.title.size(), RecentBooksDoc::MAX_TITLE_BYTES);
 }
+
+// The caps are a display decision (spec A1/A2). These are the strings they were
+// chosen against: if a cap is tightened carelessly, this fails before anything
+// reaches a device.
+TEST(RecentBooksDocNormalise, LeavesRealPublicationStringsUnchanged) {
+  const char* titles[] = {
+      "Traducción del Nuevo Mundo de las Santas Escrituras (revisión de 2019)",  // 72 bytes
+      "Guía de actividades para la reunión Vida y Ministerio Cristianos",        // 66
+      "La Atalaya anunciando el Reino de Jehová (edición de estudio)",           // 63
+      "New World Translation of the Holy Scriptures (2013 Revision)",            // 60
+      "The Watchtower Announcing Jehovah's Kingdom (Study Edition)",             // 59
+      "¿Qué nos enseña realmente la Biblia?",                                    // 39
+  };
+  for (const char* title : titles) {
+    RecentBook book = makeBook("/books/b.epub", title, "", "");
+    EXPECT_FALSE(RecentBooksDoc::normalise(book)) << "a real title must survive untouched: " << title;
+    EXPECT_EQ(book.title, title);
+  }
+
+  const char* authors[] = {
+      "Watchtower Bible and Tract Society of New York, Inc.",  // 52 bytes
+      "Watch Tower Bible and Tract Society of Pennsylvania",   // 51
+      "Asociación de los Testigos de Jehová",                  // 38
+  };
+  for (const char* author : authors) {
+    RecentBook book = makeBook("/books/b.epub", "", author, "");
+    EXPECT_FALSE(RecentBooksDoc::normalise(book)) << "a real author must survive untouched: " << author;
+    EXPECT_EQ(book.author, author);
+  }
+}
+
+// title is also the Bible tile's selector: LauncherActivity.cpp:96-99 opens
+// whichever recent book's title contains "Nuevo Mundo" or "New World". Both the
+// cap and utf8SafeSummary's whitespace collapse rewrite that input, so a cap
+// lowered below the marker's position silently breaks the tile — and the test
+// above would still pass, because it only checks whole strings that fit.
+TEST(RecentBooksDocNormalise, KeepsTheBibleHeuristicsMarkers) {
+  const char* titles[] = {
+      "Traducción del Nuevo Mundo de las Santas Escrituras (revisión de 2019)",
+      "Traducción del Nuevo  Mundo de las Santas Escrituras",  // interior double space
+      "New World Translation of the Holy Scriptures (2013 Revision)",
+  };
+  for (const char* title : titles) {
+    RecentBook book = makeBook("/books/nwt.epub", title, "", "");
+    RecentBooksDoc::normalise(book);
+    const bool matches =
+        book.title.find("Nuevo Mundo") != std::string::npos || book.title.find("New World") != std::string::npos;
+    EXPECT_TRUE(matches) << "the Bible tile can no longer find this title: " << book.title;
+  }
+}
