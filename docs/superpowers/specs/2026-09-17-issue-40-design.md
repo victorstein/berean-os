@@ -124,8 +124,8 @@ return book.path.find("nwt") != std::string::npos || book.title.find("Nuevo Mund
 
 Both halves of this change touch that input — truncation can remove a marker past
 the cap, and `utf8SafeSummary`'s whitespace collapse rewrites the matched text.
-The cap must therefore also sit above where those markers occur: byte 14 of the
-72-byte Spanish title and byte 4 of the 60-byte English one. 128 clears both with
+The cap must therefore also sit above where those markers occur: byte 16 of the
+72-byte Spanish title and byte 0 of the 60-byte English one. 128 clears both with
 large margin, so the number does not move — but "above what the widest surface can
 render" was never sufficient on its own for a field that is also parsed, and test
 4b exists to keep it honest.
