@@ -35,7 +35,15 @@ still counts as used — deleting those keys would now trigger the
 `CRITICAL: … used in source but missing from english.yaml` exit at
 `gen_i18n.py:873-881`. **`lib/I18n/translations/` is not touched by this change.**
 
-**One unratified scope call.** The BLOCKER's fix is a scope decision; it was
+**RATIFIED 2026-09-17 — the human chose option 1, gate the row out.** The
+paragraph below records how the call was raised and why it sat unanswered
+through pass 1; it is kept for the history. The choice is now made, with the
+corrected costs on the table (the gate is *not* persistence-neutral — see
+spec review 1, MAJOR 2 — and the reword was mispriced at one line when all 32
+YAMLs carry a translated value). Spec review 1's remaining findings (MAJOR 2
+and both MINORs) are applied in pass 2, not here.
+
+**One unratified scope call (historical).** The BLOCKER's fix is a scope decision; it was
 raised via `hpipe decide` and the call was misrouted onto a different run's task
 (`berean-os-20260916-…-ujku` t4, a completed `#38` task) rather than this one, so
 no human answered it before this phase re-ran. This spec therefore proceeds on
@@ -353,19 +361,23 @@ recorded in the plan with its output:
 
 ## 8. Assumptions
 
-**A1 — UNRATIFIED SCOPE CALL. Removing the setting is preferred to rewording
-it.** Issue #60 asked for a reword or a real fix. Review 0 established the
+**A1 — RATIFIED 2026-09-17 by the human. Removing the setting is preferred to
+rewording it.** Issue #60 asked for a reword or a real fix. Review 0 established the
 feature is unreachable by any deliberate input (§1a), so a reword would ship a
 row that does nothing under a more honest name. The alternatives, rejected:
 (a) changing the selection gesture at `EpubReaderActivity.cpp:450-457` to yield
 inside the page-turn zones when `CHAPTER_SKIP` is set trades passage
 highlighting — core to a study device — for a feature nothing else can reach, and
 is a behaviour change well outside the issue; (b) rewording and documenting the
-row as dead keeps an inert control on a screen the user has to scroll. **This
-removes a user-facing setting, which is more than #60 authorised, and the
-`hpipe decide` raised for it was misrouted and never answered — see §0.** If the
-human prefers (b), §4a becomes a one-line English string change and §4b is
-unaffected.
+row as dead keeps an inert control on a screen the user has to scroll. This removes a user-facing setting, which is more than #60
+authorised, so it was put to the human directly after the `hpipe decide`
+channel proved unusable (`cmdDecide` takes no run id and resolves a task id
+globally across runs, `stein.pipeline/src/cli.ts:219-223`, so `t4` landed on an
+older run's completed `#38` task). **The human chose the gate.** The rejected
+(b) was also mispriced here as "a one-line English string change": all 32
+translation YAMLs carry a translated value for `STR_LONG_PRESS_BEHAVIOR`
+(`spanish.yaml:89`, `german.yaml:71`), so an English-only edit would leave 31
+of 32 languages still naming buttons.
 
 **A2 — Touch cannot reach chapter skip in any mode, so "gate on `hasTouch()`" is
 not an option.** Verified per mode in §1a's table. The load-bearing evidence is
