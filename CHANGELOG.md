@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.12](https://github.com/victorstein/berean-os/compare/v1.9.11...v1.9.12) (2026-09-18)
+
+
+### Bug Fixes
+
+* gate off an unreachable long-press setting and trap-proof the front-button scan ([#70](https://github.com/victorstein/berean-os/issues/70)) ([55810b3](https://github.com/victorstein/berean-os/commit/55810b3e506d049984f5acb6ad786d7d33374eb4)), closes [#60](https://github.com/victorstein/berean-os/issues/60)
+
 ## [1.9.11](https://github.com/victorstein/berean-os/compare/v1.9.10...v1.9.11) (2026-09-18)
 
 
