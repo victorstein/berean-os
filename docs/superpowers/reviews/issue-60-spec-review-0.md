@@ -1,296 +1,302 @@
-# Issue #60 — spec review 0
+> **Counter note.** `hpipe rewind … spec-review --task t4` reset this phase's pass
+> counter to 0, so the supervisor reads its verdict from *this* path. The original
+> pass-0 review (VERDICT: BLOCKER, the unratified-scope-call finding) is preserved in
+> git history at `893f25ca` and its findings are tracked in `issue-60-spec-review-1.md`.
+> The body below is the pass-2 review, verbatim from `issue-60-spec-review-2.md`.
 
-Target: `docs/superpowers/specs/2026-09-17-issue-60-design.md`
-Against: `gh issue view 60`, `docs/superpowers/research/2026-09-17-issue-60-research.md`
-Date: 2026-09-17 · Branch: `fix/60-input-layer-traps` · Worktree clean at review time.
+# Issue #60 — spec review 2
 
-Everything in §1a about the nav-key path was re-derived from source and holds:
-`NavKeyGestures::updateKey` resolves on release into exactly one of `Page` /
-`Synth` (`lib/Input/Input/NavKeyGestures.cpp:12-31`), `reportingSyntheticHeldTime()`
-is true for both (`NavKeyGestures.cpp:60-62`), `HalGPIO::getHeldTime()` substitutes
-40 (`lib/hal/HalGPIO.cpp:236-239`), and the `Synth` arm emits no page event
-(`HalGPIO.cpp:186-205`). Finding 2's dead arms are equally confirmed
-(`BoardConfig.h:1396` + `:406`, `InputManager.cpp:246,257-258`,
-`HalGPIO.cpp:186-205`). Every i18n number in §6, §7b and A4 reproduces exactly
-(`python3 scripts/gen_i18n.py lib/I18n/translations lib/I18n/` → 32 languages,
-420 keys, 1 unused, `Deutsch 341/79`, `Español 387/33`, all others ≤ 342).
+Target: `docs/superpowers/specs/2026-09-17-issue-60-design.md` (pass 2, `a3b88886`)
+Against: `gh issue view 60`, `docs/superpowers/research/2026-09-17-issue-60-research.md`,
+`reviews/issue-60-spec-review-0.md`, `reviews/issue-60-spec-review-1.md`
+Date: 2026-09-18 · Branch: `fix/60-input-layer-traps` · Worktree clean (`git status --short` empty).
 
-What does not hold is the premise the whole of §4a rests on.
+The ratified scope call (gate the setting off, human ruling recorded in `099946d0`) is
+treated as settled and is not re-argued here.
+
+## The three carried findings, checked against source rather than against §0
+
+**Pass 1 MAJOR 2 — fixed, and fixed honestly.** Every place the old claim could have
+survived now states the real consequence, and none of them hedges:
+
+- §0 has a dedicated subsection naming the earlier claim as wrong and quoting
+  `d8e92208`'s commit body back at it.
+- §3's non-goal no longer lists "the persisted byte"; it carries an explicit
+  parenthetical that the key does go away.
+- §5a: "A saved `CHAPTER_SKIP` byte stops being honoured and is then dropped."
+- §6's table row: "Ignored on read, dropped on the next save. Accepted, not migrated."
+- A6's title is "The key leaves the persistence schema, and that is accepted without a
+  migration."
+- §9 adds the `data-dev` surface note pass 1 lacked.
+
+The new mechanism is also correct, not just plausible. `toJson`
+(`src/CrossPointSettings.cpp:63`, loop at `:66`) and `fromJson` (`:107`, loop at `:113`)
+both iterate `getSettingsList()`; `"longPressButtonBehavior"` has no manual line beside
+the keys that do (`:86-104`); `grep -rn longPressButtonBehavior src lib test scripts`
+shows no other reader or writer of the key. The member default is `OFF`
+(`CrossPointSettings.h:295`), so `usePress` becomes **true** (`ReaderUtils.h:53`) — as
+§0 now says, and the opposite of what pass 1 said. Nothing forces an early resave:
+`needsResave` is set only at `CrossPointSettings.cpp:125,139,153,178,196,211,213`, none
+of which a missing key triggers, so "keeps the key on disk until the next save" holds.
+
+I also re-derived the press-vs-release equivalence the benign-ness argument rests on,
+because it is now load-bearing for A6. It holds for *every* index, not just the ones §1a
+names: `MappedInputManager::wasPressed` and `wasReleased` have identical special-case
+prefixes (`:301-305` vs `:309-313`), `mapButton` is shared (`:57-121`), and
+`HalGPIO::wasPressed`/`wasReleased` both return `synthesisedEdge()` for `BTN_BACK`,
+`BTN_CONFIRM`, `BTN_UP` and `BTN_DOWN` (`HalGPIO.cpp:210-225`). Even a remapped
+`frontButtonLeft` pointing at `BTN_BACK` stays symmetric. `BTN_LEFT`/`BTN_RIGHT` are
+dead pins (`BoardConfig.h:1396`, `:406`; `InputManager.cpp:246,257-258`).
+
+**Pass 1 MINOR 3 (citation drift) — the four named corrections landed, but pass 2
+introduced one more.** Verified by reading: `EpubReaderActivity.cpp:451-459` is the
+block and `:454-455` the test; `SettingsList.h:347` is
+`STR_FRONT_BTN_FOLLOW_ORIENTATION`; `EpubReaderMenuActivity.cpp:73-75` is the
+`#if BEREAN_CAP_ROTATION` row; `NavKeyGestures.cpp:29` is the resolve. See MINOR 3 below
+for what is new.
+
+**Pass 1 MINOR 4 (research note) — cleared.** All four outstanding items are done in the
+note itself, not merely claimed: `research:23` is struck and relabelled, `research:158-165`
+carries the exit-1 mechanism, the scope note at `research:244-252` lists the current file
+set and the persistence consequence, and `research:36` now reads
+`NavKeyGestures.cpp:12-32 … the resolve is the single line :29`. §9's stale "edit the
+research note" row is gone. (One residual, below a finding's bar: the note's heading
+"Is a board-aware assert affordable? — yes" at `research:215` is superseded by A9 and is
+the only superseded passage in the note without a `CORRECTED` marker. It is feasibility
+research, not a recommendation, so I am not raising it.)
+
+## Independently re-verified and holding
+
+`SettingsList.h:349-358` and the `std::vector<SettingInfo>` initializer at `:254`;
+`CrossPointSettings.h:17-23`, `:209-214`, `:295`, `:325`; `ReaderUtils.h:18,53,59-69,
+79-81,84-94,108-112,120,131-137`; `EpubReaderActivity.cpp:368,451-459,605-606,613,619`;
+`EndOfBookOptions.cpp:137-140`; `HalGPIO.cpp:163-177,181-182,186-205,194-197,198-201,
+210-225,215,236-239`; `NavKeyGestures.h:41,48,68`, `NavKeyGestures.cpp:12-32,29,60-62`;
+`MappedInputManager.cpp:155-164,161,322-328,378-393`; `BoardConfig.h:406,1396,1411,1622`;
+`InputManager.h:399`, `InputManager.cpp:246,257-258`;
+`ButtonRemapActivity.cpp:13,20,48-57,59-63,71,72-74` (and it really has no logging
+include — though `Logging.h` already arrives transitively via `Activity.h:2`, so the
+added include is style, not a fix); `SettingsActivity.cpp:75-78,308-310`;
+`ActivityManager.cpp:161-165`; `Activity.cpp:24`; `ReaderActivity.cpp:44-47,131`;
+`CrossPointWebServer.cpp:1159,1263`; `KeyboardEntryActivity.cpp:544-546,620,652,659`;
+`gen_i18n.py:267,873-881`; `platformio.ini:131` and `grep -n NDEBUG platformio.ini`
+empty; `settings_snapshot.py:11-12`; `NavKeyGesturesTest.cpp:44-55,132-139,141-144`;
+`spanish.yaml:89`, `german.yaml:71`; `.claude/agents/ui-dev.md:22-27,29-34`.
+
+`python3 scripts/gen_i18n.py lib/I18n/translations lib/I18n/` on this tree reproduces
+§7b exactly: **32 languages, 420 string keys, 1 unused**.
+
+§7a's red-first procedure works as claimed: `updateKey` resolves
+`elapsed >= HOLD_MS ? Synth : Page` (`NavKeyGestures.cpp:29`), so with `HOLD_MS`
+temporarily 700 a release at 701 ms crosses to `Synth` and the new `EXPECT_EQ(…Page)`
+fails on its own assertion. (`reportingSyntheticHeldTime()` stays true either way, which
+§7a does not over-claim.)
+
+A11's no-false-refusal claim holds: the only non-X4-Pro profile with a partial front quad
+is `MURPHY_M4` (`BoardConfig.h:1027`), which wires `confirm` and leaves `left`/`right`
+unassigned — the reverse of the case A11 rules out, and a *true* refusal there.
+
+`main` has not moved in this clone (`git merge-base HEAD main` = `11d9497d` = `main` =
+`origin/main`), and no seam with the spec's two files is visible from here.
 
 ---
 
-## BLOCKER 1 — "Touch can and does" reach chapter skip is false in the only reader that ships
+## MAJOR 1 — §7c.1's on-device check names a Controls row that this board never renders, and the spec's own §0 cites the code that removes it
 
-**Claim.** §1a: "The label names the one input that cannot reach the feature.
-Touch can and does". §3 non-goal: "Removing or gating the setting. It works, via
-touch." §5a: `touch turn → touch.heldMs (real) ✅ > 700 possible`. Goal 1: after
-the reword "the Controls setting names an input that can actually reach it".
+**Claim.** §7c.1: "Settings → Controls no longer lists **Long-press button behavior**;
+the rows above and below it (`STR_FRONT_BTN_FOLLOW_ORIENTATION` at `SettingsList.h:347`
+and the long-press menu at `:359`) render with no gap or stale selection."
 
-**Problem.** In `EpubReaderActivity` — the only reader that exists — a stationary
-contact in an outer tap zone is consumed by the passage-selection gesture at
-**500 ms**, before it can ever become a page turn with `heldMs > 700`. The
-reworded label would name touch, and touch cannot reach chapter skip either by
-any gesture a user would deliberately perform. The design's central choice
-("rewording is the fix") is made against a reachability claim that was never
-verified past `ReaderUtils.h:120`.
+**Problem.** `STR_FRONT_BTN_FOLLOW_ORIENTATION` is erased from the list at runtime on
+every touch board, and the X4 Pro is one. The human tester is told to confirm that a row
+which does not exist on this device still renders correctly next to the gap. Either they
+cannot perform the step, or they perform it, see no such row, and report a regression the
+change did not cause. The row actually above the gated entry on this board is
+`STR_TAP_FOR_READER_MENU` (`SettingsList.h:345`), which survives because
+`BoardConfig::hasHomeKey()` is true here.
+
+This is not a line-number slip: §0 cites the very block that disproves it, while using it
+as supporting precedent.
 
 **Evidence.**
 
-- `src/activities/reader/EpubReaderActivity.cpp:451-459` — inside `loop()`, ahead
-  of all page-turn handling:
+- `src/SettingsList.h:467-474`:
   ```cpp
-  if (SETTINGS.touchReaderControls && mappedInput.wasScreenLongPress(longPressX, longPressY) &&
-      !ReaderUtils::isInMenuZone(renderer, longPressX, longPressY)) {
-    openHighlightPassageAt(longPressX, longPressY);
-    return;
-  }
+  if (BoardConfig::hasTouch()) {
+    v.erase(std::remove_if(v.begin(), v.end(),
+                           [](const SettingInfo& s) {
+                             return s.nameId == StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION ||
+                                    s.nameId == StrId::STR_SUNLIGHT_FADING_FIX ||
+                                    s.nameId == StrId::STR_BACK_SHORT_TO_FILE_BROWSER;
+                           }),
+            v.end());
   ```
-  `isInMenuZone` is the centre third in **both** axes (`ReaderUtils.h:131-137`),
-  so the whole of both page-turn zones (outer horizontal thirds, full height,
-  `ReaderUtils.h:106-112`) is outside it. Every long press in a page-turn zone
-  takes this branch and returns.
-- `src/MappedInputManager.cpp:155-164` — `wasScreenLongPress` calls
-  `gpio.suppressTouchContact()` on consumption.
-- `InputManager.cpp:1073-1076` — the long-press event fires **while the finger is
-  still down**, once `now - touchDownPoint.timestamp >= TOUCH_LONG_PRESS_MS`.
-  `TOUCH_LONG_PRESS_MS = 500` (`InputManager.h:399`).
-- `InputManager.cpp:566-568` — `wasTouchTap` returns false when `touchSuppressed`,
-  and the latch clears only on a fully idle frame, *after* the release edge is
-  consumed (`InputManager.cpp:1049-1056`). So the lift produces no tap, so
-  `detectTouchPageTurn` (`ReaderUtils.h:98`) yields `{false,false,0}`.
-- Therefore the two survivable cases are: released before 500 ms →
-  `touch.heldMs < 500 < SKIP_HOLD_MS (700)`; held past 500 ms → passage
-  selection, no page turn. `EpubReaderActivity.cpp:605-617` cannot fire from a
-  deliberate long press.
-- The one residual path is an accident, not an affordance: a contact that drifts
-  **more than 28 px but less than 60 px** sets `touchMovedBeyondTapSlop` (which
-  cancels long-press classification, `InputManager.cpp:1112-1113`, `:1073`) but
-  not `touchMovedBeyondTapReleaseSlop` (which alone cancels the tap,
-  `InputManager.cpp:573`) — `TOUCH_TAP_SLOP_PX = 28`,
-  `TOUCH_TAP_RELEASE_SLOP_PX = 59` (`InputManager.h:392-394`). Held past 700 ms
-  and released, that produces the chapter skip. No user can aim for that.
-- Consequence for §7c.2: the prescribed device check ("a long press on an outer
-  tap zone skips") will not skip — it will open `PassageSelectActivity`. The
-  design would ship a label that is still false and a verification step that
-  fails.
+- `BoardConfig::hasTouch()` is `ACTIVE.touch.controller != TouchController::None`
+  (`BoardConfig.h:1622`); the X4 Pro profile declares a GT911 (`BoardConfig.h:1411`).
+  So the erase fires on this board.
+- §0 already says so, in the paragraph arguing the persistence change is precedented:
+  "`SettingsList.h:452-472` already un-persists `fadingFix`,
+  `frontButtonFollowOrientation` and `backShortToFileBrowser` the same way at runtime."
+  A row that is un-persisted by being erased from the list is also not displayed.
+- The row *below* is fine: `buildLongPressMenuSetting()` (`SettingsList.h:192-197`,
+  called at `:359`) is `STR_LONG_PRESS_MENU`, and no erase block removes it
+  (`SettingsList.h:453-489`).
+- `STR_TAP_FOR_READER_MENU` (`SettingsList.h:345`) is erased only when
+  `!BoardConfig::hasHomeKey()` (`SettingsList.h:462-466`); the X4 Pro sets `hasHomeKey`
+  (`BoardConfig.h:1430`, predicate at `:1623`), so it stays and is the true neighbour.
 
-**Concrete fix.** This is a scope decision and needs the human, not an inline
-edit. Re-open the choice with the selection gesture in the picture:
-
-1. Gate or retire the option on this board (the mirror of `d8e92208`'s
-   `BEREAN_CAP_ROTATION` treatment for the sibling option), since with
-   `touchReaderControls != OFF` the 500 ms gesture owns every long contact in the
-   page-turn zones; or
-2. Make the selection gesture yield inside the page-turn zones while
-   `longPressButtonBehavior == CHAPTER_SKIP` (a real behaviour change in
-   `EpubReaderActivity.cpp:451-459`, outside the current non-goals); or
-3. Keep the reword but state plainly that the feature is unreachable on this
-   board and say why the label is worth changing anyway.
-
-Whichever is chosen, A1 has to be re-argued: it compares only button-vs-button
-and never asks whether the touch route it falls back on is live. §3's "It works,
-via touch", §5a's `✅`, and §7c.2 must be corrected in the same pass.
+**Concrete fix.** In §7c.1 replace `STR_FRONT_BTN_FOLLOW_ORIENTATION` at
+`SettingsList.h:347` with `STR_TAP_FOR_READER_MENU` at `SettingsList.h:345`, and add
+half a sentence saying why (`SettingsList.h:467-474` already removes the
+frontButtonFollowOrientation row on touch boards) so the next reader does not
+"correct" it back. While there, tighten §0's `SettingsList.h:452-472` to `:467-474`,
+which is the block that actually names the three settings.
 
 ---
 
-## MAJOR 2 — `ReaderActivity.cpp:144-146` is dead code, so "both readers" is one reader
+## MINOR 2 — "entering the settings screen is itself such a save" is false, in the paragraph that fixes pass 1's MAJOR
 
-**Claim.** §1a: "both readers prefer it when the turn came from a tap zone
-(`EpubReaderActivity.cpp:605`, `ReaderActivity.cpp:144`)". §5a diagrams
-`EpubReaderActivity.cpp:613 / ReaderActivity.cpp:146 ──► CHAPTER_SKIP branch` as
-two live consumers. The research note repeats it (`research …:19-20`).
+**Claim.** §0, consequence 2: "the key is **deleted from the settings JSON on the next
+save**, and entering the settings screen is itself such a save
+(`SettingsActivity.cpp:305`)." §5a repeats it: "the next `toJson` — entering the settings
+screen is one (`SettingsActivity.cpp:305`) — writes the file without it."
 
-**Problem.** `ReaderActivity::loop()` never runs. Citing it as a second live
-branch site inflates the apparent surface of the setting and hid BLOCKER 1: the
-cited `ReaderActivity` body has no passage-selection gesture, so reasoning from
-it makes the touch path look reachable when the shipping reader's does not.
+**Problem.** `SettingsActivity.cpp:305` is not an entry path. It is the result handler
+constructed inside the `SettingType::ACTION` branch of a row *activation*, and it runs
+when a sub-activity returns. Entering `SettingsActivity` saves nothing. Pass 1's review
+described this correctly ("Entering and leaving the remap row is itself such a save");
+pass 2 generalised it into something the code does not do. The mechanism and the
+conclusion are unaffected — only the example trigger is wrong — but this is the one
+paragraph in the spec whose whole job is to be accurate about when the key disappears.
 
 **Evidence.**
 
-- `src/activities/reader/ReaderActivity.cpp:131` defines `ReaderActivity::loop()`;
-  `src/activities/reader/EpubReaderActivity.cpp:368` defines
-  `EpubReaderActivity::loop()`, declared `void loop() override;`
-  (`EpubReaderActivity.h:169`, `ReaderActivity.h:52`).
-- `EpubReaderActivity::loop()` never chains to the base —
-  `grep -rn "ReaderActivity::loop()" src` returns only the two definitions, no
-  call site.
-- `EpubReaderActivity` is the only subclass (`EpubReaderActivity.h:19`,
-  `class EpubReaderActivity final : public ReaderActivity`), and
-  `ReaderActivity::create` constructs nothing else (`ReaderActivity.cpp:25-29`).
+- `src/activities/settings/SettingsActivity.cpp:111-112` — `onEnter()` is
+  `UiTabListActivity::onEnter();` and nothing else; no save.
+- `grep -n "saveToFileAtomic" src/activities/settings/SettingsActivity.cpp` → `:230`,
+  `:266`, `:284`, `:305`, `:329`, `:347`, `:361`, `:399` — every one inside a value-change
+  or row-activation handler.
+- `:304-305`:
+  ```cpp
+  } else if (setting.type == SettingType::ACTION) {
+    auto resultHandler = [this](const ActivityResult&) { SETTINGS.saveToFileAtomic(); };
+  ```
 
-**Concrete fix.** Delete the `ReaderActivity.cpp:144-146` citations from §1a and
-§5a, or mark them explicitly as an unreachable base-class implementation. Correct
-the same two rows in the research note's ownership table.
+**Concrete fix.** In both places, say "changing any setting, or returning from an ACTION
+row such as the front-button remap, is such a save (`SettingsActivity.cpp:361`,
+`:305`)." §7c.2 already tells the tester to change a setting first, so it needs no edit.
 
 ---
 
-## MAJOR 3 — §7a's red-first procedure cannot turn the new test red, and the test duplicates landed coverage
+## MINOR 3 — pass 2 corrects four citations and introduces three more
 
-**Claim.** §7a: the new `TEST` asserts (i) release just under `HOLD_MS` → `Page`
-and `reportingSyntheticHeldTime()`; (ii) release at or over `HOLD_MS` → `Synth`,
-no page event; (iii) `SYNTHETIC_HELD_MS < 700u`. "Red first by temporarily
-lowering `HOLD_MS` below 700 (which makes the middle assertion fail) and
-confirming the failure before reverting."
+**Claim.** §0's table: "MINOR 3 — three new off-by-N citations | Corrected: …".
 
-**Problem.** None of the three assertions is sensitive to `HOLD_MS`'s absolute
-value: (i) and (ii) are expressed *relative* to `HOLD_MS`, so they hold for any
-value of it, and (iii) compares two constants that `HOLD_MS` does not touch.
-Lowering `HOLD_MS` to, say, 600 leaves the new test green and turns the
-**pre-existing** `ThresholdsSitBetweenTheReadersOwnHolds` red instead — so the
-implementer sees a red run, records it as the TDD red step, and lands a test that
-has never failed for its own reason. On top of that the new test adds almost no
-coverage.
+**Problem.** The four named corrections did land (verified above). But this pass added
+three fresh mis-citations, the first of which is a *regression from the number review 1
+handed the spec in the same finding it was answering*. Citation accuracy has now been a
+finding in three consecutive passes under a `CLAUDE.md` whose standard is file-and-line.
 
 **Evidence.**
 
-- `test/nav_key_gestures/NavKeyGesturesTest.cpp:141-144` already pins
-  `EXPECT_GT(NavKeyGestures::HOLD_MS, 700u) << "above SKIP_HOLD_MS"` — this is
-  the assertion that goes red when `HOLD_MS` drops below 700, and it is already
-  landed.
-- `:132-139` `ASynthesisedEventReportsAShortHeldTime` already asserts
-  `EXPECT_TRUE(g.reportingSyntheticHeldTime())` and
-  `EXPECT_LT(NavKeyGestures::SYNTHETIC_HELD_MS, 400u)` — strictly stronger than
-  bullet (iii)'s `< 700u`.
-- `:44-55` `AHoldNeverAlsoProducesAPage` already asserts `pages == 0` and
-  `synths == 1` across a hold — bullet (ii).
-- `:18-24` `ATapResolvesToAPageTurnOnRelease` — bullet (i)'s first half.
-- Goal 3 ("a host test pins the constant relationship") is therefore already met
-  by `:138` and `:142-143` before this change.
+- §1a: "`EndOfBookOptions` uses `NavPrevious`/`NavNext`, which compose to the same four
+  buttons (`MappedInputManager.cpp:98-107`)." `:98-103` is the tail of `Button::PageForward`'s
+  `sideLayout` switch; `NavNext` is `:104-108` and `NavPrevious` is `:109-112`. The correct
+  range is `:104-112` — which is exactly what review 1 printed in its MAJOR 2 evidence.
+- §6: "the settings JSON gets one key shorter … it is budget-checked at
+  `CrossPointSettings.cpp:374` (`saveBudget() == 4096`)". `:374-375` is a `static_assert`
+  that `SAVE_BUDGET` reaches the base template ("SAVE_BUDGET is not reaching saveBudget()
+  -- check access and spelling"); it checks plumbing, not a serialised size. The budget is
+  enforced at `lib/Serialization/PersistableStore.h:171`
+  (`if (!persist::fitsBudget(serialised, saveBudget()))`), with the constant at
+  `src/CrossPointSettings.h:406`.
+- §0: "`MappedInputManager.cpp:160-161` then calls `suppressTouchContact()`". The call is
+  `:161`; `:159-160` is its comment. §1a gets this right (`… at :161`), so the spec
+  disagrees with itself.
 
-**Concrete fix.** Rewrite §7a around an **absolute** assertion, which is the only
-kind that can fail for the reason the test exists: a key released at
-`SKIP_HOLD_MS + 1` (701 ms, hardcoded with the `<<` message naming `SKIP_HOLD_MS`,
-per the existing precedent at `:142`) must still resolve to `NavEvent::Page`
-*and* report `reportingSyntheticHeldTime()` — i.e. the one duration a user could
-aim at reports 40, not 701. That goes red the moment `HOLD_MS` is lowered to 700
-or below, which is exactly the change the test is meant to catch. Drop bullets
-(ii) and (iii) as already-landed duplicates, or state which existing `TEST` each
-one is deliberately re-asserting and why.
+**Concrete fix.** `:98-107` → `:104-112`; point §6 at `PersistableStore.h:171` (and
+`CrossPointSettings.h:406` for the value) rather than at the `static_assert`; §0's
+`:160-161` → `:161`.
 
 ---
 
-## MAJOR 4 — the assert's justification is factually wrong, and it converts an escapable screen into `abort()` on a shipped build
+## MINOR 4 — §1a states an absolute that review 0 had already disproved, and drops the exception without saying so
 
-**Claim.** §5b: today a touchless board without four wired front buttons "strands
-the user in a four-role walk that can never complete … with the only exit the
-`wasPressed(Button::Down)` cancel at `ButtonRemapActivity.cpp:59`". A9: a runtime
-`assert` is preferred over `LOG_ERR` + `finish()` because this is "a
-board-configuration error caught at integration time, not a runtime condition".
+**Claim.** §1a, tap modes: "Every surviving tap therefore reports `heldMs < 500 < 700`."
+A2 leans on it. The research note repeats it at `research:79`.
 
-**Problem.** Two things. First, "the only exit" is wrong — there are two, and the
-user is not stranded. Second, the state the assert guards is *user-reachable at
-runtime* (the gate that leads here is a settings row, not a boot path), so the
-assert is not guarding an impossible state; it fires when a user opens a menu
-entry, and with no `NDEBUG` anywhere it calls `abort()` on a shipped device.
-`CLAUDE.md` reserves `assert(false)` for "fatal impossible states (framebuffer
-missing)" and puts everything else in case 1/2 (`LOG_ERR` + return / fallback).
-The change therefore replaces a degraded-but-escapable screen with a panic, and
-justifies it with a defect that does not exist.
+**Problem.** There is one surviving tap that reports more. Long-press classification is
+gated on `!touchMovedBeyondTapSlop` (28 px), while tap validity is gated on
+`!touchMovedBeyondTapReleaseSlop` (59 px). A contact that drifts 29–59 px is therefore
+never classified as a long press — so `wasScreenLongPress` never consumes it and
+`suppressTouchContact()` never runs — yet it still releases as a valid tap carrying its
+real duration. Held past 700 ms in an outer zone with `CHAPTER_SKIP` saved, it skips.
+Review 0 found and documented this precisely ("a contact that drifts more than 28 px but
+less than 60 px … No user can aim for that"); pass 2 replaced it with an absolute and
+said nothing.
+
+Nothing about the decision changes — it is an accident, not an affordance, §0 correctly
+scopes the conclusion to "any *deliberate* input", and gating the setting to `OFF` removes
+the accidental skip too. But an unqualified absolute that a prior review disproved is the
+kind of claim this spec is supposed to have stopped making.
 
 **Evidence.**
 
-- `src/activities/settings/ButtonRemapActivity.cpp:48-57` — a second exit:
-  `wasPressed(Button::Up)` restores the default mapping, saves, and `finish()`es.
-  `:59-63` is the cancel. Both are `MappedInputManager::Button::Up/Down`, which
-  map to `BTN_UP`/`BTN_DOWN`, which on a two-nav-key board are exactly the keys
-  that *do* produce events (`HalGPIO.cpp:198-201`). The hypothetical stranded
-  user has a reset and a cancel, both working.
-- Reachability is a user action, not an integration event:
-  `SettingsActivity.cpp:75-78` appends the row under `!BoardConfig::hasTouch()`
-  and `:308-310` constructs the activity from a list selection.
-- `NDEBUG` is absent from the build: not in `platformio.ini` (`[env:x4pro]`
-  flags at `:164-176`, `[env:x4pro-gh_release]` at `:182-190` — `grep -n NDEBUG
-  platformio.ini` is empty) and not in the framework's own defines
-  (`~/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/flags/defines`
-  contains no `NDEBUG`; no PlatformIO platform builder adds one). A9's premise is
-  right; its conclusion is what's at issue.
+- `InputManager.cpp:1073-1074` — long-press fires only
+  `if (touchPressed && !touchMultiContactSequence && !touchMovedBeyondTapSlop && … >= TOUCH_LONG_PRESS_MS)`.
+- `InputManager.cpp:566-573` — `wasTouchTap` rejects on `touchSuppressed` and on
+  `touchMovedBeyondTapReleaseSlop`, **not** on `touchMovedBeyondTapSlop`; its own comment
+  says so ("a released tap remains valid until motion reaches the 60 px swipe threshold").
+- `InputManager.cpp:1110-1117` sets the two flags from the same delta against
+  `TOUCH_TAP_SLOP_PX = 28` and `TOUCH_TAP_RELEASE_SLOP_PX = TOUCH_SWIPE_MIN_PX - 1 = 59`
+  (`InputManager.h:392-394`).
+- The duration is real: `MappedInputManager::wasScreenTapped` (`:136-143`) calls
+  `rememberTouchHeldTime()` (`:130-134`) → `gpio.lastTouchHeldMs()` →
+  `InputManager::lastTouchHeldMs` returns `lastTouchHeldDurationMs`
+  (`InputManager.cpp:631-637`); `ReaderUtils.h:120` assigns it to `heldMs`.
 
-**Concrete fix.** Either (a) drop the assert for `LOG_ERR("REMAP", …)` +
-`finish()` in `onEnter()` — `CLAUDE.md` error-handling case 2, same loudness on
-serial, no panic, and the remap row simply refuses on a board that cannot satisfy
-it; or (b) keep the assert and rewrite §5b/A9 honestly: say that it aborts a
-shipped device the first time a user opens that row on a misconfigured board, and
-that this is preferred to a screen that completes no role. Remove the "only exit"
-claim either way — `ButtonRemapActivity.cpp:48-57` disproves it.
+**Concrete fix.** Soften §1a's sentence to "Every tap a user can aim at therefore reports
+`heldMs < 500 < 700`", and add the exception in one line with its two constants — noting
+that the gate removes this accidental skip as well, which strengthens the case rather than
+weakening it. Mirror the same qualifier at `research:79`.
 
 ---
 
-## MINOR 5 — §7b and A5 invert what happens when the retired key survives in a comment
+## MINOR 5 — §7b's host-suite command does not match the repo's own and will not run the tests
 
-**Claim.** §7b: a retired name "left in a comment would silently keep the key off
-the unused-key report". A5: a comment naming `STR_LONG_PRESS_BEHAVIOR` "would
-re-register the retired key as 'used'".
+**Claim.** §7b, compensating checks: "Host suite green via `cmake -S test -B build && ctest`."
 
-**Problem.** Once the key is deleted from `english.yaml` it is no longer in
-`string_keys`, so nothing can "keep it off the unused report" — instead the
-generator classifies it as *used in code but missing from English* and **exits 1**,
-failing `pio run`. The outcome the spec describes as silent is in fact the
-loudest failure in this pipeline. The conclusion (don't leave the name in a
-comment) survives; the stated mechanism, and the implied need for the grep as the
-only net, do not.
+**Problem.** It configures into `build/`, never builds, and runs `ctest` with no
+`--test-dir`, so it executes in the repo root where there is no CTest configuration. As
+written the step reports nothing. §7b is the section that exists precisely because the
+rest of the change cannot be host-tested, so its commands should be copy-pasteable.
 
 **Evidence.**
 
-- `scripts/gen_i18n.py:873-881`:
-  `missing_keys = sorted(used_keys - set(string_keys))` → prints
-  `CRITICAL: … used in source but missing from english.yaml` → `sys.exit(1)`.
-- `platformio.ini:131` — `pre:scripts/gen_i18n.py`, so that exit fails the build.
-- The regex at `:267` does scan comments, as stated; that is what turns a stray
-  comment into a build failure rather than a silent report skew.
+- `test/README:5-7`:
+  ```
+  cmake -S test -B build/test
+  cmake --build build/test
+  ctest --test-dir build/test --output-on-failure -j
+  ```
+- `.github/workflows/ci.yml:188,192,195` runs the same three, with
+  `-G Ninja -DCMAKE_BUILD_TYPE=Release` on the configure.
 
-**Concrete fix.** Reword §7b's third bullet and A5's parenthetical: a retired
-`STR_*` left anywhere in `src`/`lib` — comment included — fails `pio run` at the
-`gen_i18n.py` pre-step (`:873-881`), which is why the name must not appear in a
-source comment. Keep the grep as an early, cheap check, not as the safety net.
-
----
-
-## MINOR 6 — the new label's nearest neighbour is never checked
-
-**Claim.** A2 argues "Long-press page turn" is true on every board. §9 lists no
-other label.
-
-**Problem.** The row immediately below it in the same category is already called
-"Long-press Menu". Two adjacent Controls rows both starting "Long-press" is a
-legibility question the design should at least name, especially as the other one
-*is* about the capacitive Home key — i.e. a real long-pressable control on this
-board, which makes the pairing more confusing, not less.
-
-**Evidence.** `lib/I18n/translations/english.yaml:97`
-`STR_LONG_PRESS_MENU: "Long-press Menu"`; built at `src/SettingsList.h:192-197`
-with `category = StrId::STR_CAT_CONTROLS` and appended directly after the setting
-being reworded (`SettingsList.h:359`).
-
-**Concrete fix.** Add a line to A2 comparing the two rows as the user sees them
-stacked, or pick a label that does not share a prefix with its neighbour.
-
----
-
-## MINOR 7 — citation drift
-
-**Claim/Evidence/Fix**, three small ones, all worth correcting since the spec's
-own standard is file-and-line:
-
-- §1a cites `NavKeyGestures::updateKey` as `NavKeyGestures.cpp:22-31`; the
-  function starts at `:12` and the resolve is the single line `:28`.
-- §7a says it models `ASynthesisedEventReportsAShortHeldTime` at "lines 131-139";
-  the `TEST` is `:132-139` (`:129-131` is its comment).
-- A7 cites "platformio.ini:160,178" for the build flags; those lines are the
-  `[env:x4pro]` / `[env:x4pro-gh_release]` headers — the flag blocks are
-  `:164-176` and `:182-190`. (The absence of `NDEBUG` is correct.)
+**Concrete fix.** Quote the three lines from `test/README` verbatim in §7b.
 
 ---
 
 ## Verdict rationale
 
-BLOCKER 1 removes the reason for the change as written: with the passage-selection
-gesture in the path, "reword the label to name touch" produces a label that is
-still false on this device, and the device-verification step the spec prescribes
-will fail. Choosing between gating the option, changing the selection gesture, and
-documenting the dead feature is a scope call for the human, not an inline edit.
-MAJOR 2 is the evidence error that let it through. MAJORs 3 and 4 are fixable
-inline but 4 reverses A9 if taken.
+The finding this pass existed to fix is fixed, and fixed without hedging: §0, §3, §5a, §6,
+A6 and §9 all now say that gating the entry takes `longPressButtonBehavior` out of the
+persistence schema, that a saved `CHAPTER_SKIP` stops being read and is dropped on the
+next save, and that the member falls back to `OFF` so `usePress` becomes true — and each
+of those is what the code does. The research note's corrections are complete rather than
+claimed. What is left is one wrong statement about what the device screen shows, which
+makes one of four human verification steps unperformable as written, and four smaller
+accuracy defects — three of them fresh, in a pass whose change log says citations were
+corrected. None reverses a decision, changes scope, or needs the human. All five are
+inline edits to the spec. One MAJOR, four MINORs, no BLOCKER.
 
-VERDICT: BLOCKER
-BLOCKERS: 1
-MAJORS: 3
+VERDICT: CLEAR
