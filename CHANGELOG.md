@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.11](https://github.com/victorstein/berean-os/compare/v1.9.10...v1.9.11) (2026-09-18)
+
+
+### Bug Fixes
+
+* bound RecentBooksStore's title and author, then tighten its save budget ([#68](https://github.com/victorstein/berean-os/issues/68)) ([2df75e5](https://github.com/victorstein/berean-os/commit/2df75e5b936cf558f97a8a584ef57208148a4dbf)), closes [#40](https://github.com/victorstein/berean-os/issues/40)
+
 ## [1.9.10](https://github.com/victorstein/berean-os/compare/v1.9.9...v1.9.10) (2026-09-17)
 
 
