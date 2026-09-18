@@ -144,20 +144,21 @@ TEST(NavKeyGestures, ThresholdsSitBetweenTheReadersOwnHolds) {
 }
 
 // A nav key can never deliver the reader's chapter skip, which needs a page
-// turn reporting more than SKIP_HOLD_MS (700). 701 ms is the shortest hold a
-// user could aim at, and it still resolves to a page turn -- so the caller
-// substitutes SYNTHETIC_HELD_MS for the real duration (HalGPIO.cpp:236-239)
-// and the reader sees 40. This is why the Controls entry is gated off on this
-// board (issue #60). SKIP_HOLD_MS is hardcoded here for the same reason 700 is
-// hardcoded above: ReaderUtils.h pulls in the whole UI stack.
+// turn reporting more than SKIP_HOLD_MS (700). 701 ms is the shortest hold that
+// clears it; every release below HOLD_MS resolves the same way, so this pins the
+// boundary of that band. The key still resolves to a page turn there, and the
+// caller substitutes SYNTHETIC_HELD_MS for the real duration
+// (HalGPIO.cpp:236-239), so the reader sees 40. This is why the Controls entry
+// is gated off on this board (issue #60). SKIP_HOLD_MS is hardcoded here for the
+// same reason 700 is hardcoded above: ReaderUtils.h pulls in the whole UI stack.
 TEST(NavKeyGestures, APageTurnAtTheChapterSkipThresholdStillReportsASyntheticHeldTime) {
   NavKeyGestures g;
   run(g, true, false, 0, 700);
   g.update(false, false, 701);
   EXPECT_EQ(g.eventFor(NavKey::Left), NavEvent::Page)
-      << "701 ms must still be a page turn: anything longer becomes Back, so this is the only "
-         "duration at which a button could reach SKIP_HOLD_MS (700)";
-  EXPECT_TRUE(g.reportingSyntheticHeldTime()) << "so the held time the reader sees is SYNTHETIC_HELD_MS, never 701";
+      << "701 ms is past SKIP_HOLD_MS (700) but short of HOLD_MS, so it must still be a page turn";
+  EXPECT_TRUE(g.reportingSyntheticHeldTime()) << "so the reader is told SYNTHETIC_HELD_MS, not 701";
+  EXPECT_LT(NavKeyGestures::SYNTHETIC_HELD_MS, 700u) << "below SKIP_HOLD_MS";
 }
 
 }  // namespace
