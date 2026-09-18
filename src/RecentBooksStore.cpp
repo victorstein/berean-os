@@ -8,35 +8,18 @@
 #include <algorithm>
 #include <iterator>
 
-void RecentBooksStore::toJson(JsonDocument& doc) const {
-  JsonArray arr = doc["books"].to<JsonArray>();
-  for (const auto& book : recentBooks) {
-    JsonObject obj = arr.add<JsonObject>();
-    obj["path"] = book.path;
-    obj["title"] = book.title;
-    obj["author"] = book.author;
-    obj["coverBmpPath"] = book.coverBmpPath;
-  }
-}
+void RecentBooksStore::toJson(JsonDocument& doc) const { RecentBooksDoc::toJson(recentBooks, doc); }
 
-bool RecentBooksStore::fromJson(JsonVariantConst doc) {
-  // Tolerate a missing/invalid 'books' key (treat as empty list); only a
-  // JSON parse error is fatal. A null JsonArray iterates zero times.
-  recentBooks.clear();
-  JsonArrayConst arr = doc["books"].as<JsonArrayConst>();
-  recentBooks.reserve(std::min(arr.size(), static_cast<size_t>(MAX_RECENT_BOOKS)));
-  for (JsonObjectConst obj : arr) {
-    if (getCount() >= MAX_RECENT_BOOKS) break;
-    RecentBook book;
-    book.path = obj["path"] | "";
-    book.title = obj["title"] | "";
-    book.author = obj["author"] | "";
-    book.coverBmpPath = obj["coverBmpPath"] | "";
-    recentBooks.push_back(book);
-  }
-
+bool RecentBooksStore::fromJson(const JsonVariantConst doc) {
+  bool needsResave = false;
+  const bool ok = RecentBooksDoc::fromJson(doc, recentBooks, needsResave);
+  // An entry the load path had to shorten must reach the card, or the file stays
+  // over budget and disagrees with what is in memory. loadFromFile performs the
+  // save after releasing storeMutex; calling saveToFileAtomic() from here would
+  // deadlock on it.
+  if (needsResave) requestResave();
   LOG_DBG("RBS", "Recent books loaded from file (%d entries)", getCount());
-  return true;
+  return ok;
 }
 
 void RecentBooksStore::addBook(const std::string& path, const std::string& title, const std::string& author,
@@ -51,12 +34,14 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
     recentBooks.erase(it);
   }
 
-  // Add to front
-  recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath});
+  // Add to front, bounded: title and author arrive straight from EPUB metadata.
+  RecentBook book{path, title, author, coverBmpPath};
+  RecentBooksDoc::normalise(book);
+  recentBooks.insert(recentBooks.begin(), std::move(book));
 
   // Trim to max size
-  if (recentBooks.size() > MAX_RECENT_BOOKS) {
-    recentBooks.resize(MAX_RECENT_BOOKS);
+  if (recentBooks.size() > RecentBooksDoc::MAX_RECENT_BOOKS) {
+    recentBooks.resize(RecentBooksDoc::MAX_RECENT_BOOKS);
   }
 
   if (!saveToFileAtomic()) {
@@ -73,6 +58,7 @@ void RecentBooksStore::updateBook(const std::string& path, const std::string& ti
     book.title = title;
     book.author = author;
     book.coverBmpPath = coverBmpPath;
+    RecentBooksDoc::normalise(book);
     if (!saveToFileAtomic()) {
       LOG_ERR("RBS", "Failed to persist metadata update for: %s", path.c_str());
     }
@@ -136,5 +122,8 @@ RecentBook RecentBooksStore::getDataFromBook(std::string path) const {
   return RecentBook{path, "", "", ""};
 }
 
-static_assert(RecentBooksStore::saveBudget() == persist::DEFAULT_SAVE_BUDGET,
-              "RecentBooksStore deliberately keeps the default ceiling -- see the spec's A5");
+static_assert(RecentBooksStore::saveBudget() == RecentBooksDoc::SAVE_BUDGET,
+              "RecentBooksStore's budget is RecentBooksDoc::worstCaseBytes() -- derived from the field caps, "
+              "not a round number to be tidied");
+static_assert(RecentBooksDoc::SAVE_BUDGET < persist::DEFAULT_SAVE_BUDGET,
+              "a store whose fields are bounded must claim less than the shared default");
