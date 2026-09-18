@@ -208,6 +208,7 @@ also absorbs the step-count correction from MAJOR 1.
 
 ---
 
+Minor findings, applied inline: 2
+
 VERDICT: CLEAR
 MAJORS: 1
-MINORS: 2
