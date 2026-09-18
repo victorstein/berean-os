@@ -76,7 +76,12 @@ board, not just numerically.
      (`freeink-sdk/libs/hardware/InputManager/include/InputManager.h:399`), and
      `wasScreenLongPress` (`src/MappedInputManager.cpp:155-164`) calls
      `gpio.suppressTouchContact()` at `:161`, so the lift yields no tap either.
-     Every surviving tap reports `heldMs < 500 < 700`.
+     Every tap a user can aim at reports `heldMs < 500 < 700`. (One accidental
+     path survives: long-press classification is gated on the 28 px stationary
+     slop (`InputManager.cpp:1073`) but tap validity on the looser 59 px release
+     slop (`:573`), so a 29–59 px drift is never classified as a long press,
+     is never consumed, and still releases as a valid tap with its real
+     duration. Not aimable; the gate removes it too.)
 
    Chapter skip is therefore unreachable by **any** deliberate input on this
    board, not only by the buttons.

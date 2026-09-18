@@ -38,7 +38,7 @@ The evidence the human verified independently before ratifying:
 (`freeink-sdk/libs/hardware/InputManager/include/InputManager.h:399`) fires
 before `SKIP_HOLD_MS = 700` (`ReaderUtils.h:18`);
 `EpubReaderActivity.cpp:454` consumes the long press and
-`MappedInputManager.cpp:160-161` then calls `suppressTouchContact()`;
+`MappedInputManager.cpp:161` then calls `suppressTouchContact()`;
 `touchReaderControls` defaults to `TOUCH_READER_ON`
 (`CrossPointSettings.h:325`), so the consuming gesture is on out of the box.
 
@@ -70,15 +70,18 @@ that do (`:84-100`). So gating the entry:
    `OFF` (`CrossPointSettings.h:295`), which makes `usePress` **true**, not
    false;
 2. stops `toJson` writing it — the key is **deleted from the settings JSON on
-   the next save**, and entering the settings screen is itself such a save
-   (`SettingsActivity.cpp:305`);
+   the next save**. Entering the settings screen is *not* such a save
+   (`SettingsActivity::onEnter` is `SettingsActivity.cpp:111-112` and saves
+   nothing); changing any setting is (`:361`), as are leaving Settings with Back
+   (`:230`) and returning from an ACTION row such as the front-button remap
+   (`:305`);
 3. removes the row from the web settings API, which enumerates the same list
    (`CrossPointWebServer.cpp:1159,1263`).
 
 This is accepted, not worked around. `d8e92208` did exactly this on purpose for
 `orientation` and said so in its commit body ("**`orientation` leaves the
 persistence schema.** `getSettingsList()` is what `toJson`/`fromJson` iterate
-… so gating the row drops the key. That is intended"), and `SettingsList.h:452-472`
+… so gating the row drops the key. That is intended"), and `SettingsList.h:467-474`
 already un-persists `fadingFix`, `frontButtonFollowOrientation` and
 `backShortToFileBrowser` the same way at runtime. It is benign here for the same
 reason the setting is being removed: no input can reach the feature, and
@@ -141,9 +144,20 @@ finger is still down, at `TOUCH_LONG_PRESS_MS = 500`
 (`freeink-sdk/libs/hardware/InputManager/include/InputManager.h:399`), and
 `wasScreenLongPress` (`src/MappedInputManager.cpp:155-164`) calls
 `gpio.suppressTouchContact()` at `:161`, so the lift produces no tap either.
-Every surviving tap therefore reports `heldMs < 500 < 700`. The gate is the same
-`SETTINGS.touchReaderControls` truthiness that enables the tap zones, so the two
-cannot be separated.
+Every tap a user can aim at therefore reports `heldMs < 500 < 700`. The gate is
+the same `SETTINGS.touchReaderControls` truthiness that enables the tap zones, so
+the two cannot be separated.
+
+One accidental path survives, recorded so a later pass does not rediscover it as
+new: long-press classification is gated on `!touchMovedBeyondTapSlop` (28 px,
+`InputManager.cpp:1073`) while tap validity is gated on the looser
+`!touchMovedBeyondTapReleaseSlop` (59 px, `:573`) — a deliberate dead-band fix
+whose own comment names the range. A contact that drifts 29–59 px is therefore
+never classified as a long press, so nothing consumes it, and it still releases
+as a valid tap carrying its real duration. Held past 700 ms in an outer zone with
+a saved `CHAPTER_SKIP`, it skips. No user can aim for that, and pinning the value
+at `OFF` (§5a) removes this path too — which strengthens the case for the gate
+rather than weakening it.
 
 **The setting's one remaining effect is inert.** `ReaderUtils.h:53` derives
 `usePress = (longPressButtonBehavior == OFF)`, consumed at `ReaderUtils.h:59-69`
@@ -153,7 +167,7 @@ and `EndOfBookOptions.cpp:137-140`. Both read only `PageBack`/`PageForward`
 = `FRONT_HW_LEFT/RIGHT` = `BTN_LEFT`/`BTN_RIGHT`, dead pins) and
 `wasReleased(Power)`, which sits outside the `usePress` ternary
 (`ReaderUtils.h:62-66`). `EndOfBookOptions` uses `NavPrevious`/`NavNext`, which
-compose to the same four buttons (`MappedInputManager.cpp:98-107`). Press and
+compose to the same four buttons (`MappedInputManager.cpp:104-112`). Press and
 release select between two identical results.
 
 **`Long-press button behavior` is not a mislabelled working feature. It is an
@@ -308,8 +322,9 @@ SETTINGS.longPressButtonBehavior   → pinned at its initializer default OFF
 **A saved `CHAPTER_SKIP` byte stops being honoured and is then dropped.** A
 settings file written by an earlier build keeps the key on disk until the next
 save; `fromJson` ignores it from the first boot after the upgrade, and the next
-`toJson` — entering the settings screen is one (`SettingsActivity.cpp:305`) —
-writes the file without it. This is the `d8e92208` behaviour for `orientation`,
+`toJson` — changing any setting (`SettingsActivity.cpp:361`), leaving Settings
+with Back (`:230`), or returning from an ACTION row (`:305`) — writes the file
+without it. This is the `d8e92208` behaviour for `orientation`,
 quoted in §0, and it is benign here because the two values are
 indistinguishable at runtime on this board.
 
@@ -345,14 +360,17 @@ not a panic (A9).
 | Condition | Handling | Precedent |
 |---|---|---|
 | A board reaches `ButtonRemapActivity` without four wired front buttons | `LOG_ERR("REMAP", …)` + `finish()` in `onEnter()` — `CLAUDE.md` error-handling case 2 | `ReaderActivity.cpp:44-47` |
-| A user's saved `longPressButtonBehavior` byte | Ignored on read, dropped on the next save. Accepted, not migrated — §0, A6 | `d8e92208` for `orientation`; `SettingsList.h:452-472` |
+| A user's saved `longPressButtonBehavior` byte | Ignored on read, dropped on the next save. Accepted, not migrated — §0, A6 | `d8e92208` for `orientation`; `SettingsList.h:467-474` |
 | `getPressedFrontButton()` finds nothing | Unchanged: returns `-1`; `ButtonRemapActivity.cpp:72-74` returns early | existing |
 | A future board sets no `BEREAN_CAP_LONG_PRESS_PAGE_TURN` | `#error` at compile time, forcing an explicit answer | `CrossPointSettings.h:17-23` |
 
 No new allocation, no new file, no new store, no new task, no string-table
 change. The settings JSON gets one key shorter, so `CrossPointSettings`'s
-serialised size falls — it is budget-checked at `CrossPointSettings.cpp:374`
-(`saveBudget() == 4096`) and moves the safe way.
+serialised size falls — the budget is enforced at
+`lib/Serialization/PersistableStore.h:171` against `SAVE_BUDGET = 4096`
+(`src/CrossPointSettings.h:406`), and this moves the safe way. (The
+`static_assert` at `CrossPointSettings.cpp:374` checks that the constant reaches
+`saveBudget()`, not the serialised size.)
 
 ## 7. Testing strategy
 
@@ -407,15 +425,22 @@ recorded in the plan with its output:
   (`:11-12`), so it will **not** show this diff — gated `StrId::` tokens still
   match. The persistence change has to be verified on device (§7c.2), which is
   why `d8e92208` stated it in prose rather than relying on a tool.
-- Host suite green via `cmake -S test -B build && ctest`.
+- Host suite green, using the repo's own three commands (`test/README:5-7`,
+  matched by `.github/workflows/ci.yml:188,192,195`):
+  `cmake -S test -B build/test`, `cmake --build build/test`,
+  `ctest --test-dir build/test --output-on-failure -j`.
 - `./bin/clang-format-fix` over the whole tree, not `-g` (`CLAUDE.md`).
 
 ### 7c. Human, on device
 
 1. Settings → Controls no longer lists **Long-press button behavior**; the rows
-   above and below it (`STR_FRONT_BTN_FOLLOW_ORIENTATION` at
-   `SettingsList.h:347` and the long-press menu at `:359`) render with no gap or
-   stale selection.
+   above and below it render with no gap or stale selection. On this board those
+   neighbours are `STR_TAP_FOR_READER_MENU` (`SettingsList.h:345`, kept because
+   `BoardConfig::hasHomeKey()` is true — `BoardConfig.h:1430`, predicate at
+   `:1623`) and the long-press menu (`:359`). **Not**
+   `STR_FRONT_BTN_FOLLOW_ORIENTATION` (`:347`): `SettingsList.h:467-474` erases
+   that row on every touch board, so it never renders here and is not the
+   neighbour to look for.
 2. **The persistence change, which no host check can see:** on a unit whose
    settings file already holds `longPressButtonBehavior`, change any setting,
    then inspect `/.crosspoint/`'s settings JSON — the key is gone. Paging still
