@@ -346,6 +346,11 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                             StrId::STR_CAT_CONTROLS),
         SettingInfo::Toggle(StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION, &CrossPointSettings::frontButtonFollowOrientation,
                             "frontButtonFollowOrientation", StrId::STR_CAT_CONTROLS),
+// Gated off entirely on this board: nothing can deliver a page turn held past
+// SKIP_HOLD_MS, so the entry offered a chapter skip no input could reach. The
+// StrId names stay in source text on purpose -- gen_i18n.py scans raw text, so
+// this is what keeps the four translations "used" in all 32 languages.
+#if BEREAN_CAP_LONG_PRESS_PAGE_TURN
 #if BEREAN_CAP_ROTATION
         SettingInfo::Enum(StrId::STR_LONG_PRESS_BEHAVIOR, &CrossPointSettings::longPressButtonBehavior,
                           {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
@@ -355,6 +360,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Enum(StrId::STR_LONG_PRESS_BEHAVIOR, &CrossPointSettings::longPressButtonBehavior,
                           {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP},
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS),
+#endif
 #endif
         buildLongPressMenuSetting(),
 #if FREEINK_CAP_TOUCH
