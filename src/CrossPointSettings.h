@@ -22,6 +22,27 @@
 #endif
 #endif
 
+// Whether a held page turn is OFFERED as a chapter skip. The reader's
+// SKIP_HOLD_MS branch is untouched; this gates only the Controls entry.
+//
+// No input on the X4 Pro can reach it. A nav key resolves on release into
+// either a page turn whose held time is forced to SYNTHETIC_HELD_MS = 40, or a
+// Back/Confirm that never pages at all (NavKeyGestures.cpp:29,
+// HalGPIO.cpp:236-239). Touch cannot either: in the tap modes the
+// passage-selection gesture consumes any long press in a page-turn zone at
+// TOUCH_LONG_PRESS_MS = 500, below SKIP_HOLD_MS = 700
+// (EpubReaderActivity.cpp:451-459), and swipe mode never assigns a held time at
+// all (ReaderUtils.h:84-94). A future board must answer this question for
+// itself rather than inherit the answer -- hence the #error rather than a
+// default.
+#ifndef BEREAN_CAP_LONG_PRESS_PAGE_TURN
+#if FREEINK_DEVICE_X4PRO
+#define BEREAN_CAP_LONG_PRESS_PAGE_TURN 0
+#else
+#error "BEREAN_CAP_LONG_PRESS_PAGE_TURN: unhandled device set; decide whether a held page turn can reach this board"
+#endif
+#endif
+
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
   // Private constructor for singleton
