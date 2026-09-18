@@ -375,9 +375,21 @@ MappedInputManager::Labels MappedInputManager::mapFrontLabels(const char* back, 
           labelForHardware(HalGPIO::BTN_LEFT), labelForHardware(HalGPIO::BTN_RIGHT)};
 }
 
+// The raw front-button scan for the remap flow. Deliberately unmapped: the
+// remap activity needs physical presses, not logical roles.
+//
+// WHICH ARMS CAN FIRE IS A BOARD QUESTION, and on this one two of the four
+// cannot. The X4 Pro leaves back/confirm/left/right all PIN_UNASSIGNED
+// (BoardConfig.h:1396), and InputManager gates a digital read on pin >= 0
+// (InputManager.cpp:246,257-258). BTN_BACK and BTN_CONFIRM still return,
+// because HalGPIO synthesises them from an 850 ms nav-key hold
+// (HalGPIO.cpp:186-205); nothing synthesises BTN_LEFT or BTN_RIGHT, so those
+// two arms are unreachable there.
+//
+// So a future "press any front button" flow works here, but a flow needing four
+// distinct buttons does not. ButtonRemapActivity is the latter and refuses up
+// front (ButtonRemapActivity::onEnter).
 int MappedInputManager::getPressedFrontButton() const {
-  // Scan the raw front buttons in hardware order.
-  // This bypasses remapping so the remap activity can capture physical presses.
   if (gpio.wasPressed(HalGPIO::BTN_BACK)) {
     return HalGPIO::BTN_BACK;
   }

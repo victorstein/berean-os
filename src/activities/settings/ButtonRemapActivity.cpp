@@ -1,7 +1,9 @@
 #include "ButtonRemapActivity.h"
 
+#include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -19,6 +21,19 @@ constexpr unsigned long kErrorDisplayMs = 1500;
 
 void ButtonRemapActivity::onEnter() {
   Activity::onEnter();
+
+  // Every role needs its own physically distinguishable button. On a board with
+  // an unwired front quad the walk can never finish: Back and Confirm are
+  // synthesised from a nav-key hold and Left and Right have no source at all
+  // (see MappedInputManager::getPressedFrontButton). The Settings gate that
+  // leads here tests !hasTouch(), which is only a proxy for "has front
+  // buttons"; this tests the real requirement.
+  const auto& frontPins = BoardConfig::ACTIVE.input;
+  if (frontPins.back < 0 || frontPins.confirm < 0 || frontPins.left < 0 || frontPins.right < 0) {
+    LOG_ERR("REMAP", "Front button quad is unwired on this board; remap cannot complete");
+    finish();
+    return;
+  }
 
   // Start with all roles unassigned to avoid duplicate blocking.
   currentStep = 0;
