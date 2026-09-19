@@ -70,9 +70,9 @@ there.
 - Two-tap passage selection: long-press a word to anchor, tap another to finish, then choose tags.
 - `MappedInputManager` and the button-remap screen are deleted here, with their replacement.
 
-Two decisions this phase has to make first: the `ReturnStack` capacity, raised to 16 in #73 but
-still silently evicting, before it becomes the primary Back; and portrait-only, which follows from a
-fixed Left/Right mapping.
+Two decisions this phase has to make first: whether an evicted return still needs a visible
+affordance now that the capacity is 16 (#73 raised it from 3, but eviction is still silent) before
+Back becomes primary; and portrait-only, which follows from a fixed Left/Right mapping.
 
 **Acceptance:** the UX, diffable against the layer it replaces.
 

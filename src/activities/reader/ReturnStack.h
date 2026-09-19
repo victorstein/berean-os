@@ -60,5 +60,5 @@ class ReturnStack {
 
 static_assert(sizeof(SavedPosition) == 8,
               "ReturnStack budgets CAPACITY * sizeof(SavedPosition) of internal SRAM -- widening SavedPosition "
-              "(Unit addressing, 2026-09-13-berean-os-design.md:511) multiplies by CAPACITY, so decide the "
+              "(Unit addressing, see 2026-09-13-berean-os-design.md) multiplies by CAPACITY, so decide the "
               "capacity again when this trips");
