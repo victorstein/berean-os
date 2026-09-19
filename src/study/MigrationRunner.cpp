@@ -10,7 +10,9 @@
 #include <SaveBudget.h>
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "BookPathIndex.h"
@@ -27,6 +29,7 @@ namespace {
 constexpr const char* MODULE = "MIGRATE";
 constexpr const char* BEREAN_DIR = "/.berean";
 constexpr const char* LEGACY_DIR = "/.crosspoint/highlights";
+constexpr int LEDGER_FORMAT_VERSION = 1;
 
 struct FileReport {
   std::string source;
@@ -49,12 +52,26 @@ std::vector<std::string> legacySources() {
   return out;
 }
 
-std::vector<std::string> readLedger() {
-  std::vector<std::string> done;
+// nullopt means the ledger's bytes are on the card but unusable -- unreadable,
+// unparseable, or a format this build refuses. An empty vector means genuinely
+// absent, or present and recording nothing; both are safe to append to.
+//
+// The two must not be collapsed. A ledger read as "nothing migrated" re-runs
+// the migration, and PassageDoc::add appends without deduplicating, so every
+// passage in every already-migrated file would be added a second time.
+std::optional<std::vector<std::string>> readLedger() {
   JsonDocument doc;
-  if (PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc) != DocReadStatus::Ok) {
-    return done;
+  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
+  if (status == DocReadStatus::Missing) return std::vector<std::string>{};
+  if (status != DocReadStatus::Ok) return std::nullopt;
+  // The one nullopt cause nothing else reports: a well-formed future-format
+  // file reads Ok, so readDocFromFileAdopting stays silent.
+  if ((doc["v"] | 0) > LEDGER_FORMAT_VERSION) {
+    LOG_ERR(MODULE, "Refusing to read a newer ledger format");
+    return std::nullopt;
   }
+
+  std::vector<std::string> done;
   for (const JsonVariantConst v : doc["done"].as<JsonArrayConst>()) {
     const char* name = v["f"] | "";
     if (name[0] != '\0') done.emplace_back(name);
@@ -147,8 +164,12 @@ bool pending() {
   const auto sources = legacySources();
   if (sources.empty()) return false;
   const auto ledger = readLedger();
+  // Pending on purpose when the ledger is unusable: runIfPending is the only
+  // place that can log the refusal, so returning false here would make a
+  // corrupt ledger a silent no-op.
+  if (!ledger) return true;
   for (const auto& name : sources) {
-    if (!ledgerContains(ledger, name)) return true;
+    if (!ledgerContains(*ledger, name)) return true;
   }
   return false;
 }
@@ -157,7 +178,12 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
   const auto sources = legacySources();
   if (sources.empty()) return true;
 
-  auto ledger = readLedger();
+  auto ledgerRead = readLedger();
+  if (!ledgerRead) {
+    LOG_ERR(MODULE, "Migration ledger unreadable; refusing to migrate over it");
+    return false;
+  }
+  auto ledger = std::move(*ledgerRead);
   std::vector<FileReport> reports;
   bool allOk = true;
 
