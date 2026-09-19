@@ -70,9 +70,9 @@ there.
 - Two-tap passage selection: long-press a word to anchor, tap another to finish, then choose tags.
 - `MappedInputManager` and the button-remap screen are deleted here, with their replacement.
 
-Two decisions this phase has to make first: the `ReturnStack` capacity, which is 3 today and evicts
-the oldest silently, before it becomes the primary Back; and portrait-only, which follows from a fixed
-Left/Right mapping.
+Two decisions this phase has to make first: whether an evicted return still needs a visible
+affordance now that the capacity is 16 (#73 raised it from 3, but eviction is still silent) before
+Back becomes primary; and portrait-only, which follows from a fixed Left/Right mapping.
 
 **Acceptance:** the UX, diffable against the layer it replaces.
 
@@ -108,7 +108,8 @@ Carried from the design, to be closed in the phase that needs them:
 
 - Whether a document filename inside a publication survives a corrected reissue. The spine-index
   fallback in the passage record stands on this being uncertain. Phase 1.
-- `ReturnStack` capacity and whether Back and Return need to be visibly different. Phase 2.
+- Whether Back and Return need to be visibly different. (`ReturnStack` capacity itself was settled
+  in #73: 3 -> 16.) Phase 2.
 - Which languages CI builds catalog indexes for. Spanish is required; English is nearly free.
 - Whether Buscar defaults to non-periodicals, with periodicals behind a filter. Reuniones already
   covers periodicals, which argues for the filter.

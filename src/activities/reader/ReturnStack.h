@@ -3,8 +3,8 @@
 // Positions the reader returns to when Back is pressed after following a
 // citation. The ring lives here, free of firmware includes, so the wrap
 // arithmetic can be tested on the host: reproducing a wrap on the device means
-// following four citations in a row and noticing which of the four Back lands
-// on, and an index-by-count read of a wrapped ring is off by one.
+// following citations until the ring turns over and noticing which of them Back
+// lands on, and an index-by-count read of a wrapped ring is off by one.
 struct SavedPosition {
   int spineIndex;
   int pageNumber;
@@ -12,7 +12,11 @@ struct SavedPosition {
 
 class ReturnStack {
  public:
-  static constexpr int CAPACITY = 3;
+  // The left-edge swipe is this device's only Return and goes inert once the
+  // ring empties, so an evicted entry strands the reader mid-chain rather than
+  // costing one step. At 8 bytes a slot, buying the boundary well past any
+  // chain a study session walks is the cheap side of that trade.
+  static constexpr int CAPACITY = 16;
 
   // At capacity the oldest entry is evicted, trading the article origin for
   // every individual Back being one correct step back.
@@ -53,3 +57,8 @@ class ReturnStack {
   int top_ = 0;
   int count_ = 0;
 };
+
+static_assert(sizeof(SavedPosition) == 8,
+              "ReturnStack budgets CAPACITY * sizeof(SavedPosition) of internal SRAM -- widening SavedPosition "
+              "(Unit addressing, see 2026-09-13-berean-os-design.md) multiplies by CAPACITY, so decide the "
+              "capacity again when this trips");

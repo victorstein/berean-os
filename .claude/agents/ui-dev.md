@@ -41,7 +41,7 @@ leaves the device with no way out of a screen, on hardware with no Back button.
   position 0 = tab bar, 1..N = rows.
 - `src/activities/reader/` — `PassageSelectActivity` is the two-anchor selection
   modal; `NumberGridLayout.h` is the chapter and verse grid; `ReturnStack.h` is
-  the cross-reference return ring (`CAPACITY = 3`, silently evicts the oldest).
+  the cross-reference return ring (`CAPACITY = 16`, silently evicts the oldest).
 - `lib/GfxRenderer/` — all UI goes through the `GUI` macro (`UITheme`). Never
   hardcode a font, colour or position, and never assume 800 or 480.
 
