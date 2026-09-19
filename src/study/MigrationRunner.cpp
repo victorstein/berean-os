@@ -88,12 +88,32 @@ bool ledgerContains(const std::vector<std::string>& ledger, const std::string& n
 
 bool appendLedger(const std::string& name, const uint16_t passages) {
   JsonDocument doc;
-  PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
+  // Refuse BEFORE reading doc: a ParseError leaves the partially parsed
+  // document behind, so appending to it would write back half a ledger.
+  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
+  if (!mayOverwriteAfterRead(status)) {
+    LOG_ERR(MODULE, "Migration ledger unreadable; refusing to overwrite it");
+    return false;
+  }
+  if ((doc["v"] | 0) > LEDGER_FORMAT_VERSION) {
+    LOG_ERR(MODULE, "Refusing to rewrite a newer ledger format");
+    return false;
+  }
+  doc["v"] = LEDGER_FORMAT_VERSION;
   if (!doc["done"].is<JsonArray>()) doc["done"].to<JsonArray>();
 
   const auto row = doc["done"].as<JsonArray>().add<JsonObject>();
   row["f"] = name;
   row["p"] = passages;
+
+  // Bounded well clear of the ceiling: at most 200 sources (legacySources caps
+  // the listing) at at most 146 bytes a row -- the SD layer reads a filename
+  // into a char[128] -- is about 29 KB. The gate is the rule, not a reachable
+  // limit.
+  if (measureJson(doc) > persist::DEFAULT_SAVE_BUDGET) {
+    LOG_ERR(MODULE, "Migration ledger exceeds the save budget; not written");
+    return false;
+  }
 
   Storage.mkdir(BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(MigrationRunner::LEDGER_PATH, doc);
