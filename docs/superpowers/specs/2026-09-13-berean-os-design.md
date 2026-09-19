@@ -211,12 +211,14 @@ configuration.
 4. **ReturnStack non-empty** → return to where you jumped from.
 5. Otherwise → up one level.
 
-`ReturnStack` (`src/activities/reader/ReturnStack.h`) has `CAPACITY = 3` and
+`ReturnStack` (`src/activities/reader/ReturnStack.h`) has `CAPACITY = 16` and
 silently evicts the oldest on push. Promoting it to the device's primary Back
-semantics without addressing that means after a fourth citation, Back walks a path
-the user did not take. Either raise the capacity or show a visible affordance when
-the stack is non-empty so *Back* and *Return* are distinguishable. **Decide in
-Phase 2.**
+semantics without addressing that means that past the capacity, Back walks a path
+the user did not take. Of the two answers this listed -- raise the capacity, or
+show a visible affordance when the stack is non-empty so *Back* and *Return* are
+distinguishable -- the first landed in #73, which moved the boundary well past
+ordinary use without changing any semantics. The affordance is still open.
+**Decide in Phase 2.**
 
 ### Navigation decisions
 
@@ -655,8 +657,9 @@ no execution shape.
   correction, but it is not proof, and no reissue has been available to compare.
   The spine-index fallback in the record stands on this uncertainty rather than
   on caution. Revisit if a reissue appears.
-- **`ReturnStack` capacity** (currently 3, silent eviction) before it becomes
-  primary Back. Phase 2.
+- **`ReturnStack` capacity** (raised 3 -> 16 in #73; eviction is still silent)
+  before it becomes primary Back. The capacity half is settled; whether Back and
+  Return need to be visibly different is not. Phase 2.
 - Which languages CI builds catalog indexes for. Spanish required; English nearly
   free.
 - Whether Buscar defaults to the 310 non-periodicals with periodicals behind a

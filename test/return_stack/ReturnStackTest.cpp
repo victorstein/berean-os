@@ -5,7 +5,9 @@
 // Back after a citation must land one step back, every time. The ring wraps at
 // CAPACITY, so one citation past it makes "index by count" read the wrong slot
 // and the destructor's origin stop being slots_[0]. These pin both at whatever
-// CAPACITY is: every bound here is derived from it, never written as a literal.
+// CAPACITY is: every wrap-boundary bound is derived from it, never written as a
+// literal. Small literal counts survive in the tests that are not about the
+// boundary -- LIFO order on three pushes holds at any CAPACITY >= 3.
 
 namespace {
 
