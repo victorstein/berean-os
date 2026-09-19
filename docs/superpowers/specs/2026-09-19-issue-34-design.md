@@ -423,7 +423,7 @@ named for**, and a failure count cannot see it because they stay green:
 
 | Test | Pushes today | What it stops being |
 |---|---|---|
-| `ClearEmptiesAWrappedRing` (`:112-121`) | hardcoded `5` (`:114`) | A wrap needs `CAPACITY + 1`. At 16, `top_` runs 0→5, never takes the modulo, never clamps `count_`. The test becomes a byte-for-byte duplicate of `ClearEmptiesAPartialRing` (`:100-110`) under a name claiming otherwise, and the property it pins — that `clear()` resets `top_` as well as `count_`, so a wrapped ring is genuinely empty rather than half-rotated — loses **all** coverage. |
+| `ClearEmptiesAWrappedRing` (`:112-121`) | hardcoded `5` (`:114`) | A wrap needs `CAPACITY + 1`. At 16, `top_` runs 0→5, never takes the modulo, never clamps `count_`. The test becomes a byte-for-byte duplicate of `ClearEmptiesAPartialRing` (`:100-110`) under a name claiming otherwise — its **setup stops matching its name**. |
 | `PushesAfterAClearStartFromScratch` (`:123-132`) | hardcoded `4` (`:125`) | Post-*wrap* reuse at 3; post-*partial* reuse at 16. |
 
 That coverage was commissioned by name in the design doc that created the class:
@@ -560,7 +560,7 @@ bound through `RecentBooksDoc::MAX_RECENT_BOOKS` (`:33,88,269,291`) and
 | `AFourthPushEvictsTheOldest…` → renamed for the general boundary | `CAPACITY + 1` pushes retain `CAPACITY`, evict exactly the first, and pop back to push 2 | rewritten |
 | `OldestIsThePhysicallyOldestEntryNotSlotZero` | after a wrap, `oldest()` is push 2, not `slots_[0]` | rewritten |
 | `SurvivesRepeatedWrapping` | 100 pushes leave `oldest()` at `100 - CAPACITY + 1` | rewritten |
-| `ClearEmptiesAWrappedRing` | `clear()` resets `top_` as well as `count_`, so a **wrapped** ring is empty and not half-rotated | rewritten (**MAJOR 1**) — `CAPACITY + 2` pushes |
+| `ClearEmptiesAWrappedRing` | `clear()` empties a ring that has **wrapped**, not only a partial one | rewritten (**MAJOR 1**) — `CAPACITY + 2` pushes |
 | `PushesAfterAClearStartFromScratch` | post-**wrap** reuse starts clean | rewritten (**MAJOR 1**) — `CAPACITY + 1` pushes |
 | **new** — exactly-`CAPACITY` pushes retain everything | the boundary's *other* side: `count() == CAPACITY` and `oldest()` is push 1 | added |
 | the other 7 | `StartsEmpty`, `PopOnEmptyFails…`, `PopsInLifoOrder`, `OldestFollowsThePopsBackDown`, `ClearEmptiesAPartialRing`, `UnpushUndoesAPush`, `UnpushOnEmptyLeavesTheRingUsable` | unchanged, must stay green |
@@ -770,3 +770,37 @@ the change becomes "5 rewritten / 8 untouched". The file has 12 tests
 rewritten leaves **7** untouched, and 13 after the one addition. The Architecture
 paragraph, the Testing table and Files touched all use 5 / 7 / 13 and name the
 seven individually, so the count is checkable rather than asserted.
+
+---
+
+## Plan review pass 0 — one correction back into this spec
+
+Plan review pass 0 (`docs/superpowers/reviews/issue-34-plan-review-0.md`, MAJOR 2)
+found that a claim **this spec introduced** is wrong, so it is corrected above
+rather than only in the plan.
+
+**The claim.** Under *Changed: `test/return_stack/ReturnStackTest.cpp`*, this spec
+said `ClearEmptiesAWrappedRing` pins "that `clear()` resets `top_` as well as
+`count_`, so a wrapped ring is genuinely empty rather than half-rotated", and that
+the property "loses **all** coverage" at `CAPACITY = 16`.
+
+**Why it is wrong.** `top_ = 0` in `clear()` (`src/activities/reader/ReturnStack.h:41`)
+is not observable through the public API. Every observable after `clear()` is a
+function of `count_` alone: `count()` returns it, `pop()` and `oldest()` both
+short-circuit on `count_ == 0`, and once `count_` is 0 the following pushes are
+rotation-invariant — `oldest()` resolves to `slots_[top_]`, which is wherever the
+first push went. So **no host test can pin that line, at 3 or at 16**, and the
+property was never covered rather than losing coverage. Mutation-checked: delete
+`top_ = 0` from `clear()` and all 13 rewritten tests pass at both capacities.
+
+This came in through spec review pass 0's MAJOR 1, and I adopted it without
+checking whether the property was observable. The finding's *conclusion* stands
+untouched — both tests still need `CAPACITY`-relative bounds, because a setup that
+no longer reaches the wrap makes the test's name a lie and leaves a literal in a
+file whose whole purpose is to have none. Only the justification changes.
+
+**What replaces it as evidence for A4.** A mutation check, now Step 4b of the plan:
+breaking `oldest()` into the naive `&slots_[0]` kills 3 tests at `CAPACITY = 3`
+*and* at 16. That is what demonstrates the rewritten bounds still catch a real wrap
+bug rather than following the constant — which is the reassurance **A4**'s
+anti-tautology paragraph was reaching for and never actually collected.
