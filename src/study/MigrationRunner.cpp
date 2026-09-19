@@ -88,8 +88,6 @@ bool ledgerContains(const std::vector<std::string>& ledger, const std::string& n
 
 bool appendLedger(const std::string& name, const uint16_t passages) {
   JsonDocument doc;
-  // Refuse BEFORE reading doc: a ParseError leaves the partially parsed
-  // document behind, so appending to it would write back half a ledger.
   const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
   if (!mayOverwriteAfterRead(status)) {
     LOG_ERR(MODULE, "Migration ledger unreadable; refusing to overwrite it");
