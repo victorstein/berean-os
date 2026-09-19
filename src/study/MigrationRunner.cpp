@@ -247,7 +247,13 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
       continue;
     }
     if (loadResult == HighlightFile::LoadResult::Empty) {
-      appendLedger(name, 0);
+      if (!appendLedger(name, 0)) {
+        LOG_ERR(MODULE, "Could not record %s as migrated; stopping", name.c_str());
+        report.drops.push_back("ledger not updated");
+        reports.push_back(report);
+        allOk = false;
+        break;
+      }
       ledger.push_back(name);
       reports.push_back(report);
       continue;
@@ -378,7 +384,16 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
     }
     summary.passagesWritten = static_cast<uint16_t>(summary.passagesWritten + report.written);
 
-    appendLedger(name, report.written);
+    // A ledger write failure is global, not per-file -- all of its causes are
+    // properties of the ledger or the card -- so continuing would keep writing
+    // passages that nothing records, each one a duplicate on the next boot.
+    if (!appendLedger(name, report.written)) {
+      LOG_ERR(MODULE, "Could not record %s as migrated; stopping", name.c_str());
+      report.drops.push_back("ledger not updated");
+      reports.push_back(report);
+      allOk = false;
+      break;
+    }
     ledger.push_back(name);
     reports.push_back(report);
   }
