@@ -9,7 +9,35 @@ defect to #63. Same shape: a pure decision predicate in `lib/Serialization/`,
 host-tested beside its siblings; mechanical edits at the call sites; a
 device-only verification recipe.
 
-This is pass 0. No review exists yet under `docs/superpowers/reviews/` for #63.
+---
+
+## What changed after the pass-0 review, and why
+
+`docs/superpowers/reviews/issue-63-spec-review-0.md` returned **CLEAR** — no
+BLOCKERs, no MAJORs, all twelve assumptions standing — with six MINORs. All six
+are applied here:
+
+| Finding | Change |
+|---|---|
+| A-9 showed only one of `appendLedger`'s two call sites | §A-9 now instructs `MigrationRunner.cpp:204` (the `LoadResult::Empty` arm) explicitly, not just `:335` |
+| "`break` bounds the damage to the one file already saved" overstated | §A-9 now says *per run, not per card*, and prices the persistent-failure case against `PassageDoc::add`'s lack of dedup |
+| The decision table's `Missing` + unusable-`.tmp` row routes back into Goal 2's hazard, unacknowledged | §Decision table now states why that residue is accepted |
+| Pseudocode dropped the `MigrationRunner::` qualifier on `LEDGER_PATH` | restored in both snippets; it would not have compiled as written |
+| Non-goal 5 named `readDocFromFileChecked` as the function whose clear is confined | corrected to `readDocFromFileAdopting`, with `PersistableStore.cpp:95` |
+| `ExactlyTheTwoSafeStatusesAllowAWrite` was tautological | dropped; §A-1's fifth-enumerator property is now a `static_assert` block instead, and the expected test count corrected to five |
+
+The review also verified every `file:line` citation in pass 0 and found none
+wrong, re-ran the 593-test baseline, and confirmed `mayOverwriteAfterRead` exists
+nowhere in the tree — so neither "this already exists" nor "this is already
+tested" bites.
+
+Two things it corrected in the spec's *favour*, carried into §Error handling and
+§Shared-file report respectively: the refusal `LOG_ERR`s do reach the release
+build (`platformio.ini:187-188` sets `-DENABLE_SERIAL_LOG -DLOG_LEVEL=1`;
+CLAUDE.md's "`LOG_LEVEL=0`, no serial logging" is the stale claim), and the
+`record` refusal also rescues an orphaned `pubkeys.json.tmp`, closing the
+issue body's "together the two bugs turn a recoverable interruption into total
+loss of the registry" scenario.
 
 ---
 
@@ -101,10 +129,13 @@ does not claim otherwise.
 - **`writeReport`'s truncation** (`MigrationRunner.cpp:117-122`). A deliberate,
   documented choice for a diagnostic file nothing reads back; the issue says
   explicitly to leave it alone.
-- **`readDocFromFileChecked` clearing `doc` on `ReportFailed`.** #51's spec
-  (A-10) confined the clear to `DeleteTempReportEmpty` on purpose. Refusing
-  before touching `doc` (A-2) makes the clear unnecessary here; widening it is a
-  change to `lib/Serialization` semantics that ten other callers would inherit.
+- **`readDocFromFileAdopting` clearing `doc` on its `ReportFailed` arm.** #51's
+  spec (A-10) confined the `doc.clear()` to `DeleteTempReportEmpty`
+  (`lib/Serialization/PersistableStore.cpp:95`, with the reason at `:89-94`) on
+  purpose; `readDocFromFileChecked` never clears on any path
+  (`PersistableStore.cpp:46-61`). Refusing before touching `doc` (A-2) makes the
+  clear unnecessary here; widening it is a change to `lib/Serialization`
+  semantics that ten other callers would inherit.
 - **Pruning or repairing a corrupt `/.berean/` file.** Refusing is recoverable;
   deleting the user's bytes to unblock ourselves is not.
 
@@ -271,12 +302,35 @@ case does not exist.
     ledger.push_back(name);
 ```
 
+**The `LoadResult::Empty` arm gets the identical guard.** `appendLedger` has two
+call sites, not one: `MigrationRunner.cpp:204` (`appendLedger(name, 0)`, for a
+legacy file that parsed but held nothing) and `:335`. Both discard the result
+today; both stop the run on `false`, with the same five lines. `:204`'s `report`
+carries no `written` count, so its drop reads the same
+`report.drops.push_back("ledger not updated")`. Leaving `:204` alone would be
+cheap in passages — an Empty source writes none, so re-processing duplicates
+nothing — but it would leave the in-memory `ledger` diverging from disk, which
+is the divergence A-9 exists to stop.
+
 Every other failure arm in the loop `continue`s (`:190`, `:201`, `:233`,
 `:324`) because each is specific to one source file. A ledger write failure is
 not: all three of its causes — unreadable ledger, over budget, write failed —
 are properties of the ledger or the card, so the next file will fail the same
 way while still writing its passages, each one becoming a duplicate on the next
-boot. `break` bounds the damage to the one file already saved.
+boot.
+
+**What `break` does and does not bound.** It bounds the damage to one file *per
+run*, not per card. A ledger that is persistently unwritable still re-migrates
+that same first unrecorded file on every boot, and because `PassageDoc::add`
+does not deduplicate, its passages accumulate until the passage file's own
+`SAVE_BYTE_BUDGET` starts refusing them ("store full", `:307`). Both causes of a
+persistent failure are close to unreachable — research §5 puts the ledger ~15 KB
+under its budget, and a card too broken to write the ledger fails
+`PassageFile::save` first at `:317-325`, which already `continue`s without
+recording. It is still a strict improvement on today, where the run continues
+and duplicates *every* file rather than one. Stated precisely because Goal 2 is
+exactly about not duplicating passages, and an unqualified "bounds the damage"
+would overstate it.
 
 `writeReport` (`:340`) still runs after the `break`, so the report records what
 happened, and `allOk = false` reaches `main.cpp:502-503`'s
@@ -345,7 +399,7 @@ constexpr int LEDGER_FORMAT_VERSION = 1;   // beside MODULE/BEREAN_DIR, :27-29
 
 std::optional<std::vector<std::string>> readLedger() {
   JsonDocument doc;
-  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(LEDGER_PATH, doc);
+  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
   if (status == DocReadStatus::Missing) return std::vector<std::string>{};   // never migrated
   if (status != DocReadStatus::Ok) return std::nullopt;                      // bytes exist, unusable
   if ((doc["v"] | 0) > LEDGER_FORMAT_VERSION) return std::nullopt;           // A-7
@@ -360,7 +414,7 @@ become `nullopt`.
 ```cpp
 bool appendLedger(const std::string& name, const uint16_t passages) {
   JsonDocument doc;
-  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(LEDGER_PATH, doc);
+  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
   if (!mayOverwriteAfterRead(status)) {
     LOG_ERR(MODULE, "Migration ledger unreadable; refusing to overwrite it");
     return false;
@@ -416,6 +470,18 @@ bool appendLedger(const std::string& name, const uint16_t passages) {
 | `ParseError` | **refuse, `LOG_ERR`** | **refuse, `LOG_ERR`** | `nullopt` |
 
 Bold cells are what this change adds. Everything else is today's behaviour.
+
+**The `Missing` + unusable-`.tmp` row is a knowingly accepted residue of Goal 2.**
+For `readLedger` it yields an empty list, so `pending()` is true and every source
+re-migrates — the duplication Goal 2 closes, reached through a third door.
+Accepted for three reasons: the `Missing` there is #51's deliberate semantics
+(`TempAdoption.h:39-40` → `:53-55`, "nothing there"), not something this change
+invents; reaching it needs a failed rename in `writeDocToFileAtomic`
+(`PersistableStore.cpp:38-42`) followed by a *second* `appendLedger` in the same
+run whose `.tmp` write dies partway, and A-9's `break` removes that second
+append; and treating it as `nullopt` instead would make a first boot with any
+stray `.tmp` refuse to migrate at all, which trades a rare duplication for a
+common refusal.
 
 ### Concurrency
 
@@ -496,11 +562,29 @@ Cases, modelled on `TempAdoptionTest.cpp`'s exhaustive sweep (`:70-92`):
 | `MissingMayOverwrite` | `Missing` → true, with the "start a new document" reason in the failure message |
 | `UnreadableMayNotOverwrite` | `Unreadable` → false |
 | `ParseErrorMayNotOverwrite` | `ParseError` → false |
-| `ExactlyTheTwoSafeStatusesAllowAWrite` | sweeps all four enumerators and asserts the predicate agrees with `status == Ok \|\| status == Missing` — the contract at `DocReadStatus.h:5-7`, exhaustively |
 | `AgreesWithClassifyDocRead` | composes `classifyDocRead(exists, empty, parseFailed)` over all 2×2×2 inputs and asserts only `!exists` and the clean read permit a write — ties the predicate to the classifier that feeds it |
 
-**Baseline to beat:** 593 tests passing (research §9). The suite must grow by the
-number of `TEST`s added and stay at 100%.
+**Deliberately not written: a sweep asserting the predicate equals
+`status == Ok || status == Missing`.** That expression *is* the predicate, so
+the test would assert `f(x) == f(x)` and pass through any edit that changed both
+in lockstep. The four literal-table cases above already pin all four enumerators
+exhaustively, and `AgreesWithClassifyDocRead` is the one new case that composes
+two functions and can genuinely fail — which is what makes
+`ANonMissingPrimaryIsNeverReportedMissing`
+(`test/temp_adoption/TempAdoptionTest.cpp:70-92`) worth its lines.
+
+The "a fifth status is `false`" safety property of §A-1 is guarded at
+**compile time** instead, beside the predicate:
+
+```cpp
+static_assert(mayOverwriteAfterRead(DocReadStatus::Ok));
+static_assert(mayOverwriteAfterRead(DocReadStatus::Missing));
+static_assert(!mayOverwriteAfterRead(DocReadStatus::Unreadable));
+static_assert(!mayOverwriteAfterRead(DocReadStatus::ParseError));
+```
+
+**Baseline to beat:** 593 tests passing (research §9). The suite grows by
+**five** `TEST`s and must stay at 100%.
 
 **A-12: the ≤29.2 KB ledger bound is a comment, not a test.** Asserting it would
 need `measureJson`, so a new ArduinoJson-linking suite, so the
@@ -561,11 +645,17 @@ What the PR description carries instead:
 
 1. **#39** owns the user-visible surface for a refusal. This change logs and
    returns `false`; nothing reaches the screen.
-2. **Duplicate passages are still possible** by other routes, because
+2. **The `record` refusal closes the issue body's compound scenario.** #63's text
+   notes that with #51 unfixed, an interrupted write leaves `pubkeys.json`
+   missing and `pubkeys.json.tmp` holding the real registry, and the next
+   `record()` destroys both. #51 fixed the first half by adopting the `.tmp`;
+   this change fixes the second, so a corrupt-or-unreadable primary no longer
+   takes the surviving copy with it.
+3. **Duplicate passages are still possible** by other routes, because
    `PassageDoc::add` (`lib/StudyStore/StudyStore/PassageDoc.cpp`) does not
    deduplicate. This change removes the trigger #63 owns — a lost or
    reinterpreted ledger — but does not make re-migration itself safe. Worth a
    follow-up issue against `lib/StudyStore/`; noted, not filed here.
-3. **A-5's cost:** a card with legacy highlights and a corrupt ledger now paints
+4. **A-5's cost:** a card with legacy highlights and a corrupt ledger now paints
    the migration screen on every boot and refuses. Deliberate (§A-4/A-5), and
    the honest alternative to silently duplicating the user's passages.
