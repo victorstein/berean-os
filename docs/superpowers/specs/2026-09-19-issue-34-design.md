@@ -112,8 +112,8 @@ saved origin more faithful, for free, with no code change at that site.
 3. Make `test/return_stack/ReturnStackTest.cpp` derive every wrap-boundary
    assertion from `ReturnStack::CAPACITY`, so this constant is never again
    priced at "breaking four assertions."
-4. Pin the memory footprint so a future `SavedPosition` growth trips the build
-   rather than silently costing internal SRAM.
+4. Pin `sizeof(SavedPosition)` so a future widening trips the build rather than
+   silently multiplying by `CAPACITY` into internal SRAM.
 
 ---
 
@@ -136,7 +136,8 @@ saved origin more faithful, for free, with no code change at that site.
   discipline and format-versioning rules therefore do not engage. See **A6**.
 - **No change to `SavedPosition`'s `(spineIndex, pageNumber)` shape**, which
   `2026-09-13-berean-os-design.md:511-513` says needs Unit addressing before it
-  is persisted anywhere. Out of scope here; **A5** keeps room for it.
+  is persisted anywhere. Out of scope here; **A5** is the guard that makes such
+  a widening announce itself.
 - **No new caller for `unpush()`**, which has none outside the tests.
 
 ---
@@ -185,7 +186,7 @@ thing here to revise.
 
 *Why:* it needs user-facing text, which means `tr(STR_*)` — `CLAUDE.md` and
 `.claude/agents/ui-dev.md` both forbid hardcoded UI strings. That is a new key in
-`lib/I18n/translations/english.yaml` (420 `STR_*` keys today) and its 29 sibling
+`lib/I18n/translations/english.yaml` (420 `STR_*` keys today) and its 31 sibling
 files, and `lib/I18n/translations/*.yaml` is one of the three files
 `.claude/agents/ui-dev.md` names as a **shared append point this surface must
 report rather than edit**. It also needs a chrome slot on a 1-bit panel with a
@@ -242,28 +243,70 @@ can tautologise — if `CAPACITY` were wrong, a test written in terms of it woul
 not notice. That is accepted here because these tests target the *wrap
 arithmetic*, not the value: they assert that one push past the bound evicts
 exactly one and that `oldest()` tracks the wrap, which are false for a buggy
-modulo at any capacity. **A5** is what pins the value.
+modulo at any capacity.
+
+*But that was the wrong failure mode to worry about.* Review pass 0 (**MAJOR 1**)
+found the real one, and it is the opposite: **a surviving literal that quietly
+stops reaching the boundary.** `ClearEmptiesAWrappedRing` pushes a hardcoded 5,
+so at `CAPACITY = 16` it never wraps and becomes a duplicate of the partial-ring
+test — still green, still named for coverage it no longer provides. A
+failure-count methodology cannot see that, which is precisely why the earlier
+draft missed it. Hence the rule now stated in Architecture: *every* loop bound in
+the file is `CAPACITY`-relative, not only the ones that currently fail.
 
 ---
 
-**A5 — A `static_assert` in `ReturnStack.h` pins the footprint as a ceiling, not
-an equality.**
+**A5 — A `static_assert` in `ReturnStack.h` pins `sizeof(SavedPosition)`, the
+thing that actually grows — not a chosen ceiling on `sizeof(ReturnStack)`.**
+
+The shipped assertion is:
+
+```cpp
+static_assert(sizeof(SavedPosition) == 8,
+              "ReturnStack budgets CAPACITY * sizeof(SavedPosition) of internal SRAM -- widening "
+              "SavedPosition (Unit addressing, 2026-09-13-berean-os-design.md:511) multiplies by "
+              "CAPACITY, so decide the capacity again when this trips");
+```
 
 *Why:* `2026-09-13-berean-os-design.md:511-513` says `SavedPosition` needs Unit
-addressing before it is persisted. When that lands, `CAPACITY` slots get more
-expensive silently. A ceiling makes that trip the build. A `<=` rather than `==`
-because struct padding is a toolchain property and an exact figure would be
-brittle across host and Xtensa.
+addressing before it is persisted. When that lands, every slot gets more
+expensive at once. Asserting the *element* catches any widening, is
+capacity-independent, and needs no edit when `CAPACITY` moves.
 
 *Mirrors* `src/RecentBooksStore.cpp:125-129`, which asserts a budget relation
 with a message explaining why the number is derived rather than tidy, and
 `src/fontIds.h:18-27`, which is the header-level precedent (`ReturnStack.h` has
 no `.cpp`).
 
-*Attack it:* the ceiling is chosen, so it is one more unmeasured number. It is
-set with headroom for the 16 slots this spec asks for and a little padding, not
-tight to `sizeof`, so it catches a *growth* in `SavedPosition` rather than
-policing the current layout.
+*Attack it:* an element-level assert does not pin the aggregate, so it would not
+catch a change to `ReturnStack`'s own layout (a fourth member, say). That is
+accepted: such a change is visible in the same 55-line header being edited,
+whereas a `SavedPosition` widening arrives from another file and is exactly the
+silent multiplication this guards.
+
+*Corrected after review pass 0 (MAJOR 2).* The earlier draft asserted a chosen
+ceiling on `sizeof(ReturnStack)` and justified `<=` over `==` on the grounds that
+"struct padding is a toolchain property and an exact figure would be brittle
+across host and Xtensa." **That is disproven.** `SavedPosition` is two `int`s and
+`ReturnStack` is that array plus two `int`s, so there is no padding, and the
+figure is exact on both targets. Compiling the real header with `CAPACITY = 16`
+against an exact assertion:
+
+```
+$ c++ -std=c++2a -c sz.cpp -o /dev/null                       # Apple clang 21.0.0
+host: exact 136 OK
+$ /Volumes/stein/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32s3-elf-g++ \
+    -std=c++2a -c sz.cpp -o /dev/null
+xtensa: exact 136 OK
+```
+
+(`static_assert(sizeof(SavedPosition) == 8)` and
+`static_assert(sizeof(ReturnStack) == 136)` both compile clean on each.) The
+second half of the finding is the one that mattered: a ceiling left unspecified
+and told to carry "headroom … and a little padding" would sail past the cheapest
+Unit-addressing growth — +4 bytes a slot, `16 * 12 + 8 = 200` — which is the one
+change it existed to catch, so **Goal 4 was not met as written**. Asserting
+`sizeof(SavedPosition)` meets it without choosing a number at all.
 
 ---
 
@@ -310,7 +353,7 @@ edits.
 
 ### Changed: `src/activities/reader/ReturnStack.h`
 
-Three edits, all local:
+Four edits, all local:
 
 1. `CAPACITY` 3 → 16 (`:15`).
 2. The eviction comment (`:17-18`) is rewritten for the merged state, per
@@ -319,20 +362,89 @@ Three edits, all local:
    non-obvious *why* the number is what it is — that the trade is a silently
    inert Return gesture against 8 bytes a slot — because a bare `16` reads
    arbitrary and would be "tidied" by the next reader.
-3. A `static_assert` after the class, pinning the footprint ceiling (**A5**),
-   with a message that says why the number is derived.
+3. **The opening comment's worked example (`:5-7`) is rewritten.** See
+   **Comments**.
+4. A `static_assert` after the class, pinning `sizeof(SavedPosition)` (**A5**),
+   with a message that says why the element is what is asserted.
 
-The header's opening comment (`:3-7`) explains why the ring is free of firmware
-includes. That constraint holds: `static_assert` and `sizeof` are core language,
-so the header stays host-compilable and `test/return_stack/CMakeLists.txt` needs
-no change.
+The *reason* the opening comment gives — that the ring is free of firmware
+includes so the wrap arithmetic is host-testable (`:3-5`) — holds unchanged:
+`static_assert` and `sizeof` are core language, so the header stays
+host-compilable and `test/return_stack/CMakeLists.txt` needs no change.
+
+### Comments — three that go false the moment `CAPACITY` moves
+
+*Added after review pass 0 (MAJOR 3).* The earlier draft enumerated three edits
+to this header and affirmatively cleared `:3-7` ("that constraint holds"), which
+would have left an implementer following the spec literally shipping a false
+comment in the one file the change exists to edit — against the same `CLAUDE.md`
+rule the draft invoked two lines earlier for `:17-18`.
+
+| Where | What is false at 16 | Fix |
+|---|---|---|
+| `src/activities/reader/ReturnStack.h:5-7` | "following **four** citations in a row and noticing which of the **four** Back lands on" | Re-state without a count: *following citations until the ring turns over*. The point is the off-by-one on an index-by-count read of a wrapped ring, which does not need a number. |
+| `test/return_stack/ReturnStackTest.cpp:5-7` | "The ring wraps at **three**, so a **fourth** citation makes 'index by count' read the wrong slot" | Same treatment, in the file whose entire purpose after this change is to be capacity-agnostic. The draft's test change list never mentioned it. |
+| `.claude/agents/ui-dev.md:44` | "`ReturnStack.h` is the cross-reference return ring (`CAPACITY = 3`, silently evicts the oldest)" | Update the constant. This is the surface's authoritative agent briefing — left stale, the next `ui-dev` task starts from a wrong number. |
+
+`.claude/agents/ui-dev.md` is **not** one of the three shared append points that
+file names at `:26-32` (`test/CMakeLists.txt`,
+`lib/I18n/translations/*.yaml`, `src/main.cpp`), so "no shared append point is
+edited" still holds — but the earlier draft's "nothing for the orchestrator to
+apply" did not, and the Files-touched table was incomplete. Both are corrected.
+
+**The roadmap open-item lines are left alone, deliberately:**
+`2026-09-13-berean-os-design.md:214,658` and `ROADMAP.md:73,111` record
+`ReturnStack` capacity as an open Phase 2 item. This PR closes the *capacity*
+half; the design doc's other branch — "whether Back and Return need to be
+visibly different" (`ROADMAP.md:111`) — is still open and is **A2**. Striking
+those lines wholesale would claim more than this change delivers, and editing
+them partially is roadmap bookkeeping better done where the whole Phase 2 item is
+being settled. The PR description says which half is closed; the files are not
+touched.
 
 ### Changed: `test/return_stack/ReturnStackTest.cpp`
 
-Three tests rewritten to derive their boundary from `ReturnStack::CAPACITY`; nine
-untouched. One test added for the boundary that currently has no coverage at all
-(exactly-`CAPACITY` pushes retain everything — today the 3-push case is covered
-only incidentally by `PopsInLifoOrder`, which does not assert `oldest()`).
+**Five** tests rewritten to derive their boundary from `ReturnStack::CAPACITY`;
+**seven** untouched, one added — 12 today, 13 after. One test added for the boundary that currently has no
+coverage at all (exactly-`CAPACITY` pushes retain everything — today the 3-push
+case is covered only incidentally by `PopsInLifoOrder`, which does not assert
+`oldest()`). The file's own header comment (`:5-7`) is rewritten too — see
+**Comments** below.
+
+**The rule for this file, and it is the whole point of the change:** *every* loop
+bound and push count must be `CAPACITY`-relative. Not only the ones that
+currently fail.
+
+*Corrected after review pass 0 (MAJOR 1).* The earlier draft rewrote three tests
+— the three the measurement showed failing at `CAPACITY = 8` — and asserted the
+other nine were unaffected, listing "clear (partial and **wrapped**)" among the
+coverage they preserve. **Two of those nine silently stop testing what they are
+named for**, and a failure count cannot see it because they stay green:
+
+| Test | Pushes today | What it stops being |
+|---|---|---|
+| `ClearEmptiesAWrappedRing` (`:112-121`) | hardcoded `5` (`:114`) | A wrap needs `CAPACITY + 1`. At 16, `top_` runs 0→5, never takes the modulo, never clamps `count_`. The test becomes a byte-for-byte duplicate of `ClearEmptiesAPartialRing` (`:100-110`) under a name claiming otherwise, and the property it pins — that `clear()` resets `top_` as well as `count_`, so a wrapped ring is genuinely empty rather than half-rotated — loses **all** coverage. |
+| `PushesAfterAClearStartFromScratch` (`:123-132`) | hardcoded `4` (`:125`) | Post-*wrap* reuse at 3; post-*partial* reuse at 16. |
+
+That coverage was commissioned by name in the design doc that created the class:
+`docs/superpowers/specs/2026-09-12-reader-return-stack-design.md:283-284` —
+"`clear()` on a partial **and a wrapped** ring". Goal 3 ("derive *every*
+wrap-boundary assertion from `ReturnStack::CAPACITY`") was therefore not met by
+the earlier change list.
+
+Both take `CAPACITY`-relative bounds, and both keep their current literals at 3,
+so the "passes at 3, 8 and 16" acceptance criterion is unchanged:
+
+```cpp
+// ClearEmptiesAWrappedRing        — CAPACITY + 2 == 5 at CAPACITY = 3
+for (int i = 1; i <= ReturnStack::CAPACITY + 2; i++) stack.push(at(i, i * 10));
+// PushesAfterAClearStartFromScratch — CAPACITY + 1 == 4 at CAPACITY = 3
+for (int i = 1; i <= ReturnStack::CAPACITY + 1; i++) stack.push(at(i, i * 10));
+```
+
+This is the general lesson for **A4**, recorded there: the failure mode of a
+capacity-agnostic sweep is not a tautological assertion, it is a surviving
+literal that quietly stops reaching the boundary.
 
 ### Not changed, and why
 
@@ -419,11 +531,25 @@ change does not touch and which already owns that path.
 
 ### Host — `test/return_stack/`, TDD, red first
 
-The three rewrites are **red before green**: each must be run against the
-unmodified `CAPACITY = 3` header and fail (or pass, where the property is
-capacity-independent and the test is merely being re-expressed) *before* the
-constant moves, so the suite is demonstrably exercising the boundary rather than
-following it.
+**The red state is the *existing* tests, not the rewrites.** Before the constant
+moves, build the unmodified `ReturnStackTest.cpp` against a header patched to 16
+and record the failures — 3 tests / 6 assertions, per the research note. That is
+the demonstration that the suite reaches the boundary. Then move the constant and
+rewrite, and the five rewrites are green at every capacity by construction.
+
+*Corrected after review pass 0 (MINOR 1).* The earlier draft asked for the
+rewrites themselves to be "red before green … (or pass, where the property is
+capacity-independent)", which is vacuous — the research note had already proven
+all three pass at 3, 8 and 16, and the acceptance criterion three paragraphs
+below demands exactly that. A requirement that can never be red is a cycle the
+implement phase would burn discovering.
+
+Two of the five rewrites (**MAJOR 1**: `ClearEmptiesAWrappedRing`,
+`PushesAfterAClearStartFromScratch`) are green at 16 *today* and stay green after
+— they are rewritten because they stop **testing** anything, not because they
+fail. Their red state cannot be shown by a failure count at all; it is shown by
+the reasoning in the table above. Note that explicitly rather than letting a
+green run stand in for coverage.
 
 Modelled on `test/recent_books_doc/RecentBooksDocTest.cpp`, which drives every
 bound through `RecentBooksDoc::MAX_RECENT_BOOKS` (`:33,88,269,291`) and
@@ -434,8 +560,10 @@ bound through `RecentBooksDoc::MAX_RECENT_BOOKS` (`:33,88,269,291`) and
 | `AFourthPushEvictsTheOldest…` → renamed for the general boundary | `CAPACITY + 1` pushes retain `CAPACITY`, evict exactly the first, and pop back to push 2 | rewritten |
 | `OldestIsThePhysicallyOldestEntryNotSlotZero` | after a wrap, `oldest()` is push 2, not `slots_[0]` | rewritten |
 | `SurvivesRepeatedWrapping` | 100 pushes leave `oldest()` at `100 - CAPACITY + 1` | rewritten |
+| `ClearEmptiesAWrappedRing` | `clear()` resets `top_` as well as `count_`, so a **wrapped** ring is empty and not half-rotated | rewritten (**MAJOR 1**) — `CAPACITY + 2` pushes |
+| `PushesAfterAClearStartFromScratch` | post-**wrap** reuse starts clean | rewritten (**MAJOR 1**) — `CAPACITY + 1` pushes |
 | **new** — exactly-`CAPACITY` pushes retain everything | the boundary's *other* side: `count() == CAPACITY` and `oldest()` is push 1 | added |
-| the other 9 | LIFO, empty-pop, clear (partial and wrapped), post-clear reuse, `unpush` × 2, `oldest` tracking pops | unchanged, must stay green |
+| the other 7 | `StartsEmpty`, `PopOnEmptyFails…`, `PopsInLifoOrder`, `OldestFollowsThePopsBackDown`, `ClearEmptiesAPartialRing`, `UnpushUndoesAPush`, `UnpushOnEmptyLeavesTheRingUsable` | unchanged, must stay green |
 
 Acceptance: the file compiles and passes at `CAPACITY` = 3, 8 and 16. The plan
 phase verifies all three by building the unmodified test file against patched
@@ -467,12 +595,30 @@ adds. Stated plainly so the review can weigh them as read-not-run.
 - `pio check`.
 - `./bin/clang-format-fix` over the **whole tree**, not `-g` — the new/edited
   files must be reachable by CI's full-tree run.
-- **Measure `sizeof(EpubReaderActivity)`** to settle **A6** rather than leaving it
-  assumed: a temporary
-  `static_assert(sizeof(EpubReaderActivity) < 4096, "");` in
-  `EpubReaderActivity.cpp`, read off the failure message, then removed. It is a
-  diagnostic, not a shipped assertion — the shipped one is **A5**'s, on
-  `ReturnStack`.
+- **Settle **A6**'s yes/no rather than leaving it assumed:** a temporary
+  `static_assert(sizeof(EpubReaderActivity) <= 4096, "");` in
+  `EpubReaderActivity.cpp`, then removed. It is a diagnostic, not a shipped
+  assertion — the shipped one is **A5**'s, on `SavedPosition`.
+
+  **If it passes**, the activity is an internal-SRAM allocation, **A6**'s
+  conservative budgeting is confirmed, and the 104 bytes are real internal SRAM —
+  which changes nothing, as **A6** says.
+
+  **If it fails, stop and escalate — do not just note the number.** Crossing 4096
+  means the whole activity allocation flips to PSRAM, because the default
+  allocator prefers SPIRAM above `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
+  (`…/framework-arduinoespressif32-libs/esp32s3/sdkconfig:2152`). That would put
+  a render-hot-path object on the slow external SPI bus, which is a far larger
+  effect than this change and is not this change's to make. `EpubReaderActivity.h`
+  is 180 lines with no array or buffer member, so it is very unlikely — but
+  **A6**'s "it does not change the decision either way" is only true away from
+  that boundary.
+
+  *Corrected after review pass 0 (MINOR 4).* The earlier draft said to "read off
+  the failure message". A passing `static_assert` emits nothing and a failing one
+  prints its own message, not the operand's value, so that step described
+  something that cannot happen. The gate answers a yes/no, which is all **A6**
+  asks — and the consequence of "no" is now stated.
 
 ### What only the human tester can verify — flag in the PR
 
@@ -485,9 +631,19 @@ adds. Stated plainly so the review can weigh them as read-not-run.
    second cross-reference.
 3. **Nothing regressed at shallow depth.** One footnote, one swipe back — the
    overwhelmingly common case.
-4. **The swipe still does not exit the book.** With the ring empty, a left-edge
-   swipe on the reading surface must remain inert (`ReaderUtils.h:255-257`); this
-   change must not have made it an exit.
+4. **The swipe still does not exit the book** — *with touch reader controls left
+   at the default tap mode* (`touchReaderControls = TOUCH_READER_ON`,
+   `src/CrossPointSettings.h:346`). With the ring empty, a left-edge swipe on the
+   reading surface must remain inert (`ReaderUtils.h:255-257`); this change must
+   not have made it an exit.
+
+   **Under `TOUCH_READER_SWIPE` (`CrossPointSettings.h:233`) the same swipe pages
+   back instead, and that is correct, not a regression**: `detectTouchPageTurn`
+   maps a right-ward swipe to `result.prev` (`ReaderUtils.h:84-92`), consumed at
+   `EpubReaderActivity.cpp:446,595`, which `ReaderUtils.h:248-250` documents on
+   purpose ("in swipe page-turn mode a right swipe must page back instead").
+   Stated so a tester with swipe controls on does not file a bug that is a
+   setting. *Added after review pass 0 (MINOR 3).*
 5. **Heap.** `ESP.getFreeHeap()` above ~50 KB, and unchanged within noise across
    an open-read-close cycle versus a pre-change build. 104 bytes should not be
    visible; if it is, something else moved.
@@ -527,6 +683,41 @@ things answer that:
    commit Phase 2 — one to reader chrome (**A2**), one to a new navigation
    semantic (**A3**) — which is exactly why this spec picks the one that does
    not.
+4. **The one document that argued for keeping 3, answered on its own terms.**
+   *Added after review pass 0 (MAJOR 4).* The earlier draft said "three documents
+   speak to it", as did the research note. There is a fourth, and it is the spec
+   that created the class:
+   `docs/superpowers/specs/2026-09-12-reader-return-stack-design.md`. It lists
+   the change as a non-goal at `:20` — "**Raising `MAX_FOOTNOTE_DEPTH`.** Three
+   slots stay three slots (decided)" — and at `:210-215`, under *"The eviction
+   trade-off, stated honestly"*, gives the only reasoned defence of 3 anywhere in
+   the repo:
+
+   > At depth ≥ 4 the new behaviour gives three correct one-step returns and then
+   > drops out of the book … The new behaviour is chosen because every individual
+   > Back is correct and **depth ≥ 4 without an intervening Back is rare**; it is
+   > not a free win.
+
+   That rarity clause is the substantive prior objection to this entire spec, and
+   the earlier draft neither cited nor rebutted it.
+
+   **The answer is that its escape hatch no longer exists.** The trade is stated
+   as three correct returns *and then* "drops out of the book" — a user who
+   overran the ring still left by the same gesture. That is no longer what
+   happens: `handleBackNavigation`'s gesture guard
+   (`src/activities/reader/ReaderUtils.h:255-257`) landed after that document and
+   makes the empty-ring swipe **inert** rather than an exit. So the failure the
+   rarity argument was sized against ("you exit early") has been replaced by a
+   strictly worse one ("nothing happens at all"), and rarity no longer carries
+   it. That guard is also independent corroboration of this spec's central
+   finding, from a direction the Problem section did not use.
+
+   One clarification the same document invites: `MAX_FOOTNOTE_DEPTH` at `:20` is
+   `CAPACITY`'s predecessor, not a second live cap.
+   `grep -rn MAX_FOOTNOTE_DEPTH src/ lib/ test/` returns nothing — it survives in
+   documentation only. Worth stating, because a reader arriving at `:20` and
+   `:30-31` would otherwise wonder whether a separate depth cap still pins the
+   chain at 3 regardless of `CAPACITY`, which would make this change inert.
 
 And the premise that this can wait is itself wrong: the swipe is already the only
 Return (Problem, step 5), so the failure is live on today's firmware.
@@ -537,8 +728,45 @@ Return (Problem, step 5), so the failure is live on today's firmware.
 
 | File | Change |
 |---|---|
-| `src/activities/reader/ReturnStack.h` | `CAPACITY` 3 → 16; eviction comment rewritten for the merged state; `static_assert` footprint ceiling |
-| `test/return_stack/ReturnStackTest.cpp` | 3 tests re-expressed through `ReturnStack::CAPACITY`; 1 test added; 9 unchanged |
+| `src/activities/reader/ReturnStack.h` | `CAPACITY` 3 → 16; eviction comment (`:17-18`) and the opening comment's worked example (`:5-7`) rewritten for the merged state; `static_assert(sizeof(SavedPosition) == 8)` |
+| `test/return_stack/ReturnStackTest.cpp` | 5 tests re-expressed through `ReturnStack::CAPACITY`; header comment (`:5-7`) rewritten; 1 test added; 7 unchanged |
+| `.claude/agents/ui-dev.md` | `:44` still says `CAPACITY = 3`; update the constant (**MAJOR 3**) |
 
-No shared append point is edited. Nothing for the orchestrator to apply on this
-surface's behalf.
+No shared append point is edited — `.claude/agents/ui-dev.md` is not one of the
+three that file names at `:26-32`. The `ui-dev.md` row is the only thing here the
+orchestrator may prefer to apply itself, since it is the briefing the next task
+on this surface reads.
+
+`docs/superpowers/specs/2026-09-13-berean-os-design.md:214,658` and
+`ROADMAP.md:73,111` are **deliberately left alone** — see *Comments* for why this
+PR closes only the capacity half of that open item.
+
+---
+
+## Review pass 0 — what changed and why
+
+Verdict **CLEAR**: 0 blockers, 4 MAJORs, 4 MINORs, all applied above and marked
+in place. Review: `docs/superpowers/reviews/issue-34-spec-review-0.md`.
+
+The reviewer independently reproduced the 3-tests / 6-assertions measurement and
+re-verified the swipe-is-the-only-Return chain, adding one citation this spec had
+not used — `HalGPIO.h:57`, where `BTN_BACK` is `PIN_UNASSIGNED` on this board.
+The core decision (A1, 16) survived review unchanged.
+
+| # | Finding | What changed |
+|---|---|---|
+| MAJOR 1 | `ClearEmptiesAWrappedRing` and `PushesAfterAClearStartFromScratch` push hardcoded 5 and 4, so at 16 they stop testing a wrapped ring while staying green | Architecture § *Changed: ReturnStackTest.cpp* rewritten: 5 tests rewritten / 7 untouched, both added with `CAPACITY`-relative bounds, plus an explicit rule that *every* loop bound is `CAPACITY`-relative. A4 and the Testing table follow. |
+| MAJOR 2 | A5's "brittle across host and Xtensa" is factually wrong, and an unspecified ceiling misses the growth it exists to catch | A5 rewritten: the shipped assertion is now `sizeof(SavedPosition) == 8`, with the disproof (exact 136 on both toolchains) recorded. Goal 4 restated. |
+| MAJOR 3 | `ReturnStack.h:5-7`, `ReturnStackTest.cpp:5-7` and `.claude/agents/ui-dev.md:44` all go false at 16; the spec affirmatively cleared the first | New Architecture § *Comments*; `ui-dev.md` added to Files touched; the design-doc/ROADMAP open-item lines explicitly left alone, with the reason. |
+| MAJOR 4 | `2026-09-12-reader-return-stack-design.md:20,210-215` is a fourth document that rejected this change with a reason ("depth ≥ 4 … is rare") the spec never cited | Added as item 4 of *Why this does not need Phase 2*, answered on its own terms: its "drops out of the book" escape hatch was removed by `ReaderUtils.h:255-257`. `MAX_FOOTNOTE_DEPTH` confirmed docs-only. |
+| MINOR 1 | "red first" as written can never be red | Testing § reworded: the *existing* tests are the red state. |
+| MINOR 2 | "29 sibling" i18n files | 31 (32 YAML, less `english.yaml`). |
+| MINOR 3 | Human-verification item 4 is false under `TOUCH_READER_SWIPE` | Qualified to the default tap mode, with the swipe-mode behaviour explained as correct. |
+| MINOR 4 | The A6 gate's "read off the failure message" cannot happen | Reworded to a yes/no, with "if it fails, stop and escalate" and why. |
+
+**One correction to the review, applied rather than adopted.** MAJOR 1's fix says
+the change becomes "5 rewritten / 8 untouched". The file has 12 tests
+(`grep -c "^TEST(ReturnStack," test/return_stack/ReturnStackTest.cpp` → 12), so 5
+rewritten leaves **7** untouched, and 13 after the one addition. The Architecture
+paragraph, the Testing table and Files touched all use 5 / 7 / 13 and name the
+seven individually, so the count is checkable rather than asserted.
