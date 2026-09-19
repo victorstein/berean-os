@@ -20,7 +20,13 @@ bool record(const std::string& bookPath, const study::RegisteredPub& pub) {
   if (bookPath.empty() || pub.symbol.empty()) return false;
 
   JsonDocument doc;
-  PersistableStoreBase::readDocFromFileAdopting(PATH, doc);
+  // Refuse BEFORE reading doc: a ParseError leaves the partially parsed
+  // document behind, so merging onto it would write back half a registry.
+  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(PATH, doc);
+  if (!mayOverwriteAfterRead(status)) {
+    LOG_ERR(MODULE, "Registry unreadable; refusing to overwrite it");
+    return false;
+  }
   const int version = doc["v"] | 0;
   if (version > FORMAT_VERSION) {
     LOG_ERR(MODULE, "Refusing to rewrite a newer registry format");
