@@ -20,3 +20,15 @@ constexpr DocReadStatus classifyDocRead(const bool exists, const bool contentEmp
   if (parseFailed) return DocReadStatus::ParseError;
   return DocReadStatus::Ok;
 }
+
+// Whether a read-modify-write caller may go on to write, given the status its
+// read returned. Ok and Missing are both safe -- Missing legitimately means
+// "start a new document". Unreadable and ParseError are not: the bytes are
+// still on the card, and an atomic write replaces them cleanly, leaving
+// nothing torn to notice.
+//
+// Naming the two permitted statuses rather than the refused ones is what makes
+// a status added later default to "refuse", which is the safe direction.
+constexpr bool mayOverwriteAfterRead(const DocReadStatus status) {
+  return status == DocReadStatus::Ok || status == DocReadStatus::Missing;
+}

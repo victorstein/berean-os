@@ -10,7 +10,9 @@
 #include <SaveBudget.h>
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "BookPathIndex.h"
@@ -27,6 +29,7 @@ namespace {
 constexpr const char* MODULE = "MIGRATE";
 constexpr const char* BEREAN_DIR = "/.berean";
 constexpr const char* LEGACY_DIR = "/.crosspoint/highlights";
+constexpr int LEDGER_FORMAT_VERSION = 1;
 
 struct FileReport {
   std::string source;
@@ -49,12 +52,26 @@ std::vector<std::string> legacySources() {
   return out;
 }
 
-std::vector<std::string> readLedger() {
-  std::vector<std::string> done;
+// nullopt means the ledger's bytes are on the card but unusable -- unreadable,
+// unparseable, or a format this build refuses. An empty vector means genuinely
+// absent, or present and recording nothing; both are safe to append to.
+//
+// The two must not be collapsed. A ledger read as "nothing migrated" re-runs
+// the migration, and PassageDoc::add appends without deduplicating, so every
+// passage in every already-migrated file would be added a second time.
+std::optional<std::vector<std::string>> readLedger() {
   JsonDocument doc;
-  if (PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc) != DocReadStatus::Ok) {
-    return done;
+  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
+  if (status == DocReadStatus::Missing) return std::vector<std::string>{};
+  if (status != DocReadStatus::Ok) return std::nullopt;
+  // The one nullopt cause nothing else reports: a well-formed future-format
+  // file reads Ok, so readDocFromFileAdopting stays silent.
+  if ((doc["v"] | 0) > LEDGER_FORMAT_VERSION) {
+    LOG_ERR(MODULE, "Refusing to read a newer ledger format");
+    return std::nullopt;
   }
+
+  std::vector<std::string> done;
   for (const JsonVariantConst v : doc["done"].as<JsonArrayConst>()) {
     const char* name = v["f"] | "";
     if (name[0] != '\0') done.emplace_back(name);
@@ -71,12 +88,30 @@ bool ledgerContains(const std::vector<std::string>& ledger, const std::string& n
 
 bool appendLedger(const std::string& name, const uint16_t passages) {
   JsonDocument doc;
-  PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
+  const DocReadStatus status = PersistableStoreBase::readDocFromFileAdopting(MigrationRunner::LEDGER_PATH, doc);
+  if (!mayOverwriteAfterRead(status)) {
+    LOG_ERR(MODULE, "Migration ledger unreadable; refusing to overwrite it");
+    return false;
+  }
+  if ((doc["v"] | 0) > LEDGER_FORMAT_VERSION) {
+    LOG_ERR(MODULE, "Refusing to rewrite a newer ledger format");
+    return false;
+  }
+  doc["v"] = LEDGER_FORMAT_VERSION;
   if (!doc["done"].is<JsonArray>()) doc["done"].to<JsonArray>();
 
   const auto row = doc["done"].as<JsonArray>().add<JsonObject>();
   row["f"] = name;
   row["p"] = passages;
+
+  // Bounded well clear of the ceiling: at most 200 sources (legacySources caps
+  // the listing) at at most 146 bytes a row -- the SD layer reads a filename
+  // into a char[128] -- is about 29 KB. The gate is the rule, not a reachable
+  // limit.
+  if (measureJson(doc) > persist::DEFAULT_SAVE_BUDGET) {
+    LOG_ERR(MODULE, "Migration ledger exceeds the save budget; not written");
+    return false;
+  }
 
   Storage.mkdir(BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(MigrationRunner::LEDGER_PATH, doc);
@@ -147,8 +182,12 @@ bool pending() {
   const auto sources = legacySources();
   if (sources.empty()) return false;
   const auto ledger = readLedger();
+  // Pending on purpose when the ledger is unusable: runIfPending is the only
+  // place that can log the refusal, so returning false here would make a
+  // corrupt ledger a silent no-op.
+  if (!ledger) return true;
   for (const auto& name : sources) {
-    if (!ledgerContains(ledger, name)) return true;
+    if (!ledgerContains(*ledger, name)) return true;
   }
   return false;
 }
@@ -157,7 +196,12 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
   const auto sources = legacySources();
   if (sources.empty()) return true;
 
-  auto ledger = readLedger();
+  auto ledgerRead = readLedger();
+  if (!ledgerRead) {
+    LOG_ERR(MODULE, "Migration ledger unreadable; refusing to migrate over it");
+    return false;
+  }
+  auto ledger = std::move(*ledgerRead);
   std::vector<FileReport> reports;
   bool allOk = true;
 
@@ -201,7 +245,13 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
       continue;
     }
     if (loadResult == HighlightFile::LoadResult::Empty) {
-      appendLedger(name, 0);
+      if (!appendLedger(name, 0)) {
+        LOG_ERR(MODULE, "Could not record %s as migrated; stopping", name.c_str());
+        report.drops.push_back("ledger not updated");
+        reports.push_back(report);
+        allOk = false;
+        break;
+      }
       ledger.push_back(name);
       reports.push_back(report);
       continue;
@@ -332,7 +382,16 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
     }
     summary.passagesWritten = static_cast<uint16_t>(summary.passagesWritten + report.written);
 
-    appendLedger(name, report.written);
+    // A ledger write failure is global, not per-file -- all of its causes are
+    // properties of the ledger or the card -- so continuing would keep writing
+    // passages that nothing records, each one a duplicate on the next boot.
+    if (!appendLedger(name, report.written)) {
+      LOG_ERR(MODULE, "Could not record %s as migrated; stopping", name.c_str());
+      report.drops.push_back("ledger not updated");
+      reports.push_back(report);
+      allOk = false;
+      break;
+    }
     ledger.push_back(name);
     reports.push_back(report);
   }

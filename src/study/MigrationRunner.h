@@ -38,6 +38,11 @@ bool pending();
 // Runs any pending migration. Returns false only on a failure that left work
 // undone; "nothing to do" is true. Safe to call on every boot.
 //
+// A ledger that exists but cannot be read, or that carries a newer format,
+// refuses the whole run rather than re-migrating. PassageDoc::add does not
+// deduplicate, so a second run over the same source appends every one of its
+// passages again.
+//
 // Takes the renderer because SpineHtmlStream borrows the framebuffer to draw
 // the indexing popup on a large inflate. Migration runs at boot, before any
 // activity, so main.cpp's global renderer is the one to pass.

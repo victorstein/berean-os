@@ -25,3 +25,36 @@ TEST(DocReadStatus, OnlyMissingIsSafeToOverwrite) {
   EXPECT_NE(classifyDocRead(true, true, false), DocReadStatus::Missing);
   EXPECT_NE(classifyDocRead(true, false, true), DocReadStatus::Missing);
 }
+
+// The caller-side half of the DocReadStatus.h:5-7 contract: given the status a
+// read returned, may a read-modify-write caller go on to write?
+
+TEST(MayOverwriteAfterRead, OkMayOverwrite) { EXPECT_TRUE(mayOverwriteAfterRead(DocReadStatus::Ok)); }
+
+TEST(MayOverwriteAfterRead, MissingMayOverwrite) {
+  EXPECT_TRUE(mayOverwriteAfterRead(DocReadStatus::Missing))
+      << "Missing means no data was ever there -- start a new document";
+}
+
+TEST(MayOverwriteAfterRead, UnreadableMayNotOverwrite) {
+  EXPECT_FALSE(mayOverwriteAfterRead(DocReadStatus::Unreadable)) << "the bytes are still on the card";
+}
+
+TEST(MayOverwriteAfterRead, ParseErrorMayNotOverwrite) {
+  EXPECT_FALSE(mayOverwriteAfterRead(DocReadStatus::ParseError)) << "the bytes are still on the card";
+}
+
+TEST(MayOverwriteAfterRead, AgreesWithClassifyDocRead) {
+  // Ties the predicate to the classifier that feeds it: of the eight observable
+  // read outcomes, only an absent file and a clean read permit a write.
+  for (const bool exists : {false, true}) {
+    for (const bool contentEmpty : {false, true}) {
+      for (const bool parseFailed : {false, true}) {
+        const bool permitted = mayOverwriteAfterRead(classifyDocRead(exists, contentEmpty, parseFailed));
+        const bool expected = !exists || (!contentEmpty && !parseFailed);
+        EXPECT_EQ(permitted, expected) << "exists=" << exists << " empty=" << contentEmpty
+                                       << " parseFailed=" << parseFailed;
+      }
+    }
+  }
+}
