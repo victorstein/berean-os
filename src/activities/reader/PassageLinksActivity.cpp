@@ -4,6 +4,7 @@
 #include <I18n.h>
 
 #include <algorithm>
+#include <iterator>
 
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
@@ -25,7 +26,8 @@ void PassageLinksActivity::refreshLabels() {
   if (passageIndex_ >= STUDY.passages().size()) return;
   const auto& links = STUDY.passages()[passageIndex_].links;
   labels_.reserve(links.size());
-  for (const auto& link : links) labels_.push_back(link.label);
+  std::transform(links.begin(), links.end(), std::back_inserter(labels_),
+                 [](const study::PassageLink& link) { return link.label; });
 }
 
 int PassageLinksActivity::listCount() const { return static_cast<int>(labels_.size()); }
