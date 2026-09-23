@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.14](https://github.com/victorstein/berean-os/compare/v1.9.13...v1.9.14) (2026-09-23)
+
+
+### Bug Fixes
+
+* raise ReturnStack capacity so the only Return gesture stops going inert ([#73](https://github.com/victorstein/berean-os/issues/73)) ([3524a98](https://github.com/victorstein/berean-os/commit/3524a98f895e053f0272798b08b63141bfa7d15c)), closes [#34](https://github.com/victorstein/berean-os/issues/34)
+
 ## [1.9.13](https://github.com/victorstein/berean-os/compare/v1.9.12...v1.9.13) (2026-09-23)
 
 
