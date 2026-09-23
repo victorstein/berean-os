@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/victorstein/berean-os/compare/v1.10.0...v1.11.0) (2026-09-23)
+
+
+### Features
+
+* record Bible chapters read and show them on the launcher ([#78](https://github.com/victorstein/berean-os/issues/78)) ([1269fce](https://github.com/victorstein/berean-os/commit/1269fced2d9f3271c0d852c78f968e96494b32d9)), closes [#35](https://github.com/victorstein/berean-os/issues/35)
+
 ## [1.10.0](https://github.com/victorstein/berean-os/compare/v1.9.15...v1.10.0) (2026-09-23)
 
 
