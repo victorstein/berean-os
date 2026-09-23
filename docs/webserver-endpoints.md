@@ -1,7 +1,8 @@
 # Webserver Endpoints
 
 This document describes the HTTP, WebSocket, WebDAV, and discovery endpoints
-available while the device is in File Transfer or Calibre Wireless mode.
+available while the device is in File Transfer mode (Settings > System > File
+Transfer).
 
 - HTTP server: port 80
 - WebSocket upload server: port 81
@@ -79,8 +80,14 @@ Response:
 ]
 ```
 
-Hidden dotfiles are omitted unless the device setting `showHiddenFiles` is
-enabled. `System Volume Information` and `XTCache` are always hidden/protected.
+Protected entries — anything whose name starts with `.`, plus
+`System Volume Information` and `XTCache` — are never listed, whatever
+`showHiddenFiles` says. Every route that takes a path (`/api/files`,
+`/download`, `/upload`, `/mkdir`, `/rename`, `/move`, `/delete`, the WebSocket
+`START`, and WebDAV) refuses the request when any component of the path is
+protected; `..` counts as one. HTTP routes answer `403` (`/upload` answers `400`
+with the reason); `/delete` lists the
+item as failed; the WebSocket answers `ERROR:`.
 
 ### `GET /download`
 
@@ -99,6 +106,15 @@ Query parameters:
 Protected dotfiles, `System Volume Information`, and `XTCache` cannot be
 downloaded. EPUB files are served as `application/epub+zip`; other files use
 `application/octet-stream`.
+
+### `GET /migration`
+
+Streams `/.berean/migration-report.json`, the report the study-data migration
+writes at boot.
+
+- `200` with the report as `application/json`
+- `404` `{"status":"no migration has run"}` when no report exists
+- `500` `{"status":"report unreadable"}` when the file cannot be opened
 
 ### `POST /upload`
 
@@ -122,7 +138,7 @@ File uploaded successfully: mybook.epub
 
 Notes:
 
-- Existing files with the same name are overwritten.
+- An existing file with the same name is never overwritten; the upload is refused.
 - EPUB cache data for the uploaded path is cleared after a successful upload.
 - HTTP upload uses a 4 KB write buffer before flushing to the SD card.
 
@@ -373,8 +389,7 @@ curl -X POST \
 
 ### Port 81
 
-The WebSocket path is used for fast binary uploads from the file manager and
-Calibre plugin workflows.
+The WebSocket path is used for fast binary uploads from the file manager.
 
 Connection:
 
@@ -457,8 +472,3 @@ The final field is the WebSocket upload port.
 - The device shows a Wi-Fi QR code and URL QR code.
 - The fallback IP is typically `192.168.4.1`.
 - `/api/status` returns `"mode": "AP"` and `"rssi": 0`.
-
-### Calibre Wireless
-
-Calibre Wireless starts the same web server in STA mode and displays setup
-instructions plus WebSocket upload progress on the device screen.

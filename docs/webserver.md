@@ -8,30 +8,43 @@ inherited strings, not a different device.
 
 ## Overview
 
-The web server is available while the device is in **File Transfer** or
-**Calibre Wireless** mode. It can:
+The web server is available while the device is in **File Transfer** mode. It
+can:
 
 - Upload, download, rename, move, and delete files on the SD card
 - Create folders
 - Edit many device settings from a browser
 - Manage saved Wi-Fi networks
 - Upload and delete `.cpfont` SD-card font families
-- Accept WebDAV clients and Calibre wireless uploads
+- Accept WebDAV clients and WebSocket uploads
+- Serve the study-data migration report (`GET /migration`)
 
 The server does not require authentication. Use it only on trusted private
 networks or in hotspot mode when you control who is connected.
 
 ## Starting File Transfer
 
-1. From the Home screen, select **File Transfer**.
+1. Open **Settings**, go to the **System** tab, and select **File Transfer**.
 2. Choose one of the available modes:
 
 | Mode | Use when |
 |------|----------|
 | **Join Network** | You want the device to join an existing Wi-Fi network. |
-| **Calibre Wireless** | You want to receive books from the Calibre device-plugin workflow. |
 | **Meeting Publications** | You want this week's meeting publications downloaded. This mode never starts the web server. |
 | **Create Hotspot** | You want the device to create its own open Wi-Fi network. |
+
+## Leaving File Transfer
+
+The device has no Back button. Swipe in from the left edge (Back) or press Home
+to leave.
+
+- Backing out of the mode list returns to Settings, but only if you have not
+  yet tried Join Network, Meeting Publications or Create Hotspot in this
+  session.
+- Once any of those has started Wi-Fi, every exit — from a running server, or
+  backing out of the mode list afterwards — restarts the device silently to the
+  launcher. The restart clears the heap fragmentation a Wi-Fi session leaves
+  behind.
 
 ## Join Network Mode
 
@@ -69,19 +82,12 @@ bereanOS
 The device displays one QR code for joining the hotspot and another QR code for
 opening the web interface.
 
-## Calibre Wireless Mode
-
-Calibre Wireless starts the same web server in station mode, then displays setup
-instructions and upload progress on the device. Use this mode with a Calibre
-device plugin or any other client that speaks the documented WebSocket upload
-protocol.
-
 ## Meeting Publications Mode
 
 Meeting Publications brings up its own station connection, resolves the current
-week's publications, downloads them to the SD card, and hands control back to
-the mode list. It never starts the web server, so nothing is exposed on the
-network while it runs.
+week's publications and downloads them to the SD card. It never starts the web
+server, so nothing is exposed on the network while it runs. When it finishes,
+the device restarts to the launcher like any other Wi-Fi exit.
 
 ## Web Interface
 
@@ -104,9 +110,22 @@ The File Manager page can:
 - Move files into existing folders
 - Delete one or more selected files or empty folders
 
-Existing files with the same name are overwritten by uploads. When EPUB files
-are overwritten, moved, renamed, or deleted through the web server, the matching
-book cache is cleared so stale metadata is not reused.
+Uploads never overwrite: an upload whose name already exists in the target
+folder is refused. To side-load a second firmware build, delete the old
+`firmware.bin` first (File Manager, or `POST /delete`) or upload under a new
+name. When EPUB files are moved, renamed, or deleted through the web server,
+the matching book cache is cleared so stale metadata is not reused.
+
+### Protected paths
+
+Nothing under a dot-named folder — `/.berean` (study data), `/.crosspoint`
+(settings and Wi-Fi credentials), `/.fonts` — nor `System Volume Information`
+or `XTCache` can be listed, downloaded, uploaded into, created, renamed, moved
+or deleted, over HTTP, WebSocket or WebDAV. Every component of the path is
+checked, so `..` is refused rather than resolved. This holds even with **Show
+hidden files** on; that setting affects only the on-device file browser. The
+migration report is readable through `GET /migration`, and fonts are managed
+through the Fonts page.
 
 ### Settings
 
@@ -140,7 +159,7 @@ Endpoint details are documented in [webserver-endpoints.md](./webserver-endpoint
 - The WebSocket upload server runs on port 81.
 - There is no authentication.
 - Anyone on the same network can access the web interface while it is running.
-- The server stops when you exit File Transfer or Calibre Wireless mode.
+- The server stops when you exit File Transfer.
 - Hotspot mode creates an open network for connectivity fallback; disconnect when done.
 
 ## Tips
