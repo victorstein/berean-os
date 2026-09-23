@@ -26,6 +26,10 @@ enum class TagId : uint16_t {};
 constexpr uint16_t toRaw(const TagId id) { return static_cast<uint16_t>(id); }
 constexpr TagId toTagId(const uint16_t raw) { return static_cast<TagId>(raw); }
 
+// "Marked, not yet labelled". Never allocated by a palette, so it cannot collide
+// with a user tag, and a passage carries it only when it carries nothing else.
+inline constexpr TagId UNLABELLED = toTagId(0);
+
 class TagPalette {
  public:
   static constexpr int FORMAT_VERSION = 1;
@@ -68,7 +72,7 @@ class TagPalette {
   };
 
   std::vector<Entry> entries_;
-  uint16_t nextRaw_ = 1;  // 0 is reserved; see the spec's open item on untagged passages
+  uint16_t nextRaw_ = 1;  // 0 is UNLABELLED
 };
 
 }  // namespace study

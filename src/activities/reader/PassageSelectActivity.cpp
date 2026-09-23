@@ -338,7 +338,7 @@ void PassageSelectActivity::showActionChooser(const int endIndex) {
   const char* options[] = {tr(STR_HIGHLIGHT), tr(STR_TAG), tr(STR_CANCEL)};
   actionChooser.show(tr(STR_HIGHLIGHT_PASSAGE), options, 3, 0, [this](const int choice) {
     switch (choice) {
-      case 0:  // Highlight: save immediately, no tags.
+      case 0:  // Highlight: save immediately, unlabelled.
         finalizeSelection(pendingEndIndex);
         break;
       case 1:  // Tag: pick tags first, then save with whatever comes back.
@@ -361,7 +361,7 @@ void PassageSelectActivity::startTagFlow(const int endIndex) {
                            // this sub-step opened, and TagPickerActivity's
                            // own contract (see its class comment) is that the
                            // caller decides what "no tags chosen" means. Here
-                           // that means the same untagged save Highlight
+                           // that means the same unlabelled save Highlight
                            // would have produced, not discarding the work the
                            // user already did picking two anchors.
                            std::vector<study::TagId> tagIds;
@@ -380,13 +380,6 @@ void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<st
   // starts at the top of the page the user finished on.
   const int lo = (anchorIndex >= 0) ? std::min(anchorIndex, endIndex) : 0;
   const int hi = (anchorIndex >= 0) ? std::max(anchorIndex, endIndex) : endIndex;
-
-  if (tagIds.empty()) {
-    // A passage exists only to carry tags, and StudyStore refuses an untagged
-    // one. Reaching here means the picker came back with nothing checked.
-    finish();
-    return;
-  }
 
   // `range.end` is the last word's offset + 1 -- VisibleRange::contains tests a
   // word's START offset, so the half-open end is what the geometry expects.

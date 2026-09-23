@@ -20,8 +20,8 @@
 // nothing here.
 //
 // Row 0 is a persistent filter control, not a highlight: tapping/confirming
-// it cycles filterTagIndex_ through nullopt ("All") -> tag 0 -> tag 1 -> ...
-// -> back to "All", narrowing which highlights rows 1.. show. It does NOT
+// it opens TagFilterActivity ("All", "Unlabelled", then each tag), narrowing
+// which highlights rows 1.. show. It does NOT
 // reuse TagPickerActivity: that picker enforces
 // HighlightDoc::MAX_TAGS_PER_HIGHLIGHT (8) and offers "New tag...", both
 // correct for tagging one highlight but wrong for a filter, which has no
@@ -105,6 +105,7 @@ class HighlightsActivity final : public UiListActivity {
   // EpubReaderBookmarksActivity::rebuildBookmarkRowItems.
   void rebuildRowItems();
   std::string computeFilterSubtitle() const;
+  void dropRetiredFilter();
   // Tag names for one passage, joined and capped for the row's value slot.
   std::string tagsValueFor(size_t passageIndex) const;
 

@@ -19,9 +19,9 @@
 // highlight. Tap or arrow to the first word and confirm, then tap or arrow to
 // the last word and confirm; a third step then asks Highlight / Tag / Cancel
 // via an OptionPopup (the same modal-choice widget EpubReaderMenuActivity and
-// HighlightsActivity already use) -- Highlight saves with no tags (the
-// original behaviour), Tag pushes TagPickerActivity and applies whatever it
-// returns, Cancel discards the selection entirely. The X4 Pro has no physical
+// HighlightsActivity already use) -- Highlight saves the passage unlabelled
+// (marking and labelling are separate acts), Tag pushes TagPickerActivity and
+// applies whatever it returns, Cancel discards the selection entirely. The X4 Pro has no physical
 // Back/Confirm: Back comes from the touchscreen's left-edge swipe
 // (MappedInputManager routes it through Button::Back regardless of hardware
 // mapping) and is checked first in every loop() iteration, unconditionally,

@@ -11,7 +11,8 @@
 
 // Single-select tag chooser for the highlights browser's filter row. Returns a
 // TagSelectionResult holding no elements for "all tags" or exactly one for a
-// specific tag; a cancelled result means the caller keeps its current filter.
+// specific tag -- study::UNLABELLED for the "Unlabelled" row; a cancelled result
+// means the caller keeps its current filter.
 //
 // A long-press RETIRES a tag: it leaves the pickers and stops filtering, while
 // every passage that carried it keeps its remaining tags and stays on the card.

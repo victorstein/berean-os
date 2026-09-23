@@ -7,20 +7,23 @@
 namespace study {
 namespace {
 
+// Never returns an empty list: a passage with no real tag carries UNLABELLED,
+// and one with any real tag does not.
 std::vector<TagId> normaliseTags(const std::vector<TagId>& tags) {
   std::vector<TagId> out;
-  out.reserve(std::min(tags.size(), PassageDoc::MAX_TAGS_PER_PASSAGE));
+  out.reserve(std::max<size_t>(1, std::min(tags.size(), PassageDoc::MAX_TAGS_PER_PASSAGE)));
   for (const TagId id : tags) {
     if (out.size() >= PassageDoc::MAX_TAGS_PER_PASSAGE) break;
+    if (id == UNLABELLED) continue;
     if (std::find(out.begin(), out.end(), id) == out.end()) out.push_back(id);
   }
+  if (out.empty()) out.push_back(UNLABELLED);
   return out;
 }
 
 }  // namespace
 
 bool PassageDoc::add(TaggedPassage passage) {
-  if (passage.tags.empty()) return false;
   // utf8SafeSummary, never resize(): every one of these strings is Spanish and a
   // raw byte cut can land after a lead byte, producing an invalid sequence that
   // ArduinoJson will then serialise. HighlightDoc::addHighlight uses the same
@@ -45,15 +48,15 @@ bool PassageDoc::remove(const size_t index) {
 
 bool PassageDoc::setTags(const size_t index, std::vector<TagId> tags) {
   if (index >= passages_.size()) return false;
-  std::vector<TagId> normalised = normaliseTags(tags);
-  if (normalised.empty()) return false;
-  passages_[index].tags = std::move(normalised);
+  passages_[index].tags = normaliseTags(tags);
   return true;
 }
 
 void PassageDoc::removeTagEverywhere(const TagId id) {
+  if (id == UNLABELLED) return;
   for (auto& p : passages_) {
     p.tags.erase(std::remove(p.tags.begin(), p.tags.end(), id), p.tags.end());
+    if (p.tags.empty()) p.tags.push_back(UNLABELLED);
   }
 }
 
@@ -61,10 +64,10 @@ void PassageDoc::repairDocumentSpine(const size_t index, const uint16_t spineInd
   if (index < passages_.size()) passages_[index].documentSpine = spineIndex;
 }
 
-size_t PassageDoc::untaggedCount() const {
+size_t PassageDoc::unlabelledCount() const {
   size_t n = 0;
   for (const auto& p : passages_) {
-    if (p.tags.empty()) ++n;
+    if (p.tags.size() == 1 && p.tags.front() == UNLABELLED) ++n;
   }
   return n;
 }
@@ -91,8 +94,12 @@ void PassageDoc::toJson(JsonDocument& doc) const {
     row["x"] = p.snippet;
     row["r"] = p.reference;
     if (p.pendingUpgrade) row["g"] = true;
+    // UNLABELLED is written as the empty array, which is how every v1 build
+    // already stores (and keeps) a passage whose last tag was retired.
     const auto tags = row["t"].to<JsonArray>();
-    for (const TagId id : p.tags) tags.add(toRaw(id));
+    for (const TagId id : p.tags) {
+      if (id != UNLABELLED) tags.add(toRaw(id));
+    }
   }
 }
 
@@ -118,7 +125,7 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
     p.pendingUpgrade = v["g"] | false;
     for (const JsonVariantConst t : v["t"].as<JsonArrayConst>()) {
       const uint32_t id = t | 0u;
-      if (id > 0 && id <= UINT16_MAX) p.tags.push_back(toTagId(static_cast<uint16_t>(id)));
+      if (id <= UINT16_MAX) p.tags.push_back(toTagId(static_cast<uint16_t>(id)));
     }
     p.tags = normaliseTags(p.tags);
 

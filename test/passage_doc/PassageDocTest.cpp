@@ -96,11 +96,68 @@ TEST(PassageDocValidation, DedupesAndCapsTags) {
   EXPECT_EQ(std::count(tags.begin(), tags.end(), study::toTagId(5)), 1);
 }
 
-TEST(PassageDocValidation, RefusesAPassageWithNoTags) {
+TEST(PassageDocUnlabelled, StoresAPassageWithNoTagsAsUnlabelled) {
   study::TaggedPassage p = samplePassage();
   p.tags.clear();
   study::PassageDoc doc;
-  EXPECT_FALSE(doc.add(p)) << "a highlight exists only to carry tags; all 63 of the user's do";
+  ASSERT_TRUE(doc.add(p)) << "marking a passage and labelling it are separate acts";
+  EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::UNLABELLED}));
+}
+
+TEST(PassageDocUnlabelled, ARealTagReplacesUnlabelled) {
+  study::TaggedPassage p = samplePassage();
+  p.tags = {study::UNLABELLED, study::toTagId(4), study::UNLABELLED};
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(p));
+  EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::toTagId(4)}));
+}
+
+TEST(PassageDocUnlabelled, UnlabelledDoesNotCountTowardsTheTagCap) {
+  study::TaggedPassage p = samplePassage();
+  p.tags = {study::UNLABELLED};
+  for (uint16_t raw = 1; raw <= study::PassageDoc::MAX_TAGS_PER_PASSAGE; ++raw) p.tags.push_back(study::toTagId(raw));
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(p));
+  EXPECT_EQ(doc.passages()[0].tags.size(), study::PassageDoc::MAX_TAGS_PER_PASSAGE);
+  EXPECT_EQ(doc.passages()[0].tags.back(), study::toTagId(study::PassageDoc::MAX_TAGS_PER_PASSAGE));
+}
+
+TEST(PassageDocUnlabelled, SerialisesAsTheEmptyTagArrayEveryV1BuildAlreadyReads) {
+  study::TaggedPassage p = samplePassage();
+  p.tags.clear();
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(p));
+
+  JsonDocument json;
+  doc.toJson(json);
+  EXPECT_EQ(json["v"].as<int>(), 1) << "unlabelled needs no new format: v1 already stores a tagless passage";
+  ASSERT_TRUE(json["p"][0]["t"].is<JsonArray>());
+  EXPECT_EQ(json["p"][0]["t"].size(), 0u) << "the reserved id never reaches the card";
+
+  study::PassageDoc back;
+  ASSERT_TRUE(back.fromJson(json.as<JsonVariantConst>()));
+  ASSERT_EQ(back.passages().size(), 1u);
+  EXPECT_EQ(back.passages()[0].tags, (std::vector<study::TagId>{study::UNLABELLED}));
+}
+
+TEST(PassageDocUnlabelled, LoadsAStoredZeroIdAsUnlabelled) {
+  JsonDocument json;
+  json["v"] = study::PassageDoc::FORMAT_VERSION;
+  const auto rows = json["p"].to<JsonArray>();
+  const auto onlyZero = rows.add<JsonObject>();
+  onlyZero["u"] = "v:19:119:145:0";
+  onlyZero["t"].to<JsonArray>().add(0);
+  const auto zeroAndReal = rows.add<JsonObject>();
+  zeroAndReal["u"] = "v:19:119:146:0";
+  const auto tags = zeroAndReal["t"].to<JsonArray>();
+  tags.add(0);
+  tags.add(5);
+
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.fromJson(json.as<JsonVariantConst>()));
+  ASSERT_EQ(doc.passages().size(), 2u);
+  EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::UNLABELLED}));
+  EXPECT_EQ(doc.passages()[1].tags, (std::vector<study::TagId>{study::toTagId(5)}));
 }
 
 TEST(PassageDocRemove, RemovingTheLastTagKeepsThePassage) {
@@ -114,15 +171,31 @@ TEST(PassageDocRemove, RemovingTheLastTagKeepsThePassage) {
   doc.removeTagEverywhere(study::toTagId(17));
   ASSERT_EQ(doc.passages().size(), 1u)
       << "a palette edit must never destroy a passage: TagFilterActivity deletes a tag on a long-press";
-  EXPECT_EQ(doc.untaggedCount(), 1u);
+  EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::UNLABELLED}));
+  EXPECT_EQ(doc.unlabelledCount(), 1u);
 }
 
-TEST(PassageDocSetTags, LeavesThePassageUntouchedWhenTheNewListIsEmpty) {
+TEST(PassageDocRemove, RemovingUnlabelledEverywhereIsANoOp) {
+  study::TaggedPassage p = samplePassage();
+  p.tags.clear();
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(p));
+  doc.removeTagEverywhere(study::UNLABELLED);
+  EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::UNLABELLED}));
+}
+
+TEST(PassageDocSetTags, UntaggingToZeroLeavesThePassageUnlabelled) {
   study::PassageDoc doc;
   ASSERT_TRUE(doc.add(samplePassage()));
-  EXPECT_FALSE(doc.setTags(0, {}));
-  ASSERT_EQ(doc.passages().size(), 1u) << "a refused setTags must not consume the passage";
-  EXPECT_EQ(doc.passages()[0].tags.size(), 2u);
+  EXPECT_TRUE(doc.setTags(0, {}));
+  ASSERT_EQ(doc.passages().size(), 1u) << "untagging is not deleting; the passage stays marked";
+  EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::UNLABELLED}));
+}
+
+TEST(PassageDocSetTags, RefusesAnOutOfRangeIndex) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  EXPECT_FALSE(doc.setTags(1, {study::toTagId(9)}));
 }
 
 TEST(PassageDocSetTags, DoesNotReorderTheDocument) {

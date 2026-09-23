@@ -54,8 +54,16 @@ void HighlightsActivity::rebuildVisibleIndices() {
 
 std::string HighlightsActivity::computeFilterSubtitle() const {
   if (!filterTagId_) return tr(STR_TAG_FILTER_ALL);
-  const std::string& name = STUDY.palette().name(*filterTagId_);
+  const std::string name = STUDY.tagName(*filterTagId_);
   return name.empty() ? tr(STR_TAG_FILTER_ALL) : name;
+}
+
+void HighlightsActivity::dropRetiredFilter() {
+  // A filter on a retired tag would show an empty list forever. UNLABELLED is in
+  // no palette, so isActive() is false for it and must not be consulted.
+  if (filterTagId_ && *filterTagId_ != study::UNLABELLED && !STUDY.palette().isActive(*filterTagId_)) {
+    filterTagId_.reset();
+  }
 }
 
 std::string HighlightsActivity::tagsValueFor(const size_t passageIndex) const {
@@ -105,8 +113,6 @@ void HighlightsActivity::rebuildRowItems() {
 }
 
 void HighlightsActivity::openTagFilter() {
-  if (STUDY.palette().activeCount() == 0) return;  // nothing to filter by; stays on "All"
-
   app.clearTapFlash();
   startActivityForResult(std::make_unique<TagFilterActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) {
@@ -123,9 +129,8 @@ void HighlightsActivity::openTagFilter() {
                            }
 
                            // The filter screen can retire a tag. Nothing needs re-resolving --
-                           // the id is stable -- but a filter on a now-retired tag would show an
-                           // empty list forever, so it is dropped.
-                           if (filterTagId_ && !STUDY.palette().isActive(*filterTagId_)) filterTagId_.reset();
+                           // the id is stable -- but the filter may now name a retired tag.
+                           dropRetiredFilter();
 
                            // Always rebuilt, including on cancel: a retirement changes the rows
                            // and the labels they borrow even when the filter is untouched.
@@ -262,15 +267,14 @@ void HighlightsActivity::applyTagEdit(const size_t docIndex, const ActivityResul
     // setPassageTags saves synchronously and restores the previous tags itself
     // if the write fails, so the resident document can never hold tags that are
     // not on disk.
-    if (!STUDY.setPassageTags(docIndex, selection.tagIds) && !selection.tagIds.empty()) {
+    if (!STUDY.setPassageTags(docIndex, selection.tagIds)) {
       ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
     }
   }
 
   // The picker persists palette changes itself, so even a cancelled edit may
-  // have retired the tag being filtered on. Ids are stable, so there is nothing
-  // to re-resolve -- only to drop if it is no longer active.
-  if (filterTagId_ && !STUDY.palette().isActive(*filterTagId_)) filterTagId_.reset();
+  // have retired the tag being filtered on.
+  dropRetiredFilter();
   {
     // rebuildVisibleIndices/rebuildRowItems refill the vector buildScreen
     // hands the render task as rowItems_.data(); the render lock is
