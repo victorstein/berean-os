@@ -142,7 +142,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
 
   // Covers the network limit, a budget refusal and an SD failure alike:
   // WifiCredentialStore returns the same false for all three.
-  void reportCredentialSaveFailure() const;
+  static void reportCredentialSaveFailure();
   void startWifiScan(bool autoScan = false);
   void processWifiScanResults();
   void appendHiddenNetworkEntry();

@@ -57,7 +57,7 @@ void LanguageSelectActivity::activateIndex(const int index) {
   }
 
   SETTINGS.language = langIndex;
-  saveSettingsOrReport(renderer);
+  saveSettingsOrReport();
 
   // Return to previous page
   finish();

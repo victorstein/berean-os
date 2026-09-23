@@ -230,7 +230,7 @@ bool SettingsActivity::handleButtons() {
       activeNav().selected = 0;
       requestUpdate();
     } else {
-      saveSettingsOrReport(renderer);
+      saveSettingsOrReport();
       onGoHome();
     }
     return true;
@@ -266,7 +266,7 @@ void SettingsActivity::toggleCurrentSetting() {
                        currentValue, [this, valuePtr, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
                          SETTINGS.*valuePtr = idx;
                          syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-                         saveSettingsOrReport(renderer);
+                         saveSettingsOrReport();
                          rebuildSettingsLists();
                          applyUiSettingChange(valuePtr);
                        });
@@ -284,7 +284,7 @@ void SettingsActivity::toggleCurrentSetting() {
       auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-        saveSettingsOrReport(renderer);
+        saveSettingsOrReport();
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -305,7 +305,7 @@ void SettingsActivity::toggleCurrentSetting() {
       SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
     }
   } else if (setting.type == SettingType::ACTION) {
-    auto resultHandler = [this](const ActivityResult&) { saveSettingsOrReport(renderer); };
+    auto resultHandler = [this](const ActivityResult&) { saveSettingsOrReport(); };
 
     switch (setting.action) {
       case SettingAction::RemapFrontButtons:
@@ -336,7 +336,7 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::DownloadFonts:
         startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
                                [this](const ActivityResult&) {
-                                 saveSettingsOrReport(renderer);
+                                 saveSettingsOrReport();
                                  rebuildSettingsLists();
                                });
         break;
@@ -354,7 +354,7 @@ void SettingsActivity::toggleCurrentSetting() {
         // needs an explicit rebuild here rather than the generic resultHandler.
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput),
                                [this](const ActivityResult&) {
-                                 saveSettingsOrReport(renderer);
+                                 saveSettingsOrReport();
                                  rebuildSettingsLists();
                                });
         break;
@@ -368,7 +368,7 @@ void SettingsActivity::toggleCurrentSetting() {
   }
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-  saveSettingsOrReport(renderer);
+  saveSettingsOrReport();
   rebuildSettingsLists();
   applyUiSettingChange(setting.valuePtr);
   activeNav().selected = std::min(ringPos(), settingsCount);
@@ -406,7 +406,7 @@ void SettingsActivity::openSleepTimeoutPicker() {
       [this](const ActivityResult& result) {
         if (!result.isCancelled) {
           SETTINGS.sleepTimeoutMinutes = static_cast<uint8_t>(std::get<IntervalResult>(result.data).value);
-          saveSettingsOrReport(renderer);
+          saveSettingsOrReport();
         }
         requestUpdate();
       });

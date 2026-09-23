@@ -67,7 +67,7 @@ void FrontlightPanelActivity::onExit() {
     SETTINGS.frontlightBrightness = brightness;
     SETTINGS.frontlightWarmth = warmth;
     if (lightOnChanged) SETTINGS.frontlightOn = lightOn ? 1 : 0;
-    saveSettingsOrReport(renderer);
+    saveSettingsOrReport();
   }
   Activity::onExit();
 }

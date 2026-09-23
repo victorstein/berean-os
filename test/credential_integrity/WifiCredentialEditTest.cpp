@@ -73,6 +73,67 @@ TEST(WifiCredentialEdit, UndoFindsTheEntryBySsidAfterTheListShifted) {
   EXPECT_EQ(credentials[0].password, "work-pass");
 }
 
+TEST(WifiCredentialRename, RenameReplacesTheOldEntry) {
+  auto credentials = twoNetworks();
+  const auto rename = renameCredential(credentials, "home", "home-5g", "new-pass", LIMIT);
+  ASSERT_TRUE(rename.applied);
+  ASSERT_EQ(credentials.size(), 2u);
+  EXPECT_EQ(credentials[0].ssid, "work");
+  EXPECT_EQ(credentials[1].ssid, "home-5g");
+  EXPECT_EQ(credentials[1].password, "new-pass");
+}
+
+TEST(WifiCredentialRename, UndoRestoresTheOldEntryInItsPlace) {
+  auto credentials = twoNetworks();
+  const auto rename = renameCredential(credentials, "home", "home-5g", "new-pass", LIMIT);
+  undoCredentialRename(credentials, rename);
+  ASSERT_EQ(credentials.size(), 2u);
+  EXPECT_EQ(credentials[0].ssid, "home");
+  EXPECT_EQ(credentials[0].password, "old-pass");
+  EXPECT_EQ(credentials[1].ssid, "work");
+  EXPECT_EQ(credentials[1].password, "work-pass");
+}
+
+TEST(WifiCredentialRename, RenameOntoAnotherSavedSsidMergesAndUndoSplitsThemAgain) {
+  auto credentials = twoNetworks();
+  const auto rename = renameCredential(credentials, "home", "work", "merged", LIMIT);
+  ASSERT_TRUE(rename.applied);
+  ASSERT_EQ(credentials.size(), 1u);
+  EXPECT_EQ(credentials[0].password, "merged");
+
+  undoCredentialRename(credentials, rename);
+  ASSERT_EQ(credentials.size(), 2u);
+  EXPECT_EQ(credentials[0].ssid, "home");
+  EXPECT_EQ(credentials[0].password, "old-pass");
+  EXPECT_EQ(credentials[1].password, "work-pass");
+}
+
+TEST(WifiCredentialRename, SameSsidIsAnInPlaceUpdate) {
+  auto credentials = twoNetworks();
+  const auto rename = renameCredential(credentials, "home", "home", "new-pass", LIMIT);
+  ASSERT_TRUE(rename.applied);
+  EXPECT_EQ(credentials[0].ssid, "home");
+  EXPECT_EQ(credentials[0].password, "new-pass");
+  undoCredentialRename(credentials, rename);
+  EXPECT_EQ(credentials[0].password, "old-pass");
+}
+
+TEST(WifiCredentialRename, RenameAtTheLimitStillFits) {
+  std::vector<WifiCredential> credentials;
+  for (size_t i = 0; i < LIMIT; ++i) credentials.push_back({"net" + std::to_string(i), "p"});
+  const auto rename = renameCredential(credentials, "net0", "renamed", "p", LIMIT);
+  ASSERT_TRUE(rename.applied) << "the old entry frees the slot the new one takes";
+  EXPECT_EQ(credentials.size(), LIMIT);
+}
+
+TEST(WifiCredentialRename, UnknownOldSsidAppliesNothing) {
+  auto credentials = twoNetworks();
+  const auto rename = renameCredential(credentials, "absent", "cafe", "latte", LIMIT);
+  EXPECT_FALSE(rename.applied);
+  undoCredentialRename(credentials, rename);
+  EXPECT_EQ(credentials.size(), 2u);
+}
+
 TEST(WifiCredentialEdit, UndoOfARejectionChangesNothing) {
   std::vector<WifiCredential> credentials(LIMIT, WifiCredential{"x", "y"});
   const auto edit = upsertCredential(credentials, "one-too-many", "p", LIMIT);

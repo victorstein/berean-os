@@ -133,6 +133,33 @@ bool WifiCredentialStore::addCredential(const std::string& ssid, const std::stri
   return false;
 }
 
+bool WifiCredentialStore::updateCredential(const std::string& oldSsid, const std::string& ssid,
+                                           const std::string& password) {
+  WifiCredentialRename rename;
+  std::string previousLastConnected;
+  {
+    std::lock_guard<std::mutex> lock(credentialMutex);
+    rename = renameCredential(credentials, oldSsid, ssid, password, MAX_NETWORKS);
+    previousLastConnected = lastConnectedSsid;
+    if (rename.applied && rename.removedOld && oldSsid == lastConnectedSsid) lastConnectedSsid.clear();
+  }
+  if (!rename.applied) {
+    LOG_DBG("WCS", "No saved network named %s to update", oldSsid.c_str());
+    return false;
+  }
+  if (saveToFileAtomic()) {
+    LOG_DBG("WCS", "Updated credentials: %s -> %s", oldSsid.c_str(), ssid.c_str());
+    return true;
+  }
+  {
+    std::lock_guard<std::mutex> lock(credentialMutex);
+    undoCredentialRename(credentials, rename);
+    lastConnectedSsid = previousLastConnected;
+  }
+  LOG_ERR("WCS", "Could not save the edit to %s; rolled it back", oldSsid.c_str());
+  return false;
+}
+
 bool WifiCredentialStore::removeCredential(const std::string& ssid) {
   {
     std::lock_guard<std::mutex> lock(credentialMutex);

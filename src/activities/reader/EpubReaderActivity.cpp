@@ -880,7 +880,7 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
   }
 
   SETTINGS.orientation = orientation;
-  saveSettingsOrReport(renderer);
+  saveSettingsOrReport();
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   section.reset();
 }

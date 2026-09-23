@@ -12,6 +12,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "WifiCredentialStore.h"
+#include "activities/PostedMessage.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -183,7 +184,7 @@ void WifiSelectionActivity::onExit() {
   LOG_DBG("WIFI", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
 }
 
-void WifiSelectionActivity::reportCredentialSaveFailure() const { GUI.drawPopup(renderer, tr(STR_WIFI_SAVE_FAILED)); }
+void WifiSelectionActivity::reportCredentialSaveFailure() { PostedMessage::post(tr(STR_WIFI_SAVE_FAILED)); }
 
 void WifiSelectionActivity::startWifiScan(const bool autoScan) {
   autoConnecting = autoScan;
@@ -992,6 +993,7 @@ void WifiSelectionActivity::render(RenderLock&&) {
   }
 
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }
 
 void WifiSelectionActivity::listScreen(UiScreen& screen, void* user) {

@@ -83,7 +83,7 @@ void ClockOffsetActivity::saveToSettings() const {
   const uint8_t encoded = encodeOffset(sign, hours, minutesQuarter);
   if (encoded == SETTINGS.clockUtcOffsetQ) return;
   SETTINGS.clockUtcOffsetQ = encoded;
-  saveSettingsOrReport(renderer);
+  saveSettingsOrReport();
 }
 
 void ClockOffsetActivity::clampForSign() {

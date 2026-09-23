@@ -51,6 +51,9 @@ class WifiCredentialStore : public PersistableStore<WifiCredentialStore> {
   // Credential management
   bool addCredential(const std::string& ssid, const std::string& password);
   bool removeCredential(const std::string& ssid);
+  // Edits the saved network `oldSsid`, possibly renaming it. All or nothing: a
+  // failed save leaves the old entry in memory and on the card.
+  bool updateCredential(const std::string& oldSsid, const std::string& ssid, const std::string& password);
   std::optional<WifiCredential> findCredential(const std::string& ssid) const;
   std::optional<WifiCredential> getCredentialAt(size_t index) const;
   std::optional<std::string> getSsidAt(size_t index) const;

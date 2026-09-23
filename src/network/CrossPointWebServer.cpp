@@ -1376,14 +1376,7 @@ void CrossPointWebServer::handlePostWifiNetwork() {
       password = credential->password;
     }
 
-    bool ok = true;
-    if (oldSsid != ssid) {
-      ok = WIFI_STORE.removeCredential(oldSsid) && WIFI_STORE.addCredential(ssid, password);
-    } else {
-      ok = WIFI_STORE.addCredential(ssid, password);
-    }
-
-    if (!ok) {
+    if (!WIFI_STORE.updateCredential(oldSsid, ssid, password)) {
       server->send(400, "text/plain", "Failed to update Wi-Fi network");
       return;
     }

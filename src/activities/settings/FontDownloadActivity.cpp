@@ -11,6 +11,7 @@
 #include "MappedInputManager.h"
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
+#include "activities/PostedMessage.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
@@ -681,4 +682,5 @@ void FontDownloadActivity::render(RenderLock&&) {
   }
 
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }

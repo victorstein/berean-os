@@ -11,7 +11,6 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
-#include "activities/SettingsSave.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -226,7 +225,9 @@ void BmpViewerActivity::doSetSleepCover() {
 
   if (success) {
     if (!transparentMode) SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
-    if (saveSettingsOrReport(renderer)) GUI.drawPopup(renderer, tr(STR_DONE));
+    // Drawn now, like the popups beside it: the delay below holds the screen, and
+    // this viewer's own redraw does not show posted messages.
+    GUI.drawPopup(renderer, SETTINGS.saveToFileAtomic() ? tr(STR_DONE) : tr(STR_SETTINGS_SAVE_FAILED));
   } else {
     GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
   }

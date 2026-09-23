@@ -8,11 +8,12 @@ fails (SD write) is reported with `LOG_ERR` only
 nowhere else, so on a device without a cable attached the user's change silently
 fails to stick.
 
-No on-disk format changes. No new mechanism: every message goes through the
-surface each activity already uses — `GUI.drawPopup`, which
-`ReaderUtils::showMessage` wraps (`src/activities/reader/ReaderUtils.h:233`) — or,
-for the web server, the HTTP status the settings page already renders
-(`src/network/html/SettingsPage.html:579-592`).
+No on-disk format changes and no new mechanism. On-device messages go through
+`PostedMessage` (`src/activities/PostedMessage.h`, from #78), which draws a queued
+popup after the next screen finishes rendering. The web server reports through the
+HTTP status that the settings page already renders
+(`src/network/html/SettingsPage.html:579-592`). See Decision 4 for which screens
+draw posted messages.
 
 ## Decision 1 — bookmarks: a new key, not `STR_HIGHLIGHTS_TOO_LARGE`
 
@@ -65,16 +66,32 @@ since the file's worst case is about 1,600 B against a 4,096 B budget
 (`CrossPointSettings.h:425-427`). It is surfaced anyway because the user sees the
 same thing either way: a change that does not stick.
 
-**One helper, not per-site code.** There are 29 device-side settings save sites.
-`saveSettingsOrReport(renderer)` puts the save and the popup in one place, so a
-new settings screen gets the report by calling the same function the others do.
-It is a header-only inline that calls the existing `GUI.drawPopup`. It adds no
-state and no allocation.
+**One helper, not per-site code.** There are 28 device-side settings save sites
+that use `saveSettingsOrReport()`. It puts the save and the message in one place,
+so a new settings screen gets the report by calling the same function the others
+do. It is a header-only inline that posts a `tr()` string. It adds no state and no
+allocation.
+
+The one settings site that does not use it is `BmpViewerActivity`'s "set as sleep
+screen". There the failure is drawn at once, in place of its existing `STR_DONE`
+popup. That screen holds each of its popups with `delay(1000)` and redraws through
+`onEnter()`, which does not draw posted messages.
 
 **WiFi `removeCredential` returns false for an unknown SSID too**
 (`WifiCredentialStore.cpp:137-150`). The forget sites therefore record
 `hasSavedCredential` first and report only when the SSID was actually saved, so
 forgetting a network that was never stored does not raise a false error.
+
+**Editing a network from the web server was two saves.**
+`POST /api/wifi` with an index removed the old entry, saved, then added the new
+one and saved again. If the add failed, the old network was already gone, in
+memory and on the card. It now calls `WifiCredentialStore::updateCredential`,
+which applies the edit as one in-memory change (`renameCredential` in
+`src/util/WifiCredentialEdit.h`) and makes one atomic save. If that save fails, it
+undoes the change and restores `lastConnectedSsid`, and the file on the card was
+never touched. `addCredential` undoes a failed save the same way, so a later
+unrelated save (such as `setLastConnectedSsid`) cannot persist a network the user
+was told was not saved.
 
 ## Decision 3 — study data keeps its generic message for now
 
@@ -87,10 +104,46 @@ call sites. The passage budget is 200,000 B
 Bible use reaches first; bookmarks, at 45,000 B, are. That change is left as a
 follow-up, and the key is kept for it.
 
+## Decision 4 — where each posted message is drawn
+
+`UiListActivity::render` and the reader's render already draw posted messages
+(`UiListActivity.cpp:168`, `ReaderActivity.cpp:180,185`). For each message this PR
+posts, the screen that renders next is:
+
+| Posted from | Next screen | Draws posted messages? |
+|---|---|---|
+| Settings, Text settings, Status bar, Language, Reader menu, Clock offset (on exit), Button remap (then finish) | a `UiListActivity` | yes, already |
+| `EpubReaderActivity::applyOrientation` | the reader | yes, already |
+| `SettingsActivity` Back (save, then `onGoHome`) | `LauncherActivity` | **added** |
+| Wi-Fi "Forget network?" (then `startWifiScan`) | `WifiSelectionActivity` | **added** |
+| Wi-Fi "Save password?" (then `onComplete`) | the screen that opened Wi-Fi: Settings, ClockSync, FontDownload, OtaUpdate, CatalogSearch, CrossPointWebServer, MeetingDownload, CalibreConnect | Settings already; the other seven **added** |
+| `FrontlightPanelActivity::onExit` | whatever screen the panel was opened over | yes for the list screens, the reader, the launcher and the screens above; see below |
+
+Each added call is `PostedMessage::drawNext(renderer)` right after that render's
+own `displayBuffer`, the placement #78 established. I chose this over a single call
+in `ActivityManager`'s render loop. The render functions that already call
+`drawNext` would then call it twice, and when two messages are queued the second
+call would draw the second message over the first straight away. The per-screen
+call also follows #78's pattern and does not change the mechanism #78 introduced.
+
+**Frontlight panel.** The panel can be opened over any screen
+(`ActivityManager.cpp:85-86`). Over a screen that does not draw posted messages,
+the message stays queued and appears on the next screen that does. It arrives
+late but is not lost. The queue holds two messages and logs any it has to drop.
+
+**The bookmark refusal needs no change.** `EpubReaderActivity` does not draw it as
+a one-off popup. It sets `showBookmarkMessage`, and the reader's own render draws
+the toast every time it paints (`EpubReaderActivity.cpp:1286-1287`) until
+`BOOKMARK_MESSAGE_DURATION_MS` (2.5 s) has passed. So no later render paints over
+it.
+
 ## Testing
 
-No host-testable decision logic is added. The new code is a `tr()` lookup plus a
-`GUI.drawPopup` call at each site, and neither can be built on the host. When
-bookmarks refuse is already pinned by `test/bookmark_save_action/`. The popups,
-and how long they stay readable before the next repaint, can only be checked on
-the device.
+The Wi-Fi edit and rollback rules are host-tested in
+`test/credential_integrity/WifiCredentialEditTest.cpp`: append, update, the
+network limit, undo of each, undo after the list has shifted, and renaming (in
+place, onto another saved network, and at the limit). The message plumbing is a
+`tr()` lookup plus a `PostedMessage::post` at each site, and neither can be built
+on the host. When bookmarks refuse is already covered by
+`test/bookmark_save_action/`. Whether each message actually appears on screen can
+only be checked on the device.

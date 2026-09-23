@@ -14,6 +14,7 @@
 #include "NetworkModeSelectionActivity.h"
 #include "SilentRestart.h"
 #include "WifiSelectionActivity.h"
+#include "activities/PostedMessage.h"
 #include "activities/network/MeetingDownloadActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -397,6 +398,7 @@ void CrossPointWebServerActivity::render(RenderLock&&) {
       renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_STARTING_HOTSPOT));
     }
     renderer.displayBuffer();
+    PostedMessage::drawNext(renderer);
   }
 }
 
