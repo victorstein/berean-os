@@ -22,6 +22,7 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "StudyStore/PubKey.h"
+#include "activities/PostedMessage.h"
 #include "activities/catalog/PublicationsActivity.h"
 #include "activities/launcher/LauncherRefresh.h"
 #include "activities/network/MeetingsActivity.h"
@@ -497,6 +498,7 @@ void LauncherActivity::render(RenderLock&&) {
   LOG_DBG(MODULE, "Paint: clean=%d firstPaint=%d mode=%s", cleanInitialRefresh ? 1 : 0, firstRenderDone ? 0 : 1,
           cleanPaint ? "HALF" : "FAST");
   renderer.displayBuffer(mode);
+  PostedMessage::drawNext(renderer);
   firstRenderDone = true;
 }
 

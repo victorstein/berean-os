@@ -9,6 +9,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/SettingsSave.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
@@ -82,7 +83,7 @@ void ClockOffsetActivity::saveToSettings() const {
   const uint8_t encoded = encodeOffset(sign, hours, minutesQuarter);
   if (encoded == SETTINGS.clockUtcOffsetQ) return;
   SETTINGS.clockUtcOffsetQ = encoded;
-  SETTINGS.saveToFileAtomic();
+  saveSettingsOrReport();
 }
 
 void ClockOffsetActivity::clampForSign() {

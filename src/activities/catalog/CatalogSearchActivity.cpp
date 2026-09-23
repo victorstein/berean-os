@@ -1,5 +1,7 @@
 #include "CatalogSearchActivity.h"
 
+#include "activities/PostedMessage.h"
+
 // clang-format off
 // HttpDownloader.h (through PublicationDownloader) pulls Arduino/SdFat, whose
 // macros collide with lwip's ip4_addr.h unless seen first. Pin this order;
@@ -583,4 +585,5 @@ void CatalogSearchActivity::render(RenderLock&&) {
   }
 
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }

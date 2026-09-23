@@ -12,6 +12,7 @@
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "WifiSelectionActivity.h"
+#include "activities/PostedMessage.h"
 #include "components/UITheme.h"
 #include "network/HttpDownloader.h"
 #include "network/MeetingWeekCache.h"
@@ -410,4 +411,5 @@ void MeetingDownloadActivity::render(RenderLock&&) {
 
   renderUi();
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }

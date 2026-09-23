@@ -12,6 +12,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "WifiCredentialStore.h"
+#include "activities/PostedMessage.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -68,7 +69,9 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
     self->app.clearTapFlash();  // the action leaves this screen
     if (self->savePromptSelection == 0) {
       RenderLock lock(*self);
-      WIFI_STORE.addCredential(self->selectedSSID, self->enteredPassword);
+      if (WIFI_STORE.addCredential(self->selectedSSID, self->enteredPassword) != WifiCredentialStore::EditResult::Ok) {
+        self->reportCredentialSaveFailure();
+      }
     }
     self->onComplete(true);
     return;
@@ -78,11 +81,15 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
     self->app.clearTapFlash();  // the action leaves this screen
     if (self->forgetPromptSelection == 1) {
       RenderLock lock(*self);
-      WIFI_STORE.removeCredential(self->selectedSSID);
-      const auto network = find_if(self->networks.begin(), self->networks.end(),
-                                   [self](const WifiNetworkInfo& net) { return net.ssid == self->selectedSSID; });
-      if (network != self->networks.end()) {
-        network->hasSavedPassword = false;
+      const auto removed = WIFI_STORE.removeCredential(self->selectedSSID);
+      if (removed == WifiCredentialStore::EditResult::SaveFailed) {
+        self->reportCredentialSaveFailure();
+      } else {
+        const auto network = find_if(self->networks.begin(), self->networks.end(),
+                                     [self](const WifiNetworkInfo& net) { return net.ssid == self->selectedSSID; });
+        if (network != self->networks.end()) {
+          network->hasSavedPassword = false;
+        }
       }
     }
     self->startWifiScan();
@@ -180,6 +187,8 @@ void WifiSelectionActivity::onExit() {
 
   LOG_DBG("WIFI", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
 }
+
+void WifiSelectionActivity::reportCredentialSaveFailure() { PostedMessage::post(tr(STR_WIFI_SAVE_FAILED)); }
 
 void WifiSelectionActivity::startWifiScan(const bool autoScan) {
   autoConnecting = autoScan;
@@ -764,7 +773,9 @@ void WifiSelectionActivity::loop() {
       if (savePromptSelection == 0) {
         // User chose "Yes" - save the password
         RenderLock lock(*this);
-        WIFI_STORE.addCredential(selectedSSID, enteredPassword);
+        if (WIFI_STORE.addCredential(selectedSSID, enteredPassword) != WifiCredentialStore::EditResult::Ok) {
+          reportCredentialSaveFailure();
+        }
       }
       // Complete - parent will start web server
       onComplete(true);
@@ -799,12 +810,15 @@ void WifiSelectionActivity::loop() {
       if (forgetPromptSelection == 1) {
         RenderLock lock(*this);
         // User chose "Forget network" - forget the network
-        WIFI_STORE.removeCredential(selectedSSID);
-        // Update the network list to reflect the change
-        const auto network = find_if(networks.begin(), networks.end(),
-                                     [this](const WifiNetworkInfo& net) { return net.ssid == selectedSSID; });
-        if (network != networks.end()) {
-          network->hasSavedPassword = false;
+        // A failed save rolls the credential back, so the row keeps its saved mark.
+        if (WIFI_STORE.removeCredential(selectedSSID) == WifiCredentialStore::EditResult::SaveFailed) {
+          reportCredentialSaveFailure();
+        } else {
+          const auto network = find_if(networks.begin(), networks.end(),
+                                       [this](const WifiNetworkInfo& net) { return net.ssid == selectedSSID; });
+          if (network != networks.end()) {
+            network->hasSavedPassword = false;
+          }
         }
       }
       // Go back to network list (whether Cancel or Forget network was selected)
@@ -987,6 +1001,7 @@ void WifiSelectionActivity::render(RenderLock&&) {
   }
 
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }
 
 void WifiSelectionActivity::listScreen(UiScreen& screen, void* user) {

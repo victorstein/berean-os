@@ -140,6 +140,9 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void renderConnectionFailed(const Rect* screen, const ThemeMetrics* metrics) const;
   void renderPrefetchingMeetings(const Rect* screen, const ThemeMetrics* metrics) const;
 
+  // Covers the network limit, a budget refusal and an SD failure alike:
+  // WifiCredentialStore returns the same false for all three.
+  static void reportCredentialSaveFailure();
   void startWifiScan(bool autoScan = false);
   void processWifiScanResults();
   void appendHiddenNetworkEntry();

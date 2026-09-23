@@ -21,6 +21,7 @@
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
+#include "activities/SettingsSave.h"
 #include "activities/network/CrossPointWebServerActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
@@ -229,7 +230,6 @@ bool SettingsActivity::handleButtons() {
       activeNav().selected = 0;
       requestUpdate();
     } else {
-      SETTINGS.saveToFileAtomic();
       onGoHome();
     }
     return true;
@@ -265,7 +265,7 @@ void SettingsActivity::toggleCurrentSetting() {
                        currentValue, [this, valuePtr, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
                          SETTINGS.*valuePtr = idx;
                          syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-                         SETTINGS.saveToFileAtomic();
+                         saveSettingsOrReport();
                          rebuildSettingsLists();
                          applyUiSettingChange(valuePtr);
                        });
@@ -283,7 +283,7 @@ void SettingsActivity::toggleCurrentSetting() {
       auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-        SETTINGS.saveToFileAtomic();
+        saveSettingsOrReport();
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -304,17 +304,18 @@ void SettingsActivity::toggleCurrentSetting() {
       SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
     }
   } else if (setting.type == SettingType::ACTION) {
-    auto resultHandler = [this](const ActivityResult&) { SETTINGS.saveToFileAtomic(); };
-
+    // No save after a child screen: each one either saves (and reports) its own
+    // changes or changes no setting, so saving here again would repeat or invent
+    // a failure message.
     switch (setting.action) {
       case SettingAction::RemapFrontButtons:
-        startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::CustomiseStatusBar:
-        startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::Network:
-        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
+        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), nullptr);
         break;
       case SettingAction::FileTransfer:
         // Pushed rather than activityManager.goToFileTransfer(), which replaces
@@ -324,38 +325,29 @@ void SettingsActivity::toggleCurrentSetting() {
                                [](const ActivityResult&) {});
         break;
       case SettingAction::ClearCache:
-        startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::CheckForUpdates:
-        startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::SdFirmwareUpdate:
-        startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::DownloadFonts:
         startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
-                               [this](const ActivityResult&) {
-                                 SETTINGS.saveToFileAtomic();
-                                 rebuildSettingsLists();
-                               });
+                               [this](const ActivityResult&) { rebuildSettingsLists(); });
         break;
       case SettingAction::TextSettings:
         startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
                                                                       TextSettingsActivity::Tab::Family),
-                               [this](const ActivityResult&) {
-                                 // TextSettingsActivity saves on each change; no save needed here.
-                                 rebuildSettingsLists();
-                               });
+                               [this](const ActivityResult&) { rebuildSettingsLists(); });
         break;
       case SettingAction::Language:
         // Row labels are translated once in rebuildRowItems() and don't
         // re-run on Pop (see ActivityManager::loop()), so a language switch
-        // needs an explicit rebuild here rather than the generic resultHandler.
+        // needs an explicit rebuild here.
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput),
-                               [this](const ActivityResult&) {
-                                 SETTINGS.saveToFileAtomic();
-                                 rebuildSettingsLists();
-                               });
+                               [this](const ActivityResult&) { rebuildSettingsLists(); });
         break;
       case SettingAction::None:
         // Do nothing
@@ -367,7 +359,7 @@ void SettingsActivity::toggleCurrentSetting() {
   }
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-  SETTINGS.saveToFileAtomic();
+  saveSettingsOrReport();
   rebuildSettingsLists();
   applyUiSettingChange(setting.valuePtr);
   activeNav().selected = std::min(ringPos(), settingsCount);
@@ -405,7 +397,7 @@ void SettingsActivity::openSleepTimeoutPicker() {
       [this](const ActivityResult& result) {
         if (!result.isCancelled) {
           SETTINGS.sleepTimeoutMinutes = static_cast<uint8_t>(std::get<IntervalResult>(result.data).value);
-          SETTINGS.saveToFileAtomic();
+          saveSettingsOrReport();
         }
         requestUpdate();
       });

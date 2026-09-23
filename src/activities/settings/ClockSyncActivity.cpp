@@ -11,6 +11,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
+#include "activities/PostedMessage.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -144,4 +145,5 @@ void ClockSyncActivity::render(RenderLock&&) {
   }
 
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }

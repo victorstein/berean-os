@@ -16,6 +16,7 @@
 #include "ReaderFontSizes.h"
 #include "SdCardFontSystem.h"
 #include "TextSettingsPreview.h"
+#include "activities/SettingsSave.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -346,7 +347,7 @@ void TextSettingsActivity::activateRow(int row) {
         // gesture/key or a sleep. Saved here, not inside applyFamily, so the
         // SD write happens outside its RenderLock.
         if (currentFamilyIndex_ == row) {
-          SETTINGS.saveToFileAtomic();
+          saveSettingsOrReport();
         }
         requestUpdate();
       }
@@ -354,7 +355,7 @@ void TextSettingsActivity::activateRow(int row) {
     case Tab::Size:
       if (row != currentSizeIndex_) {
         applySize(row);
-        SETTINGS.saveToFileAtomic();
+        saveSettingsOrReport();
         requestUpdate();
       }
       break;
@@ -383,14 +384,14 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
   switch (static_cast<LayoutRow>(row)) {
     case LayoutRow::ParaSpacing:
       SETTINGS.extraParagraphSpacing = !SETTINGS.extraParagraphSpacing;
-      SETTINGS.saveToFileAtomic();
+      saveSettingsOrReport();
       requestUpdate();
       break;
     case LayoutRow::LineSpacing:
       optionPopup_.show(StrId::STR_LINE_SPACING, LINE_SPACING_IDS, static_cast<int>(std::size(LINE_SPACING_IDS)),
                         SETTINGS.lineSpacing, [](int idx) {
                           SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
-                          SETTINGS.saveToFileAtomic();
+                          saveSettingsOrReport();
                         });
       requestUpdate();
       break;
@@ -398,7 +399,7 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
       optionPopup_.show(StrId::STR_ALIGNMENT, ALIGNMENT_IDS, static_cast<int>(std::size(ALIGNMENT_IDS)),
                         SETTINGS.paragraphAlignment, [](int idx) {
                           SETTINGS.paragraphAlignment = static_cast<uint8_t>(idx);
-                          SETTINGS.saveToFileAtomic();
+                          saveSettingsOrReport();
                         });
       requestUpdate();
       break;
@@ -409,7 +410,7 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
       const int cur = (std::clamp<int>(SETTINGS.screenMargin, MARGIN_MIN, MARGIN_MAX) - MARGIN_MIN) / MARGIN_STEP;
       optionPopup_.show(StrId::STR_SCREEN_MARGIN, options, cur, [](int idx) {
         SETTINGS.screenMargin = static_cast<uint8_t>(MARGIN_MIN + idx * MARGIN_STEP);
-        SETTINGS.saveToFileAtomic();
+        saveSettingsOrReport();
       });
       requestUpdate();
       break;
@@ -458,7 +459,7 @@ void TextSettingsActivity::confirmStyleRow(int row) {
     default:
       return;
   }
-  SETTINGS.saveToFileAtomic();
+  saveSettingsOrReport();
   requestUpdate();
 }
 

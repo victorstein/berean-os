@@ -1289,7 +1289,10 @@ void CrossPointWebServer::handlePostSettings() {
     }
   }
 
-  SETTINGS.saveToFileAtomic();
+  if (!SETTINGS.saveToFileAtomic()) {
+    server->send(500, "text/plain", "Settings could not be saved");
+    return;
+  }
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
   server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
@@ -1329,6 +1332,25 @@ void CrossPointWebServer::handleGetWifiNetworks() const {
   server->sendContent("]");
   server->sendContent("");
   LOG_DBG("WEB", "Served Wi-Fi credentials API (%zu network(s))", credentials.size());
+}
+
+// 400 for what the request asked for, 500 when the card would not take the
+// write: the settings page shows either, but only the second is worth retrying.
+bool CrossPointWebServer::sendCredentialEditFailure(const WifiCredentialStore::EditResult result) const {
+  switch (result) {
+    case WifiCredentialStore::EditResult::Ok:
+      return true;
+    case WifiCredentialStore::EditResult::NotFound:
+      server->send(400, "text/plain", "No such Wi-Fi network");
+      return false;
+    case WifiCredentialStore::EditResult::LimitReached:
+      server->send(400, "text/plain", "Wi-Fi network limit reached");
+      return false;
+    case WifiCredentialStore::EditResult::SaveFailed:
+      break;
+  }
+  server->send(500, "text/plain", "Wi-Fi networks could not be saved");
+  return false;
 }
 
 void CrossPointWebServer::handlePostWifiNetwork() {
@@ -1373,26 +1395,11 @@ void CrossPointWebServer::handlePostWifiNetwork() {
       password = credential->password;
     }
 
-    bool ok = true;
-    if (oldSsid != ssid) {
-      ok = WIFI_STORE.removeCredential(oldSsid) && WIFI_STORE.addCredential(ssid, password);
-    } else {
-      ok = WIFI_STORE.addCredential(ssid, password);
-    }
-
-    if (!ok) {
-      server->send(400, "text/plain", "Failed to update Wi-Fi network");
-      return;
-    }
+    if (!sendCredentialEditFailure(WIFI_STORE.updateCredential(oldSsid, ssid, password))) return;
 
     LOG_DBG("WEB", "Updated Wi-Fi network at index %d (SSID: %s)", idx, ssid.c_str());
   } else {
-    if (!WIFI_STORE.addCredential(ssid, password)) {
-      // Covers the network limit, a budget refusal and an SD write failure --
-      // addCredential returns the same false for all three.
-      server->send(400, "text/plain", "Cannot add network");
-      return;
-    }
+    if (!sendCredentialEditFailure(WIFI_STORE.addCredential(ssid, password))) return;
     LOG_DBG("WEB", "Added Wi-Fi network: %s", ssid.c_str());
   }
 
@@ -1430,10 +1437,7 @@ void CrossPointWebServer::handleDeleteWifiNetwork() {
     return;
   }
 
-  if (!WIFI_STORE.removeCredential(*ssid)) {
-    server->send(400, "text/plain", "Failed to delete Wi-Fi network");
-    return;
-  }
+  if (!sendCredentialEditFailure(WIFI_STORE.removeCredential(*ssid))) return;
 
   LOG_DBG("WEB", "Deleted Wi-Fi network at index %d (SSID: %s)", idx, ssid->c_str());
   server->send(200, "text/plain", "OK");

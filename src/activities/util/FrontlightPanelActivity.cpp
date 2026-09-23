@@ -9,6 +9,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/SettingsSave.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/icons/customListIcons.h"
@@ -66,7 +67,7 @@ void FrontlightPanelActivity::onExit() {
     SETTINGS.frontlightBrightness = brightness;
     SETTINGS.frontlightWarmth = warmth;
     if (lightOnChanged) SETTINGS.frontlightOn = lightOn ? 1 : 0;
-    SETTINGS.saveToFileAtomic();
+    saveSettingsOrReport();
   }
   Activity::onExit();
 }

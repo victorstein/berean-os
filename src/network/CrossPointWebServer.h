@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "WifiCredentialStore.h"
+
 // Structure to hold file information
 struct FileInfo {
   String name;
@@ -135,4 +137,6 @@ class CrossPointWebServer {
   void handleGetWifiNetworks() const;
   void handlePostWifiNetwork();
   void handleDeleteWifiNetwork();
+  // Sends the error response for a failed edit and returns false; returns true on Ok.
+  bool sendCredentialEditFailure(WifiCredentialStore::EditResult result) const;
 };
