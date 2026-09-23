@@ -33,10 +33,11 @@ the launcher. That matches the other Wi-Fi activities launched from Settings
 ## Back on a device with no Back button
 
 `MappedInputManager::wasReleased(Button::Back)` returns true for the left-edge
-swipe (`MappedInputManager.cpp:266,309`), and the server
-loop polls that alongside `wasHomeGesture()` inside and outside its
-request-handling burst. The mode list is a `UiListActivity`, which routes the
-same Back to `onBackButton()` (`UiListActivity.cpp:47-48`), and that cancels. No input-layer change is needed.
+swipe (`MappedInputManager.cpp:266,309`), and the server loop polls that
+alongside `wasHomeGesture()` inside and outside its request-handling burst. The
+mode list is a `UiListActivity`, which routes the same Back to `onBackButton()`
+(`UiListActivity.cpp:47-48`), and that cancels. No input-layer change is
+needed.
 
 ## Calibre Wireless removed from the mode list
 
@@ -48,8 +49,9 @@ is about. So `CalibreConnectActivity.{h,cpp}` are deleted and
 `NetworkMode::CONNECT_CALIBRE` is gone.
 
 The Calibre strings stay in the translation files (the standing rule is not to
-remove keys), and the web server's WebSocket upload and UDP discovery listener
-stay: they are generic upload paths the File Manager page uses.
+remove keys). The web server's WebSocket upload server stays because the File
+Manager page uses it; the UDP discovery listener also stays, and trimming it is
+a separate change.
 
 ## Meeting Publications stays
 
