@@ -3,8 +3,11 @@
 #include "activities/reader/ReturnStack.h"
 
 // Back after a citation must land one step back, every time. The ring wraps at
-// three, so a fourth citation makes "index by count" read the wrong slot and
-// the destructor's origin stop being slots_[0]. These pin both.
+// CAPACITY, so one citation past it makes "index by count" read the wrong slot
+// and the destructor's origin stop being slots_[0]. These pin both at whatever
+// CAPACITY is: every wrap-boundary bound is derived from it, never written as a
+// literal. Small literal counts survive in the tests that are not about the
+// boundary -- LIFO order on three pushes holds at any CAPACITY >= 3.
 
 namespace {
 
@@ -19,6 +22,15 @@ SavedPosition popped(ReturnStack& stack) {
 void expectPosition(const SavedPosition& actual, const int spine, const int page) {
   EXPECT_EQ(actual.spineIndex, spine);
   EXPECT_EQ(actual.pageNumber, page);
+}
+
+// Every test below pushes at(i, i * 10) so a popped entry identifies its own push.
+void pushRange(ReturnStack& stack, const int first, const int last) {
+  for (int i = first; i <= last; i++) stack.push(at(i, i * 10));
+}
+
+void expectPopsDownTo(ReturnStack& stack, const int newest, const int oldest) {
+  for (int i = newest; i >= oldest; i--) expectPosition(popped(stack), i, i * 10);
 }
 
 }  // namespace
@@ -52,18 +64,25 @@ TEST(ReturnStack, PopsInLifoOrder) {
   EXPECT_FALSE(stack.pop(out)) << "three pushes must yield exactly three pops";
 }
 
-TEST(ReturnStack, AFourthPushEvictsTheOldestAndPopsStayOneStepBack) {
+TEST(ReturnStack, ExactlyCapacityPushesRetainEverything) {
   ReturnStack stack;
-  stack.push(at(1, 10));
-  stack.push(at(2, 20));
-  stack.push(at(3, 30));
-  stack.push(at(4, 40));
+  pushRange(stack, 1, ReturnStack::CAPACITY);
+
+  EXPECT_EQ(stack.count(), ReturnStack::CAPACITY);
+  expectPosition(*stack.oldest(), 1, 10);
+  expectPopsDownTo(stack, ReturnStack::CAPACITY, 1);
+
+  SavedPosition out{};
+  EXPECT_FALSE(stack.pop(out)) << "nothing was evicted at exactly capacity";
+}
+
+TEST(ReturnStack, OnePastCapacityEvictsTheOldestAndPopsStayOneStepBack) {
+  ReturnStack stack;
+  pushRange(stack, 1, ReturnStack::CAPACITY + 1);
   EXPECT_EQ(stack.count(), ReturnStack::CAPACITY);
 
-  // The newest push lives in slot 0 after the wrap; index-by-count would read slot 2.
-  expectPosition(popped(stack), 4, 40);
-  expectPosition(popped(stack), 3, 30);
-  expectPosition(popped(stack), 2, 20);
+  // The newest push lives in slot 0 after the wrap; index-by-count would read the last slot.
+  expectPopsDownTo(stack, ReturnStack::CAPACITY + 1, 2);
 
   SavedPosition out{};
   EXPECT_FALSE(stack.pop(out)) << "the first push was evicted, not retained";
@@ -77,9 +96,8 @@ TEST(ReturnStack, OldestIsThePhysicallyOldestEntryNotSlotZero) {
   stack.push(at(2, 20));
   expectPosition(*stack.oldest(), 1, 10);
 
-  stack.push(at(3, 30));
-  stack.push(at(4, 40));
-  // Slot 0 now holds the 4th push, so the destructor's origin is the 2nd.
+  pushRange(stack, 3, ReturnStack::CAPACITY + 1);
+  // Slot 0 now holds the newest push, so the destructor's origin is the 2nd.
   expectPosition(*stack.oldest(), 2, 20);
 }
 
@@ -111,7 +129,8 @@ TEST(ReturnStack, ClearEmptiesAPartialRing) {
 
 TEST(ReturnStack, ClearEmptiesAWrappedRing) {
   ReturnStack stack;
-  for (int i = 1; i <= 5; i++) stack.push(at(i, i * 10));
+  // Two past capacity, so the ring has genuinely turned over and top_ sits mid-rotation.
+  pushRange(stack, 1, ReturnStack::CAPACITY + 2);
   stack.clear();
 
   EXPECT_EQ(stack.count(), 0);
@@ -122,7 +141,7 @@ TEST(ReturnStack, ClearEmptiesAWrappedRing) {
 
 TEST(ReturnStack, PushesAfterAClearStartFromScratch) {
   ReturnStack stack;
-  for (int i = 1; i <= 4; i++) stack.push(at(i, i * 10));
+  pushRange(stack, 1, ReturnStack::CAPACITY + 1);
   stack.clear();
 
   stack.push(at(9, 90));
@@ -156,12 +175,14 @@ TEST(ReturnStack, UnpushOnEmptyLeavesTheRingUsable) {
 }
 
 TEST(ReturnStack, SurvivesRepeatedWrapping) {
+  constexpr int PUSHES = 100;
+  static_assert(PUSHES > ReturnStack::CAPACITY * 2, "must turn the ring over more than once");
+
   ReturnStack stack;
-  for (int i = 1; i <= 100; i++) stack.push(at(i, i * 10));
+  pushRange(stack, 1, PUSHES);
 
   EXPECT_EQ(stack.count(), ReturnStack::CAPACITY);
-  expectPosition(*stack.oldest(), 98, 980);
-  expectPosition(popped(stack), 100, 1000);
-  expectPosition(popped(stack), 99, 990);
-  expectPosition(popped(stack), 98, 980);
+  const int oldestRetained = PUSHES - ReturnStack::CAPACITY + 1;
+  expectPosition(*stack.oldest(), oldestRetained, oldestRetained * 10);
+  expectPopsDownTo(stack, PUSHES, oldestRetained);
 }
