@@ -6,10 +6,7 @@
 #include <string>
 #include <vector>
 
-struct WifiCredential {
-  std::string ssid;
-  std::string password;  // Plaintext in memory; obfuscated with hardware key on disk
-};
+#include "WifiCredential.h"
 
 struct WifiCredentialSummary {
   std::string ssid;

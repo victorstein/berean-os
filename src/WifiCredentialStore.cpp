@@ -6,6 +6,8 @@
 
 #include <algorithm>
 
+#include "util/WifiCredentialEdit.h"
+
 void WifiCredentialStore::toJson(JsonDocument& doc) const {
   std::lock_guard<std::mutex> lock(credentialMutex);
   doc["lastConnectedSsid"] = lastConnectedSsid;
@@ -110,28 +112,25 @@ bool WifiCredentialStore::fromJson(JsonVariantConst doc) {
 }
 
 bool WifiCredentialStore::addCredential(const std::string& ssid, const std::string& password) {
+  WifiCredentialEdit edit;
   {
     std::lock_guard<std::mutex> lock(credentialMutex);
-
-    // Check if this SSID already exists and update it
-    const auto cred = find_if(credentials.begin(), credentials.end(),
-                              [&ssid](const WifiCredential& cred) { return cred.ssid == ssid; });
-    if (cred != credentials.end()) {
-      cred->password = password;
-      LOG_DBG("WCS", "Updated credentials for: %s", ssid.c_str());
-    } else {
-      // Check if we've reached the limit
-      if (credentials.size() >= MAX_NETWORKS) {
-        LOG_DBG("WCS", "Cannot add more networks, limit of %zu reached", MAX_NETWORKS);
-        return false;
-      }
-
-      // Add new credential
-      credentials.push_back({ssid, password});
-      LOG_DBG("WCS", "Added credentials for: %s", ssid.c_str());
-    }
+    edit = upsertCredential(credentials, ssid, password, MAX_NETWORKS);
   }
-  return saveToFileAtomic();
+  if (edit.kind == WifiCredentialEdit::Kind::Rejected) {
+    LOG_DBG("WCS", "Cannot add more networks, limit of %zu reached", MAX_NETWORKS);
+    return false;
+  }
+  if (saveToFileAtomic()) {
+    LOG_DBG("WCS", "Saved credentials for: %s", ssid.c_str());
+    return true;
+  }
+  {
+    std::lock_guard<std::mutex> lock(credentialMutex);
+    undoCredentialEdit(credentials, edit);
+  }
+  LOG_ERR("WCS", "Could not save credentials for %s; rolled the change back", ssid.c_str());
+  return false;
 }
 
 bool WifiCredentialStore::removeCredential(const std::string& ssid) {
