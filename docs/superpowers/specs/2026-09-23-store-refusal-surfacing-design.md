@@ -66,7 +66,26 @@ since the file's worst case is about 1,600 B against a 4,096 B budget
 (`CrossPointSettings.h:425-427`). It is surfaced anyway because the user sees the
 same thing either way: a change that does not stick.
 
-**One helper, not per-site code.** There are 28 device-side settings save sites
+A failed settings save keeps the new value applied in memory, unlike Wi-Fi, which
+rolls back. A setting takes effect the moment it is chosen: night mode has already
+inverted the screen and a font change has already re-laid out the page. Rolling
+the value back would silently undo what the user is looking at, while keeping it
+means the next successful save persists it. A Wi-Fi credential has no visible
+effect in memory, so keeping it would only let a later unrelated save write
+something the user was told had failed.
+
+**Only the screen that changed a setting saves it.** Every settings screen saves
+and reports its own changes (`ButtonRemapActivity`, `LanguageSelectActivity`,
+`StatusBarSettingsActivity`, `ClockOffsetActivity`, `TextSettingsActivity`).
+`FontInstaller` saves through `clearSdFontFamily`, and the Wi-Fi screen saves its
+own clock-synced flag. The other screens `SettingsActivity` opens (Network, Clear
+cache, Check for updates, SD firmware update) change no setting. So
+`SettingsActivity` no longer saves after a child screen returns, and no longer
+saves on Back, where it only repeated a save each change had already made. Before
+this, a single failure was reported twice, and a failure could be reported after a
+screen that changed nothing.
+
+**One helper, not per-site code.** There are 24 device-side settings save sites
 that use `saveSettingsOrReport()`. It puts the save and the message in one place,
 so a new settings screen gets the report by calling the same function the others
 do. It is a header-only inline that posts a `tr()` string. It adds no state and no
@@ -77,10 +96,18 @@ screen". There the failure is drawn at once, in place of its existing `STR_DONE`
 popup. That screen holds each of its popups with `delay(1000)` and redraws through
 `onEnter()`, which does not draw posted messages.
 
-**WiFi `removeCredential` returns false for an unknown SSID too**
-(`WifiCredentialStore.cpp:137-150`). The forget sites therefore record
-`hasSavedCredential` first and report only when the SSID was actually saved, so
-forgetting a network that was never stored does not raise a false error.
+**Forgetting a network rolls back too.** `removeCredential` undoes the removal
+and restores `lastConnectedSsid` when the save fails
+(`removeCredentialNamed`/`undoCredentialRemoval`). Without that, a later
+unrelated save would persist a deletion the user had just been told failed. The
+Wi-Fi screen keeps the network's saved mark in that case, and reports only
+`SaveFailed`, so forgetting a network that was never saved raises no error.
+
+All three credential edits return `WifiCredentialStore::EditResult`
+(`Ok`, `NotFound`, `LimitReached`, `SaveFailed`), so callers can tell a storage
+failure from bad input. The web server's `/api/wifi` and `/api/wifi/delete` answer
+400 for bad input, an unknown network or the network limit, and 500 when the card
+would not take the write.
 
 **Editing a network from the web server was two saves.**
 `POST /api/wifi` with an index removed the old entry, saved, then added the new
@@ -114,9 +141,9 @@ posts, the screen that renders next is:
 |---|---|---|
 | Settings, Text settings, Status bar, Language, Reader menu, Clock offset (on exit), Button remap (then finish) | a `UiListActivity` | yes, already |
 | `EpubReaderActivity::applyOrientation` | the reader | yes, already |
-| `SettingsActivity` Back (save, then `onGoHome`) | `LauncherActivity` | **added** |
+| any message still held when the user goes home, such as one from the frontlight panel | `LauncherActivity` | **added** |
 | Wi-Fi "Forget network?" (then `startWifiScan`) | `WifiSelectionActivity` | **added** |
-| Wi-Fi "Save password?" (then `onComplete`) | the screen that opened Wi-Fi: Settings, ClockSync, FontDownload, OtaUpdate, CatalogSearch, CrossPointWebServer, MeetingDownload, CalibreConnect | Settings already; the other seven **added** |
+| Wi-Fi "Save password?" (then `onComplete`) | the screen that opened Wi-Fi: Settings, ClockSync, FontDownload, OtaUpdate, CatalogSearch, CrossPointWebServer, MeetingDownload | Settings already; the other six **added** |
 | `FrontlightPanelActivity::onExit` | whatever screen the panel was opened over | yes for the list screens, the reader, the launcher and the screens above; see below |
 
 Each added call is `PostedMessage::drawNext(renderer)` right after that render's
@@ -131,6 +158,17 @@ call also follows #78's pattern and does not change the mechanism #78 introduced
 the message stays queued and appears on the next screen that does. It arrives
 late but is not lost. The queue holds two messages and logs any it has to drop.
 
+**Messages are held on screen and not repeated.** A drawn message stays current
+for `PostedMessageQueue::MIN_DISPLAY_MS` (2.5 s, the same hold as the bookmark
+toast), and every `drawNext` in that window redraws it. Without the hold, screens
+with a progress bar (OTA update, meeting download, font download) repaint within a
+second or two and would wipe it. A post identical (by pointer) to a message
+already queued, or still on screen, is dropped. The rules live in
+`src/activities/PostedMessageQueue.h`, with the clock passed in, and are
+host-tested in `test/posted_message/`. `PostedMessage.cpp` adds only the mutex,
+`millis()` and the draw. There are no timers or tasks: a message whose hold has
+run out is replaced at the next render, and until then it simply stays on screen.
+
 **The bookmark refusal needs no change.** `EpubReaderActivity` does not draw it as
 a one-off popup. It sets `showBookmarkMessage`, and the reader's own render draws
 the toast every time it paints (`EpubReaderActivity.cpp:1286-1287`) until
@@ -141,8 +179,10 @@ it.
 
 The Wi-Fi edit and rollback rules are host-tested in
 `test/credential_integrity/WifiCredentialEditTest.cpp`: append, update, the
-network limit, undo of each, undo after the list has shifted, and renaming (in
-place, onto another saved network, and at the limit). The message plumbing is a
+network limit, removal, undo of each, undo after the list has shifted, and
+renaming (in place, onto another saved network, and at the limit). The message
+queue's hold, ordering, de-duplication, capacity and `millis()` wrap are tested in
+`test/posted_message/PostedMessageQueueTest.cpp`. The message plumbing is a
 `tr()` lookup plus a `PostedMessage::post` at each site, and neither can be built
 on the host. When bookmarks refuse is already covered by
 `test/bookmark_save_action/`. Whether each message actually appears on screen can

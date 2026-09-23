@@ -15,8 +15,10 @@ namespace PostedMessage {
 // `message` must outlive the next render: a tr() string or a literal.
 void post(const char* message);
 
-// Called by a render path after its own displayBuffer. Draws the oldest posted
-// message, if any, and consumes it; the popup stays until the next render.
+// Called by a render path after its own displayBuffer. Draws the message being
+// shown, redrawing it on every render until PostedMessageQueue::MIN_DISPLAY_MS
+// has passed, then the next posted one. A message identical to one queued or on
+// screen is not posted twice.
 void drawNext(const GfxRenderer& renderer);
 
 }  // namespace PostedMessage

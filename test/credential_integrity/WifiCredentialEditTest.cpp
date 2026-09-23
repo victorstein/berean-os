@@ -134,6 +134,50 @@ TEST(WifiCredentialRename, UnknownOldSsidAppliesNothing) {
   EXPECT_EQ(credentials.size(), 2u);
 }
 
+TEST(WifiCredentialRemoval, RemovesTheNamedEntry) {
+  auto credentials = twoNetworks();
+  const auto removal = removeCredentialNamed(credentials, "home");
+  ASSERT_TRUE(removal.removed);
+  ASSERT_EQ(credentials.size(), 1u);
+  EXPECT_EQ(credentials[0].ssid, "work");
+}
+
+TEST(WifiCredentialRemoval, UndoPutsTheEntryBackInItsPlace) {
+  auto credentials = twoNetworks();
+  const auto removal = removeCredentialNamed(credentials, "home");
+  undoCredentialRemoval(credentials, removal);
+  ASSERT_EQ(credentials.size(), 2u);
+  EXPECT_EQ(credentials[0].ssid, "home");
+  EXPECT_EQ(credentials[0].password, "old-pass");
+  EXPECT_EQ(credentials[1].ssid, "work");
+}
+
+TEST(WifiCredentialRemoval, UnknownSsidRemovesNothingAndUndoesNothing) {
+  auto credentials = twoNetworks();
+  const auto removal = removeCredentialNamed(credentials, "absent");
+  EXPECT_FALSE(removal.removed);
+  undoCredentialRemoval(credentials, removal);
+  EXPECT_EQ(credentials.size(), 2u);
+}
+
+TEST(WifiCredentialRemoval, UndoAfterTheListShrankAppendsInsteadOfOverrunning) {
+  auto credentials = twoNetworks();
+  const auto removal = removeCredentialNamed(credentials, "work");
+  credentials.clear();  // another writer emptied the list in between
+  undoCredentialRemoval(credentials, removal);
+  ASSERT_EQ(credentials.size(), 1u);
+  EXPECT_EQ(credentials[0].ssid, "work");
+}
+
+TEST(WifiCredentialRemoval, UndoDoesNotDuplicateAnSsidReaddedInBetween) {
+  auto credentials = twoNetworks();
+  const auto removal = removeCredentialNamed(credentials, "home");
+  credentials.push_back({"home", "newer"});  // another writer saved it again
+  undoCredentialRemoval(credentials, removal);
+  ASSERT_EQ(credentials.size(), 2u);
+  EXPECT_EQ(credentials[1].password, "newer") << "the newer entry wins over the rollback";
+}
+
 TEST(WifiCredentialEdit, UndoOfARejectionChangesNothing) {
   std::vector<WifiCredential> credentials(LIMIT, WifiCredential{"x", "y"});
   const auto edit = upsertCredential(credentials, "one-too-many", "p", LIMIT);

@@ -111,7 +111,8 @@ bool WifiCredentialStore::fromJson(JsonVariantConst doc) {
   return true;
 }
 
-bool WifiCredentialStore::addCredential(const std::string& ssid, const std::string& password) {
+WifiCredentialStore::EditResult WifiCredentialStore::addCredential(const std::string& ssid,
+                                                                   const std::string& password) {
   WifiCredentialEdit edit;
   {
     std::lock_guard<std::mutex> lock(credentialMutex);
@@ -119,22 +120,23 @@ bool WifiCredentialStore::addCredential(const std::string& ssid, const std::stri
   }
   if (edit.kind == WifiCredentialEdit::Kind::Rejected) {
     LOG_DBG("WCS", "Cannot add more networks, limit of %zu reached", MAX_NETWORKS);
-    return false;
+    return EditResult::LimitReached;
   }
   if (saveToFileAtomic()) {
     LOG_DBG("WCS", "Saved credentials for: %s", ssid.c_str());
-    return true;
+    return EditResult::Ok;
   }
   {
     std::lock_guard<std::mutex> lock(credentialMutex);
     undoCredentialEdit(credentials, edit);
   }
   LOG_ERR("WCS", "Could not save credentials for %s; rolled the change back", ssid.c_str());
-  return false;
+  return EditResult::SaveFailed;
 }
 
-bool WifiCredentialStore::updateCredential(const std::string& oldSsid, const std::string& ssid,
-                                           const std::string& password) {
+WifiCredentialStore::EditResult WifiCredentialStore::updateCredential(const std::string& oldSsid,
+                                                                      const std::string& ssid,
+                                                                      const std::string& password) {
   WifiCredentialRename rename;
   std::string previousLastConnected;
   {
@@ -145,11 +147,11 @@ bool WifiCredentialStore::updateCredential(const std::string& oldSsid, const std
   }
   if (!rename.applied) {
     LOG_DBG("WCS", "No saved network named %s to update", oldSsid.c_str());
-    return false;
+    return EditResult::NotFound;
   }
   if (saveToFileAtomic()) {
     LOG_DBG("WCS", "Updated credentials: %s -> %s", oldSsid.c_str(), ssid.c_str());
-    return true;
+    return EditResult::Ok;
   }
   {
     std::lock_guard<std::mutex> lock(credentialMutex);
@@ -157,22 +159,30 @@ bool WifiCredentialStore::updateCredential(const std::string& oldSsid, const std
     lastConnectedSsid = previousLastConnected;
   }
   LOG_ERR("WCS", "Could not save the edit to %s; rolled it back", oldSsid.c_str());
-  return false;
+  return EditResult::SaveFailed;
 }
 
-bool WifiCredentialStore::removeCredential(const std::string& ssid) {
+WifiCredentialStore::EditResult WifiCredentialStore::removeCredential(const std::string& ssid) {
+  WifiCredentialRemoval removal;
+  std::string previousLastConnected;
   {
     std::lock_guard<std::mutex> lock(credentialMutex);
-    const auto cred = find_if(credentials.begin(), credentials.end(),
-                              [&ssid](const WifiCredential& cred) { return cred.ssid == ssid; });
-    if (cred == credentials.end()) {
-      return false;  // Not found
-    }
-    credentials.erase(cred);
-    LOG_DBG("WCS", "Removed credentials for: %s", ssid.c_str());
+    removal = removeCredentialNamed(credentials, ssid);
+    if (!removal.removed) return EditResult::NotFound;
+    previousLastConnected = lastConnectedSsid;
     if (ssid == lastConnectedSsid) lastConnectedSsid.clear();
   }
-  return saveToFileAtomic();
+  if (saveToFileAtomic()) {
+    LOG_DBG("WCS", "Removed credentials for: %s", ssid.c_str());
+    return EditResult::Ok;
+  }
+  {
+    std::lock_guard<std::mutex> lock(credentialMutex);
+    undoCredentialRemoval(credentials, removal);
+    lastConnectedSsid = previousLastConnected;
+  }
+  LOG_ERR("WCS", "Could not save the removal of %s; rolled it back", ssid.c_str());
+  return EditResult::SaveFailed;
 }
 
 std::optional<WifiCredential> WifiCredentialStore::findCredential(const std::string& ssid) const {

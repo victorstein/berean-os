@@ -230,7 +230,6 @@ bool SettingsActivity::handleButtons() {
       activeNav().selected = 0;
       requestUpdate();
     } else {
-      saveSettingsOrReport();
       onGoHome();
     }
     return true;
@@ -305,17 +304,18 @@ void SettingsActivity::toggleCurrentSetting() {
       SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
     }
   } else if (setting.type == SettingType::ACTION) {
-    auto resultHandler = [this](const ActivityResult&) { saveSettingsOrReport(); };
-
+    // No save after a child screen: each one either saves (and reports) its own
+    // changes or changes no setting, so saving here again would repeat or invent
+    // a failure message.
     switch (setting.action) {
       case SettingAction::RemapFrontButtons:
-        startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::CustomiseStatusBar:
-        startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::Network:
-        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
+        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), nullptr);
         break;
       case SettingAction::FileTransfer:
         // Pushed rather than activityManager.goToFileTransfer(), which replaces
@@ -325,38 +325,29 @@ void SettingsActivity::toggleCurrentSetting() {
                                [](const ActivityResult&) {});
         break;
       case SettingAction::ClearCache:
-        startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::CheckForUpdates:
-        startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::SdFirmwareUpdate:
-        startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), resultHandler);
+        startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::DownloadFonts:
         startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
-                               [this](const ActivityResult&) {
-                                 saveSettingsOrReport();
-                                 rebuildSettingsLists();
-                               });
+                               [this](const ActivityResult&) { rebuildSettingsLists(); });
         break;
       case SettingAction::TextSettings:
         startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
                                                                       TextSettingsActivity::Tab::Family),
-                               [this](const ActivityResult&) {
-                                 // TextSettingsActivity saves on each change; no save needed here.
-                                 rebuildSettingsLists();
-                               });
+                               [this](const ActivityResult&) { rebuildSettingsLists(); });
         break;
       case SettingAction::Language:
         // Row labels are translated once in rebuildRowItems() and don't
         // re-run on Pop (see ActivityManager::loop()), so a language switch
-        // needs an explicit rebuild here rather than the generic resultHandler.
+        // needs an explicit rebuild here.
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput),
-                               [this](const ActivityResult&) {
-                                 saveSettingsOrReport();
-                                 rebuildSettingsLists();
-                               });
+                               [this](const ActivityResult&) { rebuildSettingsLists(); });
         break;
       case SettingAction::None:
         // Do nothing

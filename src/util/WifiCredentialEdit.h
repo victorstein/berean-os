@@ -56,6 +56,36 @@ inline void undoCredentialEdit(std::vector<WifiCredential>& credentials, const W
   }
 }
 
+// removeCredential's in-memory half. Undone on a failed save for the same
+// reason as an add: otherwise the next unrelated save persists a deletion the
+// user was told had failed.
+struct WifiCredentialRemoval {
+  bool removed = false;
+  size_t index = 0;
+  WifiCredential entry;
+};
+
+inline WifiCredentialRemoval removeCredentialNamed(std::vector<WifiCredential>& credentials, const std::string& ssid) {
+  WifiCredentialRemoval removal;
+  const auto entry = std::find_if(credentials.begin(), credentials.end(),
+                                  [&ssid](const WifiCredential& cred) { return cred.ssid == ssid; });
+  if (entry == credentials.end()) return removal;
+  removal.removed = true;
+  removal.index = static_cast<size_t>(entry - credentials.begin());
+  removal.entry = std::move(*entry);
+  credentials.erase(entry);
+  return removal;
+}
+
+inline void undoCredentialRemoval(std::vector<WifiCredential>& credentials, const WifiCredentialRemoval& removal) {
+  if (!removal.removed) return;
+  const bool readded = std::any_of(credentials.begin(), credentials.end(),
+                                   [&removal](const WifiCredential& cred) { return cred.ssid == removal.entry.ssid; });
+  if (readded) return;
+  const size_t index = std::min(removal.index, credentials.size());
+  credentials.insert(credentials.begin() + static_cast<std::ptrdiff_t>(index), removal.entry);
+}
+
 // Editing a saved network may change its SSID. Applied as one in-memory change
 // so a failed save can put back exactly what was there: before this, the web
 // server removed the old entry and then added the new one as two saves, and a

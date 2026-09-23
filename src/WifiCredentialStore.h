@@ -49,11 +49,17 @@ class WifiCredentialStore : public PersistableStore<WifiCredentialStore> {
   bool fromJson(JsonVariantConst doc);
 
   // Credential management
-  bool addCredential(const std::string& ssid, const std::string& password);
-  bool removeCredential(const std::string& ssid);
+  // Why a credential edit did not stick. Only SaveFailed is a storage problem;
+  // the others are the caller's input, so a caller can tell them apart.
+  enum class EditResult : uint8_t { Ok, NotFound, LimitReached, SaveFailed };
+
+  // Every edit is all or nothing: a failed save rolls the in-memory list back,
+  // so a later unrelated save cannot persist what the user was told failed.
+  EditResult addCredential(const std::string& ssid, const std::string& password);
+  EditResult removeCredential(const std::string& ssid);
   // Edits the saved network `oldSsid`, possibly renaming it. All or nothing: a
   // failed save leaves the old entry in memory and on the card.
-  bool updateCredential(const std::string& oldSsid, const std::string& ssid, const std::string& password);
+  EditResult updateCredential(const std::string& oldSsid, const std::string& ssid, const std::string& password);
   std::optional<WifiCredential> findCredential(const std::string& ssid) const;
   std::optional<WifiCredential> getCredentialAt(size_t index) const;
   std::optional<std::string> getSsidAt(size_t index) const;
