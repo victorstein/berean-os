@@ -15,6 +15,7 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/MeetingWeekPrefetch.h"
 
 namespace fui = freeink::ui;
 
@@ -25,8 +26,11 @@ constexpr fui::ActionId ACTION_PROMPT = 3;
 }  // namespace
 
 WifiSelectionActivity::WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                             const bool autoConnect)
-    : Activity("WifiSelection", renderer, mappedInput), UiAppHost(renderer), allowAutoConnect(autoConnect) {}
+                                             const bool autoConnect, const bool meetingPrefetch)
+    : Activity("WifiSelection", renderer, mappedInput),
+      UiAppHost(renderer),
+      allowAutoConnect(autoConnect),
+      allowMeetingPrefetch(meetingPrefetch) {}
 
 void WifiSelectionActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<WifiSelectionActivity*>(user);
@@ -563,6 +567,16 @@ void WifiSelectionActivity::checkConnectionStatus() {
       WIFI_STORE.setLastConnectedSsid(selectedSSID);
     }
 
+    // After the clock sync above, which is what gives a first connection a
+    // week to ask about.
+    prefetchMeetingWeekIfDue();
+    if (prefetchHomeRequested) {
+      // Home ends the lookup and the flow that launched this screen with it;
+      // carrying on into OTA or the catalog would ignore what the user asked.
+      onGoHome();
+      return;
+    }
+
     // If we entered a new password, ask if user wants to save it
     // Otherwise, immediately complete so parent can start web server
     if (!usedSavedPassword && !enteredPassword.empty()) {
@@ -606,6 +620,68 @@ void WifiSelectionActivity::checkConnectionStatus() {
     requestUpdate();
     return;
   }
+}
+
+// The radio is up and the user is already waiting on a connection, which makes
+// this the one moment a meeting-week resolve costs nothing extra to set up. It
+// blocks this loop pass, bounded by MeetingWeekPrefetch::BUDGET_MS and by any
+// input, which skips it.
+void WifiSelectionActivity::prefetchMeetingWeekIfDue() {
+  prefetchHomeRequested = false;
+  if (!allowMeetingPrefetch) return;
+
+  IsoWeek week;
+  bool isDue = false;
+  {
+    RenderLock lock(*this);
+    isDue = MeetingWeekPrefetch::due(SETTINGS.meetingPrefetch != 0, SETTINGS.clockHasBeenSynced != 0, week);
+  }
+  if (!isDue) return;
+
+  state = WifiSelectionState::PREFETCHING_MEETINGS;
+  prefetchSkippable = false;
+  lastPrefetchInputPollMs = 0;
+  requestUpdateAndWait();
+
+  MeetingWeekPrefetch::Hooks hooks;
+  hooks.ctx = this;
+  hooks.onSkippable = &WifiSelectionActivity::onPrefetchSkippable;
+  hooks.skipRequested = &WifiSelectionActivity::prefetchSkipRequested;
+  MeetingWeekPrefetch::ResolvedWeek resolved;
+  if (!MeetingWeekPrefetch::resolve(week, hooks, resolved)) return;
+
+  RenderLock lock(*this);
+  MeetingWeekPrefetch::record(week, resolved);
+}
+
+void WifiSelectionActivity::onPrefetchSkippable(void* ctx) {
+  auto* self = static_cast<WifiSelectionActivity*>(ctx);
+  self->prefetchSkippable = true;
+  self->requestUpdate(true);
+}
+
+bool WifiSelectionActivity::prefetchSkipRequested(void* ctx) {
+  // Polled from the transfer's 1-2 ms wait loops; reading the touch controller
+  // that often would only cost bus time.
+  constexpr unsigned long INPUT_POLL_INTERVAL_MS = 50;
+
+  auto* self = static_cast<WifiSelectionActivity*>(ctx);
+  const unsigned long now = millis();
+  if (now - self->lastPrefetchInputPollMs < INPUT_POLL_INTERVAL_MS) return false;
+  self->lastPrefetchInputPollMs = now;
+
+  // This update() consumes the frame ActivityManager would otherwise see, so
+  // Home is carried out by the caller; any other input -- power and the
+  // light-panel gesture included -- only ends the lookup.
+  self->mappedInput.update();
+  if (self->mappedInput.wasHomeGesture()) {
+    self->prefetchHomeRequested = true;
+    return true;
+  }
+  int tapX = 0;
+  int tapY = 0;
+  return self->mappedInput.wasAnyReleased() || self->mappedInput.wasScreenTapped(tapX, tapY) ||
+         self->mappedInput.wasBackGesture() || self->mappedInput.wasLightPanelGesture();
 }
 
 void WifiSelectionActivity::loop() {
@@ -892,6 +968,9 @@ void WifiSelectionActivity::render(RenderLock&&) {
     case WifiSelectionState::CONNECTED:
       renderConnected(&screen, &metrics);
       break;
+    case WifiSelectionState::PREFETCHING_MEETINGS:
+      renderPrefetchingMeetings(&screen, &metrics);
+      break;
     case WifiSelectionState::SAVE_PROMPT:
     case WifiSelectionState::FORGET_PROMPT: {
       // The app's screen builder draws the option dialog panel itself.
@@ -1107,6 +1186,24 @@ void WifiSelectionActivity::renderConnected(const Rect* screen, const ThemeMetri
 
   // Use centralized button hints
   const auto labels = mappedInput.mapLabels("", tr(STR_DONE), "", "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+void WifiSelectionActivity::renderPrefetchingMeetings(const Rect* screen, const ThemeMetrics* metrics) const {
+  constexpr int MAX_STATUS_LINES = 2;
+  const auto height = renderer.getLineHeight(UI_10_FONT_ID);
+  const auto top = screen->y + (screen->height - height * 4) / 2;
+
+  UITheme::drawCenteredText(renderer, *screen, UI_12_FONT_ID, top - 30, tr(STR_CONNECTED), true, EpdFontFamily::BOLD);
+
+  const int statusX = screen->x + metrics->contentSidePadding;
+  const int statusWidth = screen->width - metrics->contentSidePadding * 2;
+  const Rect statusBounds{statusX, top + 10, statusWidth, height * MAX_STATUS_LINES};
+  UITheme::drawCenteredWrappedText(renderer, statusBounds, UI_10_FONT_ID, tr(STR_MEETING_PREFETCHING),
+                                   MAX_STATUS_LINES);
+
+  if (!prefetchSkippable) return;
+  const auto labels = mappedInput.mapLabels(tr(STR_SKIP), "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 

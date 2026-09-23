@@ -1,6 +1,7 @@
 #pragma once
 #include <HalStorage.h>
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -15,6 +16,10 @@ class HttpDownloader {
   // Called with each body chunk as it arrives; return false to abort. Lets a
   // streaming parser consume the response without buffering the whole body.
   using DataCallback = std::function<bool(const uint8_t* data, size_t len)>;
+  // Polled wherever the transfer can wait -- between body reads, and on the
+  // wolfSSL path also while the response headers are outstanding. Return true
+  // to abort. Unlike a bare cancel flag, the check can enforce its own deadline.
+  using AbortCheck = std::function<bool()>;
 
   enum DownloadError {
     OK = 0,
@@ -41,6 +46,15 @@ class HttpDownloader {
    */
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
                        const std::string& password = "", bool* cancelFlag = nullptr);
+
+  /**
+   * timeoutMs replaces the default 60 s per-operation timeout for this request
+   * only. It is the only bound on the TCP connect and the TLS handshake, where
+   * shouldAbort is not polled. Name resolution before them keeps the network
+   * stack's own resolver timeout.
+   */
+  static bool fetchUrl(const std::string& url, const DataCallback& onData, const AbortCheck& shouldAbort,
+                       uint32_t timeoutMs);
 
   /**
    * Download a file to the SD card with optional credentials.

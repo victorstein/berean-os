@@ -338,6 +338,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Short press Back goes to file browser instead of home (0 = disabled, 1 = enabled)
   uint8_t backShortToFileBrowser = 0;
   uint8_t publicationLanguage = PUB_LANG_SPANISH;
+  // Resolve the current or next meeting week whenever WiFi connects (0 = off, 1 = on).
+  uint8_t meetingPrefetch = 1;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
   // Tilt-based page turning (X3 only — requires QMI8658 IMU)

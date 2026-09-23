@@ -63,7 +63,8 @@ void MeetingDownloadActivity::onEnter() {
   state = State::WIFI_SELECTION;
   statusMessage = tr(STR_CONNECTING);
   requestUpdate();
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, /*autoConnect=*/true,
+                                                                 /*meetingPrefetch=*/false),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 

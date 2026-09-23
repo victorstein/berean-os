@@ -25,16 +25,17 @@ struct WifiNetworkInfo {
 
 // WiFi selection states
 enum class WifiSelectionState {
-  AUTO_CONNECTING,    // Trying to connect to the last known network
-  SCANNING,           // Scanning for networks
-  NETWORK_LIST,       // Displaying available networks
-  HIDDEN_SSID_ENTRY,  // Entering SSID for a hidden network
-  PASSWORD_ENTRY,     // Entering password for selected network
-  CONNECTING,         // Attempting to connect
-  CONNECTED,          // Successfully connected
-  SAVE_PROMPT,        // Asking user if they want to save the password
-  CONNECTION_FAILED,  // Connection failed
-  FORGET_PROMPT       // Asking user if they want to forget the network
+  AUTO_CONNECTING,       // Trying to connect to the last known network
+  SCANNING,              // Scanning for networks
+  NETWORK_LIST,          // Displaying available networks
+  HIDDEN_SSID_ENTRY,     // Entering SSID for a hidden network
+  PASSWORD_ENTRY,        // Entering password for selected network
+  CONNECTING,            // Attempting to connect
+  CONNECTED,             // Successfully connected
+  PREFETCHING_MEETINGS,  // Connected; resolving a meeting week while the radio is up
+  SAVE_PROMPT,           // Asking user if they want to save the password
+  CONNECTION_FAILED,     // Connection failed
+  FORGET_PROMPT          // Asking user if they want to forget the network
 };
 
 /**
@@ -85,6 +86,15 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   // Whether to attempt auto-connect on entry
   const bool allowAutoConnect;
 
+  // False for a caller that resolves the meeting week itself, so one connection
+  // never fetches the same page twice, and for one fixing the clock the week
+  // would be computed from.
+  const bool allowMeetingPrefetch;
+  unsigned long lastPrefetchInputPollMs = 0;
+  // Set once the lookup polls for a skip; the Skip hint is hidden until then.
+  bool prefetchSkippable = false;
+  bool prefetchHomeRequested = false;
+
   // Whether we are attempting to auto-connect or auto-scan saved networks.
   // DHCP normally settles in well under a second; this is the point at which
   // waiting longer is less useful than letting the caller try and report.
@@ -128,6 +138,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void renderConnecting(const Rect* screen, const ThemeMetrics* metrics) const;
   void renderConnected(const Rect* screen, const ThemeMetrics* metrics) const;
   void renderConnectionFailed(const Rect* screen, const ThemeMetrics* metrics) const;
+  void renderPrefetchingMeetings(const Rect* screen, const ThemeMetrics* metrics) const;
 
   void startWifiScan(bool autoScan = false);
   void processWifiScanResults();
@@ -144,12 +155,16 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void handleAutoConnectFailure();
   void showNetworkListFromAutoConnect();
   bool hasAttemptedAutoSsid(const std::string& ssid) const;
+  void prefetchMeetingWeekIfDue();
+  static bool prefetchSkipRequested(void* ctx);
+  static void onPrefetchSkippable(void* ctx);
   std::string getSignalStrengthIndicator(int32_t rssi) const;
 
   void onComplete(bool connected);
 
  public:
-  explicit WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool autoConnect = true);
+  explicit WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool autoConnect = true,
+                                 bool meetingPrefetch = true);
   void onEnter() override;
   void onExit() override;
   void loop() override;

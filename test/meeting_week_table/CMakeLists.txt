@@ -1,5 +1,7 @@
 add_executable(MeetingWeekTableTest
   MeetingWeekTableTest.cpp
+  MeetingPrefetchPlanTest.cpp
+  ${REPO_ROOT}/src/network/MeetingPrefetchPlan.cpp
   ${REPO_ROOT}/src/network/MeetingWeekTable.cpp
   ${REPO_ROOT}/src/network/WolWeekScan.cpp
 )
