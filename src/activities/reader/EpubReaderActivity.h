@@ -89,6 +89,11 @@ class EpubReaderActivity final : public ReaderActivity {
   int bibleChapterNumberSpine = -1;
   void resolveBibleChapterNumber();
 
+  // Called with the RenderLock held as a forward turn leaves the current
+  // document: that is what "read" means here -- paged through, no dwell time.
+  // Skipping a whole chapter (skipPages) or jumping away does not count.
+  void recordDocumentRead();
+
   int lastSavedSpineIndex = -1;
   int lastSavedPage = -1;
   int lastSavedPageCount = -1;

@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "StudyStore/ChapterCompletion.h"
 #include "StudyStore/PassageDoc.h"
 #include "StudyStore/TagPalette.h"
 #include "study/UnitIndexCache.h"
@@ -102,6 +103,21 @@ class StudyStore {
   bool removePassage(size_t index);
   bool setPassageTags(size_t index, std::vector<study::TagId> tags);
 
+  // Records that the user paged off the end of `spineIndex`, marking the Bible
+  // chapters it carries. Writes only when a chapter is newly marked -- about
+  // once per chapter read, at a chapter boundary where the reader is already
+  // loading the next section -- and never for a re-read. Every write is
+  // synchronous for the same reason tag edits are: a debounced write would lose
+  // the mark on Power-off.
+  //
+  // Main task only, with the reader's RenderLock held: the render task reaches
+  // the same UnitIndexCache through passagesInDocument.
+  study::CompletionMarkResult markDocumentRead(uint16_t spineIndex);
+
+  // True when the completion record failed to load; chapters are not recorded
+  // for the rest of the session.
+  bool completionSaveDisabled() const { return completionSaveDisabled_; }
+
   // For the migration runner, which owns its own save cadence.
   study::PassageDoc& mutableDoc() { return passages_; }
   study::TagPalette& mutablePalette() { return palette_; }
@@ -115,6 +131,14 @@ class StudyStore {
   std::string pubKey_;
   bool saveDisabled_ = false;
   std::unique_ptr<UnitIndexCache> units_;
+
+  // Held for the life of an open Bible: 149 bytes of static storage in this
+  // singleton, no heap. Empty for any other publication.
+  study::ChapterCompletion completion_;
+  // Separate from saveDisabled_: an unreadable completion record must not stop
+  // the user tagging passages, nor the reverse. Session-wide for the same
+  // reason saveDisabled_ is.
+  bool completionSaveDisabled_ = false;
 };
 
 #define STUDY StudyStore::getInstance()

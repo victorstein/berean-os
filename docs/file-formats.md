@@ -346,3 +346,30 @@ if (parsedSize != fileSize) {
     std::warning(std::format("Unparsed data detected: {} bytes remaining at offset 0x{:X}", fileSize - parsedSize, parsedSize));
 }
 ```
+
+## `/.berean/completion/<pubkey>.json`
+
+Which Bible chapters the user has paged through. Owned by
+`lib/StudyStore/StudyStore/ChapterCompletion.cpp` (format) and
+`src/study/ChapterCompletionFile.cpp` (storage). Only the shared Bible key
+(`bible`) is written today, so in practice the file is
+`/.berean/completion/bible.json`.
+
+### Version 1
+
+```json
+{"v":1,"b":{"1":"0102","19":"ff"}}
+```
+
+- `v` — format version. A build that finds a larger number refuses the file and
+  records nothing for the session rather than overwriting it.
+- `b` — one entry per canonical book (1-66, `biblebooknav.xhtml` order) with at
+  least one chapter read. Books with nothing read are omitted.
+- Each value is lowercase hex, two digits per byte, trailing zero bytes trimmed.
+  Byte `k`, bit `j` (LSB = 0) is chapter `8k + j + 1`. `"0102"` above is Genesis
+  1 and 10; `"ff"` is Psalms 1-8.
+
+Any key or value this firmware would not write — a book outside 1-66, a bit past
+the book's last chapter (English versification, 1,189 chapters), non-hex, an
+odd length — rejects the whole file. Every chapter read serialises to under
+1 KB; the save budget is 4,096 bytes.
