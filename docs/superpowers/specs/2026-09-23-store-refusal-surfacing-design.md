@@ -145,6 +145,9 @@ posts, the screen that renders next is:
 | Wi-Fi "Forget network?" (then `startWifiScan`) | `WifiSelectionActivity` | **added** |
 | Wi-Fi "Save password?" (then `onComplete`) | the screen that opened Wi-Fi: Settings, ClockSync, FontDownload, OtaUpdate, CatalogSearch, CrossPointWebServer, MeetingDownload | Settings already; the other six **added** |
 | `FrontlightPanelActivity::onExit` | whatever screen the panel was opened over | yes for the list screens, the reader, the launcher and the screens above; see below |
+| Highlights: tag edit, delete, mark as link source, link to marked (#86) | `HighlightsActivity`, which overrides `UiListActivity::render` | **added** (#86) |
+| Links list: link not found, remove failed (#86) | `PassageLinksActivity`, which overrides `UiListActivity::render` | **added** (#86) |
+| Tag filter: retiring a tag failed | `TagFilterActivity`, which overrides `UiListActivity::render` | **added** (#86) |
 
 Each added call is `PostedMessage::drawNext(renderer)` right after that render's
 own `displayBuffer`, the placement #78 established. I chose this over a single call
