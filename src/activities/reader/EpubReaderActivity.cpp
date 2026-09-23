@@ -42,6 +42,7 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SpineHtmlStream.h"
+#include "activities/SettingsSave.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -879,7 +880,7 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
   }
 
   SETTINGS.orientation = orientation;
-  SETTINGS.saveToFileAtomic();
+  saveSettingsOrReport(renderer);
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
   section.reset();
 }
@@ -1736,15 +1737,11 @@ const char* EpubReaderActivity::bookmarkToastString(const BookmarkToast toast) {
     case BookmarkToast::Removed:
       return tr(STR_BOOKMARK_REMOVED);
     case BookmarkToast::TooLarge:
+      return tr(STR_BOOKMARKS_TOO_LARGE);
     case BookmarkToast::SaveFailed:
     case BookmarkToast::LoadDisabled:
       break;
   }
-  // Bookmarks have no refusal strings of their own; this one is noun-free and
-  // true, so a refusal still reaches the user. Do not name an unlanded key even
-  // in a comment: scripts/gen_i18n.py greps every source file for the
-  // identifier pattern and fails the build on one it cannot find in
-  // english.yaml.
   return tr(STR_ERROR_GENERAL_FAILURE);
 }
 

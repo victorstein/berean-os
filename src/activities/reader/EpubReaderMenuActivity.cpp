@@ -10,6 +10,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
+#include "activities/SettingsSave.h"
 #include "components/UITheme.h"
 
 namespace fui = freeink::ui;
@@ -129,7 +130,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
 
   if (selectedAction == MenuAction::NIGHT_MODE) {
     SETTINGS.screenInverted = SETTINGS.screenInverted == 0 ? 1 : 0;
-    SETTINGS.saveToFileAtomic();
+    saveSettingsOrReport(renderer);
     requestUpdate();
     return;
   }
@@ -138,7 +139,7 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     const bool lightOn = !Frontlight.isOn();
     Frontlight.setOn(lightOn);
     SETTINGS.frontlightOn = lightOn ? 1 : 0;
-    SETTINGS.saveToFileAtomic();
+    saveSettingsOrReport(renderer);
     requestUpdate();
     return;
   }

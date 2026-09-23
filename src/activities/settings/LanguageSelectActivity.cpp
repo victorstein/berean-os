@@ -9,6 +9,7 @@
 #include "CrossPointSettings.h"
 #include "I18nKeys.h"
 #include "MappedInputManager.h"
+#include "activities/SettingsSave.h"
 #include "components/UITheme.h"
 
 namespace fui = freeink::ui;
@@ -56,7 +57,7 @@ void LanguageSelectActivity::activateIndex(const int index) {
   }
 
   SETTINGS.language = langIndex;
-  SETTINGS.saveToFileAtomic();
+  saveSettingsOrReport(renderer);
 
   // Return to previous page
   finish();

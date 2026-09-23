@@ -1289,7 +1289,10 @@ void CrossPointWebServer::handlePostSettings() {
     }
   }
 
-  SETTINGS.saveToFileAtomic();
+  if (!SETTINGS.saveToFileAtomic()) {
+    server->send(500, "text/plain", "Settings could not be saved");
+    return;
+  }
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
   server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");

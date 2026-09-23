@@ -11,6 +11,7 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
+#include "activities/SettingsSave.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -225,8 +226,7 @@ void BmpViewerActivity::doSetSleepCover() {
 
   if (success) {
     if (!transparentMode) SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
-    SETTINGS.saveToFileAtomic();
-    GUI.drawPopup(renderer, tr(STR_DONE));
+    if (saveSettingsOrReport(renderer)) GUI.drawPopup(renderer, tr(STR_DONE));
   } else {
     GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
   }

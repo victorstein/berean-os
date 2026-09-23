@@ -68,7 +68,7 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
     self->app.clearTapFlash();  // the action leaves this screen
     if (self->savePromptSelection == 0) {
       RenderLock lock(*self);
-      WIFI_STORE.addCredential(self->selectedSSID, self->enteredPassword);
+      if (!WIFI_STORE.addCredential(self->selectedSSID, self->enteredPassword)) self->reportCredentialSaveFailure();
     }
     self->onComplete(true);
     return;
@@ -78,7 +78,9 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
     self->app.clearTapFlash();  // the action leaves this screen
     if (self->forgetPromptSelection == 1) {
       RenderLock lock(*self);
-      WIFI_STORE.removeCredential(self->selectedSSID);
+      // removeCredential also returns false for an SSID that was never saved.
+      const bool wasSaved = WIFI_STORE.hasSavedCredential(self->selectedSSID);
+      if (!WIFI_STORE.removeCredential(self->selectedSSID) && wasSaved) self->reportCredentialSaveFailure();
       const auto network = find_if(self->networks.begin(), self->networks.end(),
                                    [self](const WifiNetworkInfo& net) { return net.ssid == self->selectedSSID; });
       if (network != self->networks.end()) {
@@ -180,6 +182,8 @@ void WifiSelectionActivity::onExit() {
 
   LOG_DBG("WIFI", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
 }
+
+void WifiSelectionActivity::reportCredentialSaveFailure() const { GUI.drawPopup(renderer, tr(STR_WIFI_SAVE_FAILED)); }
 
 void WifiSelectionActivity::startWifiScan(const bool autoScan) {
   autoConnecting = autoScan;
@@ -764,7 +768,7 @@ void WifiSelectionActivity::loop() {
       if (savePromptSelection == 0) {
         // User chose "Yes" - save the password
         RenderLock lock(*this);
-        WIFI_STORE.addCredential(selectedSSID, enteredPassword);
+        if (!WIFI_STORE.addCredential(selectedSSID, enteredPassword)) reportCredentialSaveFailure();
       }
       // Complete - parent will start web server
       onComplete(true);
@@ -799,7 +803,8 @@ void WifiSelectionActivity::loop() {
       if (forgetPromptSelection == 1) {
         RenderLock lock(*this);
         // User chose "Forget network" - forget the network
-        WIFI_STORE.removeCredential(selectedSSID);
+        const bool wasSaved = WIFI_STORE.hasSavedCredential(selectedSSID);
+        if (!WIFI_STORE.removeCredential(selectedSSID) && wasSaved) reportCredentialSaveFailure();
         // Update the network list to reflect the change
         const auto network = find_if(networks.begin(), networks.end(),
                                      [this](const WifiNetworkInfo& net) { return net.ssid == selectedSSID; });
