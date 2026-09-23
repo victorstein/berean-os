@@ -177,10 +177,12 @@ void ReaderActivity::render(RenderLock&&) {
     }
     renderer.displayBuffer();
     onEndOfBookRendered();
+    PostedMessage::drawNext(renderer);
     return;
   }
 
   renderBook();
+  PostedMessage::drawNext(renderer);
 }
 
 bool ReaderActivity::handleForcedRefresh() {

@@ -4,6 +4,7 @@
 #include <Logging.h>
 #include <Memory.h>
 
+#include "ChapterCompletionFile.h"
 #include "PassageFile.h"
 #include "PubKeyRegistry.h"
 #include "StudyStore/PubKey.h"
@@ -13,6 +14,10 @@
 namespace {
 
 constexpr const char* MODULE = "STUDY";
+
+bool saveBibleCompletion(const study::ChapterCompletion& record) {
+  return ChapterCompletionFile::save(study::BIBLE_PUB_KEY, record) == ChapterCompletionFile::SaveResult::Ok;
+}
 
 }  // namespace
 
@@ -47,6 +52,13 @@ bool StudyStore::openPublication(const std::shared_ptr<Epub>& epub, GfxRenderer&
     saveDisabled_ = true;
   }
 
+  // Only the shared Bible key has canonical book numbers to record against.
+  if (pubKey_ == study::BIBLE_PUB_KEY &&
+      ChapterCompletionFile::load(pubKey_, completion_) == ChapterCompletionFile::LoadResult::Failed) {
+    LOG_ERR(MODULE, "Chapter completion unreadable; not recording chapters this session");
+    completionSaveDisabled_ = true;
+  }
+
   units_ = makeUniqueNoThrow<UnitIndexCache>(epub, pubKey_, renderer);
   if (!units_ || !units_->begin()) {
     LOG_ERR(MODULE, "Unit index unavailable; addressing degraded to document offsets");
@@ -57,6 +69,7 @@ bool StudyStore::openPublication(const std::shared_ptr<Epub>& epub, GfxRenderer&
 void StudyStore::closePublication() {
   units_.reset();
   passages_ = study::PassageDoc{};
+  completion_ = study::ChapterCompletion{};
   pubKey_.clear();
   // saveDisabled_ deliberately survives: it is a property of the session's
   // knowledge that a file may hold data we could not read, not of one book.
@@ -69,6 +82,25 @@ bool StudyStore::save() {
   }
   if (pubKey_.empty()) return false;
   return PassageFile::save(pubKey_, passages_) == PassageFile::SaveResult::Ok;
+}
+
+study::CompletionMarkResult StudyStore::markDocumentRead(const uint16_t spineIndex) {
+  if (pubKey_ != study::BIBLE_PUB_KEY || !units_ || !units_->ready()) return study::CompletionMarkResult::NothingNew;
+
+  // The page just rendered asked for these same units, so this is normally the
+  // cached document and costs no I/O.
+  const auto result = study::recordDocumentRead(completion_, units_->unitsFor(spineIndex), completionSaveDisabled_,
+                                                saveBibleCompletion);
+  if (result == study::CompletionMarkResult::SaveFailed) {
+    LOG_ERR(MODULE, "Could not persist chapter completion for spine %u", spineIndex);
+  }
+  return result;
+}
+
+bool StudyStore::takeCompletionLoadFailureNotice() {
+  if (pubKey_ != study::BIBLE_PUB_KEY || !completionSaveDisabled_ || completionLoadFailureAnnounced_) return false;
+  completionLoadFailureAnnounced_ = true;
+  return true;
 }
 
 std::vector<StudyStore::TagView> StudyStore::activeTags() const {

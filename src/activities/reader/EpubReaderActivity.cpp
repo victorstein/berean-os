@@ -248,6 +248,9 @@ bool EpubReaderActivity::loadBook() {
   if (STUDY.saveDisabled()) {
     ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
   }
+  if (STUDY.takeCompletionLoadFailureNotice()) {
+    ReaderUtils::showMessage(renderer, tr(STR_CHAPTERS_READ_LOAD_FAILED));
+  }
 #else
   // The study store is never opened on non-PSRAM boards: a resident passage
   // document plus two live JsonDocuments is a real risk against ~50KB of free
@@ -911,18 +914,21 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
     clearDeferredReposition();
   }
   if (isForwardTurn) {
-    if (section->currentPage < section->pageCount - 1 || section->isBuilding()) {
+    if (!study::forwardTurnLeavesDocument(section->currentPage, section->pageCount, section->isBuilding())) {
       section->currentPage++;
       lastPageTurnTime = millis();
       return true;
     } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
       RenderLock lock;
+      recordDocumentRead();
       nextPageNumber = 0;
       currentSpineIndex++;
       section.reset();
       lastPageTurnTime = millis();
       return true;
     } else {
+      RenderLock lock;
+      recordDocumentRead();
       currentSpineIndex = epub->getSpineItemsCount();
       lastPageTurnTime = millis();
       return true;
@@ -943,6 +949,13 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
     }
   }
   return false;
+}
+
+void EpubReaderActivity::recordDocumentRead() {
+  if (!highlightsLoaded || currentSpineIndex < 0) return;
+  if (STUDY.markDocumentRead(static_cast<uint16_t>(currentSpineIndex)) == study::CompletionMarkResult::SaveFailed) {
+    ReaderUtils::showMessage(renderer, tr(STR_CHAPTERS_READ_SAVE_FAILED));
+  }
 }
 
 bool EpubReaderActivity::skipPages(int amount) {

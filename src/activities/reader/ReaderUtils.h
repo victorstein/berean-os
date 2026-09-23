@@ -9,6 +9,7 @@
 
 #include "MappedInputManager.h"
 #include "activities/ActivityManager.h"
+#include "activities/PostedMessage.h"
 #include "components/UITheme.h"
 
 namespace ReaderUtils {
@@ -226,11 +227,10 @@ void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
 
 // The reader's one message toast, shared so PassageSelectActivity,
 // TagPickerActivity and HighlightsActivity all route through this instead of
-// each rolling its own popup+pending-flag dance, as the word-select screen
-// does. Fire-and-forget: overlays the framebuffer and refreshes the display
-// itself, exactly like the GUI.drawPopup call it wraps, so callers must not
-// assume the surface is still clean afterward.
-inline void showMessage(const GfxRenderer& renderer, const char* message) { GUI.drawPopup(renderer, message); }
+// each rolling its own popup+pending-flag dance. Deferred to the next completed
+// render (PostedMessage.h): every caller requests a render or finish()es right
+// after, and a popup drawn immediately was painted over before it could be read.
+inline void showMessage(const GfxRenderer&, const char* message) { PostedMessage::post(message); }
 
 struct BackNavCallback {
   void* ctx;

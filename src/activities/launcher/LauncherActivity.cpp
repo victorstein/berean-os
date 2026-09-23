@@ -14,12 +14,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <optional>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "StudyStore/PubKey.h"
 #include "activities/catalog/PublicationsActivity.h"
 #include "activities/launcher/LauncherRefresh.h"
 #include "activities/network/MeetingsActivity.h"
@@ -34,6 +36,7 @@
 #include "network/MeetingLibrary.h"
 #include "network/MeetingWeekCache.h"
 #include "study/BookPathIndex.h"
+#include "study/ChapterCompletionFile.h"
 #include "study/PubKeyRegistry.h"
 
 namespace {
@@ -73,6 +76,22 @@ void LauncherActivity::onEnter() {
   requestUpdate();
 }
 
+void LauncherActivity::applyChaptersReadSubtitle() {
+  study::ChapterCompletion completion;
+  const auto loaded = ChapterCompletionFile::load(study::BIBLE_PUB_KEY, completion);
+  if (loaded != ChapterCompletionFile::LoadResult::Loaded &&
+      loaded != ChapterCompletionFile::LoadResult::RecoveredFromTemp) {
+    return;
+  }
+  const uint16_t chaptersRead = completion.readCount();
+  if (chaptersRead == 0) return;
+
+  char line[64];
+  snprintf(line, sizeof(line), tr(STR_BIBLE_CHAPTERS_READ), static_cast<unsigned>(chaptersRead),
+           static_cast<unsigned>(study::CANONICAL_CHAPTER_TOTAL));
+  bibleSubtitle = line;
+}
+
 void LauncherActivity::resolveTargets() {
   RECENT_BOOKS.loadFromFile();
   bool generatedAny = false;
@@ -101,6 +120,7 @@ void LauncherActivity::resolveTargets() {
   if (found != recents.end()) {
     biblePath = found->path;
     bibleSubtitle = utf8SafeSummary(found->title, 40);
+    applyChaptersReadSubtitle();
     bibleCoverPath = coverThumbFor(found->path, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
     // The sleep screen paints this too, and it runs while the device is shutting
     // down -- far too late to search for the Bible or open it.
