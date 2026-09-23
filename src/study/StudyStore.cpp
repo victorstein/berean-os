@@ -96,6 +96,12 @@ study::CompletionMarkResult StudyStore::markDocumentRead(const uint16_t spineInd
   return result;
 }
 
+bool StudyStore::takeCompletionLoadFailureNotice() {
+  if (pubKey_ != study::BIBLE_PUB_KEY || !completionSaveDisabled_ || completionLoadFailureAnnounced_) return false;
+  completionLoadFailureAnnounced_ = true;
+  return true;
+}
+
 std::vector<StudyStore::TagView> StudyStore::activeTags() const {
   std::vector<TagView> out;
   for (const study::TagId id : palette_.activeIds()) out.push_back({id, palette_.name(id)});

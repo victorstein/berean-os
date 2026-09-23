@@ -69,9 +69,22 @@ through HalStorage, which holds `storageMutex` per call.
 
 - Load `Failed` (unreadable, unparseable, newer version, or anything this
   firmware would not write) latches `completionSaveDisabled_` for the session,
-  separately from the passage latch, and the reader says so once on open.
+  separately from the passage latch. The reader says so once per session, and
+  only when the Bible is the book being opened
+  (`StudyStore::takeCompletionLoadFailureNotice`).
 - A failed save rolls the in-memory marks back so memory matches the card, and
   the reader shows a popup.
+
+### Popups that could not be seen
+
+`ReaderUtils::showMessage` drew its popup immediately, and every caller -- this
+feature's, the highlight, tag and bookmark refusals -- then requested a render
+or `finish()`ed, which painted straight over it. It now posts to
+`src/activities/PostedMessage`, and the reader (`ReaderActivity::render`) and
+every list screen (`UiListActivity::render`) draw the oldest posted message
+after their own `displayBuffer`. The popup stays until the next render. The
+queue holds two, so the highlights and chapter load notices raised by the same
+book open show one after the other rather than one covering the other.
 
 ### Launcher
 

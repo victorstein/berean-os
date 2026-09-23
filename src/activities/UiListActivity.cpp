@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "MappedInputManager.h"
+#include "PostedMessage.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -164,4 +165,5 @@ void UiListActivity::render(RenderLock&&) {
   }
   drawFooter();
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }

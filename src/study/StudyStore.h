@@ -114,9 +114,10 @@ class StudyStore {
   // the same UnitIndexCache through passagesInDocument.
   study::CompletionMarkResult markDocumentRead(uint16_t spineIndex);
 
-  // True when the completion record failed to load; chapters are not recorded
-  // for the rest of the session.
-  bool completionSaveDisabled() const { return completionSaveDisabled_; }
+  // True exactly once per session, and only while the Bible is open, when its
+  // completion record failed to load -- so the notice is not repeated on every
+  // later book open, nor shown over a publication it has nothing to do with.
+  bool takeCompletionLoadFailureNotice();
 
   // For the migration runner, which owns its own save cadence.
   study::PassageDoc& mutableDoc() { return passages_; }
@@ -139,6 +140,7 @@ class StudyStore {
   // the user tagging passages, nor the reverse. Session-wide for the same
   // reason saveDisabled_ is.
   bool completionSaveDisabled_ = false;
+  bool completionLoadFailureAnnounced_ = false;
 };
 
 #define STUDY StudyStore::getInstance()

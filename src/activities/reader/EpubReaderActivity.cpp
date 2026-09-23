@@ -248,7 +248,7 @@ bool EpubReaderActivity::loadBook() {
   if (STUDY.saveDisabled()) {
     ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
   }
-  if (STUDY.completionSaveDisabled()) {
+  if (STUDY.takeCompletionLoadFailureNotice()) {
     ReaderUtils::showMessage(renderer, tr(STR_CHAPTERS_READ_LOAD_FAILED));
   }
 #else
