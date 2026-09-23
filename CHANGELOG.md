@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.15](https://github.com/victorstein/berean-os/compare/v1.9.14...v1.9.15) (2026-09-23)
+
+
+### Bug Fixes
+
+* bootstrap fresh worktrees so they can build and format ([#76](https://github.com/victorstein/berean-os/issues/76)) ([3cabc39](https://github.com/victorstein/berean-os/commit/3cabc3994bfdf790f14bc0e6a49cc6a31c026945)), closes [#61](https://github.com/victorstein/berean-os/issues/61)
+
 ## [1.9.14](https://github.com/victorstein/berean-os/compare/v1.9.13...v1.9.14) (2026-09-23)
 
 
