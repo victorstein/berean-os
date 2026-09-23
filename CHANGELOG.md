@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/victorstein/berean-os/compare/v1.12.0...v1.12.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* reach File Transfer from Settings again ([#80](https://github.com/victorstein/berean-os/issues/80)) ([99bcc73](https://github.com/victorstein/berean-os/commit/99bcc73af77185ba6b4f30efbeff0a62fe93977a)), closes [#29](https://github.com/victorstein/berean-os/issues/29)
+
 ## [1.12.0](https://github.com/victorstein/berean-os/compare/v1.11.0...v1.12.0) (2026-09-23)
 
 
