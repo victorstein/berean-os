@@ -218,6 +218,7 @@ bool UnitIndexCache::buildDocument(const uint16_t spineIndex) {
 
   cachedSpine_ = spineIndex;
   cached_ = std::move(units);
+  cachedBuildFailed_ = false;
   return true;
 }
 
@@ -232,6 +233,7 @@ const study::DocumentUnits& UnitIndexCache::unitsFor(const uint16_t spineIndex) 
     if (loadAnchors(entry, loaded)) {
       cachedSpine_ = spineIndex;
       cached_ = std::move(loaded);
+      cachedBuildFailed_ = false;
       return cached_;
     }
   }
@@ -240,6 +242,7 @@ const study::DocumentUnits& UnitIndexCache::unitsFor(const uint16_t spineIndex) 
     LOG_ERR(MODULE, "Index build failed for spine %u; addressing degraded", spineIndex);
     cachedSpine_ = spineIndex;
     cached_ = study::DocumentUnits{};
+    cachedBuildFailed_ = true;
   }
   return cached_;
 }

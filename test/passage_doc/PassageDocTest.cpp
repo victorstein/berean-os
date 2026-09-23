@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
 
 #include "StudyStore/PassageDoc.h"
 
@@ -411,32 +412,121 @@ TEST(PassageDocLinks, AVersionOneReaderRefusesAFileCarryingLinks) {
   EXPECT_TRUE(version <= 0 || version > V1_FORMAT_VERSION) << "PassageDoc::fromJson's v1 guard must reject this";
 }
 
-TEST(PassageDocLinks, LoadCapsDedupesAndSkipsUnparseableLinks) {
+// Every stored-link defect refuses the whole load instead of being repaired:
+// a repaired link is a dropped or cut one, and the next save would make the
+// loss permanent. The caller turns the refusal into Failed -> saving disabled.
+JsonDocument oneRowWithLinks(const std::function<void(JsonArray)>& fill) {
   JsonDocument json;
   json["v"] = study::PassageDoc::FORMAT_VERSION;
   const auto row = json["p"].to<JsonArray>().add<JsonObject>();
   row["u"] = "v:19:119:145:0";
-  const auto links = row["k"].to<JsonArray>();
-  const auto bad = links.add<JsonObject>();
-  bad["u"] = "nonsense";
-  for (int i = 0; i < 2; ++i) {
-    const auto dup = links.add<JsonObject>();
-    dup["u"] = "v:19:23:1:0";
-    dup["s"] = 7;
-    dup["r"] = "Salmos 23:1";
-  }
-  for (uint16_t v = 2; v < 20; ++v) {
-    const auto link = links.add<JsonObject>();
-    link["u"] = study::unitToCompact(study::Unit{study::UnitKind::Verse, 19, 23, v, 0});
-  }
+  row["s"] = 198;
+  fill(row["k"].to<JsonArray>());
+  return json;
+}
 
+void addLink(JsonArray links, const std::string& unit, const uint32_t spine, const std::string& label) {
+  const auto entry = links.add<JsonObject>();
+  entry["u"] = unit;
+  entry["s"] = spine;
+  entry["r"] = label;
+}
+
+bool loads(const JsonDocument& json) {
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.fromJson(json.as<JsonVariantConst>()));
-  const auto& loaded = doc.passages()[0].links;
-  ASSERT_EQ(loaded.size(), study::PassageDoc::MAX_LINKS_PER_PASSAGE);
-  EXPECT_EQ(loaded[0].target, (study::Unit{study::UnitKind::Verse, 19, 23, 1, 0}));
-  EXPECT_EQ(loaded[0].targetSpine, 7u);
-  EXPECT_EQ(loaded[1].target.minor, 2u);
+  return doc.fromJson(json.as<JsonVariantConst>());
+}
+
+TEST(PassageDocLinks, LoadAcceptsWellFormedLinks) {
+  EXPECT_TRUE(loads(oneRowWithLinks([](JsonArray k) {
+    addLink(k, "v:19:23:1:0", 7, "Salmos 23:1");
+    addLink(k, "v:19:23:2:0", 7, std::string(study::PassageDoc::MAX_REFERENCE_BYTES, 'a'));
+  })));
+}
+
+TEST(PassageDocLinks, LoadRefusesAnUnparseableTarget) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) { addLink(k, "nonsense", 7, "x"); })));
+}
+
+TEST(PassageDocLinks, LoadRefusesASpineThatWouldWrap) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) { addLink(k, "v:19:23:1:0", 65536, "x"); })));
+}
+
+TEST(PassageDocLinks, LoadRefusesAMissingSpine) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) { k.add<JsonObject>()["u"] = "v:19:23:1:0"; })));
+}
+
+TEST(PassageDocLinks, LoadRefusesAnOverlongLabel) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) {
+    addLink(k, "v:19:23:1:0", 7, std::string(study::PassageDoc::MAX_REFERENCE_BYTES + 1, 'a'));
+  })));
+}
+
+TEST(PassageDocLinks, LoadRefusesMoreLinksThanTheCap) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) {
+    for (uint16_t v = 1; v <= study::PassageDoc::MAX_LINKS_PER_PASSAGE + 1; ++v) {
+      addLink(k, study::unitToCompact(study::Unit{study::UnitKind::Verse, 19, 23, v, 0}), 7, "x");
+    }
+  })));
+}
+
+TEST(PassageDocLinks, LoadRefusesADuplicateOrSelfLink) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) {
+    addLink(k, "v:19:23:1:0", 7, "x");
+    addLink(k, "v:19:23:1:0", 7, "x");
+  })));
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) { addLink(k, "v:19:119:145:0", 198, "x"); })));
+}
+
+TEST(PassageDocLinks, LoadRefusalLeavesNoPartialDocument) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  const auto json = oneRowWithLinks([](JsonArray k) { addLink(k, "nonsense", 7, "x"); });
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()));
+  EXPECT_TRUE(doc.passages().empty());
+}
+
+// Two Watchtower articles each have a paragraph with pid 5. The Units are
+// equal; only the document tells them apart.
+study::TaggedPassage paragraphIn(const uint16_t spine, std::string reference) {
+  study::TaggedPassage p = samplePassage();
+  p.start = study::Unit{study::UnitKind::Paragraph, 0, 0, 5, 0};
+  p.end = p.start;
+  p.documentSpine = spine;
+  p.reference = std::move(reference);
+  return p;
+}
+
+TEST(PassageDocLinks, SamePidInAnotherArticleIsADifferentPlace) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(paragraphIn(3, "Article one, par. 5")));
+  ASSERT_TRUE(doc.add(paragraphIn(4, "Article two, par. 5")));
+  ASSERT_TRUE(doc.add(paragraphIn(9, "Article three, par. 5")));
+
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked) << "not a self-link: another article";
+  EXPECT_EQ(doc.linkPassages(0, 2), study::PassageDoc::LinkResult::Linked) << "not already linked: another article";
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::AlreadyLinked);
+  ASSERT_EQ(doc.passages()[0].links.size(), 2u);
+
+  const std::vector<study::PassageLink> links = doc.passages()[0].links;
+  ASSERT_TRUE(doc.setLinks(0, links));
+  EXPECT_EQ(doc.passages()[0].links, links) << "normalising must not collapse the two articles' pid 5";
+
+  JsonDocument json;
+  doc.toJson(json);
+  study::PassageDoc back;
+  ASSERT_TRUE(back.fromJson(json.as<JsonVariantConst>()));
+  EXPECT_EQ(back.passages()[0].links, links);
+}
+
+TEST(PassageDocLinks, SameVerseIsTheSamePlaceWhateverTheSpine) {
+  study::PassageDoc doc;
+  study::TaggedPassage other = passageAt(119, 145, "Salmos 119:145");
+  other.documentSpine = 12;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(other));
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::SelfLink)
+      << "a verse address is portable; the spine is only a hint";
 }
 
 TEST(PassageDocLinks, ReAddingABackupKeepsItsLinks) {

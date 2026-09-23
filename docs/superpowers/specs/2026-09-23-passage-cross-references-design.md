@@ -53,10 +53,27 @@ all their passages until they actually make a link. The host test
 `PassageDocLinks.WritesVersionOneWhileNoPassageCarriesALink` pins this. Removing the
 last link writes v1 again, which is correct for the same reason.
 
-The load path normalises `"k"` the way it normalises tags: unparseable targets are
-skipped, duplicates and self-links dropped, the list capped, and labels bounded. It
-never drops anything for budget, so an oversize file is still a load failure, not a
-silent truncation (`PassageDoc.cpp`, the comment above the final `push_back`).
+**The load path refuses `"k"` rather than repairing it** (`linksFromJson` in
+`PassageDoc.cpp`). Any of these makes `fromJson` return false:
+
+- an unparseable target;
+- a missing spine, or one over 65,535;
+- a label longer than `MAX_REFERENCE_BYTES`;
+- more than `MAX_LINKS_PER_PASSAGE` links;
+- a duplicate link;
+- a link to the passage itself.
+
+Repairing would drop or cut a link, and the next save would make the loss permanent.
+A refusal becomes `LoadResult::Failed`, then `saveDisabled_`, and the file is left
+untouched. Both limits are therefore part of the format: widening either one needs a
+`FORMAT_VERSION` bump (pinned in `PassageDoc.h`). The in-memory paths (`add`,
+`setLinks`) still normalise, because nothing there is on the card yet.
+
+**Link identity includes the document for non-Verse units.** `Unit::operator==`
+carries no spine. Two Watchtower articles can each have a pid-5 paragraph, and their
+Units are equal. For Paragraph and DocumentOffset units, the self-link and duplicate
+checks therefore compare `(unit, spine)`; a Verse unit compares by address alone
+(`samePlace` in `PassageDoc.cpp`).
 
 ## Cap and budget
 
@@ -120,9 +137,11 @@ applies it. `EpubReaderActivity.cpp` is not touched.
 `locate` and `locateLink` share one resolver (`StudyStore::locateUnit`): the hint
 first, then, for a Verse unit only, a search within that book. `locateLink` adds one
 guard `locate` did not need. Because `documentOffsetOf` accepts a DocumentOffset unit
-anywhere, a DocumentOffset target is refused when its hint is past the index's document
-count or names a document of another kind (the sign of an edition change). Otherwise
-it would open arbitrary text. Anything unresolved shows `STR_LINK_TARGET_NOT_FOUND`
+anywhere, a DocumentOffset target is refused in three cases: its hint is past the
+index's document count; it names a document of another kind (the sign of an edition
+change); or the document could not be indexed (`UnitIndexCache::indexFailed`). That
+last case returns a placeholder that looks exactly like a real DocumentOffset document.
+Otherwise it would open arbitrary text. Anything unresolved shows `STR_LINK_TARGET_NOT_FOUND`
 ("Not found in this publication") and stays on the list. It never falls back to
 opening the hinted document, which is what a passage jump does and would be a
 misleading claim for a link.
@@ -137,8 +156,8 @@ Every notice here goes through `ReaderUtils::showMessage`, which since #78 posts
 `ReaderActivity` drew that queue. `HighlightsActivity` and `PassageLinksActivity`
 override `render()`, so both now call `PostedMessage::drawNext` after their own
 `displayBuffer()`. Without that call, "Linked" or "Not found in this publication"
-would appear late, over the reader page. `TagFilterActivity::render` has the same gap.
-It is out of scope here and left untouched.
+would appear late, over the reader page. `TagFilterActivity::render` had the same gap,
+and this change closes it too.
 
 ## Deliberately not done
 

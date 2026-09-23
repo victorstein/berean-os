@@ -3,6 +3,7 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cstring>
 
 namespace study {
 namespace {
@@ -21,20 +22,63 @@ std::vector<TagId> normaliseTags(const std::vector<TagId>& tags) {
   return out;
 }
 
+// A Verse unit names one place in the whole publication. A Paragraph or
+// DocumentOffset unit is unique only within its document -- two Watchtower
+// articles both have a pid 5 -- so for those the spine is part of the identity.
+bool samePlace(const Unit& a, const uint16_t spineA, const Unit& b, const uint16_t spineB) {
+  if (!(a == b)) return false;
+  return a.kind == UnitKind::Verse || spineA == spineB;
+}
+
+bool linksTo(const PassageLink& link, const Unit& unit, const uint16_t spine) {
+  return samePlace(link.target, link.targetSpine, unit, spine);
+}
+
 // Drops links to the passage's own start and repeats, caps the count, and bounds
-// each label.
-std::vector<PassageLink> normaliseLinks(std::vector<PassageLink> links, const Unit& ownStart) {
+// each label. The in-memory path only: a loaded file is validated, never
+// normalised, by linksFromJson.
+std::vector<PassageLink> normaliseLinks(std::vector<PassageLink> links, const Unit& ownStart, const uint16_t ownSpine) {
   std::vector<PassageLink> out;
   out.reserve(std::min(links.size(), PassageDoc::MAX_LINKS_PER_PASSAGE));
   for (auto& link : links) {
     if (out.size() >= PassageDoc::MAX_LINKS_PER_PASSAGE) break;
-    if (link.target == ownStart) continue;
-    const auto sameTarget = [&link](const PassageLink& kept) { return kept.target == link.target; };
+    if (linksTo(link, ownStart, ownSpine)) continue;
+    const auto sameTarget = [&link](const PassageLink& kept) { return linksTo(kept, link.target, link.targetSpine); };
     if (std::any_of(out.begin(), out.end(), sameTarget)) continue;
     link.label = utf8SafeSummary(std::move(link.label), PassageDoc::MAX_REFERENCE_BYTES);
     out.push_back(std::move(link));
   }
   return out;
+}
+
+// Refuses, rather than repairs, anything this build would not have written:
+// repairing would drop or cut a link, and the next save would make that loss
+// permanent. A refused file becomes a load failure, which latches saving off.
+bool linksFromJson(const JsonVariantConst row, TaggedPassage& passage) {
+  const JsonVariantConst stored = row["k"];
+  if (stored.isNull()) return true;
+  if (!stored.is<JsonArrayConst>()) return false;
+
+  const auto entries = stored.as<JsonArrayConst>();
+  if (entries.size() > PassageDoc::MAX_LINKS_PER_PASSAGE) return false;
+  passage.links.reserve(entries.size());
+  for (const JsonVariantConst entry : entries) {
+    const auto target = unitFromCompact(entry["u"] | "");
+    if (!target) return false;
+    const uint32_t spine = entry["s"] | UINT32_MAX;
+    if (spine > UINT16_MAX) return false;
+    const JsonVariantConst label = entry["r"];
+    if (!label.isNull() && !label.is<const char*>()) return false;
+    const char* labelText = label | "";
+    if (strlen(labelText) > PassageDoc::MAX_REFERENCE_BYTES) return false;
+
+    PassageLink link{*target, static_cast<uint16_t>(spine), labelText};
+    if (linksTo(link, passage.start, passage.documentSpine)) return false;
+    const auto sameTarget = [&link](const PassageLink& kept) { return linksTo(kept, link.target, link.targetSpine); };
+    if (std::any_of(passage.links.begin(), passage.links.end(), sameTarget)) return false;
+    passage.links.push_back(std::move(link));
+  }
+  return true;
 }
 
 bool anyPassageHasLinks(const std::vector<TaggedPassage>& passages) {
@@ -51,7 +95,7 @@ bool PassageDoc::add(TaggedPassage passage) {
   passage.snippet = utf8SafeSummary(std::move(passage.snippet), MAX_SNIPPET_BYTES);
   passage.reference = utf8SafeSummary(std::move(passage.reference), MAX_REFERENCE_BYTES);
   passage.tags = normaliseTags(passage.tags);
-  passage.links = normaliseLinks(std::move(passage.links), passage.start);
+  passage.links = normaliseLinks(std::move(passage.links), passage.start, passage.documentSpine);
 
   passages_.push_back(std::move(passage));
   if (measureBytes() > SAVE_BYTE_BUDGET) {
@@ -85,9 +129,11 @@ PassageDoc::LinkResult PassageDoc::linkPassages(const size_t sourceIndex, const 
   if (sourceIndex >= passages_.size() || targetIndex >= passages_.size()) return LinkResult::NoSuchPassage;
   auto& source = passages_[sourceIndex];
   const auto& target = passages_[targetIndex];
-  if (target.start == source.start) return LinkResult::SelfLink;
+  if (samePlace(target.start, target.documentSpine, source.start, source.documentSpine)) return LinkResult::SelfLink;
 
-  const auto sameTarget = [&target](const PassageLink& link) { return link.target == target.start; };
+  const auto sameTarget = [&target](const PassageLink& link) {
+    return linksTo(link, target.start, target.documentSpine);
+  };
   if (std::any_of(source.links.begin(), source.links.end(), sameTarget)) return LinkResult::AlreadyLinked;
   if (source.links.size() >= MAX_LINKS_PER_PASSAGE) return LinkResult::AtCap;
 
@@ -114,7 +160,8 @@ bool PassageDoc::removeLink(const size_t passageIndex, const size_t linkIndex) {
 
 bool PassageDoc::setLinks(const size_t passageIndex, std::vector<PassageLink> links) {
   if (passageIndex >= passages_.size()) return false;
-  passages_[passageIndex].links = normaliseLinks(std::move(links), passages_[passageIndex].start);
+  const auto& passage = passages_[passageIndex];
+  passages_[passageIndex].links = normaliseLinks(std::move(links), passage.start, passage.documentSpine);
   return true;
 }
 
@@ -194,12 +241,10 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
       if (id <= UINT16_MAX) p.tags.push_back(toTagId(static_cast<uint16_t>(id)));
     }
     p.tags = normaliseTags(p.tags);
-    for (const JsonVariantConst k : v["k"].as<JsonArrayConst>()) {
-      const auto target = unitFromCompact(k["u"] | "");
-      if (!target) continue;
-      p.links.push_back(PassageLink{*target, static_cast<uint16_t>(k["s"] | 0), k["r"] | ""});
+    if (!linksFromJson(v, p)) {
+      passages_.clear();
+      return false;
     }
-    p.links = normaliseLinks(std::move(p.links), p.start);
 
     // Load path: normalise, but NEVER drop for budget. Funnelling this through
     // add() would silently lose a file's tail, still report success, and let the

@@ -157,12 +157,14 @@ std::optional<StudyStore::Location> StudyStore::locateLink(const size_t passageI
   const study::PassageLink& link = links[linkIndex];
 
   // documentOffsetOf accepts a DocumentOffset unit in ANY document, so a hint
-  // left pointing at the wrong document -- an out-of-range spine, or a document
-  // of another kind after an edition change -- would "resolve" to an arbitrary
-  // place. Refuse it rather than open the wrong text.
+  // left pointing at the wrong document -- an out-of-range spine, a document of
+  // another kind after an edition change, or one that could not be indexed at
+  // all -- would "resolve" to an arbitrary place. Refuse it rather than open the
+  // wrong text.
   if (link.target.kind == study::UnitKind::DocumentOffset) {
     if (link.targetSpine >= units_->indexedDocumentCount()) return std::nullopt;
     if (units_->unitsFor(link.targetSpine).kind != study::UnitKind::DocumentOffset) return std::nullopt;
+    if (units_->indexFailed(link.targetSpine)) return std::nullopt;
   }
   return locateUnit(link.target, link.targetSpine);
 }
@@ -332,7 +334,7 @@ StudyStore::LinkOutcome StudyStore::linkMarkedSourceTo(const size_t targetIndex)
     case study::PassageDoc::LinkResult::SelfLink:
       return LinkOutcome::SelfLink;
     case study::PassageDoc::LinkResult::NoSuchPassage:
-      return LinkOutcome::NoSource;
+      return LinkOutcome::NoTarget;  // the source was checked above
     case study::PassageDoc::LinkResult::OverBudget:
       return LinkOutcome::NotSaved;
   }

@@ -7,6 +7,7 @@
 #include "ReaderUtils.h"
 #include "TagRowMapping.h"
 #include "activities/ActivityResult.h"
+#include "activities/PostedMessage.h"
 #include "components/UITheme.h"
 
 namespace fui = freeink::ui;
@@ -155,6 +156,7 @@ void TagFilterActivity::render(RenderLock&&) {
 
   drawFooter();
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }
 
 void TagFilterActivity::activateIndex(const int index) {

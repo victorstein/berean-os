@@ -35,6 +35,11 @@ class PassageDoc {
   // With every field at its maximum, a passage carrying this many links still
   // measures under 1.7 KB, so SAVE_BYTE_BUDGET holds over a hundred of them --
   // the user's real store is 63 -- before it refuses anything.
+  //
+  // fromJson REFUSES a file with more links than this, or a link label longer
+  // than MAX_REFERENCE_BYTES. Widening either one therefore needs a
+  // FORMAT_VERSION bump, or an older build would refuse files this build wrote
+  // under an unchanged version.
   static constexpr size_t MAX_LINKS_PER_PASSAGE = 8;
 
   const std::vector<TaggedPassage>& passages() const { return passages_; }
@@ -83,9 +88,10 @@ class PassageDoc {
 
   void toJson(JsonDocument& doc) const;
 
-  // Parses and validates. Rejects a future format version. Returns false when
-  // the parsed document exceeds the budget -- that is a load FAILURE the caller
-  // must refuse to save over, never a silent truncation.
+  // Parses and validates. Rejects a future format version, and any stored link
+  // it would otherwise have to drop or cut (see MAX_LINKS_PER_PASSAGE). Returns
+  // false when the parsed document exceeds the budget -- that is a load FAILURE
+  // the caller must refuse to save over, never a silent truncation.
   bool fromJson(JsonVariantConst doc);
 
   size_t measureBytes() const;

@@ -133,12 +133,11 @@ void PassageLinksActivity::showRemoveConfirmation(const size_t linkIndex) {
 }
 
 void PassageLinksActivity::removeLink(const size_t linkIndex) {
-  // rowItems_ borrows labels_' storage and the render task reads it, so both
-  // are replaced under the render lock.
-  bool removed = false;
+  // The SD write runs outside the render lock; the render task reads only
+  // labels_, this screen's own copy, which is replaced under the lock after.
+  const bool removed = STUDY.removeLink(passageIndex_, linkIndex);
   {
     RenderLock lock(*this);
-    removed = STUDY.removeLink(passageIndex_, linkIndex);
     refreshLabels();
     rowItems_.clear();
     if (nav.selected >= listCount()) nav.selected = std::max(0, listCount() - 1);

@@ -139,7 +139,7 @@ class StudyStore {
   void markLinkSource(size_t index);
   std::optional<size_t> linkSource() const { return linkSource_; }
 
-  enum class LinkOutcome : uint8_t { Linked, AlreadyLinked, AtCap, SelfLink, NoSource, NotSaved };
+  enum class LinkOutcome : uint8_t { Linked, AlreadyLinked, AtCap, SelfLink, NoSource, NoTarget, NotSaved };
 
   // Links the marked source to `targetIndex` and saves, rolling back on failure.
   LinkOutcome linkMarkedSourceTo(size_t targetIndex);

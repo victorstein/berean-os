@@ -303,6 +303,11 @@ void HighlightsActivity::linkMarkedSourceTo(const size_t docIndex) {
       message = tr(STR_LINK_TO_ITSELF);
       break;
     case StudyStore::LinkOutcome::NoSource:
+      message = tr(STR_LINK_NO_SOURCE);
+      break;
+    case StudyStore::LinkOutcome::NoTarget:
+      message = tr(STR_LINK_TARGET_NOT_FOUND);
+      break;
     case StudyStore::LinkOutcome::NotSaved:
       message = tr(STR_LINK_SAVE_FAILED);
       break;
