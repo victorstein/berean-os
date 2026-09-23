@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
 
 #include "StudyStore/PassageDoc.h"
 
@@ -252,6 +253,335 @@ TEST(PassageDocFind, LocatesPassagesByDocument) {
   const auto hits = doc.findByDocument("1001061130-split10.xhtml");
   ASSERT_EQ(hits.size(), 1u);
   EXPECT_EQ(hits[0], 0u);
+}
+
+study::TaggedPassage passageAt(const uint16_t chapter, const uint16_t verse, std::string reference) {
+  study::TaggedPassage p = samplePassage();
+  p.start = study::Unit{study::UnitKind::Verse, 19, chapter, verse, 0};
+  p.end = p.start;
+  p.reference = std::move(reference);
+  return p;
+}
+
+TEST(PassageDocLinks, LinksTheSourceToTheTargetsStartUnitNotItsIndex) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+  ASSERT_EQ(doc.passages()[0].links.size(), 1u);
+  const auto& link = doc.passages()[0].links[0];
+  EXPECT_EQ(link.target, doc.passages()[1].start);
+  EXPECT_EQ(link.targetSpine, doc.passages()[1].documentSpine);
+  EXPECT_EQ(link.label, "Salmos 23:1");
+  EXPECT_TRUE(doc.passages()[1].links.empty()) << "links are directed: the target is not touched";
+}
+
+TEST(PassageDocLinks, SurvivesTheTargetBeingDeletedAndReAdded) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+  ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+
+  ASSERT_TRUE(doc.remove(1));
+  ASSERT_EQ(doc.passages()[0].links.size(), 1u) << "a dangling link is kept: it may resolve again";
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+  EXPECT_EQ(doc.passages()[0].links[0].target, doc.passages()[1].start);
+}
+
+TEST(PassageDocLinks, LabelsATargetWithNoReferenceByItsSnippet) {
+  study::PassageDoc doc;
+  study::TaggedPassage target = samplePassage();
+  target.start = study::Unit{study::UnitKind::Paragraph, 0, 0, 40, 0};
+  target.reference.clear();
+  target.snippet = std::string(200, 'a');
+  ASSERT_TRUE(doc.add(samplePassage()));
+  ASSERT_TRUE(doc.add(target));
+
+  ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+  EXPECT_EQ(doc.passages()[0].links[0].label, std::string(study::PassageDoc::MAX_REFERENCE_BYTES, 'a'));
+}
+
+TEST(PassageDocLinks, RefusesALinkToItself) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  EXPECT_EQ(doc.linkPassages(0, 0), study::PassageDoc::LinkResult::SelfLink);
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::SelfLink)
+      << "a second mark at the same word is the same place";
+  EXPECT_TRUE(doc.passages()[0].links.empty());
+}
+
+TEST(PassageDocLinks, ReportsAnExistingLinkWithoutDuplicatingIt) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+  ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::AlreadyLinked);
+  EXPECT_EQ(doc.passages()[0].links.size(), 1u);
+}
+
+TEST(PassageDocLinks, RefusesAtTheCap) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  for (uint16_t v = 1; v <= study::PassageDoc::MAX_LINKS_PER_PASSAGE + 1; ++v) {
+    ASSERT_TRUE(doc.add(passageAt(23, v, "Salmos 23")));
+  }
+  for (size_t i = 1; i <= study::PassageDoc::MAX_LINKS_PER_PASSAGE; ++i) {
+    ASSERT_EQ(doc.linkPassages(0, i), study::PassageDoc::LinkResult::Linked);
+  }
+  EXPECT_EQ(doc.linkPassages(0, study::PassageDoc::MAX_LINKS_PER_PASSAGE + 1), study::PassageDoc::LinkResult::AtCap);
+  EXPECT_EQ(doc.passages()[0].links.size(), study::PassageDoc::MAX_LINKS_PER_PASSAGE);
+}
+
+TEST(PassageDocLinks, RefusesAnOutOfRangeIndex) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::NoSuchPassage);
+  EXPECT_EQ(doc.linkPassages(1, 0), study::PassageDoc::LinkResult::NoSuchPassage);
+}
+
+TEST(PassageDocLinks, RemovesOneLinkAndKeepsTheRest) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+  ASSERT_TRUE(doc.add(passageAt(23, 2, "Salmos 23:2")));
+  ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+  ASSERT_EQ(doc.linkPassages(0, 2), study::PassageDoc::LinkResult::Linked);
+
+  EXPECT_TRUE(doc.removeLink(0, 0));
+  ASSERT_EQ(doc.passages()[0].links.size(), 1u);
+  EXPECT_EQ(doc.passages()[0].links[0].label, "Salmos 23:2");
+  EXPECT_FALSE(doc.removeLink(0, 1));
+  EXPECT_FALSE(doc.removeLink(3, 0));
+}
+
+TEST(PassageDocLinks, SetLinksRestoresTheOriginalOrder) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+  ASSERT_TRUE(doc.add(passageAt(23, 2, "Salmos 23:2")));
+  ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+  ASSERT_EQ(doc.linkPassages(0, 2), study::PassageDoc::LinkResult::Linked);
+  const std::vector<study::PassageLink> backup = doc.passages()[0].links;
+
+  ASSERT_TRUE(doc.removeLink(0, 0));
+  ASSERT_TRUE(doc.setLinks(0, backup));
+  EXPECT_EQ(doc.passages()[0].links, backup);
+  EXPECT_FALSE(doc.setLinks(3, backup));
+}
+
+TEST(PassageDocLinks, RoundTripsLinksUnderTheNewFormatVersion) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+  ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+
+  JsonDocument json;
+  doc.toJson(json);
+  EXPECT_EQ(json["v"].as<int>(), 2);
+
+  study::PassageDoc back;
+  ASSERT_TRUE(back.fromJson(json.as<JsonVariantConst>()));
+  ASSERT_EQ(back.passages()[0].links.size(), 1u);
+  EXPECT_EQ(back.passages()[0].links[0], doc.passages()[0].links[0]);
+  EXPECT_TRUE(back.passages()[1].links.empty());
+}
+
+TEST(PassageDocLinks, WritesVersionOneWhileNoPassageCarriesALink) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  JsonDocument json;
+  doc.toJson(json);
+  EXPECT_EQ(json["v"].as<int>(), 1) << "a file with nothing a v1 build would drop stays readable by one";
+  EXPECT_FALSE(json["p"][0]["k"].is<JsonArray>());
+}
+
+// What a v1 build does with a file this build wrote: it must refuse the file
+// outright. Reading it would ignore "k", and its next save would erase every link.
+TEST(PassageDocLinks, AVersionOneReaderRefusesAFileCarryingLinks) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+  ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+  JsonDocument json;
+  doc.toJson(json);
+
+  constexpr int V1_FORMAT_VERSION = 1;
+  const int version = json["v"] | 0;
+  EXPECT_TRUE(version <= 0 || version > V1_FORMAT_VERSION) << "PassageDoc::fromJson's v1 guard must reject this";
+}
+
+// Every stored-link defect refuses the whole load instead of being repaired:
+// a repaired link is a dropped or cut one, and the next save would make the
+// loss permanent. The caller turns the refusal into Failed -> saving disabled.
+JsonDocument oneRowWithLinks(const std::function<void(JsonArray)>& fill) {
+  JsonDocument json;
+  json["v"] = study::PassageDoc::FORMAT_VERSION;
+  const auto row = json["p"].to<JsonArray>().add<JsonObject>();
+  row["u"] = "v:19:119:145:0";
+  row["s"] = 198;
+  fill(row["k"].to<JsonArray>());
+  return json;
+}
+
+void addLink(JsonArray links, const std::string& unit, const uint32_t spine, const std::string& label) {
+  const auto entry = links.add<JsonObject>();
+  entry["u"] = unit;
+  entry["s"] = spine;
+  entry["r"] = label;
+}
+
+bool loads(const JsonDocument& json) {
+  study::PassageDoc doc;
+  return doc.fromJson(json.as<JsonVariantConst>());
+}
+
+TEST(PassageDocLinks, LoadAcceptsWellFormedLinks) {
+  EXPECT_TRUE(loads(oneRowWithLinks([](JsonArray k) {
+    addLink(k, "v:19:23:1:0", 7, "Salmos 23:1");
+    addLink(k, "v:19:23:2:0", 7, std::string(study::PassageDoc::MAX_REFERENCE_BYTES, 'a'));
+  })));
+}
+
+TEST(PassageDocLinks, LoadRefusesAnUnparseableTarget) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) { addLink(k, "nonsense", 7, "x"); })));
+}
+
+TEST(PassageDocLinks, LoadRefusesASpineThatWouldWrap) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) { addLink(k, "v:19:23:1:0", 65536, "x"); })));
+}
+
+TEST(PassageDocLinks, LoadRefusesAMissingSpine) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) { k.add<JsonObject>()["u"] = "v:19:23:1:0"; })));
+}
+
+TEST(PassageDocLinks, LoadRefusesAnOverlongLabel) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) {
+    addLink(k, "v:19:23:1:0", 7, std::string(study::PassageDoc::MAX_REFERENCE_BYTES + 1, 'a'));
+  })));
+}
+
+TEST(PassageDocLinks, LoadRefusesMoreLinksThanTheCap) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) {
+    for (uint16_t v = 1; v <= study::PassageDoc::MAX_LINKS_PER_PASSAGE + 1; ++v) {
+      addLink(k, study::unitToCompact(study::Unit{study::UnitKind::Verse, 19, 23, v, 0}), 7, "x");
+    }
+  })));
+}
+
+TEST(PassageDocLinks, LoadRefusesADuplicateOrSelfLink) {
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) {
+    addLink(k, "v:19:23:1:0", 7, "x");
+    addLink(k, "v:19:23:1:0", 7, "x");
+  })));
+  EXPECT_FALSE(loads(oneRowWithLinks([](JsonArray k) { addLink(k, "v:19:119:145:0", 198, "x"); })));
+}
+
+TEST(PassageDocLinks, LoadRefusalLeavesNoPartialDocument) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  const auto json = oneRowWithLinks([](JsonArray k) { addLink(k, "nonsense", 7, "x"); });
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()));
+  EXPECT_TRUE(doc.passages().empty());
+}
+
+// Two Watchtower articles each have a paragraph with pid 5. The Units are
+// equal; only the document tells them apart.
+study::TaggedPassage paragraphIn(const uint16_t spine, std::string reference) {
+  study::TaggedPassage p = samplePassage();
+  p.start = study::Unit{study::UnitKind::Paragraph, 0, 0, 5, 0};
+  p.end = p.start;
+  p.documentSpine = spine;
+  p.reference = std::move(reference);
+  return p;
+}
+
+TEST(PassageDocLinks, SamePidInAnotherArticleIsADifferentPlace) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(paragraphIn(3, "Article one, par. 5")));
+  ASSERT_TRUE(doc.add(paragraphIn(4, "Article two, par. 5")));
+  ASSERT_TRUE(doc.add(paragraphIn(9, "Article three, par. 5")));
+
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked) << "not a self-link: another article";
+  EXPECT_EQ(doc.linkPassages(0, 2), study::PassageDoc::LinkResult::Linked) << "not already linked: another article";
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::AlreadyLinked);
+  ASSERT_EQ(doc.passages()[0].links.size(), 2u);
+
+  const std::vector<study::PassageLink> links = doc.passages()[0].links;
+  ASSERT_TRUE(doc.setLinks(0, links));
+  EXPECT_EQ(doc.passages()[0].links, links) << "normalising must not collapse the two articles' pid 5";
+
+  JsonDocument json;
+  doc.toJson(json);
+  study::PassageDoc back;
+  ASSERT_TRUE(back.fromJson(json.as<JsonVariantConst>()));
+  EXPECT_EQ(back.passages()[0].links, links);
+}
+
+TEST(PassageDocLinks, SameVerseIsTheSamePlaceWhateverTheSpine) {
+  study::PassageDoc doc;
+  study::TaggedPassage other = passageAt(119, 145, "Salmos 119:145");
+  other.documentSpine = 12;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(other));
+  EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::SelfLink)
+      << "a verse address is portable; the spine is only a hint";
+}
+
+TEST(PassageDocLinks, ReAddingABackupKeepsItsLinks) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
+  ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
+  ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
+  const study::TaggedPassage backup = doc.passages()[0];
+  ASSERT_TRUE(doc.remove(0));
+  ASSERT_TRUE(doc.add(backup)) << "StudyStore::removePassage rolls back a failed save this way";
+  EXPECT_EQ(doc.passages().back().links, backup.links);
+}
+
+// The budget argument for the cap: even a passage with every field at its
+// maximum -- every string made of quotes, so each byte serialises as two -- and
+// every link slot full is small enough that the write budget holds well over the
+// user's real store (63 passages) of them.
+TEST(PassageDocBudget, AFullyLinkedWorstCasePassageCannotExhaustTheBudgetInOrdinaryUse) {
+  study::TaggedPassage worst;
+  worst.start = study::Unit{study::UnitKind::Verse, 66, UINT16_MAX, UINT16_MAX, UINT32_MAX};
+  worst.end = worst.start;
+  worst.fingerprint = study::Fingerprint{UINT16_MAX, UINT32_MAX};
+  worst.endFingerprint = worst.fingerprint;
+  worst.document = std::string(64, 'd');
+  worst.documentSpine = UINT16_MAX;
+  worst.snippet = std::string(study::PassageDoc::MAX_SNIPPET_BYTES, '"');
+  worst.reference = std::string(study::PassageDoc::MAX_REFERENCE_BYTES, '"');
+  worst.pendingUpgrade = true;
+  for (uint16_t t = 1; t <= study::PassageDoc::MAX_TAGS_PER_PASSAGE; ++t) {
+    worst.tags.push_back(study::toTagId(static_cast<uint16_t>(UINT16_MAX - t)));
+  }
+  for (uint32_t l = 0; l < study::PassageDoc::MAX_LINKS_PER_PASSAGE; ++l) {
+    study::PassageLink link;
+    link.target = study::Unit{study::UnitKind::Verse, 66, UINT16_MAX, UINT16_MAX, UINT32_MAX - l};
+    link.targetSpine = UINT16_MAX;
+    link.label = std::string(study::PassageDoc::MAX_REFERENCE_BYTES, '"');
+    worst.links.push_back(link);
+  }
+
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(worst));
+  const size_t worstBytes = doc.measureBytes();
+  EXPECT_LT(worstBytes, 1700u);
+  EXPECT_GE(study::PassageDoc::SAVE_BYTE_BUDGET / worstBytes, 100u);
+}
+
+TEST(PassageDocBudget, TheUsersRealStoreFullyLinkedUsesUnderAQuarterOfTheBudget) {
+  study::PassageDoc doc;
+  for (uint16_t v = 1; v <= 63; ++v) ASSERT_TRUE(doc.add(passageAt(119, v, "Salmos 119:145")));
+  for (size_t source = 0; source < 63; ++source) {
+    for (size_t k = 1; k <= study::PassageDoc::MAX_LINKS_PER_PASSAGE; ++k) {
+      ASSERT_EQ(doc.linkPassages(source, (source + k) % 63), study::PassageDoc::LinkResult::Linked);
+    }
+  }
+  EXPECT_LT(doc.measureBytes(), study::PassageDoc::SAVE_BYTE_BUDGET / 4);
 }
 
 }  // namespace

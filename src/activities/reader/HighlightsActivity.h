@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "PassageActions.h"
 #include "activities/ActivityResult.h"
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
@@ -29,13 +30,14 @@
 // minting a tag no highlight has yet.
 //
 // A long-press (touch) or a held Confirm release (physical buttons) on a
-// highlight row opens a Tags.../Delete/Cancel OptionPopup (actionChooser_),
-// not the delete confirmation directly -- editing tags is the other action
-// this screen offers. Choosing "Tags..." pushes TagPickerActivity seeded with
+// highlight row opens an OptionPopup (actionChooser_) whose rows come from
+// PassageActions::menuFor -- Tags..., the passage's Links..., marking it as a
+// link source or linking the marked one to it, Delete, Cancel -- not the delete
+// confirmation directly. Choosing "Tags..." pushes TagPickerActivity seeded with
 // the entry's current tagIndices as its initialSelection; choosing "Delete"
 // forces a synchronous clean repaint (requestUpdateAndWait) before opening
-// confirmPopup_, since actionChooser_'s three rows are taller than
-// confirmPopup_'s two and would otherwise frame it with leftover pixels.
+// confirmPopup_, since actionChooser_ always has more rows than confirmPopup_'s
+// two and would otherwise frame it with leftover pixels.
 // actionChooser_ and confirmPopup_ are two separate OptionPopup members --
 // never the same one reused -- because OptionPopup::show() reassigns
 // onSelectCallback and is invoked AS that member, so calling show() again
@@ -114,6 +116,9 @@ class HighlightsActivity final : public UiListActivity {
   void openTagFilter();
   void jumpToHighlight(size_t docIndex);
   void showActionChooser(size_t docIndex);
+  void runAction(PassageActions::Action action, size_t docIndex);
+  void openLinks(size_t docIndex);
+  void linkMarkedSourceTo(size_t docIndex);
   void editTags(size_t docIndex);
   void applyTagEdit(size_t docIndex, const ActivityResult& result);
   void showDeleteConfirmation(size_t docIndex);
@@ -154,4 +159,7 @@ class HighlightsActivity final : public UiListActivity {
   // or Delete) dispatches on the exact entry that was long-pressed, same
   // reasoning as pendingDeleteIndex_ above.
   size_t pendingActionIndex_ = 0;
+  // The rows actionChooser_ is showing, so its callback maps the chosen row back
+  // to the action it displayed.
+  PassageActions::Menu pendingMenu_;
 };

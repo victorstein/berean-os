@@ -17,7 +17,12 @@ namespace study {
 
 class PassageDoc {
  public:
-  static constexpr int FORMAT_VERSION = 1;
+  // v2 added outgoing links ("k"). A file with no link is still written as v1,
+  // because it holds nothing a v1 build would drop; one with a link is v2, which
+  // a v1 build refuses outright instead of loading it, ignoring "k" and erasing
+  // every link on its next save.
+  static constexpr int FORMAT_VERSION = 2;
+  static constexpr int LINKLESS_FORMAT_VERSION = 1;
   // Not persist::DEFAULT_SAVE_BUDGET: that figure exists to stay clear of
   // SDCardManager::readFile's 50,000-byte truncation, and this document is read
   // through a streaming parser with no such cap. The budget here bounds a single
@@ -27,6 +32,15 @@ class PassageDoc {
   static constexpr size_t MAX_SNIPPET_BYTES = 120;
   static constexpr size_t MAX_REFERENCE_BYTES = 48;
   static constexpr size_t MAX_TAGS_PER_PASSAGE = 8;
+  // With every field at its maximum, a passage carrying this many links still
+  // measures under 1.7 KB, so SAVE_BYTE_BUDGET holds over a hundred of them --
+  // the user's real store is 63 -- before it refuses anything.
+  //
+  // fromJson REFUSES a file with more links than this, or a link label longer
+  // than MAX_REFERENCE_BYTES. Widening either one therefore needs a
+  // FORMAT_VERSION bump, or an older build would refuse files this build wrote
+  // under an unchanged version.
+  static constexpr size_t MAX_LINKS_PER_PASSAGE = 8;
 
   const std::vector<TaggedPassage>& passages() const { return passages_; }
 
@@ -50,6 +64,19 @@ class PassageDoc {
 
   size_t unlabelledCount() const;
 
+  enum class LinkResult : uint8_t { Linked, AlreadyLinked, AtCap, SelfLink, OverBudget, NoSuchPassage };
+
+  // Adds a link from `sourceIndex` to `targetIndex`'s start unit, labelled with
+  // the target's reference (its snippet when it has none). Only the source
+  // changes: links are directed, and there is no backlink to keep consistent.
+  LinkResult linkPassages(size_t sourceIndex, size_t targetIndex);
+
+  bool removeLink(size_t passageIndex, size_t linkIndex);
+
+  // Replaces a passage's links in place, normalised as add() does -- the
+  // rollback for a failed save, which must restore their order too.
+  bool setLinks(size_t passageIndex, std::vector<PassageLink> links);
+
   // Updates a passage's stale spine hint after its address resolved in a
   // different document -- which happens when the publication is replaced by
   // another edition whose spine is laid out differently. The ADDRESS is
@@ -61,9 +88,10 @@ class PassageDoc {
 
   void toJson(JsonDocument& doc) const;
 
-  // Parses and validates. Rejects a future format version. Returns false when
-  // the parsed document exceeds the budget -- that is a load FAILURE the caller
-  // must refuse to save over, never a silent truncation.
+  // Parses and validates. Rejects a future format version, and any stored link
+  // it would otherwise have to drop or cut (see MAX_LINKS_PER_PASSAGE). Returns
+  // false when the parsed document exceeds the budget -- that is a load FAILURE
+  // the caller must refuse to save over, never a silent truncation.
   bool fromJson(JsonVariantConst doc);
 
   size_t measureBytes() const;

@@ -55,6 +55,12 @@ class UnitIndexCache {
   void setProgress(const MigrationProgress& progress) { progress_ = progress; }
 
   bool ready() const { return ready_; }
+  uint16_t indexedDocumentCount() const { return header_.documentCount; }
+
+  // True when unitsFor(spineIndex) returned a placeholder because the document
+  // could not be indexed. The placeholder is DocumentOffset-kind with no
+  // anchors, which is indistinguishable from a real DocumentOffset document.
+  bool indexFailed(const uint16_t spineIndex) const { return cachedSpine_ == spineIndex && cachedBuildFailed_; }
   const std::string& pubKey() const { return pubKey_; }
 
  private:
@@ -85,4 +91,5 @@ class UnitIndexCache {
   // access pattern is one document per page turn.
   uint16_t cachedSpine_ = UINT16_MAX;
   study::DocumentUnits cached_;
+  bool cachedBuildFailed_ = false;
 };

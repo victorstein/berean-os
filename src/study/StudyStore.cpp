@@ -71,6 +71,7 @@ void StudyStore::closePublication() {
   passages_ = study::PassageDoc{};
   completion_ = study::ChapterCompletion{};
   pubKey_.clear();
+  linkSource_.reset();
   // saveDisabled_ deliberately survives: it is a property of the session's
   // knowledge that a file may hold data we could not read, not of one book.
 }
@@ -141,23 +142,48 @@ std::string StudyStore::tagNamesFor(const size_t passageIndex) const {
 }
 
 std::optional<StudyStore::Location> StudyStore::locate(const size_t passageIndex) {
-  if (!units_ || !units_->ready() || passageIndex >= passages_.passages().size()) return std::nullopt;
-  const study::Unit start = passages_.passages()[passageIndex].start;
-  const uint16_t hint = passages_.passages()[passageIndex].documentSpine;
+  if (passageIndex >= passages_.passages().size()) return std::nullopt;
+  const auto& passage = passages_.passages()[passageIndex];
+  const auto found = locateUnit(passage.start, passage.documentSpine);
+  if (found && found->spineIndex != passage.documentSpine)
+    passages_.repairDocumentSpine(passageIndex, found->spineIndex);
+  return found;
+}
 
-  if (const auto offset = study::documentOffsetOf(units_->unitsFor(hint), start)) {
-    return Location{hint, *offset};
+std::optional<StudyStore::Location> StudyStore::locateLink(const size_t passageIndex, const size_t linkIndex) {
+  if (!units_ || !units_->ready() || passageIndex >= passages_.passages().size()) return std::nullopt;
+  const auto& links = passages_.passages()[passageIndex].links;
+  if (linkIndex >= links.size()) return std::nullopt;
+  const study::PassageLink& link = links[linkIndex];
+
+  // documentOffsetOf accepts a DocumentOffset unit in ANY document, so a hint
+  // left pointing at the wrong document -- an out-of-range spine, a document of
+  // another kind after an edition change, or one that could not be indexed at
+  // all -- would "resolve" to an arbitrary place. Refuse it rather than open the
+  // wrong text.
+  if (link.target.kind == study::UnitKind::DocumentOffset) {
+    if (link.targetSpine >= units_->indexedDocumentCount()) return std::nullopt;
+    if (units_->unitsFor(link.targetSpine).kind != study::UnitKind::DocumentOffset) return std::nullopt;
+    if (units_->indexFailed(link.targetSpine)) return std::nullopt;
+  }
+  return locateUnit(link.target, link.targetSpine);
+}
+
+std::optional<StudyStore::Location> StudyStore::locateUnit(const study::Unit& unit, const uint16_t spineHint) {
+  if (!units_ || !units_->ready()) return std::nullopt;
+
+  if (const auto offset = study::documentOffsetOf(units_->unitsFor(spineHint), unit)) {
+    return Location{spineHint, *offset};
   }
 
   // Only a Verse address is portable enough to search for. A data-pid or a raw
   // offset means nothing outside the document it was measured in, so a stale
-  // hint there is unrecoverable and the caller opens the document as stored.
-  if (start.kind != study::UnitKind::Verse || start.book == 0) return std::nullopt;
+  // hint there is unrecoverable.
+  if (unit.kind != study::UnitKind::Verse || unit.book == 0) return std::nullopt;
 
-  for (const uint16_t candidate : units_->spineIndicesForBook(start.book)) {
-    if (candidate == hint) continue;
-    if (const auto offset = study::documentOffsetOf(units_->unitsFor(candidate), start)) {
-      passages_.repairDocumentSpine(passageIndex, candidate);
+  for (const uint16_t candidate : units_->spineIndicesForBook(unit.book)) {
+    if (candidate == spineHint) continue;
+    if (const auto offset = study::documentOffsetOf(units_->unitsFor(candidate), unit)) {
       return Location{candidate, *offset};
     }
     vTaskDelay(1);  // up to 150 documents, each possibly a fresh index build
@@ -272,6 +298,7 @@ bool StudyStore::removePassage(const size_t index) {
 
   const study::TaggedPassage backup = passages_.passages()[index];
   if (!passages_.remove(index)) return false;
+  linkSource_.reset();
   if (save()) return true;
 
   passages_.add(backup);
@@ -286,5 +313,44 @@ bool StudyStore::setPassageTags(const size_t index, std::vector<study::TagId> ta
   if (save()) return true;
 
   passages_.setTags(index, backup);
+  return false;
+}
+
+void StudyStore::markLinkSource(const size_t index) {
+  if (index < passages_.passages().size()) linkSource_ = index;
+}
+
+StudyStore::LinkOutcome StudyStore::linkMarkedSourceTo(const size_t targetIndex) {
+  if (!linkSource_ || *linkSource_ >= passages_.passages().size()) return LinkOutcome::NoSource;
+  if (saveDisabled_) return LinkOutcome::NotSaved;
+
+  switch (passages_.linkPassages(*linkSource_, targetIndex)) {
+    case study::PassageDoc::LinkResult::Linked:
+      break;
+    case study::PassageDoc::LinkResult::AlreadyLinked:
+      return LinkOutcome::AlreadyLinked;
+    case study::PassageDoc::LinkResult::AtCap:
+      return LinkOutcome::AtCap;
+    case study::PassageDoc::LinkResult::SelfLink:
+      return LinkOutcome::SelfLink;
+    case study::PassageDoc::LinkResult::NoSuchPassage:
+      return LinkOutcome::NoTarget;  // the source was checked above
+    case study::PassageDoc::LinkResult::OverBudget:
+      return LinkOutcome::NotSaved;
+  }
+  if (save()) return LinkOutcome::Linked;
+
+  passages_.removeLink(*linkSource_, passages_.passages()[*linkSource_].links.size() - 1);
+  return LinkOutcome::NotSaved;
+}
+
+bool StudyStore::removeLink(const size_t passageIndex, const size_t linkIndex) {
+  if (saveDisabled_ || passageIndex >= passages_.passages().size()) return false;
+
+  const std::vector<study::PassageLink> backup = passages_.passages()[passageIndex].links;
+  if (!passages_.removeLink(passageIndex, linkIndex)) return false;
+  if (save()) return true;
+
+  passages_.setLinks(passageIndex, backup);
   return false;
 }

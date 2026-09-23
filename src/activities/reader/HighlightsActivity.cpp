@@ -9,9 +9,11 @@
 #include <variant>
 
 #include "MappedInputManager.h"
+#include "PassageLinksActivity.h"
 #include "ReaderUtils.h"
 #include "TagFilterActivity.h"
 #include "TagPickerActivity.h"
+#include "activities/PostedMessage.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "study/StudyStore.h"
@@ -185,55 +187,132 @@ void HighlightsActivity::onRowLongPress(const int index) {
   showActionChooser(visibleIndices_[static_cast<size_t>(index - 1)]);
 }
 
+namespace {
+
+const char* actionLabel(const PassageActions::Action action) {
+  switch (action) {
+    case PassageActions::Action::EditTags:
+      return tr(STR_EDIT_TAGS);
+    case PassageActions::Action::ShowLinks:
+      return tr(STR_PASSAGE_LINKS);
+    case PassageActions::Action::LinkToMarked:
+      return tr(STR_LINK_TO_MARKED);
+    case PassageActions::Action::MarkAsLinkSource:
+      return tr(STR_MARK_LINK_SOURCE);
+    case PassageActions::Action::Delete:
+      return tr(STR_DELETE);
+    case PassageActions::Action::Cancel:
+      return tr(STR_CANCEL);
+  }
+  return tr(STR_CANCEL);
+}
+
+PassageActions::LinkMark linkMarkFor(const size_t docIndex) {
+  const auto source = STUDY.linkSource();
+  if (!source) return PassageActions::LinkMark::None;
+  return *source == docIndex ? PassageActions::LinkMark::ThisPassage : PassageActions::LinkMark::OtherPassage;
+}
+
+}  // namespace
+
 void HighlightsActivity::showActionChooser(const size_t docIndex) {
   if (confirmPopup_.isActive() || actionChooser_.isActive()) return;
+  if (docIndex >= STUDY.passages().size()) return;
 
   pendingActionIndex_ = docIndex;
   choosingAction_ = true;
 
-  if (STUDY.saveDisabled()) {
-    // Retagging writes the document, so a book whose file failed to load
-    // (the resident doc was built from scratch this session) must never see
-    // "Tags..." at all -- omit it rather than offer it and bail inside
-    // editTags. Delete still shows: showDeleteConfirmation carries its own
-    // its own saveDisabled bail below, same as before this task.
-    const char* options[] = {tr(STR_DELETE), tr(STR_CANCEL)};
-    actionChooser_.show(tr(STR_HIGHLIGHT_ACTIONS), options, 2, 0, [this](const int idx) {
-      choosingAction_ = false;
-      if (idx == 0) {
-        // See the "clean repaint" comment below for why this precedes
-        // showDeleteConfirmation.
-        requestUpdateAndWait();
-        showDeleteConfirmation(pendingActionIndex_);
-      }
-      requestUpdate();
-    });
-  } else {
-    const char* options[] = {tr(STR_EDIT_TAGS), tr(STR_DELETE), tr(STR_CANCEL)};
-    actionChooser_.show(tr(STR_HIGHLIGHT_ACTIONS), options, 3, 0, [this](const int idx) {
-      choosingAction_ = false;
-      if (idx == 0) {
-        // Pushes a whole new activity, which repaints the screen from
-        // scratch on entry -- no leftover-chooser-pixels hazard here.
-        editTags(pendingActionIndex_);
-      } else if (idx == 1) {
-        // actionChooser_ (3 rows) is taller than confirmPopup_ (2 rows) and
-        // both draw over the current screen without clearing it
-        // (OptionPopup's class comment), so confirmPopup_ would otherwise be
-        // framed by actionChooser_'s leftover pixels. Force one synchronous
-        // clean repaint of the underlying list -- with neither popup active
-        // -- before showDeleteConfirmation shows confirmPopup_ on top of it.
-        // Safe from inside this callback: it runs on the loop task with no
-        // RenderLock held (ActivityManager.cpp's three requestUpdateAndWait
-        // asserts all pass here), mirroring
-        // PassageSelectActivity::showActionChooser's identical use.
-        requestUpdateAndWait();
-        showDeleteConfirmation(pendingActionIndex_);
-      }
-      requestUpdate();
-    });
-  }
+  // A store that failed to load refuses every save, so the menu offers nothing
+  // that writes except Delete, which reports the refusal itself.
+  pendingMenu_ =
+      PassageActions::menuFor(!STUDY.saveDisabled(), !STUDY.passages()[docIndex].links.empty(), linkMarkFor(docIndex));
+  const char* options[PassageActions::Menu::MAX_ACTIONS];
+  for (int i = 0; i < pendingMenu_.count; ++i) options[i] = actionLabel(pendingMenu_.actions[i]);
+
+  actionChooser_.show(tr(STR_HIGHLIGHT_ACTIONS), options, pendingMenu_.count, 0, [this](const int idx) {
+    choosingAction_ = false;
+    if (idx >= 0 && idx < pendingMenu_.count) runAction(pendingMenu_.actions[idx], pendingActionIndex_);
+    requestUpdate();
+  });
   requestUpdate();
+}
+
+void HighlightsActivity::runAction(const PassageActions::Action action, const size_t docIndex) {
+  switch (action) {
+    case PassageActions::Action::EditTags:
+      // Pushes a whole new activity, which repaints the screen from scratch on
+      // entry -- no leftover-chooser-pixels hazard here.
+      editTags(docIndex);
+      return;
+    case PassageActions::Action::ShowLinks:
+      openLinks(docIndex);
+      return;
+    case PassageActions::Action::LinkToMarked:
+      linkMarkedSourceTo(docIndex);
+      return;
+    case PassageActions::Action::MarkAsLinkSource:
+      STUDY.markLinkSource(docIndex);
+      ReaderUtils::showMessage(renderer, tr(STR_LINK_SOURCE_MARKED));
+      return;
+    case PassageActions::Action::Delete:
+      // actionChooser_ is taller than confirmPopup_ and both draw over the
+      // current screen without clearing it (OptionPopup's class comment), so
+      // confirmPopup_ would otherwise be framed by actionChooser_'s leftover
+      // pixels. Force one synchronous clean repaint of the underlying list --
+      // with neither popup active -- first. Safe from inside the chooser's
+      // callback: it runs on the loop task with no RenderLock held
+      // (ActivityManager.cpp's three requestUpdateAndWait asserts all pass
+      // here), mirroring PassageSelectActivity::showActionChooser's identical use.
+      requestUpdateAndWait();
+      showDeleteConfirmation(docIndex);
+      return;
+    case PassageActions::Action::Cancel:
+      return;
+  }
+}
+
+void HighlightsActivity::openLinks(const size_t docIndex) {
+  if (docIndex >= STUDY.passages().size()) return;
+  app.clearTapFlash();
+  startActivityForResult(std::make_unique<PassageLinksActivity>(renderer, mappedInput, docIndex),
+                         [this](const ActivityResult& result) {
+                           // A followed link is the same jump a row tap makes, so it goes to the
+                           // reader through this screen's own result.
+                           if (result.isCancelled || !std::holds_alternative<ProgressChangeResult>(result.data)) {
+                             return;
+                           }
+                           ProgressChangeResult jump = std::get<ProgressChangeResult>(result.data);
+                           setResult(std::move(jump));
+                           finish();
+                         });
+}
+
+void HighlightsActivity::linkMarkedSourceTo(const size_t docIndex) {
+  const char* message = nullptr;
+  switch (STUDY.linkMarkedSourceTo(docIndex)) {
+    case StudyStore::LinkOutcome::Linked:
+      message = tr(STR_LINK_ADDED);
+      break;
+    case StudyStore::LinkOutcome::AlreadyLinked:
+      message = tr(STR_LINK_ALREADY_EXISTS);
+      break;
+    case StudyStore::LinkOutcome::AtCap:
+      message = tr(STR_LINK_LIMIT_REACHED);
+      break;
+    case StudyStore::LinkOutcome::SelfLink:
+      message = tr(STR_LINK_TO_ITSELF);
+      break;
+    case StudyStore::LinkOutcome::NoSource:
+      message = tr(STR_LINK_NO_SOURCE);
+      break;
+    case StudyStore::LinkOutcome::NoTarget:
+      message = tr(STR_LINK_TARGET_NOT_FOUND);
+      break;
+    case StudyStore::LinkOutcome::NotSaved:
+      message = tr(STR_LINK_SAVE_FAILED);
+      break;
+  }
+  ReaderUtils::showMessage(renderer, message);
 }
 
 void HighlightsActivity::editTags(const size_t docIndex) {
@@ -454,4 +533,5 @@ void HighlightsActivity::render(RenderLock&&) {
 
   drawFooter();
   renderer.displayBuffer();
+  PostedMessage::drawNext(renderer);
 }
