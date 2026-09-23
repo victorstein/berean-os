@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Makes a fresh checkout or worktree buildable: initialises the freeink-sdk
+# submodule and provides clang-format 21 in .venv/bin for bin/clang-format-fix.
+# Safe to rerun; nothing is installed outside this checkout's .venv.
+
+set -euo pipefail
+
+REQUIRED_CLANG_FORMAT_MAJOR=21
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "${repo_root}"
+
+clang_format_major() {
+  "$1" --version 2>/dev/null | grep -oE '[0-9]+' | head -n1
+}
+
+has_required_clang_format() {
+  [[ -x "$1" && "$(clang_format_major "$1")" == "${REQUIRED_CLANG_FORMAT_MAJOR}" ]]
+}
+
+echo "Initialising submodules..."
+git submodule update --init --recursive --depth 1
+
+local_clang_format="${repo_root}/.venv/bin/clang-format"
+if has_required_clang_format "${local_clang_format}"; then
+  echo "clang-format ${REQUIRED_CLANG_FORMAT_MAJOR} already present in .venv/bin"
+  exit 0
+fi
+
+# The first `worktree` entry is always the primary checkout.
+primary_checkout="$(git worktree list --porcelain | awk '/^worktree /{print substr($0, 10); exit}')"
+primary_clang_format="${primary_checkout}/.venv/bin/clang-format"
+
+# The pip entry point carries an absolute shebang into the primary venv, so a
+# symlink to it runs correctly from any worktree.
+if [[ "${primary_checkout}" != "${repo_root}" ]] && has_required_clang_format "${primary_clang_format}"; then
+  echo "Linking clang-format from the primary checkout (${primary_checkout})..."
+  mkdir -p .venv/bin
+  ln -sf "${primary_clang_format}" "${local_clang_format}"
+else
+  if [[ -d .venv && ! -x .venv/bin/python ]]; then
+    echo "Error: ${repo_root}/.venv exists but is not a Python venv; remove it and rerun." >&2
+    exit 1
+  fi
+  echo "Creating .venv and installing clang-format ${REQUIRED_CLANG_FORMAT_MAJOR}..."
+  [[ -x .venv/bin/python ]] || python3 -m venv .venv
+  .venv/bin/python -m pip install --quiet "clang-format>=${REQUIRED_CLANG_FORMAT_MAJOR},<$((REQUIRED_CLANG_FORMAT_MAJOR + 1))"
+fi
+
+if ! has_required_clang_format "${local_clang_format}"; then
+  echo "Error: ${local_clang_format} is not clang-format ${REQUIRED_CLANG_FORMAT_MAJOR}." >&2
+  exit 1
+fi
+echo "Done: $("${local_clang_format}" --version)"

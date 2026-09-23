@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 
+REPO_VENV_CLANG_FORMAT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.venv/bin/clang-format"
+
 # Check if clang-format is available and pick the preferred binary.
 if command -v clang-format-21 >/dev/null 2>&1; then
   CLANG_FORMAT_BIN="clang-format-21"
+elif [[ -x "${REPO_VENV_CLANG_FORMAT}" ]]; then
+  CLANG_FORMAT_BIN="${REPO_VENV_CLANG_FORMAT}"
 elif command -v clang-format >/dev/null 2>&1; then
   CLANG_FORMAT_BIN="clang-format"
 else
-  printf "'clang-format' not found in current environment\n"
-  printf "Install clang-format-21 (recommended), clang, clang-tools, or clang-format depending on your distro/os and tooling requirements\n"
+  printf "'clang-format' not found in current environment or in .venv/bin\n"
+  printf "Run ./bin/bootstrap, or install clang-format-21 (recommended), clang, clang-tools, or clang-format depending on your distro/os and tooling requirements\n"
   exit 1
 fi
 
@@ -19,7 +23,7 @@ if [[ "${1:-}" == "-g" ]]; then
   GIT_LS_FILES_FLAGS="--modified"
 fi
 
-CLANG_FORMAT_VERSION_RAW="$(${CLANG_FORMAT_BIN} --version)"
+CLANG_FORMAT_VERSION_RAW="$("${CLANG_FORMAT_BIN}" --version)"
 CLANG_FORMAT_MAJOR="$(printf '%s\n' "${CLANG_FORMAT_VERSION_RAW}" | grep -oE '[0-9]+' | head -n1)"
 
 # Guard against local binaries older than the repo formatting config.

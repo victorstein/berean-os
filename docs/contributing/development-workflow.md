@@ -27,6 +27,11 @@ SD card, anything hard to reverse — get an explicit go-ahead first.
 Designs live in `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. A spec that
 cites a file path must cite a line number, and that line must have been read.
 
+The research a spec builds on goes in
+`docs/superpowers/research/YYYY-MM-DD-issue-<n>-research.md`, never in `notes/`.
+`notes/` holds standing records that are not tied to one issue, such as
+`phase-0-baseline.md`.
+
 ### Adversarial review, by someone who did not write it
 
 Dispatch **two independent reviewers** with non-overlapping briefs so neither can
@@ -180,8 +185,13 @@ Run the unsuffixed form before committing. `-g` only reaches files Git currently
 reports as modified, so a file you create and commit is silently skipped and CI
 fails on work that looked clean locally. Never invoke `clang-format` directly.
 
-**Fresh worktrees need bootstrapping** before `pio run` or the format wrapper
-works: `git submodule update --init --recursive`, plus a clang-format 21 venv.
+**A new worktree needs `bin/bootstrap`.** A fresh checkout or worktree cannot build or format until it has been
+bootstrapped. Run `./bin/bootstrap` once, before the first `pio run` or
+`./bin/clang-format-fix`. It initialises the `freeink-sdk` submodule and puts
+clang-format 21 in the worktree's `.venv/bin`, symlinked from the primary
+checkout's `.venv` when that has one and pip-installed into a local venv when it
+does not. `./bin/clang-format-fix` looks in `.venv/bin` itself, so no `PATH`
+change is needed. Rerunning the script is harmless.
 
 **Releases are automated. Never push a tag by hand.** Conventional commits on
 `main` drive release-please, which opens and merges a release PR, cuts the tag and
