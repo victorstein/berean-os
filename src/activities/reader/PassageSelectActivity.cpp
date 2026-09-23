@@ -355,20 +355,16 @@ void PassageSelectActivity::showActionChooser(const int endIndex) {
 void PassageSelectActivity::startTagFlow(const int endIndex) {
   startActivityForResult(std::make_unique<TagPickerActivity>(renderer, mappedInput),
                          [this, endIndex](const ActivityResult& result) {
-                           // Cancelling the picker discards only the TAG
-                           // selection, not the highlight itself -- the
-                           // two-anchor passage was already committed before
-                           // this sub-step opened, and TagPickerActivity's
-                           // own contract (see its class comment) is that the
-                           // caller decides what "no tags chosen" means. Here
-                           // that means the same unlabelled save Highlight
-                           // would have produced, not discarding the work the
-                           // user already did picking two anchors.
-                           std::vector<study::TagId> tagIds;
-                           if (!result.isCancelled) {
-                             tagIds = std::get<TagSelectionResult>(result.data).tagIds;
+                           // Backing out of the picker abandons the mark: Back
+                           // is cancel everywhere, and Highlight is the
+                           // chooser's explicit "mark without a tag". Done with
+                           // nothing checked is a deliberate confirm, so it
+                           // saves the passage unlabelled.
+                           if (result.isCancelled) {
+                             finish();
+                             return;
                            }
-                           finalizeSelection(endIndex, std::move(tagIds));
+                           finalizeSelection(endIndex, std::get<TagSelectionResult>(result.data).tagIds);
                          });
 }
 

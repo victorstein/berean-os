@@ -80,13 +80,25 @@ empty selection is no longer a silent refusal.
 `PassageSelectActivity`'s chooser offers Highlight / Tag / Cancel, and Highlight
 called `finalizeSelection` with no tags, which finished without saving because
 `addPassage` refused an empty list. With that guard gone, Highlight marks the
-passage unlabelled, and a Tag flow confirmed (or cancelled) with nothing checked
-does the same, as the existing comment in `startTagFlow` already intended.
-`TagPickerActivity` strips `UNLABELLED` from its seed so it does not spend a slot.
+passage unlabelled. In the Tag flow, Done with nothing checked is a deliberate
+confirm and also saves unlabelled; backing out of the picker (Back / left-edge
+swipe, `isCancelled`) abandons the mark and saves nothing, because Back is
+cancel everywhere else and Highlight already is the explicit "mark without a
+tag". That matches what `main` did on cancel. `TagPickerActivity` strips
+`UNLABELLED` from its seed so it does not spend a slot.
 
-## Left alone
+## Migration
 
-`MigrationPlanner` still drops a legacy highlight with no tag names
-(`MigrationPlanner.cpp:29-31`, `DroppedNoTags`). Migrating it as unlabelled would
-be consistent, but the migration has already run on the user's card and changing
-what it keeps is a separate decision.
+One migration outcome changes as a side effect, and it is kept:
+
+- A legacy highlight whose tag names **all** fail `palette->add`
+  (`MigrationPlanner.cpp:39-43` — the palette is full, or every name is empty or
+  over `MAX_TAG_NAME_BYTES`) comes back with an empty tag list. `PassageDoc::add`
+  used to refuse it, and `MigrationRunner.cpp:356-359` recorded it as a
+  "store full" drop. It now migrates as an unlabelled passage: the mark survives
+  and can be labelled on the device, instead of being lost.
+
+Unchanged: a legacy highlight with **no tag names at all** is still dropped
+before any of that (`MigrationPlanner.cpp:29-31`, `DroppedNoTags`). Migrating it
+as unlabelled would be consistent, but the migration has already run on the
+user's card and changing what it keeps is a separate decision.
