@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.13](https://github.com/victorstein/berean-os/compare/v1.9.12...v1.9.13) (2026-09-23)
+
+
+### Bug Fixes
+
+* refuse to overwrite study files that could not be read ([#72](https://github.com/victorstein/berean-os/issues/72)) ([b7f5a93](https://github.com/victorstein/berean-os/commit/b7f5a93ffd609ee97b696fc6fee236c9b933ca98)), closes [#63](https://github.com/victorstein/berean-os/issues/63)
+
+
+### Documentation
+
+* whole-branch review for the open-issues batch — CLEAR ([05f6e9b](https://github.com/victorstein/berean-os/commit/05f6e9be8cea551be29d249ecce74bf6f5604900))
+
 ## [1.9.12](https://github.com/victorstein/berean-os/compare/v1.9.11...v1.9.12) (2026-09-18)
 
 
