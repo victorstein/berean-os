@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/victorstein/berean-os/compare/v1.9.15...v1.10.0) (2026-09-23)
+
+
+### Features
+
+* let a passage exist with no tags ([#77](https://github.com/victorstein/berean-os/issues/77)) ([53e3dd0](https://github.com/victorstein/berean-os/commit/53e3dd045f2792f71a08d4bc3c1b769c0c09ad52)), closes [#32](https://github.com/victorstein/berean-os/issues/32)
+
 ## [1.9.15](https://github.com/victorstein/berean-os/compare/v1.9.14...v1.9.15) (2026-09-23)
 
 
