@@ -1,6 +1,7 @@
 #pragma once
 #include <HalStorage.h>
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -46,7 +47,14 @@ class HttpDownloader {
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
                        const std::string& password = "", bool* cancelFlag = nullptr);
 
-  static bool fetchUrl(const std::string& url, const DataCallback& onData, const AbortCheck& shouldAbort);
+  /**
+   * timeoutMs replaces the default 60 s per-operation timeout for this request
+   * only. It is the only bound on the TCP connect and the TLS handshake, where
+   * shouldAbort is not polled. Name resolution before them keeps the network
+   * stack's own resolver timeout.
+   */
+  static bool fetchUrl(const std::string& url, const DataCallback& onData, const AbortCheck& shouldAbort,
+                       uint32_t timeoutMs);
 
   /**
    * Download a file to the SD card with optional credentials.

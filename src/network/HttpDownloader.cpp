@@ -38,6 +38,7 @@ struct Sink {
   HttpDownloader::ProgressCallback progress;
   bool* cancelFlag = nullptr;
   HttpDownloader::AbortCheck shouldAbort;
+  uint32_t timeoutMs = HTTP_TIMEOUT_MS;
   size_t total = 0;
   size_t downloaded = 0;
 
@@ -55,7 +56,7 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
 
   for (int hop = 0; hop <= MAX_REDIRECTS; ++hop) {
     freeink::SecureHttpClient http;
-    http.setTimeout(HTTP_TIMEOUT_MS);
+    http.setTimeout(sink.timeoutMs);
     http.setInsecure();
     if (!http.begin(url)) {
       LOG_ERR("HTTP", "wolfSSL bad URL: %s", url.c_str());
@@ -124,7 +125,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   config.url = url.c_str();
   config.buffer_size = HTTP_RX_BUF;
   config.buffer_size_tx = HTTP_TX_BUF;
-  config.timeout_ms = HTTP_TIMEOUT_MS;
+  config.timeout_ms = static_cast<int>(sink.timeoutMs);
   // Verify HTTPS against the bundled CA roots. This build has esp-tls
   // CONFIG_ESP_TLS_INSECURE off, so an unverified TLS handshake can't be set
   // up at all; the model is public servers over verified https and local
@@ -262,11 +263,13 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
   return runGetSecure(url, username, password, sink) == OK;
 }
 
-bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const AbortCheck& shouldAbort) {
+bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const AbortCheck& shouldAbort,
+                              const uint32_t timeoutMs) {
   LOG_DBG("HTTP", "Fetching: %s", url.c_str());
   Sink sink;
   sink.write = onData;
   sink.shouldAbort = shouldAbort;
+  sink.timeoutMs = timeoutMs;
   return runGetSecure(url, "", "", sink) == OK;
 }
 

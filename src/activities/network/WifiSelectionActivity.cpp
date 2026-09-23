@@ -570,6 +570,12 @@ void WifiSelectionActivity::checkConnectionStatus() {
     // After the clock sync above, which is what gives a first connection a
     // week to ask about.
     prefetchMeetingWeekIfDue();
+    if (prefetchHomeRequested) {
+      // Home ends the lookup and the flow that launched this screen with it;
+      // carrying on into OTA or the catalog would ignore what the user asked.
+      onGoHome();
+      return;
+    }
 
     // If we entered a new password, ask if user wants to save it
     // Otherwise, immediately complete so parent can start web server
@@ -621,13 +627,37 @@ void WifiSelectionActivity::checkConnectionStatus() {
 // blocks this loop pass, bounded by MeetingWeekPrefetch::BUDGET_MS and by any
 // input, which skips it.
 void WifiSelectionActivity::prefetchMeetingWeekIfDue() {
+  prefetchHomeRequested = false;
+  if (!allowMeetingPrefetch) return;
+
   IsoWeek week;
-  if (!allowMeetingPrefetch || !MeetingWeekPrefetch::due(SETTINGS.meetingPrefetch != 0, week)) return;
+  bool isDue = false;
+  {
+    RenderLock lock(*this);
+    isDue = MeetingWeekPrefetch::due(SETTINGS.meetingPrefetch != 0, SETTINGS.clockHasBeenSynced != 0, week);
+  }
+  if (!isDue) return;
 
   state = WifiSelectionState::PREFETCHING_MEETINGS;
-  requestUpdateAndWait();
+  prefetchSkippable = false;
   lastPrefetchInputPollMs = 0;
-  MeetingWeekPrefetch::resolve(week, &WifiSelectionActivity::prefetchSkipRequested, this);
+  requestUpdateAndWait();
+
+  MeetingWeekPrefetch::Hooks hooks;
+  hooks.ctx = this;
+  hooks.onSkippable = &WifiSelectionActivity::onPrefetchSkippable;
+  hooks.skipRequested = &WifiSelectionActivity::prefetchSkipRequested;
+  MeetingWeekPrefetch::ResolvedWeek resolved;
+  if (!MeetingWeekPrefetch::resolve(week, hooks, resolved)) return;
+
+  RenderLock lock(*this);
+  MeetingWeekPrefetch::record(week, resolved);
+}
+
+void WifiSelectionActivity::onPrefetchSkippable(void* ctx) {
+  auto* self = static_cast<WifiSelectionActivity*>(ctx);
+  self->prefetchSkippable = true;
+  self->requestUpdate(true);
 }
 
 bool WifiSelectionActivity::prefetchSkipRequested(void* ctx) {
@@ -640,11 +670,18 @@ bool WifiSelectionActivity::prefetchSkipRequested(void* ctx) {
   if (now - self->lastPrefetchInputPollMs < INPUT_POLL_INTERVAL_MS) return false;
   self->lastPrefetchInputPollMs = now;
 
+  // This update() consumes the frame ActivityManager would otherwise see, so
+  // Home is carried out by the caller; any other input -- power and the
+  // light-panel gesture included -- only ends the lookup.
   self->mappedInput.update();
+  if (self->mappedInput.wasHomeGesture()) {
+    self->prefetchHomeRequested = true;
+    return true;
+  }
   int tapX = 0;
   int tapY = 0;
   return self->mappedInput.wasAnyReleased() || self->mappedInput.wasScreenTapped(tapX, tapY) ||
-         self->mappedInput.wasBackGesture() || self->mappedInput.wasHomeGesture();
+         self->mappedInput.wasBackGesture() || self->mappedInput.wasLightPanelGesture();
 }
 
 void WifiSelectionActivity::loop() {
@@ -1165,6 +1202,7 @@ void WifiSelectionActivity::renderPrefetchingMeetings(const Rect* screen, const 
   UITheme::drawCenteredWrappedText(renderer, statusBounds, UI_10_FONT_ID, tr(STR_MEETING_PREFETCHING),
                                    MAX_STATUS_LINES);
 
+  if (!prefetchSkippable) return;
   const auto labels = mappedInput.mapLabels(tr(STR_SKIP), "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }

@@ -9,29 +9,41 @@
 #include "network/MeetingWeekCache.h"
 
 namespace {
+
 constexpr const char* MODULE = "MEETPF";
-}
+
+// RAM, not SD: a failed lookup should cost its bound once per boot, and a
+// reboot is a fair point to try again.
+std::string attemptedWeekThisBoot;
+
+}  // namespace
 
 namespace MeetingWeekPrefetch {
 
-bool due(const bool enabled, IsoWeek& week) {
-  if (!enabled) return false;
+bool due(const bool enabled, const bool clockSynced, IsoWeek& week) {
+  if (!enabled || !clockSynced) return false;
 
   HalClock::Date today{};
-  IsoWeek currentWeek;
-  if (!halClock.getDate(today) || !isoWeekFromUtcDate(today.year, today.month, today.day, currentWeek)) {
+  MeetingPrefetchConditions conditions;
+  conditions.enabled = enabled;
+  conditions.clockSynced = clockSynced;
+  conditions.attemptedThisBoot = attemptedWeekThisBoot;
+  if (!halClock.getDate(today) || !isoWeekFromUtcDate(today.year, today.month, today.day, conditions.currentWeek)) {
     LOG_DBG(MODULE, "No usable date; not prefetching");
     return false;
   }
 
   MeetingWeekTable cache;
   MeetingWeekCache::load(cache);
-  return meetingWeekToPrefetch(enabled, currentWeek, cache, week);
+  return meetingWeekToPrefetch(conditions, cache, week);
 }
 
-bool resolve(const IsoWeek& week, const SkipCheck skipRequested, void* ctx) {
+bool resolve(const IsoWeek& week, const Hooks& hooks, ResolvedWeek& out) {
+  attemptedWeekThisBoot = meetingWeekKey(week);
+
   const std::string url = meetingsPageUrl(week);
   const unsigned long startedMs = millis();
+  unsigned polls = 0;
   bool timedOut = false;
   bool skipped = false;
   size_t bytes = 0;
@@ -45,10 +57,15 @@ bool resolve(const IsoWeek& week, const SkipCheck skipRequested, void* ctx) {
         return true;
       },
       [&]() {
-        if (skipRequested && skipRequested(ctx)) skipped = true;
         if (millis() - startedMs >= BUDGET_MS) timedOut = true;
+        // SecureHttpClient polls once before it connects and then only from
+        // waits it can leave (SecureHttpClient.h, sendRequestOnce), so the
+        // second poll is the first one a skip is honoured at.
+        if (++polls == 2 && hooks.onSkippable) hooks.onSkippable(hooks.ctx);
+        if (polls >= 2 && hooks.skipRequested && hooks.skipRequested(hooks.ctx)) skipped = true;
         return skipped || timedOut;
-      });
+      },
+      NETWORK_TIMEOUT_MS);
 
   const unsigned long elapsedMs = millis() - startedMs;
   const unsigned year = week.year;
@@ -69,13 +86,18 @@ bool resolve(const IsoWeek& week, const SkipCheck skipRequested, void* ctx) {
     return false;
   }
 
-  if (!MeetingWeekCache::record(week, scanner.issue(MeetingPub::Watchtower), scanner.issue(MeetingPub::Workbook))) {
-    LOG_ERR(MODULE, "Week %u/%02u resolved but the cache was not written", year, number);
-    return false;
-  }
-  LOG_INF(MODULE, "Week %u/%02u resolved in %lu ms: w=%s mwb=%s", year, number, elapsedMs,
-          scanner.issue(MeetingPub::Watchtower), scanner.issue(MeetingPub::Workbook));
+  out.watchtower = scanner.issue(MeetingPub::Watchtower);
+  out.workbook = scanner.issue(MeetingPub::Workbook);
+  LOG_INF(MODULE, "Week %u/%02u resolved in %lu ms: w=%s mwb=%s", year, number, elapsedMs, out.watchtower.c_str(),
+          out.workbook.c_str());
   return true;
+}
+
+bool record(const IsoWeek& week, const ResolvedWeek& resolved) {
+  if (MeetingWeekCache::record(week, resolved.watchtower, resolved.workbook)) return true;
+  LOG_ERR(MODULE, "Week %u/%02u resolved but the cache was not written", static_cast<unsigned>(week.year),
+          static_cast<unsigned>(week.week));
+  return false;
 }
 
 }  // namespace MeetingWeekPrefetch

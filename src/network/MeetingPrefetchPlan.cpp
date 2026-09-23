@@ -33,17 +33,18 @@ IsoWeek isoWeekAfter(const IsoWeek& week) {
   return next;
 }
 
-bool meetingWeekToPrefetch(const bool enabled, const IsoWeek& currentWeek, const MeetingWeekTable& cache,
-                           IsoWeek& out) {
-  if (!enabled || meetingWeekKey(currentWeek).empty()) return false;
+bool meetingWeekToPrefetch(const MeetingPrefetchConditions& conditions, const MeetingWeekTable& cache, IsoWeek& out) {
+  const IsoWeek& currentWeek = conditions.currentWeek;
+  if (!conditions.enabled || !conditions.clockSynced) return false;
+  if (currentWeek.year < EARLIEST_PLAUSIBLE_MEETING_YEAR || meetingWeekKey(currentWeek).empty()) return false;
 
-  if (!cacheNamesPublications(cache, currentWeek)) {
-    out = currentWeek;
-    return true;
+  IsoWeek candidate = currentWeek;
+  if (cacheNamesPublications(cache, currentWeek)) {
+    candidate = isoWeekAfter(currentWeek);
+    if (meetingWeekKey(candidate).empty() || cacheNamesPublications(cache, candidate)) return false;
   }
 
-  const IsoWeek nextWeek = isoWeekAfter(currentWeek);
-  if (meetingWeekKey(nextWeek).empty() || cacheNamesPublications(cache, nextWeek)) return false;
-  out = nextWeek;
+  if (meetingWeekKey(candidate) == conditions.attemptedThisBoot) return false;
+  out = candidate;
   return true;
 }

@@ -13,6 +13,14 @@ IsoWeek week(const uint16_t year, const uint8_t number) {
 
 std::string key(const IsoWeek& w) { return meetingWeekKey(w); }
 
+MeetingPrefetchConditions conditionsFor(const IsoWeek& current) {
+  MeetingPrefetchConditions conditions;
+  conditions.enabled = true;
+  conditions.clockSynced = true;
+  conditions.currentWeek = current;
+  return conditions;
+}
+
 }  // namespace
 
 TEST(IsoWeekAfter, StepsWithinAYear) {
@@ -43,20 +51,22 @@ TEST(IsoWeekAfter, RejectsAWeekThatCannotExist) {
 TEST(MeetingWeekToPrefetch, DoesNothingWhenDisabled) {
   MeetingWeekTable cache;
   IsoWeek out;
-  EXPECT_FALSE(meetingWeekToPrefetch(false, week(2026, 38), cache, out));
+  MeetingPrefetchConditions conditions = conditionsFor(week(2026, 38));
+  conditions.enabled = false;
+  EXPECT_FALSE(meetingWeekToPrefetch(conditions, cache, out));
 }
 
 TEST(MeetingWeekToPrefetch, DoesNothingWithoutAUsableCurrentWeek) {
   MeetingWeekTable cache;
   IsoWeek out;
-  EXPECT_FALSE(meetingWeekToPrefetch(true, week(0, 0), cache, out));
+  EXPECT_FALSE(meetingWeekToPrefetch(conditionsFor(week(0, 0)), cache, out));
 }
 
 TEST(MeetingWeekToPrefetch, ResolvesTheCurrentWeekFirstWhenItIsMissing) {
   MeetingWeekTable cache;
   cache.set("2026-39", "202607", "202609");
   IsoWeek out;
-  ASSERT_TRUE(meetingWeekToPrefetch(true, week(2026, 38), cache, out));
+  ASSERT_TRUE(meetingWeekToPrefetch(conditionsFor(week(2026, 38)), cache, out));
   EXPECT_EQ(key(out), "2026-38");
 }
 
@@ -64,7 +74,7 @@ TEST(MeetingWeekToPrefetch, ResolvesNextWeekOnceTheCurrentOneIsHeld) {
   MeetingWeekTable cache;
   cache.set("2026-38", "202607", "202609");
   IsoWeek out;
-  ASSERT_TRUE(meetingWeekToPrefetch(true, week(2026, 38), cache, out));
+  ASSERT_TRUE(meetingWeekToPrefetch(conditionsFor(week(2026, 38)), cache, out));
   EXPECT_EQ(key(out), "2026-39");
 }
 
@@ -72,7 +82,7 @@ TEST(MeetingWeekToPrefetch, ResolvesNextWeekAcrossTheYearBoundary) {
   MeetingWeekTable cache;
   cache.set("2026-53", "202610", "202611");
   IsoWeek out;
-  ASSERT_TRUE(meetingWeekToPrefetch(true, week(2026, 53), cache, out));
+  ASSERT_TRUE(meetingWeekToPrefetch(conditionsFor(week(2026, 53)), cache, out));
   EXPECT_EQ(key(out), "2027-01");
 }
 
@@ -81,7 +91,7 @@ TEST(MeetingWeekToPrefetch, DoesNothingWhenBothWeeksAreHeld) {
   cache.set("2026-38", "202607", "202609");
   cache.set("2026-39", "202607", "202609");
   IsoWeek out;
-  EXPECT_FALSE(meetingWeekToPrefetch(true, week(2026, 38), cache, out));
+  EXPECT_FALSE(meetingWeekToPrefetch(conditionsFor(week(2026, 38)), cache, out));
 }
 
 TEST(MeetingWeekToPrefetch, CountsAMemorialWeekWithOnlyAWatchtowerAsHeld) {
@@ -89,7 +99,7 @@ TEST(MeetingWeekToPrefetch, CountsAMemorialWeekWithOnlyAWatchtowerAsHeld) {
   cache.set("2026-38", "202607", "202609");
   cache.set("2026-39", "202607", "");
   IsoWeek out;
-  EXPECT_FALSE(meetingWeekToPrefetch(true, week(2026, 38), cache, out));
+  EXPECT_FALSE(meetingWeekToPrefetch(conditionsFor(week(2026, 38)), cache, out));
 }
 
 TEST(MeetingWeekToPrefetch, TreatsAnEntryNamingNoIssueAsMissing) {
@@ -99,6 +109,46 @@ TEST(MeetingWeekToPrefetch, TreatsAnEntryNamingNoIssueAsMissing) {
   cache.set("2026-38", "202607", "202609");
   cache.set("2026-39", "", "");
   IsoWeek out;
-  ASSERT_TRUE(meetingWeekToPrefetch(true, week(2026, 38), cache, out));
+  ASSERT_TRUE(meetingWeekToPrefetch(conditionsFor(week(2026, 38)), cache, out));
   EXPECT_EQ(key(out), "2026-39");
+}
+
+TEST(MeetingWeekToPrefetch, DoesNothingBeforeTheClockHasBeenSynced) {
+  MeetingWeekTable cache;
+  MeetingPrefetchConditions conditions = conditionsFor(week(2026, 38));
+  conditions.clockSynced = false;
+  IsoWeek out;
+  EXPECT_FALSE(meetingWeekToPrefetch(conditions, cache, out));
+}
+
+TEST(MeetingWeekToPrefetch, IgnoresAClockThatLostItsTime) {
+  // An RTC that reset reads 2000-01-01, which is ISO week 1999/52. A synced
+  // flag set long ago does not make that date true.
+  MeetingWeekTable cache;
+  IsoWeek out;
+  EXPECT_FALSE(meetingWeekToPrefetch(conditionsFor(week(1999, 52)), cache, out));
+  EXPECT_FALSE(meetingWeekToPrefetch(conditionsFor(week(2025, 52)), cache, out));
+}
+
+TEST(MeetingWeekToPrefetch, DoesNotRetryAWeekAlreadyAttemptedThisBoot) {
+  MeetingWeekTable cache;
+  MeetingPrefetchConditions conditions = conditionsFor(week(2026, 38));
+  conditions.attemptedThisBoot = "2026-38";
+  IsoWeek out;
+  // The failed current week is not retried, and next week is not asked for in
+  // its place: a lookup that failed once this boot will most likely fail again.
+  EXPECT_FALSE(meetingWeekToPrefetch(conditions, cache, out));
+}
+
+TEST(MeetingWeekToPrefetch, MovesOnToNextWeekOnceTheAttemptedWeekIsHeld) {
+  MeetingWeekTable cache;
+  cache.set("2026-38", "202607", "202609");
+  MeetingPrefetchConditions conditions = conditionsFor(week(2026, 38));
+  conditions.attemptedThisBoot = "2026-38";
+  IsoWeek out;
+  ASSERT_TRUE(meetingWeekToPrefetch(conditions, cache, out));
+  EXPECT_EQ(key(out), "2026-39");
+
+  conditions.attemptedThisBoot = "2026-39";
+  EXPECT_FALSE(meetingWeekToPrefetch(conditions, cache, out));
 }

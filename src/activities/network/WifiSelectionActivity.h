@@ -87,9 +87,13 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   const bool allowAutoConnect;
 
   // False for a caller that resolves the meeting week itself, so one connection
-  // never fetches the same page twice.
+  // never fetches the same page twice, and for one fixing the clock the week
+  // would be computed from.
   const bool allowMeetingPrefetch;
   unsigned long lastPrefetchInputPollMs = 0;
+  // Set once the lookup polls for a skip; the Skip hint is hidden until then.
+  bool prefetchSkippable = false;
+  bool prefetchHomeRequested = false;
 
   // Whether we are attempting to auto-connect or auto-scan saved networks.
   // DHCP normally settles in well under a second; this is the point at which
@@ -153,6 +157,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   bool hasAttemptedAutoSsid(const std::string& ssid) const;
   void prefetchMeetingWeekIfDue();
   static bool prefetchSkipRequested(void* ctx);
+  static void onPrefetchSkippable(void* ctx);
   std::string getSignalStrengthIndicator(int32_t rssi) const;
 
   void onComplete(bool connected);
