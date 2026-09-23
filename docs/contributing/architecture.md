@@ -169,7 +169,6 @@ Modes:
 
 - STA: join existing Wi-Fi network
 - AP: create hotspot
-- Calibre Wireless: STA flow specialized for Calibre plugin uploads
 - Meeting publications: STA flow that resolves and downloads the week's publications, without starting the server
 
 Server behavior:

@@ -38,10 +38,13 @@ networks or in hotspot mode when you control who is connected.
 The device has no Back button. Swipe in from the left edge (Back) or press Home
 to leave.
 
-- Backing out of the mode list before Wi-Fi has started returns to Settings.
-- Once Wi-Fi has started — any exit from a running server, or backing out after
-  choosing a mode — the device restarts silently to the launcher. The restart
-  clears the heap fragmentation a Wi-Fi session leaves behind.
+- Backing out of the mode list returns to Settings, but only if you have not
+  yet tried Join Network, Meeting Publications or Create Hotspot in this
+  session.
+- Once any of those has started Wi-Fi, every exit — from a running server, or
+  backing out of the mode list afterwards — restarts the device silently to the
+  launcher. The restart clears the heap fragmentation a Wi-Fi session leaves
+  behind.
 
 ## Join Network Mode
 
@@ -82,9 +85,9 @@ opening the web interface.
 ## Meeting Publications Mode
 
 Meeting Publications brings up its own station connection, resolves the current
-week's publications, downloads them to the SD card, and hands control back to
-the mode list. It never starts the web server, so nothing is exposed on the
-network while it runs.
+week's publications and downloads them to the SD card. It never starts the web
+server, so nothing is exposed on the network while it runs. When it finishes,
+the device restarts to the launcher like any other Wi-Fi exit.
 
 ## Web Interface
 
@@ -107,9 +110,22 @@ The File Manager page can:
 - Move files into existing folders
 - Delete one or more selected files or empty folders
 
-Existing files with the same name are overwritten by uploads. When EPUB files
-are overwritten, moved, renamed, or deleted through the web server, the matching
-book cache is cleared so stale metadata is not reused.
+Uploads never overwrite: an upload whose name already exists in the target
+folder is refused. To side-load a second firmware build, delete the old
+`firmware.bin` first (File Manager, or `POST /delete`) or upload under a new
+name. When EPUB files are moved, renamed, or deleted through the web server,
+the matching book cache is cleared so stale metadata is not reused.
+
+### Protected paths
+
+Nothing under a dot-named folder — `/.berean` (study data), `/.crosspoint`
+(settings and Wi-Fi credentials), `/.fonts` — nor `System Volume Information`
+or `XTCache` can be listed, downloaded, uploaded into, created, renamed, moved
+or deleted, over HTTP, WebSocket or WebDAV. Every component of the path is
+checked, so `..` is refused rather than resolved. This holds even with **Show
+hidden files** on; that setting affects only the on-device file browser. The
+migration report is readable through `GET /migration`, and fonts are managed
+through the Fonts page.
 
 ### Settings
 

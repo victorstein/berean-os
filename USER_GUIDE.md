@@ -211,12 +211,11 @@ and the UTC offset are; those rows appear only on a device with a real-time cloc
 
 ## 11. File transfer and the web interface
 
-**Home -> File transfer**, then pick a mode:
+**Settings -> System -> File Transfer**, then pick a mode:
 
 | Mode | Use when |
 |---|---|
 | **Join network** | the device should join your Wi-Fi |
-| **Calibre wireless** | receiving books from Calibre's device plugin |
 | **Meeting publications** | see section 10 |
 | **Create hotspot** | there is no trusted network; the device makes its own |
 

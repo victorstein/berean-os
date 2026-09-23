@@ -80,8 +80,14 @@ Response:
 ]
 ```
 
-Hidden dotfiles are omitted unless the device setting `showHiddenFiles` is
-enabled. `System Volume Information` and `XTCache` are always hidden/protected.
+Protected entries — anything whose name starts with `.`, plus
+`System Volume Information` and `XTCache` — are never listed, whatever
+`showHiddenFiles` says. Every route that takes a path (`/api/files`,
+`/download`, `/upload`, `/mkdir`, `/rename`, `/move`, `/delete`, the WebSocket
+`START`, and WebDAV) refuses the request when any component of the path is
+protected; `..` counts as one. HTTP routes answer `403` (`/upload` answers `400`
+with the reason); `/delete` lists the
+item as failed; the WebSocket answers `ERROR:`.
 
 ### `GET /download`
 
@@ -132,7 +138,7 @@ File uploaded successfully: mybook.epub
 
 Notes:
 
-- Existing files with the same name are overwritten.
+- An existing file with the same name is never overwritten; the upload is refused.
 - EPUB cache data for the uploaded path is cleared after a successful upload.
 - HTTP upload uses a 4 KB write buffer before flushing to the SD card.
 

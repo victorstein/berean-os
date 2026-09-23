@@ -5,6 +5,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Memory.h>
 #include <WiFi.h>
 
 #include <cstddef>
@@ -140,8 +141,9 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   isApMode = (mode == NetworkMode::CREATE_HOTSPOT);
 
   if (mode == NetworkMode::MEETING_PUBLICATIONS) {
-    // Brings up its own STA connection and hands control back to the mode
-    // list when it finishes, so it never starts the web server.
+    // Runs its own Wi-Fi session and never starts the web server. Its onExit
+    // restarts the device once Wi-Fi has been used, so the mode list only
+    // comes back when it exits before Wi-Fi starts.
     startActivityForResult(std::make_unique<MeetingDownloadActivity>(renderer, mappedInput),
                            [this](const ActivityResult&) { launchModeSelection(); });
     return;
@@ -249,14 +251,17 @@ void CrossPointWebServerActivity::startWebServer() {
   if (auto* fcm = renderer.getFontCacheManager()) {
     LOG_DBG("WEBACT", "Free heap before SD font cache release: %d bytes", ESP.getFreeHeap());
     fcm->releaseSdFontCaches();
-    LOG_DBG("WEBACT", "Free heap before server alloc: %d bytes", ESP.getFreeHeap());
   }
 
-  // Create the web server instance
-  webServer.reset(new CrossPointWebServer());
-  webServer->begin();
+  LOG_DBG("WEBACT", "Free heap before server alloc: %d bytes", ESP.getFreeHeap());
+  webServer = makeUniqueNoThrow<CrossPointWebServer>();
+  if (!webServer) {
+    LOG_ERR("WEBACT", "OOM: CrossPointWebServer");
+  } else {
+    webServer->begin();
+  }
 
-  if (webServer->isRunning()) {
+  if (webServer && webServer->isRunning()) {
     state = WebServerActivityState::SERVER_RUNNING;
     LOG_DBG("WEBACT", "Web server started successfully");
     lastWifiBars = isApMode ? 0 : barsForRssi(WiFi.RSSI(), 0);
