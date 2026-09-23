@@ -37,8 +37,11 @@ struct Sink {
   std::function<bool(const uint8_t*, size_t)> write;  // returns false to abort the transfer
   HttpDownloader::ProgressCallback progress;
   bool* cancelFlag = nullptr;
+  HttpDownloader::AbortCheck shouldAbort;
   size_t total = 0;
   size_t downloaded = 0;
+
+  bool cancelled() const { return (cancelFlag && *cancelFlag) || (shouldAbort && shouldAbort()); }
 };
 
 bool isRedirect(int status) {
@@ -78,7 +81,7 @@ HttpDownloader::DownloadError runGetWolf(const std::string& startUrl, const std:
           if (sink.progress && sink.total > 0) sink.progress(sink.downloaded, sink.total);
           return true;
         },
-        [&sink]() { return sink.cancelFlag && *sink.cancelFlag; });
+        [&sink]() { return sink.cancelled(); });
 
     if (http.aborted()) return HttpDownloader::ABORTED;
     if (status < 0) {
@@ -187,7 +190,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   }
 
   while (true) {
-    if (sink.cancelFlag && *sink.cancelFlag) {
+    if (sink.cancelled()) {
       esp_http_client_cleanup(client);
       return HttpDownloader::ABORTED;
     }
@@ -257,6 +260,14 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
   sink.write = onData;
   sink.cancelFlag = cancelFlag;
   return runGetSecure(url, username, password, sink) == OK;
+}
+
+bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const AbortCheck& shouldAbort) {
+  LOG_DBG("HTTP", "Fetching: %s", url.c_str());
+  Sink sink;
+  sink.write = onData;
+  sink.shouldAbort = shouldAbort;
+  return runGetSecure(url, "", "", sink) == OK;
 }
 
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,

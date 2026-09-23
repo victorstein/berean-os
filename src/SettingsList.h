@@ -381,6 +381,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
 
         SettingInfo::Enum(StrId::STR_PUBLICATION_LANGUAGE, &CrossPointSettings::publicationLanguage,
                           std::move(publicationLanguageValues), "publicationLanguage", StrId::STR_CAT_SYSTEM),
+        SettingInfo::Toggle(StrId::STR_MEETING_PREFETCH, &CrossPointSettings::meetingPrefetch, "meetingPrefetch",
+                            StrId::STR_CAT_SYSTEM),
 
         // --- System ---
         SettingInfo::Value(

@@ -15,6 +15,10 @@ class HttpDownloader {
   // Called with each body chunk as it arrives; return false to abort. Lets a
   // streaming parser consume the response without buffering the whole body.
   using DataCallback = std::function<bool(const uint8_t* data, size_t len)>;
+  // Polled wherever the transfer can wait -- between body reads, and on the
+  // wolfSSL path also while the response headers are outstanding. Return true
+  // to abort. Unlike a bare cancel flag, the check can enforce its own deadline.
+  using AbortCheck = std::function<bool()>;
 
   enum DownloadError {
     OK = 0,
@@ -41,6 +45,8 @@ class HttpDownloader {
    */
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
                        const std::string& password = "", bool* cancelFlag = nullptr);
+
+  static bool fetchUrl(const std::string& url, const DataCallback& onData, const AbortCheck& shouldAbort);
 
   /**
    * Download a file to the SD card with optional credentials.
