@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/victorstein/berean-os/compare/v1.12.2...v1.13.0) (2026-09-23)
+
+
+### Features
+
+* link passages to each other ([#86](https://github.com/victorstein/berean-os/issues/86)) ([0bbcd47](https://github.com/victorstein/berean-os/commit/0bbcd47db22e483db39d58c61da1489ea7d5642e)), closes [#33](https://github.com/victorstein/berean-os/issues/33)
+
 ## [1.12.2](https://github.com/victorstein/berean-os/compare/v1.12.1...v1.12.2) (2026-09-23)
 
 
