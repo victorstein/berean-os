@@ -55,6 +55,7 @@ class UnitIndexCache {
   void setProgress(const MigrationProgress& progress) { progress_ = progress; }
 
   bool ready() const { return ready_; }
+  uint16_t indexedDocumentCount() const { return header_.documentCount; }
   const std::string& pubKey() const { return pubKey_; }
 
  private:

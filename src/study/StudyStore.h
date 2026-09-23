@@ -71,6 +71,12 @@ class StudyStore {
   // Builds unit indexes as it goes, so this is a user-initiated action, never
   // the page-turn path.
   std::optional<Location> locate(size_t passageIndex);
+
+  // Where a passage's link target currently lives. nullopt is an honest "not in
+  // this publication": the verse is not in this edition, or a Paragraph or
+  // DocumentOffset target's document is gone or no longer the kind it was.
+  // Same cost as locate(): a user action, never the page-turn path.
+  std::optional<Location> locateLink(size_t passageIndex, size_t linkIndex);
   const std::vector<study::TaggedPassage>& passages() const { return passages_.passages(); }
   const std::string& pubKey() const { return pubKey_; }
   bool isOpen() const { return units_ != nullptr; }
@@ -125,6 +131,20 @@ class StudyStore {
   // later book open, nor shown over a publication it has nothing to do with.
   bool takeCompletionLoadFailureNotice();
 
+  // The passage marked as the source of the next link. Session state only,
+  // never persisted: it is cleared when the publication closes (a link joins
+  // two passages of the one open study file) and when any passage is removed
+  // (removal shifts the index it holds). Linking leaves it marked, so one
+  // passage can be linked to several in a row.
+  void markLinkSource(size_t index);
+  std::optional<size_t> linkSource() const { return linkSource_; }
+
+  enum class LinkOutcome : uint8_t { Linked, AlreadyLinked, AtCap, SelfLink, NoSource, NotSaved };
+
+  // Links the marked source to `targetIndex` and saves, rolling back on failure.
+  LinkOutcome linkMarkedSourceTo(size_t targetIndex);
+  bool removeLink(size_t passageIndex, size_t linkIndex);
+
   // For the migration runner, which owns its own save cadence.
   study::PassageDoc& mutableDoc() { return passages_; }
   study::TagPalette& mutablePalette() { return palette_; }
@@ -133,10 +153,13 @@ class StudyStore {
  private:
   StudyStore() = default;
 
+  std::optional<Location> locateUnit(const study::Unit& unit, uint16_t spineHint);
+
   study::TagPalette palette_;
   study::PassageDoc passages_;
   std::string pubKey_;
   bool saveDisabled_ = false;
+  std::optional<size_t> linkSource_;
   std::unique_ptr<UnitIndexCache> units_;
 
   // Held for the life of an open Bible: 149 bytes of static storage in this

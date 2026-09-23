@@ -1,5 +1,6 @@
 add_executable(TagRowsTest
   TagRowsTest.cpp
+  PassageActionsTest.cpp
 )
 
 target_include_directories(TagRowsTest PRIVATE
