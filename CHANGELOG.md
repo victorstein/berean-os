@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.2](https://github.com/victorstein/berean-os/compare/v1.12.1...v1.12.2) (2026-09-23)
+
+
+### Bug Fixes
+
+* surface store save refusals on screen ([#82](https://github.com/victorstein/berean-os/issues/82)) ([32f6677](https://github.com/victorstein/berean-os/commit/32f66774e1144ad6391d50dfee44c48183a2316d)), closes [#39](https://github.com/victorstein/berean-os/issues/39)
+
 ## [1.12.1](https://github.com/victorstein/berean-os/compare/v1.12.0...v1.12.1) (2026-09-23)
 
 
