@@ -669,6 +669,8 @@ no execution shape.
   current model says no — untag to zero and the record is gone — which forces
   taxonomy at the moment of reading. A reserved tag id 0 would represent it
   without special-casing.
+  *Resolved (#32): `study::UNLABELLED`, stored as the v1 empty tag array; see
+  `2026-09-23-untagged-passages-design.md`.*
 
 ## Evidence
 

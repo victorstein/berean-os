@@ -31,25 +31,24 @@ class PassageDoc {
   const std::vector<TaggedPassage>& passages() const { return passages_; }
 
   // Normalises (UTF-8-safe truncation of snippet and reference, deduping and
-  // capping tags) and appends. Returns false when the passage carries no tags or
-  // when adding it would exceed SAVE_BYTE_BUDGET.
+  // capping tags, UNLABELLED for an empty list) and appends. Returns false when
+  // adding it would exceed SAVE_BYTE_BUDGET.
   bool add(TaggedPassage passage);
 
   bool remove(size_t index);
 
-  // Replaces entry `index`'s tags IN PLACE. Returns false without touching the
-  // entry when `index` is out of range or the normalised list is empty --
-  // matching HighlightDoc::setTags, whose contract is "the entry is untouched in
-  // that case".
+  // Replaces entry `index`'s tags IN PLACE. An empty list leaves the passage
+  // UNLABELLED -- untagging is not deleting. Returns false only when `index` is
+  // out of range.
   bool setTags(size_t index, std::vector<TagId> tags);
 
   // Drops `id` from every passage in this document. Passages left with no tags
-  // are KEPT and counted by untaggedCount(), never deleted: the palette is
-  // global and TagFilterActivity deletes a tag on a long-press, so a destructive
-  // delete would let one tidy-up gesture wipe work across every publication.
+  // are KEPT as UNLABELLED, never deleted: the palette is global and
+  // TagFilterActivity retires a tag on a long-press, so a destructive delete
+  // would let one tidy-up gesture wipe work across every publication.
   void removeTagEverywhere(TagId id);
 
-  size_t untaggedCount() const;
+  size_t unlabelledCount() const;
 
   // Updates a passage's stale spine hint after its address resolved in a
   // different document -- which happens when the publication is replaced by

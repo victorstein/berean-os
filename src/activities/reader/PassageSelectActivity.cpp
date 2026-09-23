@@ -338,7 +338,7 @@ void PassageSelectActivity::showActionChooser(const int endIndex) {
   const char* options[] = {tr(STR_HIGHLIGHT), tr(STR_TAG), tr(STR_CANCEL)};
   actionChooser.show(tr(STR_HIGHLIGHT_PASSAGE), options, 3, 0, [this](const int choice) {
     switch (choice) {
-      case 0:  // Highlight: save immediately, no tags.
+      case 0:  // Highlight: save immediately, unlabelled.
         finalizeSelection(pendingEndIndex);
         break;
       case 1:  // Tag: pick tags first, then save with whatever comes back.
@@ -355,20 +355,16 @@ void PassageSelectActivity::showActionChooser(const int endIndex) {
 void PassageSelectActivity::startTagFlow(const int endIndex) {
   startActivityForResult(std::make_unique<TagPickerActivity>(renderer, mappedInput),
                          [this, endIndex](const ActivityResult& result) {
-                           // Cancelling the picker discards only the TAG
-                           // selection, not the highlight itself -- the
-                           // two-anchor passage was already committed before
-                           // this sub-step opened, and TagPickerActivity's
-                           // own contract (see its class comment) is that the
-                           // caller decides what "no tags chosen" means. Here
-                           // that means the same untagged save Highlight
-                           // would have produced, not discarding the work the
-                           // user already did picking two anchors.
-                           std::vector<study::TagId> tagIds;
-                           if (!result.isCancelled) {
-                             tagIds = std::get<TagSelectionResult>(result.data).tagIds;
+                           // Backing out of the picker abandons the mark: Back
+                           // is cancel everywhere, and Highlight is the
+                           // chooser's explicit "mark without a tag". Done with
+                           // nothing checked is a deliberate confirm, so it
+                           // saves the passage unlabelled.
+                           if (result.isCancelled) {
+                             finish();
+                             return;
                            }
-                           finalizeSelection(endIndex, std::move(tagIds));
+                           finalizeSelection(endIndex, std::get<TagSelectionResult>(result.data).tagIds);
                          });
 }
 
@@ -380,13 +376,6 @@ void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<st
   // starts at the top of the page the user finished on.
   const int lo = (anchorIndex >= 0) ? std::min(anchorIndex, endIndex) : 0;
   const int hi = (anchorIndex >= 0) ? std::max(anchorIndex, endIndex) : endIndex;
-
-  if (tagIds.empty()) {
-    // A passage exists only to carry tags, and StudyStore refuses an untagged
-    // one. Reaching here means the picker came back with nothing checked.
-    finish();
-    return;
-  }
 
   // `range.end` is the last word's offset + 1 -- VisibleRange::contains tests a
   // word's START offset, so the half-open end is what the geometry expects.

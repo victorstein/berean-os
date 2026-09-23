@@ -25,7 +25,10 @@ TagPickerActivity::TagPickerActivity(GfxRenderer& renderer, MappedInputManager& 
                                      std::vector<study::TagId> initialSelection)
     : UiListActivity("TagPicker", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       tags_(STUDY.activeTags()),
-      selectedIds_(std::move(initialSelection)) {}
+      selectedIds_(std::move(initialSelection)) {
+  // UNLABELLED is no row here and must not spend one of the per-passage slots.
+  selectedIds_.erase(std::remove(selectedIds_.begin(), selectedIds_.end(), study::UNLABELLED), selectedIds_.end());
+}
 
 void TagPickerActivity::onEnter() {
   UiListActivity::onEnter();

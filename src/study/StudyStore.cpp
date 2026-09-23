@@ -1,5 +1,6 @@
 #include "StudyStore.h"
 
+#include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
 
@@ -90,11 +91,16 @@ std::vector<size_t> StudyStore::passagesWithTag(const study::TagId id) const {
   return out;
 }
 
+std::string StudyStore::tagName(const study::TagId id) const {
+  if (id == study::UNLABELLED) return tr(STR_TAG_UNLABELLED);
+  return palette_.name(id);
+}
+
 std::string StudyStore::tagNamesFor(const size_t passageIndex) const {
   if (passageIndex >= passages_.passages().size()) return {};
   std::string out;
   for (const study::TagId id : passages_.passages()[passageIndex].tags) {
-    const std::string& name = palette_.name(id);
+    const std::string name = tagName(id);
     if (name.empty()) continue;
     if (!out.empty()) out += ", ";
     out += name;
@@ -144,13 +150,12 @@ std::optional<study::TagId> StudyStore::addTagName(const std::string& name) {
 }
 
 bool StudyStore::retireTag(const study::TagId id) {
-  if (saveDisabled_) return false;
+  if (saveDisabled_ || id == study::UNLABELLED) return false;
 
   palette_.retire(id);
   if (TagPaletteFile::save(palette_) != TagPaletteFile::SaveResult::Ok) return false;
 
-  // Passages keep their other tags; one left with none is retained and shows as
-  // untagged, awaiting re-tagging.
+  // Passages keep their other tags; one left with none becomes UNLABELLED.
   passages_.removeTagEverywhere(id);
   return save();
 }
@@ -207,7 +212,7 @@ std::vector<StudyStore::PaintedPassage> StudyStore::passagesInDocument(const uin
 
 bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffset, const uint32_t endOffset,
                             const std::string& snippet, const std::string& reference, std::vector<study::TagId> tags) {
-  if (saveDisabled_ || tags.empty() || !units_) return false;
+  if (saveDisabled_ || !units_) return false;
 
   const study::DocumentUnits& units = units_->unitsFor(spineIndex);
 

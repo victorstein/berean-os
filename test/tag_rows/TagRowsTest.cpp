@@ -54,3 +54,30 @@ TEST(TagRows, RowCountLeavesRoomForDoneAndNewTag) {
   EXPECT_EQ(TagRows::rowCount(0), 2);
   EXPECT_EQ(TagRows::rowCount(100), 102);
 }
+
+TEST(FilterRows, AllAndUnlabelledAreNeverPaletteTags) {
+  EXPECT_EQ(FilterRows::tagIndexForRow(FilterRows::ALL, 5), -1);
+  EXPECT_EQ(FilterRows::tagIndexForRow(FilterRows::UNLABELLED, 5), -1)
+      << "a long-press on Unlabelled must never reach the retire path";
+  EXPECT_EQ(FilterRows::tagIndexForRow(FilterRows::UNLABELLED, 0), -1);
+}
+
+TEST(FilterRows, TagRowsFollowTheTwoFixedRows) {
+  EXPECT_EQ(FilterRows::tagIndexForRow(2, 5), 0);
+  EXPECT_EQ(FilterRows::tagIndexForRow(6, 5), 4) << "the LAST tag must be reachable";
+  EXPECT_EQ(FilterRows::tagIndexForRow(7, 5), -1);
+  EXPECT_EQ(FilterRows::tagIndexForRow(-1, 5), -1);
+}
+
+TEST(FilterRows, RowAndTagConversionsAreInverse) {
+  for (int tagCount = 1; tagCount <= 100; tagCount++) {
+    for (int tag = 0; tag < tagCount; tag++) {
+      EXPECT_EQ(FilterRows::tagIndexForRow(FilterRows::rowForTagIndex(tag), tagCount), tag);
+    }
+  }
+}
+
+TEST(FilterRows, RowCountLeavesRoomForAllAndUnlabelled) {
+  EXPECT_EQ(FilterRows::rowCount(0), 2);
+  EXPECT_EQ(FilterRows::rowCount(44), 46);
+}

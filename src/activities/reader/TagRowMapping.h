@@ -21,3 +21,22 @@ constexpr int newTagRow(const int tagCount) { return tagCount + 1; }
 constexpr int rowCount(const int tagCount) { return tagCount + 2; }
 
 }  // namespace TagRows
+
+// Row layout of TagFilterActivity's list: "All", "Unlabelled", then the palette.
+// Unlabelled is not a palette entry, so it must never map to one -- a long-press
+// there would otherwise retire whichever tag happened to sit at that index.
+namespace FilterRows {
+
+constexpr int ALL = 0;
+constexpr int UNLABELLED = 1;
+constexpr int FIXED_ROWS = 2;
+
+constexpr int tagIndexForRow(const int row, const int tagCount) {
+  if (row < FIXED_ROWS || row >= tagCount + FIXED_ROWS) return -1;
+  return row - FIXED_ROWS;
+}
+
+constexpr int rowForTagIndex(const int tagIndex) { return tagIndex + FIXED_ROWS; }
+constexpr int rowCount(const int tagCount) { return tagCount + FIXED_ROWS; }
+
+}  // namespace FilterRows

@@ -14,7 +14,7 @@ namespace fui = freeink::ui;
 TagFilterActivity::TagFilterActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("TagFilter", renderer, mappedInput, /*wantsTouchLongPress=*/true), tags_(STUDY.activeTags()) {}
 
-int TagFilterActivity::listCount() const { return static_cast<int>(tags_.size()) + 1; }
+int TagFilterActivity::listCount() const { return FilterRows::rowCount(static_cast<int>(tags_.size())); }
 
 const char* TagFilterActivity::headerTitle() const { return tr(STR_FILTER_BY_TAG); }
 
@@ -37,17 +37,22 @@ void TagFilterActivity::buildScreen(UiScreen& screen) {
   // rowItems_ borrows label pointers from tags_, so both move together.
   tags_ = STUDY.activeTags();
   rowItems_.clear();
-  rowItems_.reserve(tags_.size() + 1);
+  rowItems_.reserve(static_cast<size_t>(FilterRows::rowCount(static_cast<int>(tags_.size()))));
 
   fui::ListItem allItem{};
   allItem.label = tr(STR_TAG_FILTER_ALL);
-  allItem.actionValue = 0;
+  allItem.actionValue = static_cast<int16_t>(FilterRows::ALL);
   rowItems_.push_back(allItem);
+
+  fui::ListItem unlabelledItem{};
+  unlabelledItem.label = tr(STR_TAG_UNLABELLED);
+  unlabelledItem.actionValue = static_cast<int16_t>(FilterRows::UNLABELLED);
+  rowItems_.push_back(unlabelledItem);
 
   for (size_t i = 0; i < tags_.size(); ++i) {
     fui::ListItem item{};
     item.label = tags_[i].name.c_str();
-    item.actionValue = static_cast<int16_t>(i + 1);
+    item.actionValue = static_cast<int16_t>(FilterRows::rowForTagIndex(static_cast<int>(i)));
     rowItems_.push_back(item);
   }
 
@@ -76,9 +81,7 @@ bool TagFilterActivity::handleHomeGesture() {
 
 void TagFilterActivity::onRowLongPress(const int row) {
   if (confirmPopup_.isActive()) return;
-  // Row 0 is "all tags" and maps to no palette entry. TagRows is the same
-  // conversion the picker uses and is host-tested.
-  const int tagIndex = TagRows::tagIndexForRow(row, static_cast<int>(tags_.size()));
+  const int tagIndex = FilterRows::tagIndexForRow(row, static_cast<int>(tags_.size()));
   if (tagIndex < 0) return;
   app.clearTapFlash();
   nav.selected = row;
@@ -159,11 +162,13 @@ void TagFilterActivity::activateIndex(const int index) {
   nav.selected = index;
 
   TagSelectionResult result;
-  // Row 0 is "all tags" and returns an empty selection; every later row reports
-  // the ID of tags_[index - 1], never the row number -- the caller holds that
-  // filter across screens where the palette may be edited.
-  if (index > 0 && static_cast<size_t>(index - 1) < tags_.size()) {
-    result.tagIds.push_back(tags_[static_cast<size_t>(index - 1)].id);
+  // "All" returns an empty selection; every other row reports a tag ID, never
+  // the row number -- the caller holds that filter across screens where the
+  // palette may be edited.
+  if (index == FilterRows::UNLABELLED) {
+    result.tagIds.push_back(study::UNLABELLED);
+  } else if (const int tagIndex = FilterRows::tagIndexForRow(index, static_cast<int>(tags_.size())); tagIndex >= 0) {
+    result.tagIds.push_back(tags_[static_cast<size_t>(tagIndex)].id);
   }
   setResult(std::move(result));
   finish();

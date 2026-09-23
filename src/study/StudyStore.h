@@ -46,7 +46,12 @@ class StudyStore {
   std::vector<TagView> activeTags() const;
 
   // Indices of passages carrying `id`, in document order, for the filter.
+  // study::UNLABELLED yields the passages marked but not yet labelled.
   std::vector<size_t> passagesWithTag(study::TagId id) const;
+
+  // A tag's display name. UNLABELLED resolves to its translated label, and a
+  // retired tag to its real name.
+  std::string tagName(study::TagId id) const;
 
   // Comma-joined names of the tags a passage carries, for a list row. Retired
   // tags still resolve -- a passage that carries one must not render a blank.
@@ -78,7 +83,8 @@ class StudyStore {
   std::optional<study::TagId> addTagName(const std::string& name);
 
   // RETIRES the tag: it leaves the pickers, keeps resolving for display, and is
-  // dropped from the open publication's passages. No passage is ever removed --
+  // dropped from the open publication's passages, leaving any passage that had
+  // no other tag UNLABELLED. Refuses UNLABELLED itself. No passage is ever removed --
   // the palette is global and a long-press in TagFilterActivity reaches it, so a
   // destructive delete would let one gesture wipe work across every publication.
   bool retireTag(study::TagId id);
