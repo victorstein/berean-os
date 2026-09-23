@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/victorstein/berean-os/compare/v1.11.0...v1.12.0) (2026-09-23)
+
+
+### Features
+
+* look up the meeting week while WiFi is up ([#81](https://github.com/victorstein/berean-os/issues/81)) ([a7e2e58](https://github.com/victorstein/berean-os/commit/a7e2e5836a265551b5d5ffef5ea1615ea380316f)), closes [#36](https://github.com/victorstein/berean-os/issues/36)
+
 ## [1.11.0](https://github.com/victorstein/berean-os/compare/v1.10.0...v1.11.0) (2026-09-23)
 
 
