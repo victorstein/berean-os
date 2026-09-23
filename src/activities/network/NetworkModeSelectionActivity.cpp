@@ -10,12 +10,14 @@
 namespace fui = freeink::ui;
 
 namespace {
+constexpr NetworkMode menuModes[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
+    NetworkMode::JOIN_NETWORK, NetworkMode::MEETING_PUBLICATIONS, NetworkMode::CREATE_HOTSPOT};
 constexpr StrId menuItems[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
-    StrId::STR_JOIN_NETWORK, StrId::STR_CALIBRE_WIRELESS, StrId::STR_MEETING_PUBLICATIONS, StrId::STR_CREATE_HOTSPOT};
+    StrId::STR_JOIN_NETWORK, StrId::STR_MEETING_PUBLICATIONS, StrId::STR_CREATE_HOTSPOT};
 constexpr StrId menuDescs[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
-    StrId::STR_JOIN_DESC, StrId::STR_CALIBRE_DESC, StrId::STR_MEETING_PUBLICATIONS_DESC, StrId::STR_HOTSPOT_DESC};
-constexpr UIIcon menuIcons[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {UIIcon::Wifi, UIIcon::Library,
-                                                                             UIIcon::Book, UIIcon::Hotspot};
+    StrId::STR_JOIN_DESC, StrId::STR_MEETING_PUBLICATIONS_DESC, StrId::STR_HOTSPOT_DESC};
+constexpr UIIcon menuIcons[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {UIIcon::Wifi, UIIcon::Book,
+                                                                             UIIcon::Hotspot};
 }  // namespace
 
 NetworkModeSelectionActivity::NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -39,17 +41,9 @@ void NetworkModeSelectionActivity::activateIndex(const int index) {
   // Selection leaves this screen; a lingering flash would gray an unrelated
   // element on the next render.
   app.clearTapFlash();
+  if (index < 0 || index >= MENU_ITEM_COUNT) return;
   nav.selected = index;
-
-  NetworkMode mode = NetworkMode::JOIN_NETWORK;
-  if (index == 1) {
-    mode = NetworkMode::CONNECT_CALIBRE;
-  } else if (index == 2) {
-    mode = NetworkMode::MEETING_PUBLICATIONS;
-  } else if (index == 3) {
-    mode = NetworkMode::CREATE_HOTSPOT;
-  }
-  onModeSelected(mode);
+  onModeSelected(menuModes[index]);
 }
 
 void NetworkModeSelectionActivity::buildScreen(UiScreen& screen) {

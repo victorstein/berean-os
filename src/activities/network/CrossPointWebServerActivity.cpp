@@ -13,7 +13,6 @@
 #include "NetworkModeSelectionActivity.h"
 #include "SilentRestart.h"
 #include "WifiSelectionActivity.h"
-#include "activities/network/CalibreConnectActivity.h"
 #include "activities/network/MeetingDownloadActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -88,10 +87,17 @@ void CrossPointWebServerActivity::onEnter() {
 
   // Launch network mode selection subactivity
   LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
+  launchModeSelection();
+}
+
+void CrossPointWebServerActivity::launchModeSelection() {
+  state = WebServerActivityState::MODE_SELECTION;
+  // finish(), not onGoHome(): cancelling here returns to whichever screen
+  // opened File Transfer.
   startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) {
                            if (result.isCancelled) {
-                             onGoHome();
+                             finish();
                            } else {
                              onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
                            }
@@ -123,9 +129,7 @@ void CrossPointWebServerActivity::onExit() {
 
 void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
   const char* modeName = "Join Network";
-  if (mode == NetworkMode::CONNECT_CALIBRE) {
-    modeName = "Connect to Calibre";
-  } else if (mode == NetworkMode::MEETING_PUBLICATIONS) {
+  if (mode == NetworkMode::MEETING_PUBLICATIONS) {
     modeName = "Meeting Publications";
   } else if (mode == NetworkMode::CREATE_HOTSPOT) {
     modeName = "Create Hotspot";
@@ -135,27 +139,11 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   networkMode = mode;
   isApMode = (mode == NetworkMode::CREATE_HOTSPOT);
 
-  if (mode == NetworkMode::CONNECT_CALIBRE || mode == NetworkMode::MEETING_PUBLICATIONS) {
-    // Both bring up their own STA connection and hand control back to the mode
-    // list when they finish, so neither ever starts the web server.
-    std::unique_ptr<Activity> subActivity;
-    if (mode == NetworkMode::CONNECT_CALIBRE) {
-      subActivity = std::make_unique<CalibreConnectActivity>(renderer, mappedInput);
-    } else {
-      subActivity = std::make_unique<MeetingDownloadActivity>(renderer, mappedInput);
-    }
-    startActivityForResult(std::move(subActivity), [this](const ActivityResult&) {
-      state = WebServerActivityState::MODE_SELECTION;
-
-      startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
-                             [this](const ActivityResult& result) {
-                               if (result.isCancelled) {
-                                 onGoHome();
-                               } else {
-                                 onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
-                               }
-                             });
-    });
+  if (mode == NetworkMode::MEETING_PUBLICATIONS) {
+    // Brings up its own STA connection and hands control back to the mode
+    // list when it finishes, so it never starts the web server.
+    startActivityForResult(std::make_unique<MeetingDownloadActivity>(renderer, mappedInput),
+                           [this](const ActivityResult&) { launchModeSelection(); });
     return;
   }
 
@@ -196,17 +184,7 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
     // Start the web server
     startWebServer();
   } else {
-    // User cancelled - go back to mode selection
-    state = WebServerActivityState::MODE_SELECTION;
-
-    startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
-                           [this](const ActivityResult& result) {
-                             if (result.isCancelled) {
-                               onGoHome();
-                             } else {
-                               onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
-                             }
-                           });
+    launchModeSelection();
   }
 }
 

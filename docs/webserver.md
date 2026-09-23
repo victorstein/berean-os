@@ -8,30 +8,40 @@ inherited strings, not a different device.
 
 ## Overview
 
-The web server is available while the device is in **File Transfer** or
-**Calibre Wireless** mode. It can:
+The web server is available while the device is in **File Transfer** mode. It
+can:
 
 - Upload, download, rename, move, and delete files on the SD card
 - Create folders
 - Edit many device settings from a browser
 - Manage saved Wi-Fi networks
 - Upload and delete `.cpfont` SD-card font families
-- Accept WebDAV clients and Calibre wireless uploads
+- Accept WebDAV clients and WebSocket uploads
+- Serve the study-data migration report (`GET /migration`)
 
 The server does not require authentication. Use it only on trusted private
 networks or in hotspot mode when you control who is connected.
 
 ## Starting File Transfer
 
-1. From the Home screen, select **File Transfer**.
+1. Open **Settings**, go to the **System** tab, and select **File Transfer**.
 2. Choose one of the available modes:
 
 | Mode | Use when |
 |------|----------|
 | **Join Network** | You want the device to join an existing Wi-Fi network. |
-| **Calibre Wireless** | You want to receive books from the Calibre device-plugin workflow. |
 | **Meeting Publications** | You want this week's meeting publications downloaded. This mode never starts the web server. |
 | **Create Hotspot** | You want the device to create its own open Wi-Fi network. |
+
+## Leaving File Transfer
+
+The device has no Back button. Swipe in from the left edge (Back) or press Home
+to leave.
+
+- Backing out of the mode list before Wi-Fi has started returns to Settings.
+- Once Wi-Fi has started — any exit from a running server, or backing out after
+  choosing a mode — the device restarts silently to the launcher. The restart
+  clears the heap fragmentation a Wi-Fi session leaves behind.
 
 ## Join Network Mode
 
@@ -68,13 +78,6 @@ bereanOS
 
 The device displays one QR code for joining the hotspot and another QR code for
 opening the web interface.
-
-## Calibre Wireless Mode
-
-Calibre Wireless starts the same web server in station mode, then displays setup
-instructions and upload progress on the device. Use this mode with a Calibre
-device plugin or any other client that speaks the documented WebSocket upload
-protocol.
 
 ## Meeting Publications Mode
 
@@ -140,7 +143,7 @@ Endpoint details are documented in [webserver-endpoints.md](./webserver-endpoint
 - The WebSocket upload server runs on port 81.
 - There is no authentication.
 - Anyone on the same network can access the web interface while it is running.
-- The server stops when you exit File Transfer or Calibre Wireless mode.
+- The server stops when you exit File Transfer.
 - Hotspot mode creates an open network for connectivity fallback; disconnect when done.
 
 ## Tips

@@ -16,6 +16,7 @@ enum class SettingAction {
   RemapFrontButtons,
   CustomiseStatusBar,
   Network,
+  FileTransfer,
   ClearCache,
   CheckForUpdates,
   SdFirmwareUpdate,

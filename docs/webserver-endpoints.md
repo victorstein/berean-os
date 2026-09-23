@@ -1,7 +1,8 @@
 # Webserver Endpoints
 
 This document describes the HTTP, WebSocket, WebDAV, and discovery endpoints
-available while the device is in File Transfer or Calibre Wireless mode.
+available while the device is in File Transfer mode (Settings > System > File
+Transfer).
 
 - HTTP server: port 80
 - WebSocket upload server: port 81
@@ -99,6 +100,15 @@ Query parameters:
 Protected dotfiles, `System Volume Information`, and `XTCache` cannot be
 downloaded. EPUB files are served as `application/epub+zip`; other files use
 `application/octet-stream`.
+
+### `GET /migration`
+
+Streams `/.berean/migration-report.json`, the report the study-data migration
+writes at boot.
+
+- `200` with the report as `application/json`
+- `404` `{"status":"no migration has run"}` when no report exists
+- `500` `{"status":"report unreadable"}` when the file cannot be opened
 
 ### `POST /upload`
 
@@ -373,8 +383,7 @@ curl -X POST \
 
 ### Port 81
 
-The WebSocket path is used for fast binary uploads from the file manager and
-Calibre plugin workflows.
+The WebSocket path is used for fast binary uploads from the file manager.
 
 Connection:
 
@@ -457,8 +466,3 @@ The final field is the WebSocket upload port.
 - The device shows a Wi-Fi QR code and URL QR code.
 - The fallback IP is typically `192.168.4.1`.
 - `/api/status` returns `"mode": "AP"` and `"rssi": 0`.
-
-### Calibre Wireless
-
-Calibre Wireless starts the same web server in STA mode and displays setup
-instructions plus WebSocket upload progress on the device screen.
