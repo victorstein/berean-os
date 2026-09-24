@@ -24,7 +24,7 @@
 //
 //   Opening --(index ready)--> keyboard -> Searching -> Results <-> keyboard
 //   Opening --(not ready)----> Prompt -> Starting -> Building -> Finishing -> Ready -> keyboard
-//   Building -> Saving (Cancel, Back, Home) -> reader
+//   Building -> Saving (Cancel, Back, Home) -> reader menu
 //   Starting, Building, Finishing -> Failed on a build failure
 //
 // Opening, Starting, Saving, Finishing, Ready and Searching each paint their

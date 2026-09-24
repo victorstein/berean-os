@@ -6,7 +6,8 @@ namespace {
 
 constexpr int PORTRAIT_W = 480;
 constexpr int PORTRAIT_H = 650;
-// "1 Crón." in the 12pt UI body font, rounded up.
+// A synthetic width chosen to exercise a five-column layout; the real widest
+// Spanish label is wider (see FourColumnHebrewScripturesNeedTheFullPortraitBody).
 constexpr int SPANISH_WIDEST_LABEL = 64;
 constexpr int NWT_SECTION_STARTS[] = {0, 39};
 

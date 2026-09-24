@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <BibleSearch/Query.h>
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -101,6 +102,12 @@ void BibleSearchActivity::onEnter() {
   app.on(ACTION_PREPARE, &BibleSearchActivity::onPrepareEvent, this);
   app.on(ACTION_CANCEL, &BibleSearchActivity::onCancelEvent, this);
   app.on(ACTION_DISMISS, &BibleSearchActivity::onDismissEvent, this);
+  // The reader underneath pins its page-render glyph arenas while this overlay
+  // is up; freeing them leaves the index build and the result rows' glyphs the
+  // heap. Mirrors EpubReaderChapterSelectionActivity.
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->clearCache();
+  }
   // Loading the book names and open() are seconds of SD on the first search
   // after boot, so both wait for this frame.
   enterState(State::Opening, /*fullRefresh=*/true);
