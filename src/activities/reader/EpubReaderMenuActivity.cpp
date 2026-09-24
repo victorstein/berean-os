@@ -19,9 +19,9 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
                                                const std::string& title, const int currentPage, const int totalPages,
                                                const int bookProgressPercent, const uint8_t currentOrientation,
                                                const bool hasFootnotes, const bool hasBookmarks,
-                                               const bool hasHighlights)
+                                               const bool hasHighlights, const bool isBible)
     : UiListActivity("EpubReaderMenu", renderer, mappedInput),
-      menuItems(buildMenuItems(hasFootnotes, hasBookmarks, hasHighlights)),
+      menuItems(buildMenuItems(hasFootnotes, hasBookmarks, hasHighlights, isBible)),
       title(title),
       pendingOrientation(currentOrientation),
       currentPage(currentPage),
@@ -44,10 +44,13 @@ void EpubReaderMenuActivity::buildMenuRowItems() {
 
 std::vector<EpubReaderMenuActivity::MenuItem> EpubReaderMenuActivity::buildMenuItems(bool hasFootnotes,
                                                                                      bool hasBookmarks,
-                                                                                     bool hasHighlights) {
+                                                                                     bool hasHighlights, bool isBible) {
   std::vector<MenuItem> items;
   items.reserve(MAX_MENU_ITEMS);
   items.push_back({MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER});
+  if (isBible) {
+    items.push_back({MenuAction::SEARCH_BIBLE, StrId::STR_SEARCH_VERSES});
+  }
   if (hasFootnotes) {
     items.push_back({MenuAction::FOOTNOTES, StrId::STR_FOOTNOTES});
   }

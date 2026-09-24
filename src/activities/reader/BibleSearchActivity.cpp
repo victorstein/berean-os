@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <BibleSearch/Query.h>
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -92,22 +93,23 @@ void clearRow(auto& row) {
 
 }  // namespace
 
-const char* BibleBookNames::forBook(const uint8_t book) const {
-  if (!names || book == 0 || book > count) return "";
-  return names + static_cast<size_t>(book - 1) * static_cast<size_t>(stride);
-}
-
 BibleSearchActivity::BibleSearchActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                         std::shared_ptr<Epub> epub, const BibleBookNames bookNames)
-    : UiListActivity("BibleSearch", renderer, mappedInput), epub(std::move(epub)), bookNames(bookNames) {}
+                                         std::shared_ptr<Epub> epub)
+    : UiListActivity("BibleSearch", renderer, mappedInput), epub(std::move(epub)) {}
 
 void BibleSearchActivity::onEnter() {
   UiListActivity::onEnter();
   app.on(ACTION_PREPARE, &BibleSearchActivity::onPrepareEvent, this);
   app.on(ACTION_CANCEL, &BibleSearchActivity::onCancelEvent, this);
   app.on(ACTION_DISMISS, &BibleSearchActivity::onDismissEvent, this);
-  // open() can resolve the Bible's documents first, which is seconds of SD on
-  // the first search after boot, so it waits for this frame.
+  // The reader underneath pins its page-render glyph arenas while this overlay
+  // is up; freeing them leaves the index build and the result rows' glyphs the
+  // heap. Mirrors EpubReaderChapterSelectionActivity.
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->clearCache();
+  }
+  // Loading the book names and open() are seconds of SD on the first search
+  // after boot, so both wait for this frame.
   enterState(State::Opening, /*fullRefresh=*/true);
 }
 
@@ -184,6 +186,11 @@ void BibleSearchActivity::runBusyWork() {
   }
   switch (state) {
     case State::Opening:
+      if (!bookNames.load(epub, renderer)) {
+        LOG_ERR(MODULE, "Book names unavailable; references show chapter:verse only");
+      }
+      openIndex();
+      return;
     case State::Ready:
       openIndex();
       return;

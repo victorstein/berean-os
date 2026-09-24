@@ -24,6 +24,7 @@
 #include "../../util/BookmarkFile.h"
 #include "../../util/HighlightFile.h"
 #include "BibleNavigationActivity.h"
+#include "BibleSearchActivity.h"
 #include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -262,6 +263,17 @@ bool EpubReaderActivity::loadBook() {
   return true;
 }
 
+void EpubReaderActivity::releaseSectionKeepingPosition() {
+  RenderLock lock;
+  if (section) {
+    rememberCurrentContentOffset();
+    cachedSpineIndex = currentSpineIndex;
+    cachedChapterTotalPageCount = section->pageCount;
+    nextPageNumber = section->currentPage;
+  }
+  section.reset();
+}
+
 void EpubReaderActivity::openReaderMenu() {
   pendingManualTurn = 0;
   const int currentPage = section ? section->currentPage + 1 : 0;
@@ -281,10 +293,11 @@ void EpubReaderActivity::openReaderMenu() {
 #else
   constexpr bool hasHighlights = false;
 #endif
+  const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), currentPage, totalPages,
                                                bookProgressPercent, SETTINGS.orientation, !currentPageFootnotes.empty(),
-                                               !cachedBookmarks.empty(), hasHighlights),
+                                               !cachedBookmarks.empty(), hasHighlights, isBible),
       [this](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -728,16 +741,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       // holding its CJK glyph arena (RAM-only repaints) and re-reading
       // glyphs from SD on every row step. Cancel restores via the same
       // cached-position rebuild TEXT_SETTINGS uses.
-      {
-        RenderLock lock;
-        if (section) {
-          rememberCurrentContentOffset();
-          cachedSpineIndex = currentSpineIndex;
-          cachedChapterTotalPageCount = section->pageCount;
-          nextPageNumber = section->currentPage;
-        }
-        section.reset();
-      }
+      releaseSectionKeepingPosition();
       // A Bible gets the book -> chapter -> verse drill-down instead of the flat
       // TOC; detection is one memoised spine sweep, so a non-Bible book pays it
       // at most once for the life of the Epub.
@@ -759,6 +763,21 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       });
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::SEARCH_BIBLE: {
+      // Same reasoning as SELECT_CHAPTER: a picked verse resets the section
+      // anyway, and search needs the room for its index.
+      releaseSectionKeepingPosition();
+      startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub),
+                             [this](const ActivityResult& result) {
+                               if (result.isCancelled) {
+                                 openReaderMenu();
+                                 return;
+                               }
+                               const auto& verse = std::get<ChapterResult>(result.data);
+                               navigateTo({.spineIndex = verse.spineIndex, .offsetJump = verse.offsetJump});
+                             });
+      break;
+    }
     case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
       startActivityForResult(std::make_unique<EpubReaderFootnotesActivity>(renderer, mappedInput, currentPageFootnotes),
                              [this](const ActivityResult& result) {
@@ -776,16 +795,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
                                                                     TextSettingsActivity::Tab::Family),
                              [this](const ActivityResult&) {
-                               {
-                                 RenderLock lock;
-                                 if (section) {
-                                   rememberCurrentContentOffset();
-                                   cachedSpineIndex = currentSpineIndex;
-                                   cachedChapterTotalPageCount = section->pageCount;
-                                   nextPageNumber = section->currentPage;
-                                 }
-                                 section.reset();
-                               }
+                               releaseSectionKeepingPosition();
                                openReaderMenu();
                              });
       break;

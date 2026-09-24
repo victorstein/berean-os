@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include "BibleBookNameTable.h"
 #include "BookGridLayout.h"
 #include "NumberGridLayout.h"
 #include "activities/UiListActivity.h"
@@ -31,12 +32,9 @@ class BibleNavigationActivity final : public UiListActivity {
  private:
   enum class Level : uint8_t { Book, Chapter, Verse };
 
-  static constexpr int MAX_BOOKS = 66;
+  static constexpr int MAX_BOOKS = BibleBookNameTable::MAX_BOOKS;
   static constexpr int MAX_CHAPTERS = 150;  // Psalms
-  // Sized in UTF-8 BYTES, not characters. The longest joined TOC name measured
-  // across the shipped publications is "El Cantar de los Cantares" at 25 B, and
-  // Cyrillic/Greek renderings of the same books run to ~42 B.
-  static constexpr int BOOK_NAME_BYTES = 48;
+  static constexpr int BOOK_NAME_BYTES = BibleBookNameTable::NAME_BYTES;
   // The publication's abbreviation for each book, cell labels at the book level.
   static constexpr int BOOK_ABBREV_BYTES = 16;
   // Room for a full book name, a space and a chapter number.
@@ -51,7 +49,7 @@ class BibleNavigationActivity final : public UiListActivity {
   // Only the display name and the resolved spine target are kept: chapter rows
   // are literally 1..N, so no hrefs need storing past the one sweep that
   // resolved them.
-  char bookName[MAX_BOOKS][BOOK_NAME_BYTES] = {};
+  BibleBookNameTable bookNames;
   int16_t bookTargetSpine[MAX_BOOKS] = {};
   // The five single-chapter books (Obadiah, Philemon, 2-3 John, Jude) have no
   // chapter-nav page; their row points straight at the chapter spine item.
@@ -128,14 +126,6 @@ class BibleNavigationActivity final : public UiListActivity {
   void openVerseList(int spineIndex, int chapterRow);
   void finishWith(int spineIndex, std::optional<uint32_t> offsetJump);
   void cancel();
-
-  static constexpr freeink::ui::ActionId ACTION_SEARCH = ACTION_USER;
-  static void onSearchEvent(const freeink::ui::ActionEvent& event, void* user);
-  // Search is offered on the book level only, as a button in a band below the
-  // grid: the theme's header keeps its right side for the battery, and the
-  // section band is painted after the app, over anything tappable in it.
-  void buildSearchButton(UiScreen& screen);
-  void openSearch();
 
   int listCount() const override;
   void buildScreen(UiScreen& screen) override;

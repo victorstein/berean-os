@@ -115,6 +115,9 @@ class EpubReaderActivity final : public ReaderActivity {
   bool applyDeferredReposition();
   void clearDeferredReposition();
   void rememberCurrentContentOffset();
+  // Frees the section while an overlay is up, remembering the page so the
+  // cached-position rebuild restores it when the overlay is cancelled.
+  void releaseSectionKeepingPosition();
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
