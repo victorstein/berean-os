@@ -3,6 +3,7 @@
 # the firmware uses. xmltok_impl.c and xmltok_ns.c are #included by xmltok.c.
 add_executable(BibleNavScannerTest
   BibleNavScannerTest.cpp
+  BibleNavLabelsTest.cpp
   ${REPO_ROOT}/lib/Epub/Epub/BibleNavScanner.cpp
   ${REPO_ROOT}/lib/expat/xmlparse.c
   ${REPO_ROOT}/lib/expat/xmlrole.c

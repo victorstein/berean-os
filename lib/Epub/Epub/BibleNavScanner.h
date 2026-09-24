@@ -19,6 +19,25 @@ namespace BibleNav {
 inline constexpr const char* BOOK_NAV_FILENAME = "biblebooknav.xhtml";
 inline constexpr const char* CHAPTER_NAV_PREFIX = "biblechapternav";
 
+// Link and heading text past this many bytes is cut on a UTF-8 boundary, so a
+// malformed page cannot grow memory without bound. The longest real
+// abbreviation measured (nwt_S) is 7 characters.
+inline constexpr size_t MAX_TEXT_BYTES = 47;
+
+struct BookNavSection {
+  std::string title;
+  // Index into BookNavPage::targets of the first link after the heading.
+  int firstLink = 0;
+};
+
+// biblebooknav.xhtml read in full: each link's target and visible text (the
+// publication's own abbreviation), plus the <strong> headings grouping them.
+struct BookNavPage {
+  std::vector<std::string> targets;
+  std::vector<std::string> labels;
+  std::vector<BookNavSection> sections;
+};
+
 class Scanner {
  public:
   Scanner();
@@ -34,6 +53,9 @@ class Scanner {
   // feed. Scoped to `<a>` because the page also carries a `<link>` to
   // css/epubs.css, which is not a navigation target.
   std::vector<std::string> take();
+  // Targets, labels and sections together. Empty after a failed feed. Like
+  // take(), moves the collected data out.
+  BookNavPage takeBookNav();
 
  private:
   void* parser_ = nullptr;  // XML_Parser; opaque here to keep expat out of the header
