@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/victorstein/berean-os/compare/v1.14.1...v1.15.0) (2026-09-24)
+
+
+### Features
+
+* search Bible verses by their words ([#94](https://github.com/victorstein/berean-os/issues/94)) ([5c38584](https://github.com/victorstein/berean-os/commit/5c3858450f40bf0439100200e0764b9ec7ba1e65))
+
 ## [1.14.1](https://github.com/victorstein/berean-os/compare/v1.14.0...v1.14.1) (2026-09-24)
 
 
