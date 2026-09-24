@@ -304,7 +304,7 @@ void XMLCALL onEnd(void* userData, const XML_Char* name) {
 
 }  // namespace
 
-VerseTextScanner::VerseTextScanner() {
+VerseTextScanner::VerseTextScanner(const ParserMemory* memory) {
   auto state = makeUniqueNoThrow<VerseTextScannerState>();
   auto anchors = makeUniqueNoThrow<VerseAnchors::Scanner>();
   if (!state || !anchors || !anchors->valid()) {
@@ -315,7 +315,13 @@ VerseTextScanner::VerseTextScanner() {
   state->anchorOffsets.reserve(VERSES_PER_DOCUMENT);
   state->linkProbe.reserve(LINK_PROBE_BYTES * 2);
 
-  XML_Parser parser = XML_ParserCreate(nullptr);
+  XML_Parser parser = nullptr;
+  if (memory) {
+    const XML_Memory_Handling_Suite suite{memory->allocate, memory->reallocate, memory->release};
+    parser = XML_ParserCreate_MM(nullptr, &suite, nullptr);
+  } else {
+    parser = XML_ParserCreate(nullptr);
+  }
   if (!parser) {
     LOG_ERR("BSRCH", "OOM: verse text scanner parser");
     return;
@@ -338,7 +344,16 @@ bool VerseTextScanner::feed(const char* chunk, const size_t length, const bool i
   if (!parser_ || failed_) return false;
   const XML_Status status =
       XML_Parse(static_cast<XML_Parser>(parser_), chunk, static_cast<int>(length), isFinal ? 1 : 0);
-  if (status == XML_STATUS_ERROR || !anchors_->feed(chunk, length, isFinal)) {
+  if (status == XML_STATUS_ERROR) {
+    outOfMemory_ = XML_GetErrorCode(static_cast<XML_Parser>(parser_)) == XML_ERROR_NO_MEMORY;
+    failed_ = true;
+    return false;
+  }
+  if (!anchors_->feed(chunk, length, isFinal)) {
+    // Both parsers read the same bytes with the same expat, so a syntax error
+    // would have stopped the first. When only the anchor parser fails, it ran
+    // out of memory.
+    outOfMemory_ = true;
     failed_ = true;
     return false;
   }

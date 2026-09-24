@@ -56,7 +56,9 @@ class BibleSearchStore {
 
   // Resolves the Bible's verse documents and fingerprint, once per publication
   // file: the book map plus one spine-entry read per verse document. Null when
-  // `epub` is not the Bible that StudyStore has open.
+  // `epub` is not the Bible that StudyStore has open, or cannot be sized. A
+  // call for a different file frees the previous list, so a caller that holds
+  // on to one copies it.
   const Documents* documents(const std::shared_ptr<Epub>& epub);
 
   // Reads the index header only, and never writes. A missing index with a
@@ -72,7 +74,8 @@ class BibleSearchStore {
   bool isOpen() const { return reader_ && indexFile_.isOpen(); }
 
   // Streams one spine document through a VerseTextScanner. `malformed` tells a
-  // document the scanner rejected from one that could not be read.
+  // document the scanner rejected from one that could not be read; running out
+  // of memory is neither, and scanner.outOfMemory() reports it.
   static bool scanSpine(const Epub& epub, uint16_t spine, BibleSearch::VerseTextScanner& scanner, bool& malformed);
 
   using VerseTextSink = void (*)(void* ctx, size_t wantedIndex, std::string_view text);

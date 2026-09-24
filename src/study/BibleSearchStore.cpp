@@ -15,7 +15,9 @@ namespace {
 constexpr const char* MODULE = "BSEARCH";
 constexpr uint8_t BIBLE_BOOKS = 66;
 constexpr size_t STREAM_CHUNK_BYTES = 4096;
-// A resume replays a checkpoint through tens of thousands of small reads.
+// A resume replays a checkpoint through tens of thousands of small reads. The
+// loop task is not subscribed to the task watchdog today, so these resets only
+// matter if it ever is; the real cost of the long passes is a stalled UI.
 constexpr uint32_t READS_PER_WATCHDOG_RESET = 256;
 constexpr uint32_t SPINE_READS_PER_WATCHDOG_RESET = 64;
 
@@ -75,10 +77,13 @@ class ScannerPrint final : public Print {
   bool rejected_ = false;
 };
 
-uint64_t fileSizeOf(const std::string& path) {
+// False when the file cannot be opened or is empty: a size of 0 would still
+// fingerprint, as a Bible that is not there.
+bool fileSizeOf(const std::string& path, uint64_t& size) {
   HalFile file;
-  if (!Storage.openFileForRead(MODULE, path, file)) return 0;
-  return file.fileSize64();
+  if (!Storage.openFileForRead(MODULE, path, file)) return false;
+  size = file.fileSize64();
+  return size > 0;
 }
 
 }  // namespace
@@ -100,7 +105,11 @@ BibleSearch::ByteSource BibleSearchStore::byteSourceFor(HalFile& file) {
 
 const BibleSearchStore::Documents* BibleSearchStore::documents(const std::shared_ptr<Epub>& epub) {
   if (!epub) return nullptr;
-  const uint64_t epubSize = fileSizeOf(epub->getPath());
+  uint64_t epubSize = 0;
+  if (!fileSizeOf(epub->getPath(), epubSize)) {
+    LOG_ERR(MODULE, "Cannot size %s", epub->getPath().c_str());
+    return nullptr;
+  }
   if (documentsReady_ && documentsPath_ == epub->getPath() && documentsEpubSize_ == epubSize) return &documents_;
   if (!resolveDocuments(epub, epubSize)) return nullptr;
   return &documents_;
@@ -121,30 +130,42 @@ bool BibleSearchStore::resolveDocuments(const std::shared_ptr<Epub>& epub, const
     return false;
   }
 
-  // Spines (u16) first, then books (u8): the block's alignment covers the u16s.
+  // Collected at spine-count size, then kept at the size actually used: the
+  // NWT has 3,937 spine items and 1,189 verse documents.
   const size_t capacity = static_cast<size_t>(spineCount);
-  if (!documentsBuffer_.allocate(psramAllocator(), capacity * (sizeof(uint16_t) + sizeof(uint8_t)))) {
+  BibleSearch::AllocatedBuffer scratch(psramAllocator(), capacity * (sizeof(uint16_t) + sizeof(uint8_t)));
+  if (!scratch.get()) {
     LOG_ERR(MODULE, "OOM: document list for %d spine items", spineCount);
     return false;
   }
-  auto* spines = documentsBuffer_.as<uint16_t>();
-  auto* books = reinterpret_cast<uint8_t*>(spines + capacity);
+  auto* scratchSpines = scratch.as<uint16_t>();
+  auto* scratchBooks = reinterpret_cast<uint8_t*>(scratchSpines + capacity);
 
   uint32_t count = 0;
   for (uint8_t book = 1; book <= BIBLE_BOOKS; book++) {
     for (const uint16_t spine : STUDY.spineIndicesForBook(book)) {
       if (count >= capacity) break;
-      spines[count] = spine;
-      books[count] = book;
+      scratchSpines[count] = spine;
+      scratchBooks[count] = book;
       count++;
     }
     resetTaskWatchdogIfSubscribed();
   }
   if (count == 0) {
     LOG_ERR(MODULE, "No verse documents: the Bible's book map is unavailable");
-    documentsBuffer_.reset();
     return false;
   }
+
+  // Spines (u16) first, then books (u8): the block's alignment covers the u16s.
+  if (!documentsBuffer_.allocate(psramAllocator(), count * (sizeof(uint16_t) + sizeof(uint8_t)))) {
+    LOG_ERR(MODULE, "OOM: document list for %u verse documents", static_cast<unsigned>(count));
+    return false;
+  }
+  auto* spines = documentsBuffer_.as<uint16_t>();
+  auto* books = reinterpret_cast<uint8_t*>(spines + count);
+  memcpy(spines, scratchSpines, count * sizeof(uint16_t));
+  memcpy(books, scratchBooks, count);
+  scratch.reset();
 
   // Device-written FAT timestamps are constant, so there is no mtime to hash.
   // The spine hrefs catch a replaced Bible whose file size happens to match.
@@ -248,6 +269,10 @@ bool BibleSearchStore::scanSpine(const Epub& epub, const uint16_t spine, BibleSe
   ScannerPrint sink(scanner);
   const bool streamed = epub.readItemContentsToStream(href, sink, STREAM_CHUNK_BYTES);
   if (sink.rejected() || (streamed && !scanner.feed("", 0, true))) {
+    if (scanner.outOfMemory()) {
+      LOG_ERR(MODULE, "Out of memory parsing spine %u (%s)", spine, href.c_str());
+      return false;
+    }
     LOG_ERR(MODULE, "Spine %u (%s) is not well-formed verse markup", spine, href.c_str());
     malformed = true;
     return false;

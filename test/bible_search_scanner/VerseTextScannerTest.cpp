@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -310,4 +312,59 @@ TEST(VerseTextScanner, KeepsWorkingAfterTakeMovesTheVersesOut) {
   const auto rest = scanner.take();
   EXPECT_EQ(first.size() + rest.size(), 176u);
   EXPECT_EQ(rest.back().verse, 176);
+}
+
+namespace {
+
+// Counts every allocation the scanner's own parser makes and refuses them once
+// `allocationsLeft` runs out.
+size_t allocations = 0;
+size_t allocationsLeft = SIZE_MAX;
+
+void* limitedAllocate(const size_t bytes) {
+  allocations++;
+  if (allocationsLeft == 0) return nullptr;
+  allocationsLeft--;
+  return std::malloc(bytes);
+}
+
+void* limitedReallocate(void* block, const size_t bytes) {
+  allocations++;
+  if (allocationsLeft == 0) return nullptr;
+  allocationsLeft--;
+  return std::realloc(block, bytes);
+}
+
+constexpr BibleSearch::ParserMemory LIMITED_MEMORY{limitedAllocate, limitedReallocate, std::free};
+
+}  // namespace
+
+TEST(VerseTextScanner, ReportsRunningOutOfMemoryApartFromBadMarkup) {
+  allocations = 0;
+  allocationsLeft = SIZE_MAX;
+  size_t toCreate = 0;
+  {
+    VerseTextScanner probe(&LIMITED_MEMORY);
+    ASSERT_TRUE(probe.valid());
+    toCreate = allocations;
+  }
+
+  // Enough to create the parser and nothing more: its first allocation while
+  // parsing fails.
+  allocationsLeft = toCreate;
+  VerseTextScanner scanner(&LIMITED_MEMORY);
+  ASSERT_TRUE(scanner.valid());
+  const std::string doc = fixture("juan2.xhtml");
+  EXPECT_FALSE(scanner.feed(doc.data(), doc.size(), true));
+  EXPECT_TRUE(scanner.outOfMemory());
+  EXPECT_TRUE(scanner.take().empty());
+  allocationsLeft = SIZE_MAX;
+}
+
+TEST(VerseTextScanner, BadMarkupIsNotOutOfMemory) {
+  VerseTextScanner scanner;
+  ASSERT_TRUE(scanner.valid());
+  const std::string doc = "<html><body><p><span id=\"chapter1_verse1\"></span>text</b></p></body></html>";
+  EXPECT_FALSE(scanner.feed(doc.data(), doc.size(), true));
+  EXPECT_FALSE(scanner.outOfMemory());
 }

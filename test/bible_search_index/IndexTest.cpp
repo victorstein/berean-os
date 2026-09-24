@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -884,4 +886,91 @@ TEST(BibleSearchIndexRealMarkup, StoresTheReadersOwnOffset) {
   ASSERT_EQ(anchors.size(), 25u);
   EXPECT_EQ(v.offset, anchors[15].offset);
   EXPECT_EQ(v.spine, 1100);
+}
+
+namespace {
+
+struct PostingReads {
+  const Bytes* bytes;
+  uint32_t postingsOffset = UINT32_MAX;
+  uint32_t longestPostingRead = 0;
+};
+
+ByteSource postingReadsSourceOf(PostingReads& reads) {
+  ByteSource s;
+  s.ctx = &reads;
+  s.readAt = [](void* ctx, const uint32_t offset, void* dst, const uint32_t len) {
+    auto* r = static_cast<PostingReads*>(ctx);
+    if (offset >= r->postingsOffset) r->longestPostingRead = std::max(r->longestPostingRead, len);
+    return readFromBytes(const_cast<Bytes*>(r->bytes), offset, dst, len);
+  };
+  s.size = static_cast<uint32_t>(reads.bytes->size());
+  return s;
+}
+
+Bytes twoVerseIndex(const char* first, const char* second) {
+  IndexBuilder builder;
+  EXPECT_TRUE(builder.addVerseText(builder.addVerse(1, 1, 1, 0, 0), first));
+  EXPECT_TRUE(builder.addVerseText(builder.addVerse(1, 1, 2, 0, 10), second));
+  return written(builder);
+}
+
+}  // namespace
+
+TEST(BibleSearchIndexReads, AReaderOnTheFallbackPageRefillsInItsOwnSteps) {
+  const Bytes bytes = wideIndex();
+  const BuildAllocator noPage{[](size_t n) -> void* { return n == IndexReader::PAGE_BYTES ? nullptr : std::malloc(n); },
+                              [](void* block) { std::free(block); }};
+  IndexReader paged;
+  ASSERT_EQ(paged.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  ASSERT_TRUE(paged.cacheTermIndex());
+
+  PostingReads reads{&bytes};
+  IndexReader fallback(noPage);
+  ASSERT_EQ(fallback.open(postingReadsSourceOf(reads), FINGERPRINT), IndexReader::Status::Ok);
+  ASSERT_TRUE(fallback.cacheTermIndex());
+  reads.postingsOffset = fallback.header().postingsOffset;
+
+  for (const char* q : {"pa", "par pa", "par", "paab"}) {
+    const QueryResult a = runQuery(paged, q);
+    const QueryResult b = runQuery(fallback, q);
+    ASSERT_TRUE(b.ok) << q;
+    EXPECT_EQ(a.verses, b.verses) << q;
+    EXPECT_EQ(a.truncated, b.truncated) << q;
+  }
+  EXPECT_GT(reads.longestPostingRead, 0u);
+  EXPECT_LE(reads.longestPostingRead, 64u) << "the fallback page holds 64 bytes, not PAGE_BYTES";
+}
+
+TEST(BibleSearchIndexReads, ReopeningOnAnotherSourceDropsTheOldPage) {
+  const Bytes first = twoVerseIndex("amor", "fe");
+  const Bytes second = twoVerseIndex("fe", "amor");
+  ASSERT_EQ(first.size(), second.size());
+
+  IndexReader reader;
+  TermEntry entry;
+  Verses out;
+  ASSERT_EQ(reader.open(sourceOf(first), FINGERPRINT), IndexReader::Status::Ok);
+  ASSERT_TRUE(reader.findExact("amor", entry));
+  ASSERT_TRUE(reader.postings(entry, out, entry.postingCount));
+  ASSERT_EQ(out, (Verses{0}));
+
+  ASSERT_EQ(reader.open(sourceOf(second), FINGERPRINT), IndexReader::Status::Ok);
+  out.clear();
+  ASSERT_TRUE(reader.findExact("amor", entry));
+  ASSERT_TRUE(reader.postings(entry, out, entry.postingCount));
+  EXPECT_EQ(out, (Verses{1})) << "postings must come from the new source, not the previous page";
+}
+
+TEST(BibleSearchIndex, ReportsEachVerseAsRecorded) {
+  IndexBuilder builder;
+  addCorpus(builder, 0, CORPUS_SIZE);
+  VerseEntry entry;
+  ASSERT_TRUE(builder.verseAt(4, entry));
+  EXPECT_EQ(entry.book, 43);
+  EXPECT_EQ(entry.chapter, 2);
+  EXPECT_EQ(entry.verse, 2);
+  EXPECT_EQ(entry.spine, 104);
+  EXPECT_EQ(entry.offset, 4000u);
+  EXPECT_FALSE(builder.verseAt(CORPUS_SIZE, entry));
 }

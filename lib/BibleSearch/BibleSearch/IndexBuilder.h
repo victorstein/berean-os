@@ -79,6 +79,8 @@ class IndexBuilder {
   // PSRAM held by the build, for the memory log.
   size_t allocatedBytes() const;
 
+  // Verse `n` as recorded; false past the end.
+  bool verseAt(uint32_t n, VerseEntry& out) const;
   uint32_t verseCount() const { return verses_.size(); }
   uint32_t termCount() const { return terms_.size(); }
   bool failed() const { return failed_; }

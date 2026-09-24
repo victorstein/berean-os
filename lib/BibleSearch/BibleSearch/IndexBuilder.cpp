@@ -154,6 +154,12 @@ uint32_t IndexBuilder::addVerse(const uint8_t book, const uint8_t chapter, const
   return index;
 }
 
+bool IndexBuilder::verseAt(const uint32_t n, VerseEntry& out) const {
+  if (n >= verses_.size()) return false;
+  memcpy(&out, verses_.at(n), sizeof(out));
+  return true;
+}
+
 bool IndexBuilder::addVerseText(const uint32_t verseNumber, const std::string_view rawText) {
   if (failed_) return false;
   // Only the newest verse may gain text: postings are appended in ascending

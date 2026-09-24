@@ -32,9 +32,18 @@ struct VerseText {
   std::string text;       // visible verse text, raw (unfolded), whitespace-collapsed
 };
 
+// Where the scanner's own expat parser allocates, in expat's malloc/realloc/
+// free shape. Null means expat's default. A host test passes one that fails,
+// which is the only way to reach the out-of-memory path off the device.
+struct ParserMemory {
+  void* (*allocate)(size_t bytes);
+  void* (*reallocate)(void* block, size_t bytes);
+  void (*release)(void* block);
+};
+
 class VerseTextScanner {
  public:
-  VerseTextScanner();
+  explicit VerseTextScanner(const ParserMemory* memory = nullptr);
   ~VerseTextScanner();
   VerseTextScanner(const VerseTextScanner&) = delete;
   VerseTextScanner& operator=(const VerseTextScanner&) = delete;
@@ -43,6 +52,10 @@ class VerseTextScanner {
   // Returns false once the document is malformed; the caller should stop and
   // discard. `isFinal` marks the last chunk.
   bool feed(const char* chunk, size_t length, bool isFinal);
+  // True when a failed feed ran out of memory rather than met bad markup. The
+  // two call for opposite handling: bad markup fails the same way every time,
+  // while out of memory says nothing about the document.
+  bool outOfMemory() const { return outOfMemory_; }
   // Verses completed so far, in document order; moved out. The last verse is
   // complete once the footnote section opens or the final chunk is fed. Empty
   // after a failed feed.
@@ -58,6 +71,7 @@ class VerseTextScanner {
   std::unique_ptr<VerseTextScannerState> state_;
   std::unique_ptr<VerseAnchors::Scanner> anchors_;
   bool failed_ = false;
+  bool outOfMemory_ = false;
 };
 
 }  // namespace BibleSearch
