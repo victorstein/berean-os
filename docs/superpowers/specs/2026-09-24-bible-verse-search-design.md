@@ -23,7 +23,7 @@ design say so.
 | What is searched | Verse text only: no footnotes, introductions or appendices. Every result is a verse reference. |
 | How words match | Every query word must appear in the verse, in any order. Case and accents are folded, and ñ folds to n, so `senor` finds `Señor`. The last word also matches as a prefix (`pacien` finds `paciente`). |
 | Result rows | The reference plus the start of the verse text, with a total count. |
-| Entry point | A search button on the Bible navigation screen (the book grid). |
+| Entry point | A **Buscar versículos** entry in the reader menu, shown only while reading the Bible. |
 | Index build | On first search, with a progress screen. There is one Bible on the device. |
 
 ## Measurements
@@ -54,8 +54,9 @@ build walks 1,189 documents; its duration is measured on the device.
 
 ### 1. Screens
 
-**Entry.** A **Buscar versículos** button in a band below the book grid, on the book level only
-(`BibleNavigationActivity`). It opens `BibleSearchActivity`, which opens `KeyboardEntryActivity`
+**Entry.** A **Buscar versículos** entry in the reader menu, directly below Select chapter and
+shown only while reading the Bible (`EpubReaderMenuActivity`, `MenuAction::SEARCH_BIBLE`). It
+opens `BibleSearchActivity`, which opens `KeyboardEntryActivity`
 once the index is ready. The keyboard picks the Spanish layout with ñ from the UI language
 (`KeyboardEntryActivity.cpp:112-132`).
 
@@ -88,9 +89,9 @@ the full-screen progress view:
 are a list headed with the count, e.g. `Resultados: 42`, or `Resultados: 1000+` when capped.
 
 - **Rows:** each row shows the reference (`Juan 3:16`) and the start of the verse text.
-- **Book names:** the full TOC book name, found by the same TOC join
-  `BibleNavigationActivity::loadBooks` uses (`BibleNav::findTargetByHref`), so references follow
-  the publication's language.
+- **Book names:** the full TOC book name, found by `BibleBookNameTable`, the TOC join the book
+  grid also uses (`BibleNav::findTargetByHref`), so references follow the publication's language.
+  Search loads its own table behind the opening frame; if that fails, references read `3:16`.
 - **Tap:** opens the reader at that verse through the existing navigation result
   (`ChapterResult{spine, "", offset}`, the same path the verse grid uses).
 - **Paging:** swipe or a held button pages the list.
@@ -206,7 +207,9 @@ Rules:
 - **`StudyStore::spineIndicesForBook`:** a book's verse documents from the unit index's book map.
 - **`BibleSearchActivity`:** the prepare prompt, the progress view, the results list, and the
   hand-off to the reader.
-- **`BibleNavigationActivity`:** gains the search entry point on the book level.
+- **`EpubReaderMenuActivity` / `EpubReaderActivity`:** the search entry in the reader menu, shown
+  for a Bible, and the jump to the chosen verse.
+- **`BibleBookNameTable`:** book names in canonical order, shared by the book grid and search.
 - **Docs:** `AGENTS.md` (which `CLAUDE.md` links to) and `2026-09-13-berean-os-design.md` change
   their scope wording, and
   `docs/file-formats.md` documents `bible.idx`.

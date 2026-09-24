@@ -45,6 +45,27 @@ TEST(BookGridPages, TheNwtSplitsIntoOnePagePerTestament) {
   EXPECT_EQ(layout.rows, 8);
 }
 
+// "1 Crón." summed from ubuntu_12_regular's advances is 80 px, which drops the
+// grid to four columns: the Hebrew Scriptures then need all ten rows the
+// X4 Pro's Lyra book-level body (480 x 655) holds, and anything taken from
+// that body below the grid pushes Malachi onto a second page.
+TEST(BookGridPages, FourColumnHebrewScripturesNeedTheFullPortraitBody) {
+  constexpr int MEASURED_CRON_LABEL = 80;
+  constexpr int LYRA_BOOK_BODY_H = 655;
+  // One theme row (2 x the 29 px UI line height + 8) and its spaceMd gap.
+  constexpr int BUTTON_BAND_H = 66 + 8;
+
+  const auto full = BookGrid::layoutFor(66, NWT_SECTION_STARTS, 2, PORTRAIT_W, LYRA_BOOK_BODY_H, MEASURED_CRON_LABEL);
+  EXPECT_EQ(full.cols, 4);
+  EXPECT_EQ(full.rows, 10);
+  EXPECT_EQ(full.pageCount, 2);
+
+  const auto oneRowShort =
+      BookGrid::layoutFor(66, NWT_SECTION_STARTS, 2, PORTRAIT_W, LYRA_BOOK_BODY_H - BUTTON_BAND_H, MEASURED_CRON_LABEL);
+  EXPECT_EQ(oneRowShort.rows, 9);
+  EXPECT_EQ(oneRowShort.pageCount, 3);
+}
+
 TEST(BookGridPages, EveryPageStaysWithinTheCellCap) {
   const auto layout = BookGrid::layoutFor(66, NWT_SECTION_STARTS, 2, PORTRAIT_W, PORTRAIT_H, SPANISH_WIDEST_LABEL);
 

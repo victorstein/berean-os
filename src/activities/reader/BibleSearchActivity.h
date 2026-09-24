@@ -11,20 +11,10 @@
 #include <string_view>
 #include <vector>
 
+#include "BibleBookNameTable.h"
 #include "activities/UiListActivity.h"
 #include "components/themes/BaseTheme.h"
 #include "study/BibleSearchIndexer.h"
-
-// Book display names in canonical order (book 1 at index 0), borrowed from the
-// navigation screen that opens this one. That screen stays suspended beneath
-// this one for its whole life, so the borrow cannot dangle.
-struct BibleBookNames {
-  const char* names = nullptr;
-  int stride = 0;
-  int count = 0;
-
-  const char* forBook(uint8_t book) const;
-};
 
 // Search the Bible by the words in its verses: prepare the index once, type a
 // query, pick a verse, land on it in the reader.
@@ -34,7 +24,7 @@ struct BibleBookNames {
 //
 //   Opening --(index ready)--> keyboard -> Searching -> Results <-> keyboard
 //   Opening --(not ready)----> Prompt -> Starting -> Building -> Finishing -> Ready -> keyboard
-//   Building -> Saving (Cancel, Back, Home) -> navigation screen
+//   Building -> Saving (Cancel, Back, Home) -> reader
 //   Starting, Building, Finishing -> Failed on a build failure
 //
 // Opening, Starting, Saving, Finishing, Ready and Searching each paint their
@@ -50,8 +40,7 @@ struct BibleBookNames {
 // under RenderLock.
 class BibleSearchActivity final : public UiListActivity {
  public:
-  BibleSearchActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::shared_ptr<Epub> epub,
-                      BibleBookNames bookNames);
+  BibleSearchActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::shared_ptr<Epub> epub);
 
   void onEnter() override;
   void onExit() override;
@@ -116,7 +105,9 @@ class BibleSearchActivity final : public UiListActivity {
   };
 
   std::shared_ptr<Epub> epub;
-  BibleBookNames bookNames;
+  // Loaded by the loop task in Opening, before any state that draws a name.
+  // Empty when the load fails; references then read "c:v".
+  BibleBookNameTable bookNames;
   State state = State::Opening;
   // The state render() last put on the panel; a busy state's SD work waits for
   // its own frame to land.

@@ -6,13 +6,10 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
-#include <Utf8.h>
 
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
 
-#include "BibleSearchActivity.h"
 #include "MappedInputManager.h"
 #include "SpineHtmlStream.h"
 #include "components/UIScale.h"
@@ -21,15 +18,6 @@
 namespace fui = freeink::ui;
 
 namespace {
-
-void copyTruncated(char* dest, const size_t destBytes, const std::string& source) {
-  const size_t fit = source.size() < destBytes - 1 ? source.size() : destBytes - 1;
-  // A byte-cut would feed drawText an incomplete UTF-8 sequence, which renders
-  // as a replacement character.
-  const int safe = utf8SafeTruncateBuffer(source.data(), static_cast<int>(fit));
-  memcpy(dest, source.data(), static_cast<size_t>(safe));
-  dest[safe] = '\0';
-}
 
 bool feedNavScanner(void* ctx, const char* chunk, const size_t length, const bool isFinal) {
   return static_cast<BibleNav::Scanner*>(ctx)->feed(chunk, length, isFinal);
@@ -47,7 +35,6 @@ BibleNavigationActivity::BibleNavigationActivity(GfxRenderer& renderer, MappedIn
 
 void BibleNavigationActivity::onEnter() {
   UiListActivity::onEnter();
-  app.on(ACTION_SEARCH, &BibleNavigationActivity::onSearchEvent, this);
 
   // The reader underneath pins its page-render glyph arenas while this overlay
   // is up; freeing them gives the book labels' fallback glyphs, which
@@ -88,26 +75,19 @@ bool BibleNavigationActivity::loadBooks() {
   }
   epub->resolveFilenamesToSpineIndices(targets.data(), spineIndices.get(), bookCount);
 
-  std::vector<std::string> names(bookCount);
-  const int tocCount = epub->getTocItemsCount();
-  for (int i = 0; i < tocCount; i++) {
-    const auto tocItem = epub->getTocItem(i);
-    const int match = BibleNav::findTargetByHref(targets.data(), bookCount, tocItem.href);
-    if (match >= 0 && names[match].empty()) names[match] = tocItem.title;
-  }
+  bookNames.joinToc(*epub, targets.data(), bookCount);
 
   for (int i = 0; i < bookCount; i++) {
     bookTargetSpine[i] = static_cast<int16_t>(spineIndices[i]);
     bookIsDirect[i] = !BibleNav::isChapterNav(targets[i]);
-    copyTruncated(bookName[i], BOOK_NAME_BYTES, names[i]);
   }
 
   for (int i = 0; i < bookCount; i++) {
     const bool hasAbbrev = i < static_cast<int>(page.labels.size()) && !page.labels[i].empty();
     if (hasAbbrev) {
-      copyTruncated(bookAbbrev[i], BOOK_ABBREV_BYTES, page.labels[i]);
+      copyUtf8Truncated(bookAbbrev[i], BOOK_ABBREV_BYTES, page.labels[i]);
     } else {
-      copyTruncated(bookAbbrev[i], BOOK_ABBREV_BYTES, names[i]);
+      copyUtf8Truncated(bookAbbrev[i], BOOK_ABBREV_BYTES, bookNames.at(i));
     }
   }
 
@@ -116,7 +96,7 @@ bool BibleNavigationActivity::loadBooks() {
   // grid then pages continuously rather than by the first few headings.
   if (page.sections.size() <= static_cast<size_t>(BookGrid::MAX_SECTIONS)) {
     for (const auto& section : page.sections) {
-      copyTruncated(sectionTitle[sectionCount], BOOK_NAME_BYTES, section.title);
+      copyUtf8Truncated(sectionTitle[sectionCount], BOOK_NAME_BYTES, section.title);
       sectionStart[sectionCount] = section.firstLink;
       sectionCount++;
     }
@@ -358,24 +338,6 @@ void BibleNavigationActivity::navigateButtons() {
   buttonNavigator.onPreviousContinuous([this] { moveNumberPage(-1); });
 }
 
-void BibleNavigationActivity::onSearchEvent(const fui::ActionEvent&, void* user) {
-  auto* self = static_cast<BibleNavigationActivity*>(user);
-  if (self->level != Level::Book) return;
-  self->app.clearTapFlash();
-  self->openSearch();
-}
-
-void BibleNavigationActivity::openSearch() {
-  const BibleBookNames names{bookName[0], BOOK_NAME_BYTES, bookCount};
-  startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub, names),
-                         [this](const ActivityResult& result) {
-                           if (result.isCancelled) return;
-                           const auto* verse = std::get_if<ChapterResult>(&result.data);
-                           if (!verse) return;
-                           finishWith(verse->spineIndex, verse->offsetJump);
-                         });
-}
-
 void BibleNavigationActivity::cancel() {
   ActivityResult result;
   result.isCancelled = true;
@@ -419,21 +381,7 @@ void BibleNavigationActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
-  if (level == Level::Book) buildSearchButton(screen);
   buildGrid(screen);
-}
-
-void BibleNavigationActivity::buildSearchButton(UiScreen& screen) {
-  const auto& theme = screen.theme();
-  // The grid lays itself out in what is left, so its cache key (the body rect)
-  // already accounts for the band.
-  const fui::Rect band = screen.takeBottom(theme.rowHeight, theme.spaceMd);
-  const auto width = static_cast<int16_t>(band.width / 2);
-  fui::ButtonProps search;
-  search.label = tr(STR_SEARCH_VERSES);
-  search.action = ACTION_SEARCH;
-  screen.button(search,
-                fui::Rect{static_cast<int16_t>(band.x + (band.width - width) / 2), band.y, width, theme.rowHeight});
 }
 
 void BibleNavigationActivity::buildGrid(UiScreen& screen) {
@@ -557,14 +505,15 @@ const char* BibleNavigationActivity::cellLabel(const int row, const int cell) {
 }
 
 void BibleNavigationActivity::drawChrome() {
-  const bool hasBook = selectedBook >= 0 && selectedBook < bookCount && bookName[selectedBook][0] != '\0';
+  const char* bookName = selectedBook < bookCount ? bookNames.at(selectedBook) : "";
+  const bool hasBook = bookName[0] != '\0';
   const char* title = tr(STR_SELECT_BOOK);
   if (level == Level::Chapter) {
-    title = hasBook ? bookName[selectedBook] : tr(STR_SELECT_CHAPTER);
+    title = hasBook ? bookName : tr(STR_SELECT_CHAPTER);
   } else if (level == Level::Verse) {
     if (hasBook) {
       const int chapter = selectedChapterRow >= 0 ? selectedChapterRow + 1 : 1;
-      snprintf(headerTitle, sizeof(headerTitle), "%s %d", bookName[selectedBook], chapter);
+      snprintf(headerTitle, sizeof(headerTitle), "%s %d", bookName, chapter);
       title = headerTitle;
     } else {
       title = tr(STR_SELECT_VERSE);

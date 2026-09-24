@@ -13,6 +13,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
   // Menu actions available from the reader menu.
   enum class MenuAction {
     SELECT_CHAPTER,
+    SEARCH_BIBLE,
     FOOTNOTES,
     TEXT_SETTINGS,
     NIGHT_MODE,
@@ -32,7 +33,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
                                   const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks,
-                                  bool hasHighlights);
+                                  bool hasHighlights, bool isBible);
 
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
@@ -43,15 +44,15 @@ class EpubReaderMenuActivity final : public UiListActivity {
     StrId labelId;
   };
 
-  static std::vector<MenuItem> buildMenuItems(bool hasFootnotes, bool hasBookmarks, bool hasHighlights);
+  static std::vector<MenuItem> buildMenuItems(bool hasFootnotes, bool hasBookmarks, bool hasHighlights, bool isBible);
 
   // Row storage: menuItems is at most MAX_MENU_ITEMS, so a
   // fixed-capacity array avoids any heap allocation for the row list. Labels
   // are set once in the constructor (buildMenuRowItems()); buildScreen()
   // only refreshes rows whose values reflect live state.
   // 13 unconditional items + FOOTNOTES + BOOKMARKS + FRONTLIGHT + the two
-  // highlight entries (HIGHLIGHT_PASSAGE, HIGHLIGHTS) reaches exactly 18 on an
-  // X4 Pro, leaving headroom. Sized with room to grow; the loops below clamp
+  // highlight entries (HIGHLIGHT_PASSAGE, HIGHLIGHTS) + SEARCH_BIBLE reaches
+  // exactly 19 on an X4 Pro, leaving headroom. Sized with room to grow; the loops below clamp
   // regardless, so this is a capacity, not a contract.
   static constexpr size_t MAX_MENU_ITEMS = 24;
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
