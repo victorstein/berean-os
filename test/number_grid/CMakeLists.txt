@@ -12,3 +12,18 @@ target_link_libraries(NumberGridLayoutTest PRIVATE
 )
 
 gtest_discover_tests(NumberGridLayoutTest)
+
+add_executable(BookGridLayoutTest
+  BookGridLayoutTest.cpp
+)
+
+target_include_directories(BookGridLayoutTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(BookGridLayoutTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(BookGridLayoutTest)
