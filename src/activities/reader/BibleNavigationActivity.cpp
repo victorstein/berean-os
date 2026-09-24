@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "BookGridLayout.h"
 #include "MappedInputManager.h"
 #include "SpineHtmlStream.h"
 #include "components/UIScale.h"
@@ -48,7 +49,7 @@ void BibleNavigationActivity::onEnter() {
   UiListActivity::onEnter();
 
   // The reader underneath pins its page-render glyph arenas while this overlay
-  // is up; freeing them gives the row window room to keep its own fallback
+  // is up; freeing them gives the grid labels room to keep their own fallback
   // glyphs resident. Mirrors EpubReaderChapterSelectionActivity.
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->clearCache();
@@ -71,7 +72,8 @@ bool BibleNavigationActivity::loadBooks() {
   if (!SpineHtmlStream::stream(epub, epub->getBibleBookNavSpineIndex(), renderer, feedNavScanner, &scanner))
     return false;
 
-  std::vector<std::string> targets = scanner.take();
+  BibleNav::BookNavPage page = scanner.takeBookNav();
+  std::vector<std::string>& targets = page.targets;
   if (targets.empty()) return false;
   if (targets.size() > MAX_BOOKS) targets.resize(MAX_BOOKS);
   bookCount = static_cast<int>(targets.size());
@@ -96,6 +98,29 @@ bool BibleNavigationActivity::loadBooks() {
     bookTargetSpine[i] = static_cast<int16_t>(spineIndices[i]);
     bookIsDirect[i] = !BibleNav::isChapterNav(targets[i]);
     copyTruncated(bookName[i], BOOK_NAME_BYTES, names[i]);
+  }
+
+  const int bodyFont = uiScaleSpec().bodyFontId;
+  // Cell labels take the theme's bodyText, which is bold in some themes.
+  const auto labelStyle =
+      UITheme::getInstance().getMetrics().listTitleBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+  widestAbbrevPx = 0;
+  for (int i = 0; i < bookCount; i++) {
+    const bool hasAbbrev = i < static_cast<int>(page.labels.size()) && !page.labels[i].empty();
+    if (hasAbbrev) {
+      copyTruncated(bookAbbrev[i], BOOK_ABBREV_BYTES, page.labels[i]);
+    } else {
+      copyTruncated(bookAbbrev[i], BOOK_ABBREV_BYTES, names[i]);
+    }
+    widestAbbrevPx = std::max(widestAbbrevPx, renderer.getTextWidth(bodyFont, bookAbbrev[i], labelStyle));
+  }
+
+  sectionCount = 0;
+  for (const auto& section : page.sections) {
+    if (sectionCount == BookGrid::MAX_SECTIONS) break;
+    copyTruncated(sectionTitle[sectionCount], BOOK_NAME_BYTES, section.title);
+    sectionStart[sectionCount] = section.firstLink;
+    sectionCount++;
   }
   return true;
 }
@@ -157,60 +182,45 @@ int BibleNavigationActivity::listCount() const {
   return 0;
 }
 
-void BibleNavigationActivity::enterLevel(const Level next, const int selected) {
-  {
-    // The render task reads level/window/nav mid-build, so the whole switch
-    // has to land before it can see any part of it.
-    RenderLock lock;
-    level = next;
-    windowStart = -1;
-    windowCount = 0;
-    nav.reset();
-    nav.selected = selected < 0 || selected >= listCount() ? 0 : selected;
-    if (isGridLevel()) {
-      // reset() leaves visibleRows at 1 and only syncToProps -- the list path,
-      // which no grid level takes -- ever writes it, so follow(), scrollBy()
-      // and pageRows() would all treat a single cell as a whole viewport. One
-      // grid "row" is one page. The geometry is the last grid build's; the
-      // first build fixes it up (buildNumberGrid).
-      nav.visibleRows = grid.cellsPerPage() > 0 ? grid.cellsPerPage() : 1;
-      nav.top = NumberGrid::pageStartFor(nav.selected, listCount(), nav.visibleRows);
-    } else {
-      nav.follow(listCount());
-    }
-  }
-  requestUpdate();
+int BibleNavigationActivity::gridCellsPerPage() const {
+  return level == Level::Book ? bookLayout.cols * bookLayout.rows : grid.cellsPerPage();
 }
 
-void BibleNavigationActivity::refreshRowWindow(const int start) {
-  const int total = listCount();
-  int clamped = start;
-  if (clamped > total - ROW_WINDOW) clamped = total - ROW_WINDOW;
-  if (clamped < 0) clamped = 0;
-  if (clamped == windowStart) return;
+int BibleNavigationActivity::gridPageCount() const {
+  return level == Level::Book ? bookLayout.pageCount : NumberGrid::pageCount(listCount(), grid.cellsPerPage());
+}
 
-  windowCount = total - clamped < ROW_WINDOW ? total - clamped : ROW_WINDOW;
-  for (int i = 0; i < windowCount; i++) {
-    const int row = clamped + i;
-    windowLabels[i] = bookName[row];
-    fui::ListItem item;
-    item.label = windowLabels[i].c_str();
-    item.actionValue = static_cast<int16_t>(row);
-    windowItems[i] = item;
+int BibleNavigationActivity::gridPageOf(const int index) const {
+  return level == Level::Book ? BookGrid::pageOf(bookLayout, index)
+                              : NumberGrid::pageOfIndex(index, grid.cellsPerPage());
+}
+
+int BibleNavigationActivity::gridPageFirst(const int page) const {
+  if (level != Level::Book) return NumberGrid::pageFirstCell(page, grid.cellsPerPage());
+  if (page < 0 || page >= bookLayout.pageCount) return 0;
+  return bookLayout.pages[page].first;
+}
+
+int BibleNavigationActivity::subHeaderHeight() const {
+  return level == Level::Book && sectionCount > 0 ? UITheme::getInstance().getMetrics().tabBarHeight : 0;
+}
+
+void BibleNavigationActivity::enterLevel(const Level next, const int selected) {
+  {
+    // The render task reads level/nav mid-build, so the whole switch has to
+    // land before it can see any part of it.
+    RenderLock lock;
+    level = next;
+    nav.reset();
+    nav.selected = selected < 0 || selected >= listCount() ? 0 : selected;
+    // reset() leaves visibleRows at 1 and only syncToProps -- the list path,
+    // which no level takes -- ever writes it, so follow(), scrollBy() and
+    // pageRows() would treat a single cell as a whole viewport. One grid "row"
+    // is one page; the first build corrects it once geometry is known.
+    nav.visibleRows = gridCellsPerPage() > 0 ? gridCellsPerPage() : 1;
+    nav.top = gridPageFirst(gridPageOf(nav.selected));
   }
-  windowStart = clamped;
-
-  struct PrewarmCtx {
-    const std::string* labels;
-    int count;
-  } prewarmCtx{windowLabels, windowCount};
-  renderer.prewarmFallbackText(
-      uiScaleSpec().bodyFontId,
-      [](const void* ctx, uint32_t i) -> const char* {
-        const auto* c = static_cast<const PrewarmCtx*>(ctx);
-        return i < static_cast<uint32_t>(c->count) ? c->labels[i].c_str() : nullptr;
-      },
-      &prewarmCtx, static_cast<uint32_t>(windowCount));
+  requestUpdate();
 }
 
 void BibleNavigationActivity::finishWith(const int spineIndex, const std::optional<uint32_t> offsetJump) {
@@ -240,13 +250,13 @@ void BibleNavigationActivity::activateIndex(const int index) {
 
   switch (level) {
     case Level::Book:
+      selectedBook = index;
       // The five single-chapter books have no chapter level, so their row is
       // the only route to their verses.
       if (bookIsDirect[index]) {
         openVerseList(bookTargetSpine[index], -1);
         return;
       }
-      selectedBook = index;
       if (!loadChapters(index)) {
         LOG_ERR("BNV", "Failed to read the chapter list for book %d", index);
         requestUpdate();
@@ -272,48 +282,40 @@ void BibleNavigationActivity::moveGridSelection(const int index) {
     // selection and its page together mid-build.
     RenderLock lock;
     nav.selected = clamped;
-    nav.top = NumberGrid::pageStartFor(clamped, count, grid.cellsPerPage());
+    nav.top = gridPageFirst(gridPageOf(clamped));
   }
   requestUpdate();
 }
 
 bool BibleNavigationActivity::handleCustomInput() {
-  // Reading the gesture at the book level would take it away from the base
-  // loop's row scrolling.
-  if (!isGridLevel()) return false;
-  const int cellsPerPage = grid.cellsPerPage();
-  if (cellsPerPage <= 0) return false;
+  if (gridCellsPerPage() <= 0) return false;
 
   const auto swipe = mappedInput.wasSwipe();
   if (swipe != MappedInputManager::SwipeDir::Up && swipe != MappedInputManager::SwipeDir::Down) return false;
 
-  const int count = listCount();
-  const int page = NumberGrid::pageOfIndex(nav.top, cellsPerPage);
+  const int page = gridPageOf(nav.top);
   const int next = swipe == MappedInputManager::SwipeDir::Up ? page + 1 : page - 1;
   // Consumed either way: the base loop would otherwise scroll the viewport a
   // single cell off its page boundary.
-  if (next >= 0 && next < NumberGrid::pageCount(count, cellsPerPage)) {
-    moveGridSelection(NumberGrid::pageFirstCell(next, cellsPerPage));
-  }
+  if (next >= 0 && next < gridPageCount()) moveGridSelection(gridPageFirst(next));
   return true;
 }
 
 void BibleNavigationActivity::navigateButtons() {
-  if (!isGridLevel() || !grid.valid()) {
+  const int cols = level == Level::Book ? bookLayout.cols : grid.cols;
+  if (cols <= 0) {
     UiListActivity::navigateButtons();
     return;
   }
-
-  const int count = listCount();
-  const int cols = grid.cols;
-  const int cellsPerPage = grid.cellsPerPage();
   buttonNavigator.onNextRelease([this, cols] { moveGridSelection(nav.selected + cols); });
   buttonNavigator.onPreviousRelease([this, cols] { moveGridSelection(nav.selected - cols); });
-  buttonNavigator.onNextContinuous([this, count, cellsPerPage] {
-    moveGridSelection(ButtonNavigator::nextPageIndex(nav.selected, count, cellsPerPage));
+  buttonNavigator.onNextContinuous([this] {
+    const int page = gridPageOf(nav.selected);
+    moveGridSelection(page + 1 < gridPageCount() ? gridPageFirst(page + 1) : listCount() - 1);
   });
-  buttonNavigator.onPreviousContinuous([this, count, cellsPerPage] {
-    moveGridSelection(ButtonNavigator::previousPageIndex(nav.selected, count, cellsPerPage));
+  buttonNavigator.onPreviousContinuous([this] {
+    const int page = gridPageOf(nav.selected);
+    moveGridSelection(page > 0 ? gridPageFirst(page - 1) : 0);
   });
 }
 
@@ -347,11 +349,12 @@ void BibleNavigationActivity::onBackButton() {
 void BibleNavigationActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  // Content: the safe area minus the header band drawChrome paints the title in.
-  screen.setContentMargin(fui::Insets{static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
-                                      static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
-                                      static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)),
-                                      static_cast<int16_t>(safe.x)});
+  // Content: the safe area minus the header band drawChrome paints the title in,
+  // and the section band drawFooter paints below it at the book level.
+  screen.setContentMargin(fui::Insets{
+      static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight + subHeaderHeight()),
+      static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
+      static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   if (listCount() == 0) {
@@ -359,54 +362,55 @@ void BibleNavigationActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
-  if (isGridLevel()) {
-    buildNumberGrid(screen);
-    return;
-  }
-
-  fui::ListProps props;
-  props.count = static_cast<uint16_t>(listCount());
-  props.action = ACTION_ROW;
-  // Tap descends a level; physical buttons stay in loop().
-  props.inputMask = fui::InputTouch;
-  syncListViewport(screen, props);
-  // Materialize the row window for the final viewport (syncListViewport just
-  // applied follow/clamping to nav.top) and hand list() the window with its
-  // absolute base index.
-  refreshRowWindow(nav.top);
-  props.items = windowItems;
-  props.itemsWindowFirst = static_cast<uint16_t>(windowStart);
-  screen.list(props);
+  buildGrid(screen);
 }
 
-void BibleNavigationActivity::buildNumberGrid(UiScreen& screen) {
+void BibleNavigationActivity::buildGrid(UiScreen& screen) {
   const fui::Rect body = screen.body();
-  grid = NumberGrid::geometryFor(body.width, body.height);
-  const int cellsPerPage = grid.cellsPerPage();
   const int count = listCount();
 
-  // An orientation change re-pages around the selection rather than leaving
-  // nav.top on a page the new geometry no longer has.
-  if (nav.visibleRows != cellsPerPage) {
-    nav.visibleRows = cellsPerPage;
-    nav.top = NumberGrid::pageStartFor(nav.selected, count, cellsPerPage);
+  int rows = 0;
+  int cols = 0;
+  int pageFirst = 0;
+  int pageCells = 0;
+  if (level == Level::Book) {
+    bookLayout = BookGrid::layoutFor(bookCount, sectionStart, sectionCount, body.width, body.height, widestAbbrevPx);
+    if (bookLayout.coveredBooks < bookCount && !bookLayoutShortLogged) {
+      LOG_ERR("BNV", "Book grid covers %d of %d books in a %dx%d rect", bookLayout.coveredBooks, bookCount, body.width,
+              body.height);
+      bookLayoutShortLogged = true;
+    }
+    if (bookLayout.pageCount == 0) return;
+    rows = bookLayout.rows;
+    cols = bookLayout.cols;
+    const int page = BookGrid::pageOf(bookLayout, nav.selected);
+    pageFirst = bookLayout.pages[page].first;
+    pageCells = bookLayout.pages[page].count;
+  } else {
+    grid = NumberGrid::geometryFor(body.width, body.height);
+    rows = grid.rows;
+    cols = grid.cols;
+    pageFirst = NumberGrid::pageStartFor(nav.top, count, grid.cellsPerPage());
+    pageCells = NumberGrid::cellsOnPage(count, pageFirst, grid.cellsPerPage());
   }
-  const int pageFirst = NumberGrid::pageStartFor(nav.top, count, cellsPerPage);
+  const int cellsPerPage = rows * cols;
+
+  // A geometry change re-pages around the selection rather than leaving
+  // nav.top on a page the new geometry no longer has.
+  nav.visibleRows = cellsPerPage;
   nav.top = pageFirst;
 
   for (int i = 0; i < cellsPerPage; i++) {
     const int row = pageFirst + i;
     fui::KeyGridKey cell;
-    if (row < count) {
-      const unsigned number =
-          level == Level::Verse ? static_cast<unsigned>(verseAnchors[row].verse) : static_cast<unsigned>(row + 1);
-      snprintf(cellLabels[i], CELL_LABEL_BYTES, "%u", number);
-      cell.label = cellLabels[i];
+    if (i < pageCells) {
+      cell.label = cellLabel(row, i);
       // ACTION_ROW dispatch (onRowAction) indexes the level by this value, so
       // it is the absolute row, not the cell's place on the page.
       cell.value = static_cast<int16_t>(row);
     } else {
-      // The page stays rectangular; a disabled cell registers no interaction.
+      // The page stays rectangular, with uniform cells across pages; a disabled
+      // cell registers no interaction.
       cell.kind = fui::KeyKind::Disabled;
       cell.enabled = false;
     }
@@ -415,8 +419,8 @@ void BibleNavigationActivity::buildNumberGrid(UiScreen& screen) {
 
   fui::KeyGridProps props;
   props.keys = cells;
-  props.rows = static_cast<uint8_t>(grid.rows);
-  props.cols = static_cast<uint8_t>(grid.cols);
+  props.rows = static_cast<uint8_t>(rows);
+  props.cols = static_cast<uint8_t>(cols);
   // keyGrid compares this against a page-relative cell index, unlike the
   // absolute value each cell carries.
   props.selectedIndex = static_cast<int16_t>(NumberGrid::pageRelativeIndex(nav.selected, pageFirst, cellsPerPage));
@@ -424,20 +428,55 @@ void BibleNavigationActivity::buildNumberGrid(UiScreen& screen) {
   props.inputMask = fui::InputTouch;
   props.gap = NumberGrid::GAP;
   // Above the cell size, ensureMinTouchRect would grow each hit rect past its
-  // own cell and neighbouring numbers would swallow each other's taps.
-  props.minTouchSize = static_cast<int16_t>(NumberGrid::cellSizeFor(body.width, body.height, grid));
+  // own cell and neighbouring cells would swallow each other's taps.
+  props.minTouchSize =
+      static_cast<int16_t>(NumberGrid::cellSizeFor(body.width, body.height, NumberGrid::Geometry{cols, rows}));
   props.labelText = screen.theme().bodyText;
   props.labelText.align = fui::TextAlign::Center;
   props.keyStyles = screen.theme().key;
   fui::keyGrid(screen.frame(), body, props);
 }
 
+const char* BibleNavigationActivity::cellLabel(const int row, const int cell) {
+  if (level == Level::Book) return bookAbbrev[row];
+  const unsigned number =
+      level == Level::Verse ? static_cast<unsigned>(verseAnchors[row].verse) : static_cast<unsigned>(row + 1);
+  snprintf(cellLabels[cell], CELL_LABEL_BYTES, "%u", number);
+  return cellLabels[cell];
+}
+
 void BibleNavigationActivity::drawChrome() {
+  const bool hasBook = selectedBook >= 0 && selectedBook < bookCount && bookName[selectedBook][0] != '\0';
   const char* title = tr(STR_SELECT_BOOK);
-  if (level == Level::Chapter) title = tr(STR_SELECT_CHAPTER);
-  if (level == Level::Verse) title = tr(STR_SELECT_VERSE);
+  if (level == Level::Chapter) {
+    title = hasBook ? bookName[selectedBook] : tr(STR_SELECT_CHAPTER);
+  } else if (level == Level::Verse) {
+    if (hasBook) {
+      const int chapter = selectedChapterRow >= 0 ? selectedChapterRow + 1 : 1;
+      snprintf(headerTitle, sizeof(headerTitle), "%s %d", bookName[selectedBook], chapter);
+      title = headerTitle;
+    } else {
+      title = tr(STR_SELECT_VERSE);
+    }
+  }
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
   GUI.drawHeader(renderer, Rect{safe.x, safe.y + metrics.topPadding, safe.width, metrics.headerHeight}, title);
+}
+
+void BibleNavigationActivity::drawFooter() {
+  UiListActivity::drawFooter();
+
+  if (subHeaderHeight() == 0 || bookLayout.pageCount == 0) return;
+  const int page = BookGrid::pageOf(bookLayout, nav.selected);
+  const int section = bookLayout.pages[page].section;
+  char pageIndicator[12];
+  snprintf(pageIndicator, sizeof(pageIndicator), "%d/%d", page + 1, bookLayout.pageCount);
+
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  GUI.drawSubHeader(renderer,
+                    Rect{safe.x, safe.y + metrics.topPadding + metrics.headerHeight, safe.width, subHeaderHeight()},
+                    section >= 0 ? sectionTitle[section] : "", pageIndicator);
 }
