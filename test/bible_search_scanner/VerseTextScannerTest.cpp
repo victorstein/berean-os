@@ -289,3 +289,25 @@ TEST(VerseTextScanner, TakeReturnsOnlyCompletedVersesMidDocument) {
   const auto anchors = VerseAnchors::scan(doc.data(), doc.size());
   EXPECT_EQ(rest[0].anchorOffset, anchors[1].offset);
 }
+
+TEST(VerseTextScanner, ASkippedBlockStillSeparatesTheWordsAroundIt) {
+  const char* doc =
+      "<html><body><p><span id=\"chapter1_verse1\"></span>corazón<p class=\"ss\">ב [bet]</p>entre</p>"
+      "<p><span id=\"chapter1_verse2\"></span>uno<h2>título</h2>dos</p></body></html>";
+  const Scan scan = scanWhole(doc);
+  ASSERT_EQ(scan.verses.size(), 2u);
+  EXPECT_EQ(scan.verses[0].text, "corazón entre");
+  EXPECT_EQ(scan.verses[1].text, "uno dos");
+}
+
+TEST(VerseTextScanner, KeepsWorkingAfterTakeMovesTheVersesOut) {
+  const std::string doc = fixture("salmo119.xhtml");
+  const size_t cut = doc.find("chapter119_verse100\"");
+  VerseTextScanner scanner;
+  ASSERT_TRUE(scanner.feed(doc.data(), cut, false));
+  const auto first = scanner.take();
+  ASSERT_TRUE(scanner.feed(doc.data() + cut, doc.size() - cut, true));
+  const auto rest = scanner.take();
+  EXPECT_EQ(first.size() + rest.size(), 176u);
+  EXPECT_EQ(rest.back().verse, 176);
+}

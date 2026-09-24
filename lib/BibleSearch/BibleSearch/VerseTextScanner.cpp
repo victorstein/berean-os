@@ -1,5 +1,6 @@
 #include "VerseTextScanner.h"
 
+#include <Logging.h>
 #include <Memory.h>
 #include <expat.h>
 
@@ -263,6 +264,8 @@ void XMLCALL onStart(void* userData, const XML_Char* name, const XML_Char** atts
     return;
   }
   if (isSkipped(name, atts)) {
+    // A skipped heading still ends a line, or the words either side would join.
+    if (isOneOf(name, BLOCK_ELEMENTS)) self->pendingSpace = true;
     self->skipDepth = 1;
     return;
   }
@@ -280,7 +283,7 @@ void XMLCALL onEnd(void* userData, const XML_Char* name) {
   auto* self = static_cast<State*>(userData);
   self->visibility.onEndElement(name);
   if (self->skipDepth > 0) {
-    self->skipDepth--;
+    if (--self->skipDepth == 0 && isOneOf(name, BLOCK_ELEMENTS)) self->pendingSpace = true;
     return;
   }
   if (self->linkDepth > 0 && --self->linkDepth == 0 && self->linkProbing) {
@@ -304,13 +307,19 @@ void XMLCALL onEnd(void* userData, const XML_Char* name) {
 VerseTextScanner::VerseTextScanner() {
   auto state = makeUniqueNoThrow<VerseTextScannerState>();
   auto anchors = makeUniqueNoThrow<VerseAnchors::Scanner>();
-  if (!state || !anchors || !anchors->valid()) return;
+  if (!state || !anchors || !anchors->valid()) {
+    LOG_ERR("BSRCH", "OOM: verse text scanner state");
+    return;
+  }
   state->completed.reserve(VERSES_PER_DOCUMENT);
   state->anchorOffsets.reserve(VERSES_PER_DOCUMENT);
   state->linkProbe.reserve(LINK_PROBE_BYTES * 2);
 
   XML_Parser parser = XML_ParserCreate(nullptr);
-  if (!parser) return;
+  if (!parser) {
+    LOG_ERR("BSRCH", "OOM: verse text scanner parser");
+    return;
+  }
   XML_SetUserData(parser, state.get());
   XML_SetElementHandler(parser, onStart, onEnd);
   XML_SetCharacterDataHandler(parser, onCharacterData);
@@ -348,6 +357,7 @@ std::vector<VerseText> VerseTextScanner::take() {
   if (!state_ || failed_) return {};
   std::vector<VerseText> out = std::move(state_->completed);
   state_->completed.clear();
+  state_->completed.reserve(VERSES_PER_DOCUMENT);
   for (auto& verse : out) {
     const uint32_t ordinal = verse.anchorOffset;
     if (ordinal >= state_->anchorOffsets.size()) {
