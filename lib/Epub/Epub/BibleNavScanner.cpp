@@ -14,6 +14,7 @@ namespace {
 constexpr size_t MAX_LINKS_PER_PAGE = 151;
 
 struct State {
+  bool collectText = false;
   std::vector<std::string> links;
   std::vector<std::string> labels;
   std::vector<BookNavSection> sections;
@@ -83,6 +84,7 @@ void XMLCALL onStart(void* userData, const XML_Char* name, const XML_Char** atts
     }
     return;
   }
+  if (!self->collectText) return;
   if (self->headingDepth > 0) {
     self->headingDepth++;
     return;
@@ -97,7 +99,7 @@ void XMLCALL onStart(void* userData, const XML_Char* name, const XML_Char** atts
 void XMLCALL onEnd(void* userData, const XML_Char*) {
   auto* self = static_cast<State*>(userData);
   if (self->linkDepth > 0) {
-    if (--self->linkDepth == 0 && self->linkRecorded) {
+    if (--self->linkDepth == 0 && self->linkRecorded && self->collectText) {
       self->labels.push_back(trimmed(std::move(self->pendingLinkText)));
     }
     return;
@@ -119,11 +121,12 @@ void XMLCALL onText(void* userData, const XML_Char* text, const int length) {
 
 }  // namespace
 
-Scanner::Scanner() {
+Scanner::Scanner(const bool collectText) {
   auto* state = new (std::nothrow) State();
   if (!state) return;
+  state->collectText = collectText;
   state->links.reserve(MAX_LINKS_PER_PAGE);
-  state->labels.reserve(MAX_LINKS_PER_PAGE);
+  if (collectText) state->labels.reserve(MAX_LINKS_PER_PAGE);
 
   XML_Parser parser = XML_ParserCreate(nullptr);
   if (!parser) {
@@ -132,7 +135,7 @@ Scanner::Scanner() {
   }
   XML_SetUserData(parser, state);
   XML_SetElementHandler(parser, onStart, onEnd);
-  XML_SetCharacterDataHandler(parser, onText);
+  if (collectText) XML_SetCharacterDataHandler(parser, onText);
 
   parser_ = parser;
   state_ = state;

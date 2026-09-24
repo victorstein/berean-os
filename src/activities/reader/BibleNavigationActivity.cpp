@@ -12,7 +12,6 @@
 #include <cstdio>
 #include <cstring>
 
-#include "BookGridLayout.h"
 #include "MappedInputManager.h"
 #include "SpineHtmlStream.h"
 #include "components/UIScale.h"
@@ -49,8 +48,9 @@ void BibleNavigationActivity::onEnter() {
   UiListActivity::onEnter();
 
   // The reader underneath pins its page-render glyph arenas while this overlay
-  // is up; freeing them gives the grid labels room to keep their own fallback
-  // glyphs resident. Mirrors EpubReaderChapterSelectionActivity.
+  // is up; freeing them gives the book labels' fallback glyphs, which
+  // rebuildBookLayout() prewarms, room to stay resident. Mirrors
+  // EpubReaderChapterSelectionActivity.
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->clearCache();
   }
@@ -64,7 +64,7 @@ bool BibleNavigationActivity::loadBooks() {
   bookCount = 0;
   if (!epub) return false;
 
-  BibleNav::Scanner scanner;
+  BibleNav::Scanner scanner(/*collectText=*/true);
   if (!scanner.valid()) {
     LOG_ERR("BNV", "OOM: nav scanner");
     return false;
@@ -475,12 +475,27 @@ void BibleNavigationActivity::buildGrid(UiScreen& screen) {
 }
 
 void BibleNavigationActivity::rebuildBookLayout(const int width, const int height) {
-  // Measured here on the render task, where the fonts are in use anyway, and
-  // only when the rect changes. Cell labels take the theme's bodyText, which
-  // is bold in some themes.
+  // Runs on the render task, where the fonts are in use anyway, and only when
+  // the cache key (rect, book count, load generation) changes. Cell labels take
+  // the theme's bodyText, which is bold in some themes.
   const int bodyFont = uiScaleSpec().bodyFontId;
   const auto labelStyle =
       UITheme::getInstance().getMetrics().listTitleBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+
+  // One SD pass for every label's fallback glyphs; otherwise, under heap
+  // pressure, each repaint re-reads an SD fallback font label by label.
+  struct PrewarmCtx {
+    const char (*labels)[BOOK_ABBREV_BYTES];
+    int count;
+  } prewarmCtx{bookAbbrev, bookCount};
+  renderer.prewarmFallbackText(
+      bodyFont,
+      [](const void* ctx, uint32_t i) -> const char* {
+        const auto* c = static_cast<const PrewarmCtx*>(ctx);
+        return i < static_cast<uint32_t>(c->count) ? c->labels[i] : nullptr;
+      },
+      &prewarmCtx, static_cast<uint32_t>(bookCount), labelStyle);
+
   int widestAbbrevPx = 0;
   for (int i = 0; i < bookCount; i++) {
     widestAbbrevPx = std::max(widestAbbrevPx, renderer.getTextWidth(bodyFont, bookAbbrev[i], labelStyle));

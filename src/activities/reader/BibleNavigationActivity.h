@@ -5,7 +5,6 @@
 #include <atomic>
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "BookGridLayout.h"

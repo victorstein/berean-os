@@ -28,14 +28,14 @@ const std::string kSpanishBookNav =
     "</body>\n</html>\n";
 
 BibleNav::BookNavPage scanBookNav(const std::string& xhtml) {
-  BibleNav::Scanner scanner;
+  BibleNav::Scanner scanner(/*collectText=*/true);
   EXPECT_TRUE(scanner.valid());
   EXPECT_TRUE(scanner.feed(xhtml.data(), xhtml.size(), /*isFinal=*/true));
   return scanner.takeBookNav();
 }
 
 BibleNav::BookNavPage scanBookNavInChunks(const std::string& xhtml, const size_t chunkBytes) {
-  BibleNav::Scanner scanner;
+  BibleNav::Scanner scanner(/*collectText=*/true);
   for (size_t offset = 0; offset < xhtml.size(); offset += chunkBytes) {
     const size_t length = std::min(chunkBytes, xhtml.size() - offset);
     const bool isFinal = offset + length >= xhtml.size();
@@ -150,7 +150,7 @@ TEST(BibleNavLabels, TextDeliveredAfterTheCapIsDropped) {
   const std::string prefix = "<html><body><a href=\"a.xhtml\">" + longText;
   const std::string suffix = "XYZ</a></body></html>";
 
-  BibleNav::Scanner scanner;
+  BibleNav::Scanner scanner(/*collectText=*/true);
   ASSERT_TRUE(scanner.valid());
   ASSERT_TRUE(scanner.feed(prefix.data(), prefix.size(), /*isFinal=*/false));
   ASSERT_TRUE(scanner.feed(suffix.data(), suffix.size(), /*isFinal=*/true));
@@ -175,7 +175,7 @@ TEST(BibleNavLabels, ChunkBoundariesDoNotChangeLabelsOrSections) {
 }
 
 TEST(BibleNavLabels, AMalformedPageYieldsNothing) {
-  BibleNav::Scanner scanner;
+  BibleNav::Scanner scanner(/*collectText=*/true);
   const std::string broken = "<html><body><a href=\"a.xhtml\">A</b></body></html>";
   EXPECT_FALSE(scanner.feed(broken.data(), broken.size(), /*isFinal=*/true));
 
@@ -186,10 +186,21 @@ TEST(BibleNavLabels, AMalformedPageYieldsNothing) {
 }
 
 TEST(BibleNavLabels, TakeStillReturnsOnlyTargets) {
-  BibleNav::Scanner scanner;
+  BibleNav::Scanner scanner(/*collectText=*/true);
   ASSERT_TRUE(scanner.feed(kSpanishBookNav.data(), kSpanishBookNav.size(), /*isFinal=*/true));
 
   const auto targets = scanner.take();
   ASSERT_EQ(targets.size(), 6u);
   EXPECT_EQ(targets[5], "biblechapternav66.xhtml");
+}
+
+TEST(BibleNavLabels, ADefaultScannerCollectsTargetsButNoText) {
+  BibleNav::Scanner scanner;
+  ASSERT_TRUE(scanner.feed(kSpanishBookNav.data(), kSpanishBookNav.size(), /*isFinal=*/true));
+
+  const auto page = scanner.takeBookNav();
+  ASSERT_EQ(page.targets.size(), 6u);
+  EXPECT_EQ(page.targets[5], "biblechapternav66.xhtml");
+  EXPECT_TRUE(page.labels.empty());
+  EXPECT_TRUE(page.sections.empty());
 }

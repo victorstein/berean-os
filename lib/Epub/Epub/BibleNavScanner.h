@@ -40,7 +40,10 @@ struct BookNavPage {
 
 class Scanner {
  public:
-  Scanner();
+  // Link and heading text is collected only when asked for: only the book-nav
+  // page's grid reads it, while the chapter-nav walks (one scanner per book in
+  // UnitIndexCache) need targets alone.
+  explicit Scanner(bool collectText = false);
   ~Scanner();
   Scanner(const Scanner&) = delete;
   Scanner& operator=(const Scanner&) = delete;
@@ -53,8 +56,9 @@ class Scanner {
   // feed. Scoped to `<a>` because the page also carries a `<link>` to
   // css/epubs.css, which is not a navigation target.
   std::vector<std::string> take();
-  // Targets, labels and sections together. Empty after a failed feed. Like
-  // take(), moves the collected data out.
+  // Targets, labels and sections together. Empty after a failed feed; labels
+  // and sections are empty unless text collection was asked for. Like take(),
+  // moves the collected data out.
   BookNavPage takeBookNav();
 
  private:
