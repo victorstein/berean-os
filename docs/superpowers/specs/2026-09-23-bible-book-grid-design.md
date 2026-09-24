@@ -42,40 +42,57 @@ Rejected alternatives:
 
 - **Link text:** text inside each `<a>`, with whitespace trimmed and collapsed, stored
   parallel to the existing link targets. An `<a>` with no text yields an empty string, keeping
-  the two vectors the same length.
+  the two vectors the same length. An `<a>` without `href` yields neither a target nor a label.
 - **Section headings:** text inside each `<strong>`, recorded with the index of the next link
-  (the first book in that section).
+  (the first book in that section). An `<a>` inside a `<strong>` stays a link; the heading keeps
+  only the text around it.
+- **Opt-in:** text is collected only by a scanner constructed with `collectText = true`, which
+  only `loadBooks()` does. Every other scanner, including `loadChapters()` and the per-book
+  scanners in `UnitIndexCache`, reserves and collects targets alone, as before.
 - **Unchanged API:** the existing `take()` still returns only the targets, so the chapter-nav
   path (`loadChapters`, `dropBookNavLinks`) is untouched. The new data comes from a separate
-  accessor. A failed feed still empties everything.
-- **Bounds:** text is capped per link and per heading, so a malformed page cannot grow memory
-  without limit. The link count stays capped at `MAX_LINKS_PER_PAGE`.
+  accessor, `takeBookNav()`. A failed feed still empties everything.
+- **Bounds:** link and heading text is capped at 47 bytes (`MAX_TEXT_BYTES`), cut on a UTF-8
+  boundary, so a malformed page cannot grow memory without limit. The link count stays capped at
+  `MAX_LINKS_PER_PAGE`.
 
 ### 2. Book level becomes a grid
 
 - **One page per section.** Page 1 holds the Hebrew Scriptures (39 books), page 2 the Greek
-  Scriptures (27). The section title and a page indicator (`1/2`) sit under the header.
+  Scriptures (27). The section title and a page indicator (`1/2`) sit in a band under the
+  header. The band is drawn only when the page has headings (`sectionCount > 0`), in
+  `drawFooter`: `UiListActivity::render` draws the chrome before the grid is built, so only
+  after the build is the current layout known.
 - **Columns follow the labels, not a constant.** The column count is the largest that fits the
   widest abbreviation, measured with the body font plus cell padding. It is clamped, and rows
   follow from the section size. In Spanish on the 480-wide portrait panel this is about 5
   columns (8 rows, then 6). No screen dimension is hardcoded.
 - **Page size limit.** Each page must stay within `NumberGrid::MAX_CELLS` (48,
-  `NumberGrid.h:19`), which keeps it inside the 64-interaction budget
+  `NumberGridLayout.h:19`), which keeps it inside the 64-interaction budget
   (`UiAppHost.h:35`). A section larger than one page (not the case for the NWT) pages within
-  itself.
-- **Navigation matches the other levels.** Swipe up and down changes the page. Up/Down
-  buttons move the selection by a row, and a held button moves a page. Tapping a book opens its
-  chapter grid, or its verse grid for the five single-chapter books, as today.
+  itself. A layout holds at most 12 pages; a rect too thin to cover every book within them is
+  reported through `coveredBooks` and a `LOG_ERR`, and selection never moves past the last
+  covered book.
+- **Navigation.** Swipe up and down changes the page and stops at either end. The Previous and
+  Next nav buttons move the selection by a row; a row step across pages keeps the column
+  (`BookGrid::stepRow`) and stops at Genesis and Revelation. A held button pages by testament
+  and wraps from the last page to the first and back. The chapter and verse levels keep
+  `ButtonNavigator`'s wrapping held paging. This device has no Up/Down buttons. Tapping a book
+  opens its chapter grid, or its verse grid for the five single-chapter books, as today.
 - **Cell labels point into stored text.** Each cell label points directly into the stored
   abbreviation array, so the book level uses no per-cell copy.
-- **Pure arithmetic in a new header.** Section-to-page mapping and the column choice go in a
-  pure header beside `NumberGrid.h`, free of FreeInkUI, Arduino and GfxRenderer, so the host
-  suite can exercise them. The column choice takes the widest label width in pixels as an input.
+- **Pure arithmetic in a new header.** Section-to-page mapping and the column choice go in
+  `src/activities/reader/BookGridLayout.h`, beside `NumberGridLayout.h`, free of FreeInkUI,
+  Arduino and GfxRenderer, so the host suite can exercise them. It also owns `pageOf` and
+  `stepRow`. The column choice takes the widest label width in pixels as an input.
+- **Fallback glyphs are prewarmed.** When the layout is built, every label's fallback glyphs
+  are prewarmed in one SD pass (`prewarmFallbackText`), so repaints under heap pressure stay
+  RAM-only.
 
 ### 3. Full names in the headers
 
 - **Chapter grid:** the header shows the full TOC book name (`Sofonías`) instead of the
-  generic "Select chapter" (`BibleNavigationActivity.cpp:436`).
+  generic "Select chapter" (`BibleNavigationActivity.cpp:437`).
 - **Verse grid:** the header shows the book and chapter (`Sofonías 2`).
 - **Single-chapter books:** the header shows the book and `1`.
 - **Name source:** the full name is the TOC title the activity already stores in `bookName[]`
@@ -85,20 +102,28 @@ Rejected alternatives:
 
 | Condition | Behaviour |
 |---|---|
-| A link has no text | That cell shows the full TOC name, truncated to fit the cell with UTF-8-safe truncation |
-| No headings, or a heading index is out of range | The grid pages continuously through all books with no section title |
+| A link has no text | That cell shows the full TOC name, truncated UTF-8-safely to 15 bytes (not to the cell's pixel width); its measured width feeds the column choice |
+| No headings | The grid pages continuously through all books, with no band and no page indicator |
+| Headings present but unusable (not starting at book 0, not increasing, or out of range) | The grid pages continuously; the band shows an empty title and the page indicator |
+| The books need more than 12 pages | The layout stops at 12 pages; the shortfall is logged and selection stays on the covered books |
 | Book-nav page unreadable | The existing `loadBooks()` error path, unchanged |
 
 ### 5. Memory
 
-- **Added:** `bookAbbrev[66][16]` (1,056 B), plus two section titles of 48 B and their start
-  indexes. All of it is fixed storage inside the heap-allocated activity; there is no per-repaint
-  allocation.
+- **Added:** all fixed storage inside the heap-allocated activity, with no per-repaint
+  allocation:
+  - `bookAbbrev[66][16]` (1,056 B);
+  - four section titles of 48 B (192 B) and their four start indexes;
+  - the cached `BookGrid::Layout`, under 128 B, and its cache key (body width and height, book
+    count, and the load generation `loadBooks()` bumps as it finishes);
+  - the 56 B `headerTitle` for the verse header.
 - **Freed at the book level:** the list window (`windowLabels[24]` std::strings,
-  `windowItems[24]`, `BibleNavigationActivity.h:70-73`) is no longer needed, because every level
+  `windowItems[24]`, `BibleNavigationActivity.h:71-75`) is no longer needed, because every level
   is now a grid. It is removed along with `refreshRowWindow`, and `cells[48]` is reused.
 - **Net:** roughly zero, and fewer small heap allocations than the std::string window.
-- **Nothing else moves:** no format change, no cache change, no new heap churn.
+- **Scanner:** only the book-nav scan collects text and reserves its labels. The chapter-nav
+  scans in `loadChapters()` and `UnitIndexCache` cost what they did before. There is no format
+  change and no cache change.
 
 ### 6. Testing
 
