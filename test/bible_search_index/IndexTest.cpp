@@ -869,7 +869,7 @@ TEST(BibleSearchIndexRealMarkup, FindsAcrossBooksInCanonicalOrder) {
 
 TEST(BibleSearchIndexRealMarkup, NeverIndexesFootnotesOrVerseNumbers) {
   const Bytes bytes = fixtureIndex();
-  EXPECT_TRUE(references(bytes, "centro comercio").empty()) << "the footnote on John 2:16";
+  EXPECT_TRUE(references(bytes, "expresion idiomatica").empty()) << "the footnote kept in the John 2 excerpt";
   EXPECT_TRUE(references(bytes, "alef").empty()) << "the acrostic headings in Psalm 119";
 }
 
@@ -883,8 +883,9 @@ TEST(BibleSearchIndexRealMarkup, StoresTheReadersOwnOffset) {
   ASSERT_TRUE(reader.verse(result.verses[0], v));
   const std::string juan2 = fixture("juan2.xhtml");
   const auto anchors = VerseAnchors::scan(juan2.data(), juan2.size());
-  ASSERT_EQ(anchors.size(), 25u);
-  EXPECT_EQ(v.offset, anchors[15].offset);
+  ASSERT_EQ(anchors.size(), 7u);
+  ASSERT_EQ(anchors[5].verse, 16);
+  EXPECT_EQ(v.offset, anchors[5].offset);
   EXPECT_EQ(v.spine, 1100);
 }
 

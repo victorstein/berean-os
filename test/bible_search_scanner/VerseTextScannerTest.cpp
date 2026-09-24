@@ -11,15 +11,17 @@
 #include "Epub/VerseAnchors.h"
 #include "VerseTextScanner.h"
 
-// Every fixture is a spine document copied verbatim from the Spanish NWT
-// (nwt_S.epub), one chapter per document:
-//   juan2.xhtml      OEBPS/1001061147-split2.xhtml   John 2
-//   juan8.xhtml      OEBPS/1001061147-split8.xhtml   John 8, which opens at verse 12
-//   genesis1.xhtml   OEBPS/1001061105.xhtml          Genesis 1, book title in <header>
-//   salmo23.xhtml    OEBPS/1001061123-split23.xhtml  superscription before verse 1
-//   salmo111.xhtml   OEBPS/1001061123-split111.xhtml acrostic headings inside verses
-//   salmo119.xhtml   OEBPS/1001061123-split119.xhtml the longest chapter
-//   malaquias4.xhtml OEBPS/1001061143-split4.xhtml   editorial note after the last verse
+// Each fixture is a short excerpt of one spine document of the Spanish NWT
+// (nwt_S.epub): its head, navigation line, a few verses, and the opening of its
+// footnote section with one note. Every line kept is verbatim; whole lines are
+// only left out.
+//   juan2.xhtml      OEBPS/1001061147-split2.xhtml   John 2:1-2 and 2:13-17
+//   juan8.xhtml      OEBPS/1001061147-split8.xhtml   John 8:12-20; the chapter opens at 8:12
+//   genesis1.xhtml   OEBPS/1001061105.xhtml          Genesis 1:1-5, book title in <header>
+//   salmo23.xhtml    OEBPS/1001061123-split23.xhtml  Psalm 23:1-2 after its superscription
+//   salmo111.xhtml   OEBPS/1001061123-split111.xhtml Psalm 111:1-2, acrostic headings inside verses
+//   salmo119.xhtml   OEBPS/1001061123-split119.xhtml Psalm 119:1-2 and 9, acrostic headings
+//   malaquias4.xhtml OEBPS/1001061143-split4.xhtml   Malachi 4:5-6 and the editorial note after them
 namespace {
 
 using BibleSearch::VerseText;
@@ -79,12 +81,13 @@ TEST(VerseTextScanner, ExtractsVerseSixteenWithoutItsNumberOrFootnoteMarker) {
             "Padre en un mercado!”.");
 }
 
-TEST(VerseTextScanner, FindsEveryVerseOfTheChapterInOrder) {
+TEST(VerseTextScanner, FindsEveryVerseInDocumentOrder) {
   const Scan scan = scanWhole(fixture("juan2.xhtml"));
-  ASSERT_EQ(scan.verses.size(), 25u);
+  const uint16_t expected[] = {1, 2, 13, 14, 15, 16, 17};
+  ASSERT_EQ(scan.verses.size(), std::size(expected));
   for (size_t i = 0; i < scan.verses.size(); i++) {
     EXPECT_EQ(scan.verses[i].chapter, 2);
-    EXPECT_EQ(scan.verses[i].verse, i + 1);
+    EXPECT_EQ(scan.verses[i].verse, expected[i]);
   }
 }
 
@@ -95,17 +98,18 @@ TEST(VerseTextScanner, DropsTheChapterNumberFromTheFirstVerse) {
 }
 
 TEST(VerseTextScanner, DropsAFootnoteMarkerInsideAVerse) {
+  // John 2:17 carries its marker mid-sentence: "La devoción*".
   const Scan scan = scanWhole(fixture("juan2.xhtml"));
-  EXPECT_EQ(textOf(scan, 2, 4),
-            "Pero Jesús le respondió: “¿Y por qué debería importarnos eso a ti y a mí, mujer? Todavía no ha llegado "
-            "mi hora”.");
+  EXPECT_EQ(textOf(scan, 2, 17),
+            "Sus discípulos recordaron que está escrito: “La devoción que siento por tu casa arderá en mi "
+            "interior”.");
 }
 
 TEST(VerseTextScanner, EndsTheLastVerseWhereTheFootnoteSectionOpens) {
-  const Scan scan = scanWhole(fixture("juan2.xhtml"));
-  EXPECT_EQ(textOf(scan, 2, 25),
-            "y no necesitaba que nadie le explicara nada sobre el hombre, ya que él sabía lo que había dentro del "
-            "hombre.");
+  const Scan scan = scanWhole(fixture("salmo119.xhtml"));
+  EXPECT_EQ(textOf(scan, 119, 9),
+            "¿Cómo puede un joven mantener limpio su camino? Estando en guardia y actuando de acuerdo con tu "
+            "palabra.");
 }
 
 TEST(VerseTextScanner, NeverCollectsFootnoteText) {
@@ -121,7 +125,7 @@ TEST(VerseTextScanner, NeverCollectsFootnoteText) {
   }
   const Scan juan2 = scanWhole(fixture("juan2.xhtml"));
   for (const auto& v : juan2.verses) {
-    EXPECT_EQ(v.text.find("centro de comercio"), std::string::npos) << "the footnote on 2:16";
+    EXPECT_EQ(v.text.find("Expresión idiomática"), std::string::npos) << "the footnote kept in the excerpt";
   }
 }
 
@@ -181,23 +185,24 @@ TEST(VerseTextScanner, DropsAcrosticHeadingsInsideAVerse) {
 
 TEST(VerseTextScanner, DropsTheEditorialNoteAfterTheLastVerse) {
   const Scan scan = scanWhole(fixture("malaquias4.xhtml"));
-  ASSERT_EQ(scan.verses.size(), 6u);
+  ASSERT_EQ(scan.verses.size(), 2u);
   EXPECT_EQ(textOf(scan, 4, 6),
             "Y él hará que el corazón de los padres se vuelva hacia los hijos y el corazón de los hijos hacia los "
             "padres, para que yo no venga y golpee la tierra, entregándola a la destrucción”.");
 }
 
-TEST(VerseTextScanner, ReadsTheLongestChapter) {
+TEST(VerseTextScanner, DropsAcrosticHeadingsBetweenVerses) {
+  // The whole of Psalm 119 is 176 verses in 69 KB, headed every eight verses
+  // by a Hebrew letter; the excerpt keeps the first heading and the second.
   const Scan scan = scanWhole(fixture("salmo119.xhtml"));
-  ASSERT_EQ(scan.verses.size(), 176u);
+  ASSERT_EQ(scan.verses.size(), 3u);
   EXPECT_EQ(textOf(scan, 119, 1),
             "Felices los que son intachables en su camino, los que andan de acuerdo con la ley de Jehová.");
-  EXPECT_EQ(textOf(scan, 119, 176),
-            "Me he descarriado como una oveja perdida. Ven en busca de tu siervo, porque no me he olvidado de tus "
-            "mandamientos.");
+  EXPECT_EQ(textOf(scan, 119, 2),
+            "Felices los que hacen caso de sus recordatorios, los que lo buscan con todo el corazón.");
   for (const auto& v : scan.verses) {
-    EXPECT_FALSE(v.text.empty()) << "119:" << v.verse;
     EXPECT_EQ(v.text.find("[álef]"), std::string::npos) << "acrostic heading leaked into 119:" << v.verse;
+    EXPECT_EQ(v.text.find("[bet]"), std::string::npos) << "acrostic heading leaked into 119:" << v.verse;
   }
 }
 
@@ -277,15 +282,15 @@ TEST(VerseTextScanner, AMalformedDocumentGivesNothing) {
 
 TEST(VerseTextScanner, TakeReturnsOnlyCompletedVersesMidDocument) {
   const std::string doc = fixture("juan2.xhtml");
-  const size_t cut = doc.find("chapter2_verse3");
+  const size_t cut = doc.find("chapter2_verse13");
   VerseTextScanner scanner;
   ASSERT_TRUE(scanner.feed(doc.data(), cut, false));
   const auto first = scanner.take();
-  ASSERT_EQ(first.size(), 1u) << "verse 2 is still open until verse 3's marker arrives";
+  ASSERT_EQ(first.size(), 1u) << "verse 2 is still open until verse 13's marker arrives";
   EXPECT_EQ(first[0].verse, 1);
   ASSERT_TRUE(scanner.feed(doc.data() + cut, doc.size() - cut, true));
   const auto rest = scanner.take();
-  ASSERT_EQ(rest.size(), 24u);
+  ASSERT_EQ(rest.size(), 6u);
   EXPECT_EQ(rest[0].verse, 2);
   EXPECT_EQ(rest[0].text, "También invitaron al banquete de boda a Jesús y a sus discípulos.");
   const auto anchors = VerseAnchors::scan(doc.data(), doc.size());
@@ -303,15 +308,15 @@ TEST(VerseTextScanner, ASkippedBlockStillSeparatesTheWordsAroundIt) {
 }
 
 TEST(VerseTextScanner, KeepsWorkingAfterTakeMovesTheVersesOut) {
-  const std::string doc = fixture("salmo119.xhtml");
-  const size_t cut = doc.find("chapter119_verse100\"");
+  const std::string doc = fixture("juan8.xhtml");
+  const size_t cut = doc.find("chapter8_verse16\"");
   VerseTextScanner scanner;
   ASSERT_TRUE(scanner.feed(doc.data(), cut, false));
   const auto first = scanner.take();
   ASSERT_TRUE(scanner.feed(doc.data() + cut, doc.size() - cut, true));
   const auto rest = scanner.take();
-  EXPECT_EQ(first.size() + rest.size(), 176u);
-  EXPECT_EQ(rest.back().verse, 176);
+  EXPECT_EQ(first.size() + rest.size(), 9u);
+  EXPECT_EQ(rest.back().verse, 20);
 }
 
 namespace {

@@ -73,9 +73,10 @@ Measured over every spine document of `nwt_S.epub` that carries a verse marker:
   lines in Psalm 23:2 (`…reposar;</p><p …>me lleva…`) do not run together.
 - **Empty verses are kept** with empty text, so the pairing with `VerseAnchors` holds and the
   verse table has no gaps.
-- **Fixtures are whole documents copied verbatim**, not trimmed: John 2 (8.7 KB), John 8,
-  Genesis 1, Psalms 23, 111 and 119, and Malachi 4, 117 KB in total. Trimming by hand risks
-  breaking the XML the tests depend on.
+- **Fixtures are short verbatim excerpts**, 1.6-3.1 KB each and 15 KB in total, because the
+  repository is public. Each keeps its head, the navigation line, a few verses, and the opening
+  of its footnote section with one note. Whole lines are left out; nothing is edited or added.
+  The whole-NWT cross-check below is what covers the full chapters.
 - **Cross-check:** an independent Python extraction (`html.parser`) and the C++ scanner gave
   identical text for all 31,078 verses.
 
