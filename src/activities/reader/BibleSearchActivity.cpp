@@ -604,8 +604,8 @@ void BibleSearchActivity::ensureRows(const int listTop, const int visibleRows) {
 
 void BibleSearchActivity::onVerseText(void* ctx, const size_t wantedIndex, const std::string_view text) {
   auto* self = static_cast<BibleSearchActivity*>(ctx);
-  Row& row = self->staging[self->wantedRows[wantedIndex]];
-  copySnippet(row.snippet, sizeof(row.snippet), text);
+  char* const snippet = self->staging[self->wantedRows[wantedIndex]].snippet;
+  copySnippet(snippet, sizeof(Row::snippet), text);
 }
 
 void BibleSearchActivity::moveTo(const int index) {

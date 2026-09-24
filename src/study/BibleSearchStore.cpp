@@ -4,6 +4,7 @@
 #include <Memory.h>
 #include <esp_heap_caps.h>
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -300,12 +301,10 @@ bool BibleSearchStore::verseTexts(const Epub& epub, const uint16_t spine, const 
 
   const std::vector<BibleSearch::VerseText> verses = scanner.take();
   for (size_t i = 0; i < count; i++) {
-    for (const auto& verse : verses) {
-      if (verse.chapter == wanted[i].chapter && verse.verse == wanted[i].verse) {
-        sink(ctx, i, verse.text);
-        break;
-      }
-    }
+    const auto match = std::find_if(verses.begin(), verses.end(), [&](const BibleSearch::VerseText& verse) {
+      return verse.chapter == wanted[i].chapter && verse.verse == wanted[i].verse;
+    });
+    if (match != verses.end()) sink(ctx, i, match->text);
   }
   return true;
 }
