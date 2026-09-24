@@ -14,31 +14,119 @@ namespace {
 constexpr size_t MAX_LINKS_PER_PAGE = 151;
 
 struct State {
+  bool collectText = false;
   std::vector<std::string> links;
+  std::vector<std::string> labels;
+  std::vector<BookNavSection> sections;
+  // Nesting depth inside the current <a> / <strong>; text is collected while
+  // either is positive so child elements like <span> keep their text. A link
+  // opened while already inside a heading takes over text collection so the
+  // heading's own text keeps only what surrounds the link.
+  int linkDepth = 0;
+  int headingDepth = 0;
+  // Whether the element that opened linkDepth was an <a> we recorded a target
+  // for; an <a> without href has no row, so its text must not become one.
+  bool linkRecorded = false;
+  std::string pendingLinkText;
+  std::string pendingHeadingText;
+  bool linkTextCapped = false;
+  bool headingTextCapped = false;
 };
 
-void XMLCALL onStart(void* userData, const XML_Char* name, const XML_Char** atts) {
-  if (strcmp(name, "a") != 0) return;
-  auto* self = static_cast<State*>(userData);
+void appendCapped(std::string& out, bool& capped, const char* text, const int length) {
+  if (capped) return;
+  for (int i = 0; i < length; i++) {
+    const char c = text[i];
+    const bool whitespace = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    if (whitespace) {
+      if (!out.empty() && out.back() != ' ') out.push_back(' ');
+    } else {
+      out.push_back(c);
+    }
+  }
+  if (out.size() <= MAX_TEXT_BYTES) return;
+  size_t cut = MAX_TEXT_BYTES;
+  // Back off UTF-8 continuation bytes so the cap never splits a character.
+  while (cut > 0 && (static_cast<unsigned char>(out[cut]) & 0xC0) == 0x80) cut--;
+  out.resize(cut);
+  capped = true;
+}
 
-  for (int i = 0; atts && atts[i]; i += 2) {
-    if (strcmp(atts[i], "href") != 0) continue;
-    std::string_view tail = filenameTail(atts[i + 1]);
-    // Chapter targets carry no fragment in these publications, but a stray one
-    // would otherwise become part of the filename and match no spine entry.
-    const size_t hash = tail.find('#');
-    if (hash != std::string_view::npos) tail = tail.substr(0, hash);
-    if (!tail.empty()) self->links.emplace_back(tail);
-    break;
+std::string trimmed(std::string text) {
+  while (!text.empty() && text.back() == ' ') text.pop_back();
+  return text;
+}
+
+void XMLCALL onStart(void* userData, const XML_Char* name, const XML_Char** atts) {
+  auto* self = static_cast<State*>(userData);
+  if (self->linkDepth > 0) {
+    self->linkDepth++;
+    return;
+  }
+  if (strcmp(name, "a") == 0) {
+    self->linkDepth = 1;
+    self->linkRecorded = false;
+    self->pendingLinkText.clear();
+    self->linkTextCapped = false;
+    for (int i = 0; atts && atts[i]; i += 2) {
+      if (strcmp(atts[i], "href") != 0) continue;
+      std::string_view tail = filenameTail(atts[i + 1]);
+      // Chapter targets carry no fragment in these publications, but a stray
+      // one would otherwise become part of the filename and match no spine
+      // entry.
+      const size_t hash = tail.find('#');
+      if (hash != std::string_view::npos) tail = tail.substr(0, hash);
+      if (!tail.empty() && self->links.size() < MAX_LINKS_PER_PAGE) {
+        self->links.emplace_back(tail);
+        self->linkRecorded = true;
+      }
+      break;
+    }
+    return;
+  }
+  if (!self->collectText) return;
+  if (self->headingDepth > 0) {
+    self->headingDepth++;
+    return;
+  }
+  if (strcmp(name, "strong") == 0) {
+    self->headingDepth = 1;
+    self->pendingHeadingText.clear();
+    self->headingTextCapped = false;
+  }
+}
+
+void XMLCALL onEnd(void* userData, const XML_Char*) {
+  auto* self = static_cast<State*>(userData);
+  if (self->linkDepth > 0) {
+    if (--self->linkDepth == 0 && self->linkRecorded && self->collectText) {
+      self->labels.push_back(trimmed(std::move(self->pendingLinkText)));
+    }
+    return;
+  }
+  if (self->headingDepth > 0 && --self->headingDepth == 0) {
+    self->sections.push_back(
+        BookNavSection{trimmed(std::move(self->pendingHeadingText)), static_cast<int>(self->links.size())});
+  }
+}
+
+void XMLCALL onText(void* userData, const XML_Char* text, const int length) {
+  auto* self = static_cast<State*>(userData);
+  if (self->linkDepth > 0) {
+    appendCapped(self->pendingLinkText, self->linkTextCapped, text, length);
+  } else if (self->headingDepth > 0) {
+    appendCapped(self->pendingHeadingText, self->headingTextCapped, text, length);
   }
 }
 
 }  // namespace
 
-Scanner::Scanner() {
+Scanner::Scanner(const bool collectText) {
   auto* state = new (std::nothrow) State();
   if (!state) return;
+  state->collectText = collectText;
   state->links.reserve(MAX_LINKS_PER_PAGE);
+  if (collectText) state->labels.reserve(MAX_LINKS_PER_PAGE);
 
   XML_Parser parser = XML_ParserCreate(nullptr);
   if (!parser) {
@@ -46,7 +134,8 @@ Scanner::Scanner() {
     return;
   }
   XML_SetUserData(parser, state);
-  XML_SetStartElementHandler(parser, onStart);
+  XML_SetElementHandler(parser, onStart, onEnd);
+  if (collectText) XML_SetCharacterDataHandler(parser, onText);
 
   parser_ = parser;
   state_ = state;
@@ -71,6 +160,16 @@ bool Scanner::feed(const char* chunk, const size_t length, const bool isFinal) {
 std::vector<std::string> Scanner::take() {
   if (!state_ || failed_) return {};
   return std::move(static_cast<State*>(state_)->links);
+}
+
+BookNavPage Scanner::takeBookNav() {
+  if (!state_ || failed_) return {};
+  auto* state = static_cast<State*>(state_);
+  BookNavPage page;
+  page.targets = std::move(state->links);
+  page.labels = std::move(state->labels);
+  page.sections = std::move(state->sections);
+  return page;
 }
 
 std::vector<std::string> scan(const char* xhtml, const size_t length) {

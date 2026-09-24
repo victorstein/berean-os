@@ -2,11 +2,12 @@
 #include <Epub.h>
 #include <Epub/VerseAnchors.h>
 
+#include <atomic>
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
+#include "BookGridLayout.h"
 #include "NumberGridLayout.h"
 #include "activities/UiListActivity.h"
 
@@ -18,9 +19,10 @@
 // would keep three activities and three row-buffer sets resident and would
 // hand-propagate the verse result up two intermediate handlers.
 //
-// The book level is a vertical list (book names are long and variable width);
-// the chapter and verse levels are paged number grids, so a high reference costs
-// pages instead of screens. Tap or Confirm a chapter to list its verses.
+// Every level is a paged grid. The book level shows the publication's own
+// abbreviations from biblebooknav.xhtml, one page per testament heading; the
+// chapter and verse levels are number grids, so a high reference costs pages
+// instead of screens. Tap or Confirm a chapter to list its verses.
 class BibleNavigationActivity final : public UiListActivity {
  public:
   BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::shared_ptr<Epub>& epub);
@@ -35,10 +37,10 @@ class BibleNavigationActivity final : public UiListActivity {
   // across the shipped publications is "El Cantar de los Cantares" at 25 B, and
   // Cyrillic/Greek renderings of the same books run to ~42 B.
   static constexpr int BOOK_NAME_BYTES = 48;
-  // Matches EpubReaderChapterSelectionActivity: only the rows around the
-  // viewport are materialized, and refreshing the window batch-prewarms its
-  // fallback glyphs so repaints inside it stay RAM-only.
-  static constexpr int ROW_WINDOW = 24;
+  // The publication's abbreviation for each book, cell labels at the book level.
+  static constexpr int BOOK_ABBREV_BYTES = 16;
+  // Room for a full book name, a space and a chapter number.
+  static constexpr int HEADER_TITLE_BYTES = BOOK_NAME_BYTES + 8;
   static constexpr int MAX_GRID_CELLS = NumberGrid::MAX_CELLS;
   // "176" plus its NUL: no chapter or verse number reaches four digits.
   static constexpr int CELL_LABEL_BYTES = 4;
@@ -55,6 +57,24 @@ class BibleNavigationActivity final : public UiListActivity {
   // chapter-nav page; their row points straight at the chapter spine item.
   bool bookIsDirect[MAX_BOOKS] = {};
   int bookCount = 0;
+  char bookAbbrev[MAX_BOOKS][BOOK_ABBREV_BYTES] = {};
+  char sectionTitle[BookGrid::MAX_SECTIONS][BOOK_NAME_BYTES] = {};
+  int sectionStart[BookGrid::MAX_SECTIONS] = {};
+  int sectionCount = 0;
+  // Written by the render task only when its inputs change; the loop task
+  // reads it under RenderLock to page and to step by a row.
+  BookGrid::Layout bookLayout{};
+  int bookLayoutWidth = 0;
+  int bookLayoutHeight = 0;
+  int bookLayoutBooks = 0;
+  uint8_t bookLayoutGeneration = 0;
+  // Bumped as loadBooks() finishes. loadBooks() runs on the loop task after
+  // the first render is already requested, and holding RenderLock across its
+  // SD reads is not an option, so a render can catch it halfway; keying the
+  // layout cache on this rebuilds anything built from partial data. Atomic so
+  // the bump is ordered after the book data it publishes.
+  std::atomic<uint8_t> booksLoadedGeneration{0};
+  char headerTitle[HEADER_TITLE_BYTES] = {};
   int selectedBook = -1;
 
   int16_t chapterSpine[MAX_CHAPTERS] = {};
@@ -67,30 +87,43 @@ class BibleNavigationActivity final : public UiListActivity {
   std::vector<VerseAnchors::VerseAnchor> verseAnchors;
   int verseSpine = -1;
 
-  // Book level only: the row window the vertical list draws from.
-  std::string windowLabels[ROW_WINDOW];
-  freeink::ui::ListItem windowItems[ROW_WINDOW];
-  int windowStart = -1;
-  int windowCount = 0;
-  void refreshRowWindow(int start);
-
-  // Grid levels only. `grid` carries the last grid build's geometry, which the
-  // loop task reads to page and to step the selection by a row.
+  // `grid` carries the last number-grid build's geometry, which the loop task
+  // reads to page and to step the selection by a row.
   freeink::ui::KeyGridKey cells[MAX_GRID_CELLS] = {};
   char cellLabels[MAX_GRID_CELLS][CELL_LABEL_BYTES] = {};
   NumberGrid::Geometry grid{};
-  bool isGridLevel() const { return level != Level::Book; }
-  void buildNumberGrid(UiScreen& screen);
-  // Move the selection and bring its page with it. The base moveSelectionTo
-  // pulls a sliding row window instead, which would leave nav.top off a page
-  // boundary.
-  void moveGridSelection(int index);
+  void buildGrid(UiScreen& screen);
+  // Page arithmetic that differs by level: the book level pages by section
+  // (bookLayout), the number levels by NumberGrid's uniform pages.
+  int gridPageCount() const;
+  int gridPageOf(int index) const;
+  int gridPageFirst(int page) const;
+  int gridCellsPerPage() const;
+  const char* cellLabel(int row, int cell);
+  // Grid top inset: the book level adds a section sub-header below the title.
+  int subHeaderHeight() const;
+  void rebuildBookLayout(int width, int height);
+  // The selection moves below always bring their page with them. The base
+  // moveSelectionTo pulls a sliding row window instead, which would leave
+  // nav.top off a page boundary.
+  //
+  // The page `delta` pages away, optionally wrapping at either end.
+  void moveGridPage(int delta, bool wrap);
+  // One row down (direction > 0) or up, keeping the column across a page.
+  void moveGridRow(int direction);
+  // Held-button paging at the number levels: ButtonNavigator's wrapping pages,
+  // or single cells when everything fits on one page.
+  void moveNumberPage(int direction);
+  // Caller holds RenderLock: renderingMutex is not re-entrant, so nothing
+  // called from here may lock again.
+  void placeSelectionLocked(int index);
+  int lastSelectableIndex() const;
 
   bool loadBooks();
   bool loadChapters(int bookIndex);
   bool loadVerses(int spineIndex);
-  // Enter `next`, resetting the row window and placing the selection on
-  // `selected` (clamped into that level's rows).
+  // Enter `next`, placing the selection on `selected` (clamped into that
+  // level's rows) and its page in view.
   void enterLevel(Level next, int selected);
   void openVerseList(int spineIndex, int chapterRow);
   void finishWith(int spineIndex, std::optional<uint32_t> offsetJump);
@@ -101,10 +134,14 @@ class BibleNavigationActivity final : public UiListActivity {
   void activateIndex(int index) override;
   // Swipes page the grid by a whole page; the base scrolls by rows.
   bool handleCustomInput() override;
-  // Grid levels step the selection by a row (a column count) and page on a
-  // held button; the base steps by one row either way.
+  // Every level steps the selection by a grid row and pages on a held button;
+  // the base steps by one list row either way.
   void navigateButtons() override;
   void onBackButton() override;
   // Header is drawn inside the safe area (not full-width like the base).
   void drawChrome() override;
+  // Also paints the book level's section sub-header. The base draws chrome
+  // before the build, so only here is this render's bookLayout guaranteed
+  // current -- on the very first render drawChrome would see no layout at all.
+  void drawFooter() override;
 };

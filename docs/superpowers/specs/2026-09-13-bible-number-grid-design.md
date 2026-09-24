@@ -20,6 +20,8 @@ Two problems from reading on the device:
 
 - **Gridding the book list.** Book names are long and variable width; a grid would force hard
   truncation or abbreviations. It stays a vertical list.
+  *Superseded 2026-09-23 by `2026-09-23-bible-book-grid-design.md`: the publication's own
+  `biblebooknav.xhtml` supplies the abbreviations.*
 - **A general grid list component.** This wires the SDK's existing `keyGrid` into two screens; it
   does not add a reusable app-level grid abstraction.
 - **Changing how a chosen verse navigates.** `navigateTo` with `offsetJump` is untouched.
