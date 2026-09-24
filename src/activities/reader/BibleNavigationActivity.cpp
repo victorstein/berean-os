@@ -116,6 +116,7 @@ bool BibleNavigationActivity::loadBooks() {
     sectionStart[sectionCount] = section.firstLink;
     sectionCount++;
   }
+  booksLoadedGeneration.fetch_add(1, std::memory_order_release);
   return true;
 }
 
@@ -407,8 +408,11 @@ void BibleNavigationActivity::buildGrid(UiScreen& screen) {
   int pageFirst = 0;
   int pageCells = 0;
   if (level == Level::Book) {
-    if (bookLayout.pageCount == 0 || body.width != bookLayoutWidth || body.height != bookLayoutHeight) {
+    const uint8_t generation = booksLoadedGeneration.load(std::memory_order_acquire);
+    if (bookLayout.pageCount == 0 || body.width != bookLayoutWidth || body.height != bookLayoutHeight ||
+        bookCount != bookLayoutBooks || generation != bookLayoutGeneration) {
       rebuildBookLayout(body.width, body.height);
+      bookLayoutGeneration = generation;
     }
     if (bookLayout.pageCount == 0) return;
     rows = bookLayout.rows;
@@ -485,6 +489,7 @@ void BibleNavigationActivity::rebuildBookLayout(const int width, const int heigh
   bookLayout = BookGrid::layoutFor(bookCount, sectionStart, sectionCount, width, height, widestAbbrevPx);
   bookLayoutWidth = width;
   bookLayoutHeight = height;
+  bookLayoutBooks = bookCount;
   if (bookLayout.coveredBooks < bookCount) {
     LOG_ERR("BNV", "Book grid covers %d of %d books in a %dx%d rect", bookLayout.coveredBooks, bookCount, width,
             height);

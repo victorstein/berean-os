@@ -2,6 +2,7 @@
 #include <Epub.h>
 #include <Epub/VerseAnchors.h>
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -66,6 +67,14 @@ class BibleNavigationActivity final : public UiListActivity {
   BookGrid::Layout bookLayout{};
   int bookLayoutWidth = 0;
   int bookLayoutHeight = 0;
+  int bookLayoutBooks = 0;
+  uint8_t bookLayoutGeneration = 0;
+  // Bumped as loadBooks() finishes. loadBooks() runs on the loop task after
+  // the first render is already requested, and holding RenderLock across its
+  // SD reads is not an option, so a render can catch it halfway; keying the
+  // layout cache on this rebuilds anything built from partial data. Atomic so
+  // the bump is ordered after the book data it publishes.
+  std::atomic<uint8_t> booksLoadedGeneration{0};
   char headerTitle[HEADER_TITLE_BYTES] = {};
   int selectedBook = -1;
 
