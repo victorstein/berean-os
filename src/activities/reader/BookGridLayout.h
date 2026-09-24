@@ -109,4 +109,32 @@ inline int pageOf(const Layout& layout, const int book) {
   return 0;
 }
 
+// The book one row down (direction > 0) or up from `index`. Leaving a page
+// keeps the column, clamped to the books the destination page has; past the
+// first or last covered book the step stops there, like the number levels'
+// clamped row step.
+inline int stepRow(const Layout& layout, const int index, const int direction) {
+  if (layout.pageCount <= 0 || layout.cols <= 0 || layout.coveredBooks <= 0) return 0;
+  const int cols = layout.cols;
+  const int current = std::clamp(index, 0, layout.coveredBooks - 1);
+  const int pageIndex = pageOf(layout, current);
+  const Page& page = layout.pages[pageIndex];
+  const int offset = current - page.first;
+  const int column = offset % cols;
+  const int lastOffset = page.count - 1;
+
+  if (direction > 0) {
+    if (offset / cols < lastOffset / cols) return page.first + std::min(offset + cols, lastOffset);
+    if (pageIndex + 1 >= layout.pageCount) return layout.coveredBooks - 1;
+    const Page& next = layout.pages[pageIndex + 1];
+    return next.first + std::min(column, next.count - 1);
+  }
+
+  if (offset >= cols) return current - cols;
+  if (pageIndex == 0) return layout.pages[0].first;
+  const Page& previous = layout.pages[pageIndex - 1];
+  const int lastRowStart = (previous.count - 1) / cols * cols;
+  return previous.first + std::min(lastRowStart + column, previous.count - 1);
+}
+
 }  // namespace BookGrid

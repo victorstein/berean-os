@@ -61,12 +61,11 @@ class BibleNavigationActivity final : public UiListActivity {
   char sectionTitle[BookGrid::MAX_SECTIONS][BOOK_NAME_BYTES] = {};
   int sectionStart[BookGrid::MAX_SECTIONS] = {};
   int sectionCount = 0;
-  // Measured once in loadBooks(); the column count follows from it.
-  int widestAbbrevPx = 0;
-  // Written by each book-level build; the loop task pages and steps by it.
+  // Written by the render task only when its inputs change; the loop task
+  // reads it under RenderLock to page and to step by a row.
   BookGrid::Layout bookLayout{};
-  // Every render rebuilds the layout; a short one is logged once, not per repaint.
-  bool bookLayoutShortLogged = false;
+  int bookLayoutWidth = 0;
+  int bookLayoutHeight = 0;
   char headerTitle[HEADER_TITLE_BYTES] = {};
   int selectedBook = -1;
 
@@ -95,10 +94,22 @@ class BibleNavigationActivity final : public UiListActivity {
   const char* cellLabel(int row, int cell);
   // Grid top inset: the book level adds a section sub-header below the title.
   int subHeaderHeight() const;
-  // Move the selection and bring its page with it. The base moveSelectionTo
-  // pulls a sliding row window instead, which would leave nav.top off a page
-  // boundary.
-  void moveGridSelection(int index);
+  void rebuildBookLayout(int width, int height);
+  // The selection moves below always bring their page with them. The base
+  // moveSelectionTo pulls a sliding row window instead, which would leave
+  // nav.top off a page boundary.
+  //
+  // The page `delta` pages away, optionally wrapping at either end.
+  void moveGridPage(int delta, bool wrap);
+  // One row down (direction > 0) or up, keeping the column across a page.
+  void moveGridRow(int direction);
+  // Held-button paging at the number levels: ButtonNavigator's wrapping pages,
+  // or single cells when everything fits on one page.
+  void moveNumberPage(int direction);
+  // Caller holds RenderLock: renderingMutex is not re-entrant, so nothing
+  // called from here may lock again.
+  void placeSelectionLocked(int index);
+  int lastSelectableIndex() const;
 
   bool loadBooks();
   bool loadChapters(int bookIndex);
@@ -115,8 +126,8 @@ class BibleNavigationActivity final : public UiListActivity {
   void activateIndex(int index) override;
   // Swipes page the grid by a whole page; the base scrolls by rows.
   bool handleCustomInput() override;
-  // Grid levels step the selection by a row (a column count) and page on a
-  // held button; the base steps by one row either way.
+  // Every level steps the selection by a grid row and pages on a held button;
+  // the base steps by one list row either way.
   void navigateButtons() override;
   void onBackButton() override;
   // Header is drawn inside the safe area (not full-width like the base).

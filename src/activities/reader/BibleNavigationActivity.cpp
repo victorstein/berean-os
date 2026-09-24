@@ -100,11 +100,6 @@ bool BibleNavigationActivity::loadBooks() {
     copyTruncated(bookName[i], BOOK_NAME_BYTES, names[i]);
   }
 
-  const int bodyFont = uiScaleSpec().bodyFontId;
-  // Cell labels take the theme's bodyText, which is bold in some themes.
-  const auto labelStyle =
-      UITheme::getInstance().getMetrics().listTitleBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
-  widestAbbrevPx = 0;
   for (int i = 0; i < bookCount; i++) {
     const bool hasAbbrev = i < static_cast<int>(page.labels.size()) && !page.labels[i].empty();
     if (hasAbbrev) {
@@ -112,7 +107,6 @@ bool BibleNavigationActivity::loadBooks() {
     } else {
       copyTruncated(bookAbbrev[i], BOOK_ABBREV_BYTES, names[i]);
     }
-    widestAbbrevPx = std::max(widestAbbrevPx, renderer.getTextWidth(bodyFont, bookAbbrev[i], labelStyle));
   }
 
   sectionCount = 0;
@@ -218,7 +212,7 @@ void BibleNavigationActivity::enterLevel(const Level next, const int selected) {
     // pageRows() would treat a single cell as a whole viewport. One grid "row"
     // is one page; the first build corrects it once geometry is known.
     nav.visibleRows = gridCellsPerPage() > 0 ? gridCellsPerPage() : 1;
-    nav.top = gridPageFirst(gridPageOf(nav.selected));
+    placeSelectionLocked(nav.selected);
   }
   requestUpdate();
 }
@@ -273,50 +267,89 @@ void BibleNavigationActivity::activateIndex(const int index) {
   }
 }
 
-void BibleNavigationActivity::moveGridSelection(const int index) {
-  const int count = listCount();
-  if (count <= 0) return;
-  const int clamped = std::clamp(index, 0, count - 1);
+int BibleNavigationActivity::lastSelectableIndex() const {
+  // A layout that ran out of pages leaves trailing books with no page to show
+  // a selection on.
+  if (level == Level::Book) return std::min<int>(bookCount, bookLayout.coveredBooks) - 1;
+  return listCount() - 1;
+}
+
+void BibleNavigationActivity::placeSelectionLocked(const int index) {
+  const int last = lastSelectableIndex();
+  if (last < 0) return;
+  nav.selected = std::clamp(index, 0, last);
+  nav.top = gridPageFirst(gridPageOf(nav.selected));
+}
+
+void BibleNavigationActivity::moveGridPage(const int delta, const bool wrap) {
+  bool moved = false;
   {
-    // Same nav-vs-render race moveSelectionTo guards: the render task reads the
-    // selection and its page together mid-build.
+    // One lock around read and write: the render task rewrites the page
+    // arithmetic's inputs (bookLayout, grid) mid-build.
     RenderLock lock;
-    nav.selected = clamped;
-    nav.top = gridPageFirst(gridPageOf(clamped));
+    const int pages = gridPageCount();
+    if (pages > 0) {
+      int page = gridPageOf(nav.top) + delta;
+      if (wrap) page = ((page % pages) + pages) % pages;
+      if (page >= 0 && page < pages) {
+        placeSelectionLocked(gridPageFirst(page));
+        moved = true;
+      }
+    }
+  }
+  if (moved) requestUpdate();
+}
+
+void BibleNavigationActivity::moveGridRow(const int direction) {
+  {
+    RenderLock lock;
+    if (level == Level::Book) {
+      if (bookLayout.pageCount <= 0) return;
+      placeSelectionLocked(BookGrid::stepRow(bookLayout, nav.selected, direction));
+    } else {
+      if (!grid.valid()) return;
+      placeSelectionLocked(nav.selected + direction * grid.cols);
+    }
+  }
+  requestUpdate();
+}
+
+void BibleNavigationActivity::moveNumberPage(const int direction) {
+  {
+    RenderLock lock;
+    const int count = listCount();
+    const int cellsPerPage = grid.cellsPerPage();
+    if (cellsPerPage <= 0) return;
+    placeSelectionLocked(direction > 0 ? ButtonNavigator::nextPageIndex(nav.selected, count, cellsPerPage)
+                                       : ButtonNavigator::previousPageIndex(nav.selected, count, cellsPerPage));
   }
   requestUpdate();
 }
 
 bool BibleNavigationActivity::handleCustomInput() {
-  if (gridCellsPerPage() <= 0) return false;
-
   const auto swipe = mappedInput.wasSwipe();
   if (swipe != MappedInputManager::SwipeDir::Up && swipe != MappedInputManager::SwipeDir::Down) return false;
 
-  const int page = gridPageOf(nav.top);
-  const int next = swipe == MappedInputManager::SwipeDir::Up ? page + 1 : page - 1;
   // Consumed either way: the base loop would otherwise scroll the viewport a
   // single cell off its page boundary.
-  if (next >= 0 && next < gridPageCount()) moveGridSelection(gridPageFirst(next));
+  moveGridPage(swipe == MappedInputManager::SwipeDir::Up ? 1 : -1, /*wrap=*/false);
   return true;
 }
 
 void BibleNavigationActivity::navigateButtons() {
-  const int cols = level == Level::Book ? bookLayout.cols : grid.cols;
-  if (cols <= 0) {
-    UiListActivity::navigateButtons();
+  // Each handler takes RenderLock only when its button fires. Locking here would
+  // block every loop pass for as long as a render (panel refresh included) runs.
+  buttonNavigator.onNextRelease([this] { moveGridRow(1); });
+  buttonNavigator.onPreviousRelease([this] { moveGridRow(-1); });
+  if (level == Level::Book) {
+    // Held buttons wrap from the last testament to the first and back, as the
+    // number levels' held paging does.
+    buttonNavigator.onNextContinuous([this] { moveGridPage(1, /*wrap=*/true); });
+    buttonNavigator.onPreviousContinuous([this] { moveGridPage(-1, /*wrap=*/true); });
     return;
   }
-  buttonNavigator.onNextRelease([this, cols] { moveGridSelection(nav.selected + cols); });
-  buttonNavigator.onPreviousRelease([this, cols] { moveGridSelection(nav.selected - cols); });
-  buttonNavigator.onNextContinuous([this] {
-    const int page = gridPageOf(nav.selected);
-    moveGridSelection(page + 1 < gridPageCount() ? gridPageFirst(page + 1) : listCount() - 1);
-  });
-  buttonNavigator.onPreviousContinuous([this] {
-    const int page = gridPageOf(nav.selected);
-    moveGridSelection(page > 0 ? gridPageFirst(page - 1) : 0);
-  });
+  buttonNavigator.onNextContinuous([this] { moveNumberPage(1); });
+  buttonNavigator.onPreviousContinuous([this] { moveNumberPage(-1); });
 }
 
 void BibleNavigationActivity::cancel() {
@@ -374,11 +407,8 @@ void BibleNavigationActivity::buildGrid(UiScreen& screen) {
   int pageFirst = 0;
   int pageCells = 0;
   if (level == Level::Book) {
-    bookLayout = BookGrid::layoutFor(bookCount, sectionStart, sectionCount, body.width, body.height, widestAbbrevPx);
-    if (bookLayout.coveredBooks < bookCount && !bookLayoutShortLogged) {
-      LOG_ERR("BNV", "Book grid covers %d of %d books in a %dx%d rect", bookLayout.coveredBooks, bookCount, body.width,
-              body.height);
-      bookLayoutShortLogged = true;
+    if (bookLayout.pageCount == 0 || body.width != bookLayoutWidth || body.height != bookLayoutHeight) {
+      rebuildBookLayout(body.width, body.height);
     }
     if (bookLayout.pageCount == 0) return;
     rows = bookLayout.rows;
@@ -390,13 +420,16 @@ void BibleNavigationActivity::buildGrid(UiScreen& screen) {
     grid = NumberGrid::geometryFor(body.width, body.height);
     rows = grid.rows;
     cols = grid.cols;
+    // A geometry change re-pages around the selection rather than leaving
+    // nav.top on a page the new geometry no longer has.
+    if (nav.visibleRows != grid.cellsPerPage()) {
+      nav.visibleRows = grid.cellsPerPage();
+      nav.top = NumberGrid::pageStartFor(nav.selected, count, grid.cellsPerPage());
+    }
     pageFirst = NumberGrid::pageStartFor(nav.top, count, grid.cellsPerPage());
     pageCells = NumberGrid::cellsOnPage(count, pageFirst, grid.cellsPerPage());
   }
   const int cellsPerPage = rows * cols;
-
-  // A geometry change re-pages around the selection rather than leaving
-  // nav.top on a page the new geometry no longer has.
   nav.visibleRows = cellsPerPage;
   nav.top = pageFirst;
 
@@ -435,6 +468,27 @@ void BibleNavigationActivity::buildGrid(UiScreen& screen) {
   props.labelText.align = fui::TextAlign::Center;
   props.keyStyles = screen.theme().key;
   fui::keyGrid(screen.frame(), body, props);
+}
+
+void BibleNavigationActivity::rebuildBookLayout(const int width, const int height) {
+  // Measured here on the render task, where the fonts are in use anyway, and
+  // only when the rect changes. Cell labels take the theme's bodyText, which
+  // is bold in some themes.
+  const int bodyFont = uiScaleSpec().bodyFontId;
+  const auto labelStyle =
+      UITheme::getInstance().getMetrics().listTitleBold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+  int widestAbbrevPx = 0;
+  for (int i = 0; i < bookCount; i++) {
+    widestAbbrevPx = std::max(widestAbbrevPx, renderer.getTextWidth(bodyFont, bookAbbrev[i], labelStyle));
+  }
+
+  bookLayout = BookGrid::layoutFor(bookCount, sectionStart, sectionCount, width, height, widestAbbrevPx);
+  bookLayoutWidth = width;
+  bookLayoutHeight = height;
+  if (bookLayout.coveredBooks < bookCount) {
+    LOG_ERR("BNV", "Book grid covers %d of %d books in a %dx%d rect", bookLayout.coveredBooks, bookCount, width,
+            height);
+  }
 }
 
 const char* BibleNavigationActivity::cellLabel(const int row, const int cell) {

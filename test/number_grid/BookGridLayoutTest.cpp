@@ -136,3 +136,69 @@ TEST(BookGridPages, NoBooksMeansNoPages) {
   const auto layout = BookGrid::layoutFor(0, nullptr, 0, PORTRAIT_W, PORTRAIT_H, SPANISH_WIDEST_LABEL);
   EXPECT_EQ(layout.pageCount, 0);
 }
+
+namespace {
+
+// 5 columns: Hebrew page 0..38 (last row 35..38), Greek page 39..65 (last row 64..65).
+BookGrid::Layout nwtLayout() {
+  return BookGrid::layoutFor(66, NWT_SECTION_STARTS, 2, PORTRAIT_W, PORTRAIT_H, SPANISH_WIDEST_LABEL);
+}
+
+constexpr int DOWN = 1;
+constexpr int UP = -1;
+
+}  // namespace
+
+TEST(BookGridStepRow, StepsByAColumnCountWithinAPage) {
+  const auto layout = nwtLayout();
+  ASSERT_EQ(layout.cols, 5);
+
+  EXPECT_EQ(BookGrid::stepRow(layout, 2, DOWN), 7);
+  EXPECT_EQ(BookGrid::stepRow(layout, 7, UP), 2);
+  EXPECT_EQ(BookGrid::stepRow(layout, 41, DOWN), 46);
+}
+
+TEST(BookGridStepRow, DownIntoAShortLastRowClampsToThePagesLastBook) {
+  // 34 is column 4 of row 6; row 7 stops at column 3, and stepping by the
+  // column count would leave the Hebrew page for Matthew.
+  EXPECT_EQ(BookGrid::stepRow(nwtLayout(), 34, DOWN), 38);
+}
+
+TEST(BookGridStepRow, DownOffAPageKeepsTheColumnOnTheNextPage) {
+  const auto layout = nwtLayout();
+
+  EXPECT_EQ(BookGrid::stepRow(layout, 35, DOWN), 39);
+  EXPECT_EQ(BookGrid::stepRow(layout, 37, DOWN), 41);
+  EXPECT_EQ(BookGrid::stepRow(layout, 38, DOWN), 42);
+}
+
+TEST(BookGridStepRow, UpOffAPageKeepsTheColumnOnThePreviousPagesLastRow) {
+  const auto layout = nwtLayout();
+
+  EXPECT_EQ(BookGrid::stepRow(layout, 39, UP), 35);
+  EXPECT_EQ(BookGrid::stepRow(layout, 42, UP), 38);
+  // Row 7 of the Hebrew page has no column 4.
+  EXPECT_EQ(BookGrid::stepRow(layout, 43, UP), 38);
+}
+
+TEST(BookGridStepRow, StopsAtEitherEndWithoutWrapping) {
+  const auto layout = nwtLayout();
+
+  EXPECT_EQ(BookGrid::stepRow(layout, 3, UP), 0);
+  EXPECT_EQ(BookGrid::stepRow(layout, 62, DOWN), 65);
+  EXPECT_EQ(BookGrid::stepRow(layout, 64, DOWN), 65);
+  EXPECT_EQ(BookGrid::stepRow(layout, 65, DOWN), 65);
+}
+
+TEST(BookGridStepRow, NeverLeavesTheCoveredBooks) {
+  const auto layout = BookGrid::layoutFor(66, nullptr, 0, PORTRAIT_W, 60, SPANISH_WIDEST_LABEL);
+  ASSERT_LT(layout.coveredBooks, 66);
+
+  const int lastCovered = layout.coveredBooks - 1;
+  EXPECT_EQ(BookGrid::stepRow(layout, lastCovered, DOWN), lastCovered);
+  EXPECT_EQ(BookGrid::stepRow(layout, 65, UP), lastCovered - layout.cols);
+}
+
+TEST(BookGridStepRow, AnEmptyLayoutStaysOnTheFirstBook) {
+  EXPECT_EQ(BookGrid::stepRow(BookGrid::Layout{}, 5, DOWN), 0);
+}
