@@ -129,6 +129,14 @@ class BibleNavigationActivity final : public UiListActivity {
   void finishWith(int spineIndex, std::optional<uint32_t> offsetJump);
   void cancel();
 
+  static constexpr freeink::ui::ActionId ACTION_SEARCH = ACTION_USER;
+  static void onSearchEvent(const freeink::ui::ActionEvent& event, void* user);
+  // Search is offered on the book level only, as a button in a band below the
+  // grid: the theme's header keeps its right side for the battery, and the
+  // section band is painted after the app, over anything tappable in it.
+  void buildSearchButton(UiScreen& screen);
+  void openSearch();
+
   int listCount() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;

@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "BibleSearchActivity.h"
 #include "MappedInputManager.h"
 #include "SpineHtmlStream.h"
 #include "components/UIScale.h"
@@ -46,6 +47,7 @@ BibleNavigationActivity::BibleNavigationActivity(GfxRenderer& renderer, MappedIn
 
 void BibleNavigationActivity::onEnter() {
   UiListActivity::onEnter();
+  app.on(ACTION_SEARCH, &BibleNavigationActivity::onSearchEvent, this);
 
   // The reader underneath pins its page-render glyph arenas while this overlay
   // is up; freeing them gives the book labels' fallback glyphs, which
@@ -356,6 +358,24 @@ void BibleNavigationActivity::navigateButtons() {
   buttonNavigator.onPreviousContinuous([this] { moveNumberPage(-1); });
 }
 
+void BibleNavigationActivity::onSearchEvent(const fui::ActionEvent&, void* user) {
+  auto* self = static_cast<BibleNavigationActivity*>(user);
+  if (self->level != Level::Book) return;
+  self->app.clearTapFlash();
+  self->openSearch();
+}
+
+void BibleNavigationActivity::openSearch() {
+  const BibleBookNames names{bookName[0], BOOK_NAME_BYTES, bookCount};
+  startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub, names),
+                         [this](const ActivityResult& result) {
+                           if (result.isCancelled) return;
+                           const auto* verse = std::get_if<ChapterResult>(&result.data);
+                           if (!verse) return;
+                           finishWith(verse->spineIndex, verse->offsetJump);
+                         });
+}
+
 void BibleNavigationActivity::cancel() {
   ActivityResult result;
   result.isCancelled = true;
@@ -399,7 +419,21 @@ void BibleNavigationActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
+  if (level == Level::Book) buildSearchButton(screen);
   buildGrid(screen);
+}
+
+void BibleNavigationActivity::buildSearchButton(UiScreen& screen) {
+  const auto& theme = screen.theme();
+  // The grid lays itself out in what is left, so its cache key (the body rect)
+  // already accounts for the band.
+  const fui::Rect band = screen.takeBottom(theme.rowHeight, theme.spaceMd);
+  const auto width = static_cast<int16_t>(band.width / 2);
+  fui::ButtonProps search;
+  search.label = tr(STR_SEARCH_VERSES);
+  search.action = ACTION_SEARCH;
+  screen.button(search,
+                fui::Rect{static_cast<int16_t>(band.x + (band.width - width) / 2), band.y, width, theme.rowHeight});
 }
 
 void BibleNavigationActivity::buildGrid(UiScreen& screen) {
