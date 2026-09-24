@@ -110,11 +110,14 @@ bool BibleNavigationActivity::loadBooks() {
   }
 
   sectionCount = 0;
-  for (const auto& section : page.sections) {
-    if (sectionCount == BookGrid::MAX_SECTIONS) break;
-    copyTruncated(sectionTitle[sectionCount], BOOK_NAME_BYTES, section.title);
-    sectionStart[sectionCount] = section.firstLink;
-    sectionCount++;
+  // More headings than a layout pages by is a page we do not understand; the
+  // grid then pages continuously rather than by the first few headings.
+  if (page.sections.size() <= static_cast<size_t>(BookGrid::MAX_SECTIONS)) {
+    for (const auto& section : page.sections) {
+      copyTruncated(sectionTitle[sectionCount], BOOK_NAME_BYTES, section.title);
+      sectionStart[sectionCount] = section.firstLink;
+      sectionCount++;
+    }
   }
   booksLoadedGeneration.fetch_add(1, std::memory_order_release);
   return true;

@@ -53,7 +53,7 @@ Rejected alternatives:
   path (`loadChapters`, `dropBookNavLinks`) is untouched. The new data comes from a separate
   accessor, `takeBookNav()`. A failed feed still empties everything.
 - **Bounds:** link and heading text is capped at 47 bytes (`MAX_TEXT_BYTES`), cut on a UTF-8
-  boundary, so a malformed page cannot grow memory without limit. The link count stays capped at
+  boundary, so a malformed page cannot grow memory without limit. The link count is capped at
   `MAX_LINKS_PER_PAGE`.
 
 ### 2. Book level becomes a grid
@@ -103,7 +103,7 @@ Rejected alternatives:
 | Condition | Behaviour |
 |---|---|
 | A link has no text | That cell shows the full TOC name, truncated UTF-8-safely to 15 bytes (not to the cell's pixel width); its measured width feeds the column choice |
-| No headings | The grid pages continuously through all books, with no band and no page indicator |
+| No headings, or more than four | The grid pages continuously through all books, with no band and no page indicator |
 | Headings present but unusable (not starting at book 0, not increasing, or out of range) | The grid pages continuously; the band shows an empty title and the page indicator |
 | The books need more than 12 pages | The layout stops at 12 pages; the shortfall is logged and selection stays on the covered books |
 | Book-nav page unreadable | The existing `loadBooks()` error path, unchanged |
@@ -122,8 +122,8 @@ Rejected alternatives:
   is now a grid. It is removed along with `refreshRowWindow`, and `cells[48]` is reused.
 - **Net:** roughly zero, and fewer small heap allocations than the std::string window.
 - **Scanner:** only the book-nav scan collects text and reserves its labels. The chapter-nav
-  scans in `loadChapters()` and `UnitIndexCache` cost what they did before. There is no format
-  change and no cache change.
+  scans in `loadChapters()` and `UnitIndexCache` cost what they did before, apart from a ~80 B
+  larger scanner state. There is no format change and no cache change.
 
 ### 6. Testing
 
