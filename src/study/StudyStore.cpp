@@ -76,6 +76,11 @@ void StudyStore::closePublication() {
   // knowledge that a file may hold data we could not read, not of one book.
 }
 
+std::vector<uint16_t> StudyStore::spineIndicesForBook(const uint8_t book) {
+  if (pubKey_ != study::BIBLE_PUB_KEY || !units_ || !units_->ready()) return {};
+  return units_->spineIndicesForBook(book);
+}
+
 bool StudyStore::save() {
   if (saveDisabled_) {
     LOG_ERR(MODULE, "Refusing to save: a store failed to load and may still hold data");

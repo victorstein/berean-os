@@ -77,6 +77,12 @@ class StudyStore {
   // DocumentOffset target's document is gone or no longer the kind it was.
   // Same cost as locate(): a user action, never the page-turn path.
   std::optional<Location> locateLink(size_t passageIndex, size_t linkIndex);
+
+  // Spine indices of a canonical Bible book, in spine order, from the unit
+  // index's book map. Empty unless the open publication is the Bible. The first
+  // call may build that map, which streams the 67 navigation pages.
+  std::vector<uint16_t> spineIndicesForBook(uint8_t book);
+
   const std::vector<study::TaggedPassage>& passages() const { return passages_.passages(); }
   const std::string& pubKey() const { return pubKey_; }
   bool isOpen() const { return units_ != nullptr; }

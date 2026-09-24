@@ -373,3 +373,47 @@ Any key or value this firmware would not write — a book outside 1-66, a bit pa
 the book's last chapter (English versification, 1,189 chapters), non-hex, an
 odd length — rejects the whole file. Every chapter read serialises to under
 1 KB; the save budget is 4,096 bytes.
+
+## `/.berean/search/bible.idx`
+
+The Bible verse search index. Owned by `lib/BibleSearch/BibleSearch/IndexFormat.{h,cpp}`
+(layout), `IndexBuilder`/`IndexReader` (write and read), and `src/study/BibleSearchIndexer.cpp`
+/ `BibleSearchStore.cpp` (build and storage). Derived data: deleting it only costs a rebuild,
+which the search screen offers. A build in progress checkpoints to `bible.partial` in the same
+directory, in the same format with the complete flag clear, every 300 documents and on cancel.
+Both files are written as `<path>.tmp` and then renamed into place. A checkpoint for another
+Bible (a fingerprint mismatch), or with the complete flag set, is refused as a resume point.
+
+### Version 1
+
+Little-endian throughout; every field is copied with `memcpy`, never read unaligned.
+
+| Section | Size | Content |
+|---|---|---|
+| Header | 48 B | see below |
+| Verse table | `verseCount` × 9 B | canonical order: `book` u8 (1-66), `chapter` u8, `verse` u8, `spine` u16, `offset` u32 (VerseAnchors' visible-codepoint offset in the spine document) |
+| Term table | `termCount` × 10 B | sorted by folded bytes (`memcmp`): `stringOffset` u32, `postingsOffset` u32, `postingCount` u16 |
+| Term strings | variable | folded UTF-8, each NUL-terminated, in term-table order |
+| Postings | variable | per term, in term-table order: ascending global verse numbers as LEB128 deltas (at most 3 bytes each), the first taken from 0 |
+
+Header:
+
+| Offset | Field |
+|---|---|
+| 0 | magic `BSIX` |
+| 4 | `formatVersion` u16 |
+| 6 | `flags` u16 (bit 0 = complete) |
+| 8 | `fingerprint` u64 — FNV-1a over the EPUB size, spine count, verse-document hrefs and their count |
+| 16 | `verseCount` u32 (at most 65,535) |
+| 20 | `termCount` u32 |
+| 24 | `docsDone` u32 — spine documents indexed; meaningful in a checkpoint |
+| 28 | `verseTableOffset` u32 |
+| 32 | `termTableOffset` u32 |
+| 36 | `termStringsOffset` u32 |
+| 40 | `postingsOffset` u32 |
+| 44 | `fileSize` u32 — must equal the real file size |
+
+A newer `formatVersion` is refused, never reinterpreted; an older one, a size mismatch, or any
+offset or count outside the file makes it unreadable. A fingerprint mismatch makes it stale.
+Neither is overwritten until the user confirms a rebuild. The Spanish NWT indexes to 31,078
+verses, 23,568 terms and 1,469,729 bytes; the write budget is 8 MB.

@@ -81,8 +81,10 @@ currently unbudgeted.
   password, both of which the existing soft keyboard handles.
 - **JW Library interop.** The device is standalone and is the source of truth for
   its own study data. No third-party schema to track as it moves.
-- **On-device full-text search.** Search means the publication catalog, not
-  content.
+- **Full-text search beyond Bible verses.** Search means the publication
+  catalog and, since 2026-09-24, Bible verse text
+  (`2026-09-24-bible-verse-search-design.md`). Other publications, footnotes and
+  study notes stay out.
 - **Everything CrossPoint carries that isn't JW study:** the OPDS browser,
   KOSync, the dictionary activities, the TXT and XTC readers.
 
