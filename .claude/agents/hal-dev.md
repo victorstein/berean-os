@@ -33,7 +33,9 @@ belongs upstream, **stop and ask.**
 - `HalStorage.{h,cpp}` — the `Storage` singleton and `HalFile`.
 - `HalDisplay.{h,cpp}` — `RefreshMode` is FULL / HALF (~1720 ms) / FAST. There
   is no windowed black-and-white update. This unit's panel is SSD1677 or UC8179
-  by production batch; the UC8179 has no grayscale.
+  by production batch. Both drive 4-level grayscale: the SSD1677 through the
+  strip path, the UC8179 through the full-buffer path only
+  (`supportsStripGrayscale()` is false; `Uc8179Driver.h:82-94`).
 - `HalGPIO.{h,cpp}` — Left (GPIO0), Right (GPIO7), Power (GPIO3), and the GT911
   capacitive Home key (`hasHomeKey()`, `wasHomeKeyTapped()`,
   `wasHomeKeyLongPressed()`). There is no Back button and no Confirm button.

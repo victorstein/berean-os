@@ -22,7 +22,7 @@ different device and does not apply here.
 | MCU | ESP32-S3, dual core Xtensa LX7 |
 | RAM | ~380 KB-class internal SRAM, plus 8 MB PSRAM |
 | Flash | 16 MB; `app0`/`app1` 6,553,600 B each (`partitions.csv:4-5`) |
-| Display | 800×480 e-ink, SSD1677 or UC8179 by production batch; 1-bit, slow full refresh |
+| Display | 800×480 e-ink, SSD1677 or UC8179 by production batch; 1-bit B/W plus a 4-level grayscale pass for anti-aliasing and images; slow full refresh |
 | Framebuffer | 48,000 bytes (800 × 480 ÷ 8), **single buffer** |
 | Storage | SD card — books, caches, and all persisted study data |
 | Orientation | **Portrait only.** A fixed Left/Right button mapping and a device that turns over cannot both be true. |
