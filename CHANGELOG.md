@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/victorstein/berean-os/compare/v1.15.0...v1.16.0) (2026-09-24)
+
+
+### Features
+
+* open Bible search from the reader menu ([#96](https://github.com/victorstein/berean-os/issues/96)) ([bffef10](https://github.com/victorstein/berean-os/commit/bffef1039038adcddc3fad576f36f5d07ec654a6))
+
 ## [1.15.0](https://github.com/victorstein/berean-os/compare/v1.14.1...v1.15.0) (2026-09-24)
 
 
