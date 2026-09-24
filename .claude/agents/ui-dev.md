@@ -47,8 +47,9 @@ leaves the device with no way out of a screen, on hardware with no Back button.
 
 ## Constraints that bite here
 - **All user-facing text uses `tr(STR_*)`.** Logging may be hardcoded; UI never.
-- The panel is 1-bit on this unit — no grayscale, no anti-aliasing, and no
-  windowed black-and-white update. A full refresh is ~1.7 s. Design interactions
+- The panel is 1-bit B/W with a 4-level grayscale pass for text anti-aliasing
+  and images (`EpubReaderActivity.cpp:1561-1580` on the UC8179); UI chrome is
+  black and white, and there is no windowed black-and-white update. A full refresh is ~1.7 s. Design interactions
   around a small number of deterministic refreshes, not continuous feedback.
 - The reading screen is three tap zones: outer thirds page, centre opens the
   menu. That is the most-used gesture on the device; do not repurpose a bare tap.
