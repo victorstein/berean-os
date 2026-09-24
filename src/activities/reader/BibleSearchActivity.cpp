@@ -217,9 +217,9 @@ void BibleSearchActivity::openIndex() {
     openKeyboard();
     return;
   }
-  // open() reports only on bible.idx; a checkpoint beside a missing index is a
-  // build that will resume, which the prompt says.
-  if (status == Status::Missing) status = store.status(epub);
+  // open() reports only on bible.idx; a matching checkpoint beside it is a
+  // build that will resume, which the prompt and the starting frame say.
+  status = store.status(epub);
   showPrompt(status);
 }
 

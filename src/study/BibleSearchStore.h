@@ -61,9 +61,9 @@ class BibleSearchStore {
   // on to one copies it.
   const Documents* documents(const std::shared_ptr<Epub>& epub);
 
-  // Reads the index header only, and never writes. A missing index with a
-  // checkpoint for this Bible reports Incomplete, so the prompt can say the
-  // build will resume.
+  // Reads the index header only, and never writes. An index that is not Ok --
+  // missing, stale, unreadable or newer -- reports Incomplete when a checkpoint
+  // for this Bible exists, so the prompt can say the build will resume.
   Status status(const std::shared_ptr<Epub>& epub);
 
   // A reader with the term index cached, kept open until close(). Null unless
@@ -71,7 +71,6 @@ class BibleSearchStore {
   const BibleSearch::IndexReader* open(const std::shared_ptr<Epub>& epub, Status* statusOut = nullptr);
   // Frees the reader, its term cache and its file handle.
   void close();
-  bool isOpen() const { return reader_ && indexFile_.isOpen(); }
 
   // Streams one spine document through a VerseTextScanner. `malformed` tells a
   // document the scanner rejected from one that could not be read; running out

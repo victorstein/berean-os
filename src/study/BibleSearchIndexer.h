@@ -58,16 +58,12 @@ class BibleSearchIndexer {
   // retried -- or cancel() keeps the work as a checkpoint.
   bool finish();
 
-  bool running() const { return builder_ != nullptr; }
   bool allDocumentsIndexed() const { return totalDocs_ > 0 && docsDone_ >= totalDocs_; }
-  bool finished() const { return finished_; }
   uint32_t docsDone() const { return docsDone_; }
   uint32_t totalDocs() const { return totalDocs_; }
   // Canonical book (1-66) and chapter of the most recently indexed document.
   uint8_t currentBook() const { return currentBook_; }
   uint16_t currentChapter() const { return currentChapter_; }
-  // Documents that contributed no verses, such as markup the scanner rejected.
-  uint32_t skippedDocs() const { return skippedDocs_; }
   // True once the build cannot continue; the builder is gone.
   bool failed() const { return failure_ != Failure::None; }
   // Why the build failed, or why the last finish() did.

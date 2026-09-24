@@ -143,12 +143,15 @@ bool BibleSearchStore::resolveDocuments(const std::shared_ptr<Epub>& epub, const
 
   uint32_t count = 0;
   for (uint8_t book = 1; book <= BIBLE_BOOKS; book++) {
+    const uint32_t before = count;
     for (const uint16_t spine : STUDY.spineIndicesForBook(book)) {
       if (count >= capacity) break;
       scratchSpines[count] = spine;
       scratchBooks[count] = book;
       count++;
     }
+    // A book the map cannot resolve would silently be left out of the index.
+    if (count == before) LOG_ERR(MODULE, "Book %u resolves to no verse documents", book);
     resetTaskWatchdogIfSubscribed();
   }
   if (count == 0) {
@@ -201,12 +204,17 @@ BibleSearchStore::Status BibleSearchStore::status(const std::shared_ptr<Epub>& e
   if (!docs) return Status::Unreadable;
 
   BibleSearch::IndexReader reader(psramAllocator());
+  Status indexStatus = Status::Missing;
   if (Storage.exists(INDEX_PATH)) {
     HalFile file;
-    if (!Storage.openFileForRead(MODULE, INDEX_PATH, file)) return Status::Unreadable;
-    return reader.open(byteSourceFor(file), docs->fingerprint);
+    indexStatus = Storage.openFileForRead(MODULE, INDEX_PATH, file)
+                      ? reader.open(byteSourceFor(file), docs->fingerprint)
+                      : Status::Unreadable;
   }
+  if (indexStatus == Status::Ok) return indexStatus;
 
+  // Whatever is wrong with bible.idx, a build confirmed now resumes from a
+  // matching checkpoint, so that is what the prompt should say.
   if (Storage.exists(CHECKPOINT_PATH)) {
     HalFile file;
     if (Storage.openFileForRead(MODULE, CHECKPOINT_PATH, file) &&
@@ -214,7 +222,7 @@ BibleSearchStore::Status BibleSearchStore::status(const std::shared_ptr<Epub>& e
       return Status::Incomplete;
     }
   }
-  return Status::Missing;
+  return indexStatus;
 }
 
 const BibleSearch::IndexReader* BibleSearchStore::open(const std::shared_ptr<Epub>& epub, Status* statusOut) {

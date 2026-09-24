@@ -106,7 +106,11 @@ bool BibleSearchIndexer::resumeFromCheckpoint() {
     docsDone_ = done;
     lastCheckpointDocs_ = done;
     skippedDocs_ = countDocumentsWithoutVerses(done);
-    if (done > 0) currentBook_ = books_[done - 1];
+    BibleSearch::VerseEntry last;
+    if (builder_->verseCount() > 0 && builder_->verseAt(builder_->verseCount() - 1, last)) {
+      currentBook_ = last.book;
+      currentChapter_ = last.chapter;
+    }
     LOG_INF(MODULE, "Resuming at document %u of %u (%u verses, %u terms, %u skipped)", static_cast<unsigned>(done),
             static_cast<unsigned>(totalDocs_), static_cast<unsigned>(builder_->verseCount()),
             static_cast<unsigned>(builder_->termCount()), static_cast<unsigned>(skippedDocs_));

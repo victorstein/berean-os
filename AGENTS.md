@@ -38,6 +38,8 @@ and DMA-constrained.
 | Catalog index while Buscar is open (~217 KB) | Framebuffer (48 KB) |
 | Unit index pages being built or queried | Selection geometry, render hot path |
 | Download and inflate buffers | ISR state, anything `IRAM_ATTR` touches |
+| Bible search build (~2.9 MB, while building) | |
+| Search term index (~444 KB, while search is open) | |
 
 Internal SRAM is still a ~380 KB-class resource. Every rule below about stack
 size, heap fragmentation, `constexpr`, and string policy is about internal SRAM
@@ -107,9 +109,9 @@ All three were asserted and disproven during design:
 
 ## Scope
 
-In: the Bible as the centre of the device, the two weekly meeting publications,
-browsing and downloading from the jw.org catalog, tagging passages with global
-tags, and settings.
+In: the Bible as the centre of the device, Bible verse search, the two weekly
+meeting publications, browsing and downloading from the jw.org catalog, tagging
+passages with global tags, and settings.
 
 Out, deliberately: notes, `.jwlibrary` interop, full-text search beyond Bible verses, and the
 general-reader subsystems the fork removed.

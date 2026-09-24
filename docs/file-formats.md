@@ -380,7 +380,9 @@ The Bible verse search index. Owned by `lib/BibleSearch/BibleSearch/IndexFormat.
 (layout), `IndexBuilder`/`IndexReader` (write and read), and `src/study/BibleSearchIndexer.cpp`
 / `BibleSearchStore.cpp` (build and storage). Derived data: deleting it only costs a rebuild,
 which the search screen offers. A build in progress checkpoints to `bible.partial` in the same
-directory, in the same format with the complete flag clear.
+directory, in the same format with the complete flag clear, every 300 documents and on cancel.
+Both files are written as `<path>.tmp` and then renamed into place. A checkpoint for another
+Bible (a fingerprint mismatch), or with the complete flag set, is refused as a resume point.
 
 ### Version 1
 
