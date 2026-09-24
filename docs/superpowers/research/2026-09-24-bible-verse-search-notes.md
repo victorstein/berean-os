@@ -77,3 +77,49 @@ Measured over every spine document of `nwt_S.epub` that carries a verse marker:
   breaking the XML the tests depend on.
 - **Cross-check:** an independent Python extraction (`html.parser`) and the C++ scanner gave
   identical text for all 31,078 verses.
+
+## Task 3: index format, builder, reader, query
+
+### Measured on the whole NWT (host build from `nwt_S.epub`, spine order)
+
+- 66 books, 31,078 verses, 23,568 distinct folded terms.
+- `bible.idx` is **1,469,729 B**, larger than the spec's ~1 MB estimate and well inside the plan's
+  8 MB budget. `estimatedBytes()` matches the written size exactly.
+- Build memory from the injected allocator peaks at **2.88 MB**, within the spec's 2–3 MB. The
+  host build takes about 0.3 s, excluding inflate and SD time.
+- Ten queries (`amor paciente`, `senor`, `palomas`, `quiten mercado`, `pacien`, `de`,
+  `jehova pastor`, `juan`, `Dios amor`, `el`) return exactly what an independent Python
+  extraction returns. `amor paciente` finds 11 verses, including 1 Corinthians 13:4.
+- **Short prefixes are wide:** `co` spans 1,354 terms, `de` 1,298, `re` 1,196. A two-letter last
+  word therefore costs about one term-entry read plus one postings read per term, roughly 2,700
+  small SD reads on the device. Task 4 or Task 5 should measure this, and may want a minimum
+  prefix length or a cached term-table page.
+
+### Deviations
+
+- **The header carries `fileSize` (u32)**, which makes it 48 B. A file whose recorded size
+  disagrees with its real size is `Unreadable`, so truncation is detected without a checksum.
+- **`IndexFormat.cpp` exists** beside `IndexFormat.h`, with memcpy-based encode and decode
+  mirroring `lib/StudyStore/StudyStore/UnitIndexFormat.cpp`.
+- **The builder does not use `std::unordered_map<std::string, std::vector<uint16_t>>`.** It uses
+  an open-addressing hash of term ids, plus fixed-record pools drawn in 48–64 KB chunks from an
+  injected `BuildAllocator`. Postings are held already LEB128-encoded, in 16-byte blocks.
+  - No lib has a platform conditional, so a PSRAM-only std allocator would have been a new
+    mechanism. The firmware instead passes `heap_caps_malloc(MALLOC_CAP_SPIRAM)`, as
+    `CatalogIndexStore.cpp:46` does.
+  - Out of memory is a `false` return, as spec §7 needs, rather than an abort inside a std
+    container.
+  - It holds about 1.3 B per posting rather than 2.
+- **`addVerseText` accepts only the most recently added verse**, which is stricter than "verses
+  arrive in canonical order". Postings stay ascending, and de-duplication compares against each
+  term's last verse only. `appendToLastVerse` before any verse is a no-op.
+- **`loadCheckpoint` takes `const ByteSource&` and accepts only an `Incomplete` file** whose
+  fingerprint matches. A complete index, or a checkpoint for another Bible, is refused.
+- **Reader status order:** `Missing` (no source, or size 0), then `Unreadable` (short, or
+  foreign magic), then `TooNew`, then `Unreadable` (older version, or inconsistent offsets), then
+  `Stale`, then `Incomplete`. `Stale` and `Incomplete` leave the reader open.
+- **Additions to the reader:** `header()`, `termCount()` and `termString()`, which the
+  checkpoint loader and the tests need.
+- **`truncated` is also set when the prefix union was cut**, or when one prefixed term alone
+  has more than `PREFIX_CAP` verses, even if the final result is under `RESULT_CAP`: matches may
+  be missing. The union keeps its lowest 5,000 verses, so results stay in canonical order.
