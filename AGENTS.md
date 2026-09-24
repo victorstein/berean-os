@@ -5,8 +5,8 @@ A study firmware for the **Xteink X4 Pro**, hard-forked from `crosspoint-x4pro` 
 Workflow: `docs/contributing/development-workflow.md`.
 
 The Bible at the centre, the two weekly meeting publications, catalog browsing,
-and tagged passages with global tags. No notes, no JW Library interop, no
-on-device full-text search.
+and tagged passages with global tags. No notes, no JW Library interop, and
+no full-text search beyond Bible verses.
 
 ---
 
@@ -111,7 +111,7 @@ In: the Bible as the centre of the device, the two weekly meeting publications,
 browsing and downloading from the jw.org catalog, tagging passages with global
 tags, and settings.
 
-Out, deliberately: notes, `.jwlibrary` interop, on-device full-text search, and the
+Out, deliberately: notes, `.jwlibrary` interop, full-text search beyond Bible verses, and the
 general-reader subsystems the fork removed.
 
 `SCOPE.md` describes CrossPoint's product, not this one. It is kept for the
