@@ -6,23 +6,13 @@
 #include <string_view>
 #include <vector>
 
+#include "Allocator.h"
 #include "IndexFormat.h"
 #include "IndexReader.h"
 
 namespace BibleSearch {
 
 using ByteSink = bool (*)(void* ctx, const void* data, size_t length);
-
-// Where the builder's large blocks come from. The firmware passes a PSRAM
-// allocator: the build holds megabytes, and the ~4 KB threshold that routes
-// plain malloc to PSRAM is a build setting, not a guarantee. The default is
-// malloc/free, for the host.
-struct BuildAllocator {
-  void* (*allocate)(size_t bytes);
-  void (*release)(void* block);
-};
-
-BuildAllocator defaultBuildAllocator();
 
 // Fixed-size records in chunks from a BuildAllocator, so the build is a few
 // hundred large blocks rather than tens of thousands of small ones, and an
@@ -73,6 +63,10 @@ class IndexBuilder {
   bool addVerseText(uint32_t verseNumber, std::string_view rawText);
   // Appends continuation text to the most recently added verse.
   bool appendToLastVerse(std::string_view rawText);
+
+  // Writes are batched through a SINK_BUFFER_BYTES block from the allocator,
+  // so an SD sink sees a few hundred sector-sized writes, not one per record.
+  static constexpr size_t SINK_BUFFER_BYTES = 4096;
 
   bool write(ByteSink sink, void* ctx, uint64_t fingerprint) const;
   // The same format with the complete flag clear and docsDone set.

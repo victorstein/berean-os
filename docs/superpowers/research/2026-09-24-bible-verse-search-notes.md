@@ -47,7 +47,8 @@ Measured over every spine document of `nwt_S.epub` that carries a verse marker:
 - **Headings inside a chapter:** `<p class="pN ss">` holds the Hebrew acrostic letters (Psalms 9,
   10, 25, 34, 37, 111, 112, 119 and 145, Proverbs 31, Lamentations 1-4), sometimes in the middle
   of a verse (Psalm 111:1). It also holds the Psalms book divisions ("(Salmos 42-72)") and the
-  musical note closing Habakkuk 3. Malachi 4 ends with an
+  musical note closing Habakkuk 3 ("Al director; para mis instrumentos de cuerda.", after 3:19),
+  which is deliberately unsearchable, like the superscriptions. Malachi 4 ends with an
   editorial note, `<p class="pN sd">` ("Aquí termina la traducción de las Escrituras
   Hebreoarameas…"), after 4:6.
 - **16 verses are empty**, for example Mark 9:44 and 9:46. The NWT omits them and keeps only the
@@ -90,10 +91,9 @@ Measured over every spine document of `nwt_S.epub` that carries a verse marker:
 - Ten queries (`amor paciente`, `senor`, `palomas`, `quiten mercado`, `pacien`, `de`,
   `jehova pastor`, `juan`, `Dios amor`, `el`) return exactly what an independent Python
   extraction returns. `amor paciente` finds 11 verses, including 1 Corinthians 13:4.
-- **Short prefixes are wide:** `co` spans 1,354 terms, `de` 1,298, `re` 1,196. A two-letter last
-  word therefore costs about one term-entry read plus one postings read per term, roughly 2,700
-  small SD reads on the device. Task 4 or Task 5 should measure this, and may want a minimum
-  prefix length or a cached term-table page.
+- **Short prefixes are wide:** `co` spans 1,354 terms, `de` 1,298, `re` 1,196. The first reader
+  cost about one term-entry read plus one postings read per term: 3,376 `readAt` calls for `co`.
+  The review fixes below bring this down to single digits.
 
 ### Deviations
 
@@ -120,6 +120,88 @@ Measured over every spine document of `nwt_S.epub` that carries a verse marker:
   `Stale`, then `Incomplete`. `Stale` and `Incomplete` leave the reader open.
 - **Additions to the reader:** `header()`, `termCount()` and `termString()`, which the
   checkpoint loader and the tests need.
-- **`truncated` is also set when the prefix union was cut**, or when one prefixed term alone
-  has more than `PREFIX_CAP` verses, even if the final result is under `RESULT_CAP`: matches may
-  be missing. The union keeps its lowest 5,000 verses, so results stay in canonical order.
+- **Query semantics:** as revised after review; see below.
+
+## Task 3 review fixes
+
+### Query
+
+- **The prefix no longer loses matches.** The first version capped the prefix union at 5,000
+  verses before intersecting, so `dios co` returned 591 of 2,112 true matches, none of them from
+  the New Testament. Now:
+  - The full words are intersected first, smallest list first, in place in one allocator
+    buffer.
+  - The prefix range's postings then mark a verse bitset (`verseCount` bits, 3.9 KB for the
+    NWT). The candidates that are marked are the result.
+  - This is the "collect, then filter" the review asked for, with a bitset standing in for the
+    sort/unique. Nothing is capped before the intersection.
+- **Checked against a brute-force intersection** on the whole NWT: 24 queries (4 full words × 6
+  prefixes) return exactly the first `min(true, 1000)` matches, with `truncated` set exactly
+  when more than 1,000 match.
+- **`PREFIX_CAP` still applies only to a lone prefix word**, and there it is subsumed:
+  `RESULT_CAP` (1,000) is smaller, so the final list is the same with or without it. It is kept
+  because the plan names it; removing it changes nothing.
+- **`RESULT_CAP` still cuts broad queries.** `dios co` returns the first 1,000 of 2,112 with
+  `truncated` set, so the UI shows "1000+".
+- **`QueryResult::ok`** is false on an I/O failure, a malformed list, or failed working memory.
+  That is distinct from an empty result.
+- **Working memory:** the smallest full word's list (at most `verseCount` × 2 B), the bitset, and
+  for a lone prefix `min(PREFIX_CAP, verseCount)` × 2 B. All three come from the reader's
+  allocator, and none grows. Two std containers remain: `tokens` and the full-word
+  `TermEntry` list. Both are bounded by the query's length, at most about 21 tokens for the
+  64-byte keyboard cap, and are reserved once. The final `verses` is reserved once and holds at
+  most `RESULT_CAP` entries.
+
+### Reader
+
+- **Construction:** the reader takes a `BuildAllocator` at construction, and
+  `cacheTermIndex()` uses it. The review sketched `cacheTermIndex(BuildAllocator)`; one
+  allocator per reader serves the page, the cache and the query buffers alike.
+- **The term cache:** `cacheTermIndex()` loads `[termTableOffset, postingsOffset)`, 443,756 B for
+  the NWT, in one read. After that, `findExact` and `findPrefixRange` read nothing.
+- **The page:** postings stream through a 4 KB reader-owned page allocated at `open`. A 64 B
+  member page takes over if that allocation fails, so the reader still opens.
+- **`postingsRange` and `postingsOf`** stream through a visitor. The range is one contiguous
+  span, so it costs one read per page.
+- **Measured on the whole NWT with the reviewer's harness, cached (before in parentheses):**
+
+  | | Reads |
+  |---|---|
+  | exact lookup | 0 (31–33) |
+  | exact `de` postings | 6 |
+  | `co` | 8 (3,376) |
+  | `de` as a prefix | 12 |
+  | `amor paciente` | 2 |
+  | `dios co` | 9 |
+  | `jehova de` | 14 |
+
+- **Without the cache**, a prefix range still reads one term entry per term (`co`: 1,422
+  reads). Task 4 should call `cacheTermIndex()` once when search opens and keep the reader for
+  the session.
+
+### Builder and scanner
+
+- **Out of memory in the strings pool** no longer leaves a term record without a string.
+- **`loadCheckpoint`** sets `failed_` on a verse-table mismatch.
+- **Serialisation batches writes through a 4 KB allocator block**, falling back to 64 B on the
+  stack. That is one sink call per 4 KB.
+- **Scanner:** a skipped block element (`<p class="ss">`, `<h2>`) still separates the words
+  either side of it. The whole-NWT scanner output is byte-identical before and after this
+  change.
+- **Scanner:** `take()` re-reserves.
+- **Scanner:** both constructor failure paths `LOG_ERR`. `VerseAnchors` does not log, but other
+  lib code does (`Section.cpp`, `ParsedText.cpp`), and host suites resolve `<Logging.h>` to
+  `test/stubs`.
+
+### Mutation testing
+
+Ran the reviewer's `mutate.py` mutants that still apply, plus new ones for the rewritten query
+and reader. That is 36 in total, with objects deleted before each build: the one-second make
+timestamps otherwise let a mutant go uncompiled. 32 are killed. The 4 survivors are
+equivalent or unreachable:
+
+- `isPrefix || order == 0`: `order == 0` implies `isPrefix`.
+- The cache's upper bound as `fileSize`: `termString` never asks past `postingsOffset`.
+- `order > 0` in `findExact`: `lowerBound` never lands on `order < 0`.
+- The builder's descending-verse guard: `addVerseText` accepts only the newest verse, and
+  `loadCheckpoint` feeds lists the reader has already checked are strictly ascending.

@@ -39,21 +39,22 @@ uint32_t fnv1a(const std::string_view s) {
   return hash;
 }
 
-// Batches the many small writes of a serialisation into few sink calls. Kept
-// small: it lives on the caller's stack.
+// Batches the many small writes of a serialisation into few sink calls,
+// through a buffer the caller provides.
 class SinkWriter {
  public:
-  SinkWriter(const ByteSink sink, void* ctx) : sink_(sink), ctx_(ctx) {}
+  SinkWriter(const ByteSink sink, void* ctx, uint8_t* buffer, const size_t capacity)
+      : sink_(sink), ctx_(ctx), buffer_(buffer), capacity_(capacity) {}
 
   void put(const void* data, size_t length) {
     const auto* p = static_cast<const uint8_t*>(data);
     while (length > 0 && ok_) {
-      const size_t n = std::min(length, sizeof(buffer_) - used_);
+      const size_t n = std::min(length, capacity_ - used_);
       memcpy(buffer_ + used_, p, n);
       used_ += n;
       p += n;
       length -= n;
-      if (used_ == sizeof(buffer_)) flush();
+      if (used_ == capacity_) flush();
     }
   }
 
@@ -66,28 +67,10 @@ class SinkWriter {
  private:
   ByteSink sink_;
   void* ctx_;
-  uint8_t buffer_[64];
+  uint8_t* buffer_;
+  size_t capacity_;
   size_t used_ = 0;
   bool ok_ = true;
-};
-
-// The term order for one serialisation, released however serialise() returns.
-class OrderBuffer {
- public:
-  OrderBuffer(const BuildAllocator allocator, const uint32_t count)
-      : allocator_(allocator),
-        ids_(count > 0 ? static_cast<uint32_t*>(allocator.allocate(count * sizeof(uint32_t))) : nullptr) {}
-  ~OrderBuffer() {
-    if (ids_) allocator_.release(ids_);
-  }
-  OrderBuffer(const OrderBuffer&) = delete;
-  OrderBuffer& operator=(const OrderBuffer&) = delete;
-
-  uint32_t* ids() const { return ids_; }
-
- private:
-  BuildAllocator allocator_;
-  uint32_t* ids_;
 };
 
 }  // namespace
@@ -103,10 +86,6 @@ struct IndexBuilder::Term {
   uint8_t length;
   uint8_t tailUsed;
 };
-
-BuildAllocator defaultBuildAllocator() {
-  return {[](const size_t bytes) { return std::malloc(bytes); }, [](void* block) { std::free(block); }};
-}
 
 RecordPool::RecordPool(const BuildAllocator allocator, const uint32_t recordBytes, const uint32_t recordsPerChunk)
     : allocator_(allocator), recordBytes_(recordBytes), recordsPerChunk_(recordsPerChunk) {
@@ -255,9 +234,12 @@ uint32_t IndexBuilder::findOrInsert(const std::string_view token, const uint32_t
     if (existing.hash == hash && termString(existing) == token) return occupant - 1;
   }
 
+  // The string first: a term record without its string would be rehashed and
+  // compared later as garbage.
   const uint32_t stringIndex = strings_.append(static_cast<uint32_t>(token.size()));
+  if (stringIndex == NONE) return NONE;
   const uint32_t id = terms_.append();
-  if (stringIndex == NONE || id == NONE) return NONE;
+  if (id == NONE) return NONE;
   memcpy(strings_.at(stringIndex), token.data(), token.size());
   stringBytes_ += token.size() + 1;
 
@@ -321,13 +303,14 @@ bool IndexBuilder::serialise(const ByteSink sink, void* ctx, const uint64_t fing
                              const uint32_t docsDone) const {
   if (failed_) return false;
   const uint32_t termCount = terms_.size();
-  OrderBuffer order(allocator_, termCount);
-  if (termCount > 0 && !order.ids()) {
+  AllocatedBuffer orderBuffer(allocator_, static_cast<size_t>(termCount) * sizeof(uint32_t));
+  auto* order = orderBuffer.as<uint32_t>();
+  if (termCount > 0 && !order) {
     failed_ = true;
     return false;
   }
-  for (uint32_t i = 0; i < termCount; i++) order.ids()[i] = i;
-  std::sort(order.ids(), order.ids() + termCount, [this](const uint32_t a, const uint32_t b) {
+  for (uint32_t i = 0; i < termCount; i++) order[i] = i;
+  std::sort(order, order + termCount, [this](const uint32_t a, const uint32_t b) {
     const std::string_view left = termString(termAt(a));
     const std::string_view right = termString(termAt(b));
     const int byBytes = memcmp(left.data(), right.data(), std::min(left.size(), right.size()));
@@ -346,7 +329,12 @@ bool IndexBuilder::serialise(const ByteSink sink, void* ctx, const uint64_t fing
   header.postingsOffset = header.termStringsOffset + static_cast<uint32_t>(stringBytes_);
   header.fileSize = header.postingsOffset + static_cast<uint32_t>(postingBytes_);
 
-  SinkWriter out(sink, ctx);
+  // A 64-byte stack buffer keeps the write correct, only slower, when the
+  // allocator cannot spare SINK_BUFFER_BYTES.
+  uint8_t fallback[64];
+  AllocatedBuffer sinkBuffer(allocator_, SINK_BUFFER_BYTES);
+  SinkWriter out(sink, ctx, sinkBuffer.get() ? sinkBuffer.as<uint8_t>() : fallback,
+                 sinkBuffer.get() ? sinkBuffer.size() : sizeof(fallback));
   uint8_t record[INDEX_HEADER_BYTES];
   writeHeader(record, header);
   out.put(record, INDEX_HEADER_BYTES);
@@ -360,7 +348,7 @@ bool IndexBuilder::serialise(const ByteSink sink, void* ctx, const uint64_t fing
 
   TermEntry entry;
   for (uint32_t i = 0; i < termCount; i++) {
-    const Term& term = termAt(order.ids()[i]);
+    const Term& term = termAt(order[i]);
     entry.postingCount = term.count;
     writeTermEntry(record, entry);
     out.put(record, TERM_ENTRY_BYTES);
@@ -370,13 +358,13 @@ bool IndexBuilder::serialise(const ByteSink sink, void* ctx, const uint64_t fing
 
   constexpr char TERMINATOR = '\0';
   for (uint32_t i = 0; i < termCount; i++) {
-    const std::string_view text = termString(termAt(order.ids()[i]));
+    const std::string_view text = termString(termAt(order[i]));
     out.put(text.data(), text.size());
     out.put(&TERMINATOR, 1);
   }
 
   for (uint32_t i = 0; i < termCount; i++) {
-    const Term& term = termAt(order.ids()[i]);
+    const Term& term = termAt(order[i]);
     uint32_t remaining = term.postingBytes;
     for (uint32_t index = term.headBlock; index != NONE && remaining > 0;) {
       const auto* block = reinterpret_cast<const Block*>(blocks_.at(index));
@@ -391,12 +379,16 @@ bool IndexBuilder::serialise(const ByteSink sink, void* ctx, const uint64_t fing
 
 bool IndexBuilder::loadCheckpoint(const ByteSource& source, const uint64_t expectedFingerprint, uint32_t& docsDoneOut) {
   if (failed_ || verses_.size() > 0 || terms_.size() > 0) return false;
-  IndexReader reader;
+  IndexReader reader(allocator_);
   if (reader.open(source, expectedFingerprint) != IndexReader::Status::Incomplete) return false;
+  reader.cacheTermIndex();
 
   for (uint32_t i = 0; i < reader.verseCount(); i++) {
     VerseEntry v;
-    if (!reader.verse(i, v) || addVerse(v.book, v.chapter, v.verse, v.spine, v.offset) != i) return false;
+    if (!reader.verse(i, v) || addVerse(v.book, v.chapter, v.verse, v.spine, v.offset) != i) {
+      failed_ = true;
+      return false;
+    }
   }
 
   std::vector<uint16_t> postings;

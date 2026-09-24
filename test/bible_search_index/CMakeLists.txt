@@ -21,6 +21,7 @@ target_include_directories(BibleSearchIndexTest PRIVATE
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/Memory
   ${REPO_ROOT}/lib/expat
+  ${REPO_ROOT}/test/stubs  # no-op Logging.h
 )
 
 target_compile_definitions(BibleSearchIndexTest PRIVATE

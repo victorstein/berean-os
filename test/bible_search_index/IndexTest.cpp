@@ -192,19 +192,36 @@ TEST(BibleSearchIndex, EstimatesExactlyTheBytesItWrites) {
   EXPECT_EQ(builder.estimatedBytes(), written(builder).size());
 }
 
-TEST(BibleSearchIndex, CapsThePrefixUnion) {
-  // 6,000 distinct terms sharing the prefix "zz", one per verse, and "comun"
-  // only in the last 500 verses -- all past the lowest 5,000 the union keeps.
+// 6,000 distinct terms sharing the prefix "zz", one per verse, and "comun" only
+// in the last 500 verses -- all past verse #5000.
+Bytes zzIndex() {
   IndexBuilder builder;
   for (uint32_t i = 0; i < 6000; i++) {
     const uint32_t n = builder.addVerse(1, 1, 1, 0, i);
     const std::string text = "zz" + std::to_string(i) + (i >= 5500 ? " comun" : "");
-    ASSERT_TRUE(builder.addVerseText(n, text));
+    EXPECT_TRUE(builder.addVerseText(n, text));
   }
-  const Bytes bytes = written(builder);
+  return written(builder);
+}
+
+TEST(BibleSearchIndex, KeepsPrefixMatchesPastTheFiveThousandthVerseWhenAWordNarrowsThem) {
+  const Bytes bytes = zzIndex();
+  bool truncated = true;
+  const Verses verses = query(bytes, "comun zz", &truncated);
+  ASSERT_EQ(verses.size(), 500u);
+  EXPECT_EQ(verses.front(), 5500);
+  EXPECT_EQ(verses.back(), 5999);
+  EXPECT_FALSE(truncated);
+}
+
+TEST(BibleSearchIndex, CapsASinglePrefixWord) {
+  const Bytes bytes = zzIndex();
   bool truncated = false;
-  EXPECT_TRUE(query(bytes, "comun zz", &truncated).empty());
-  EXPECT_TRUE(truncated) << "the prefix union was cut, so matches may be missing";
+  const Verses all = query(bytes, "zz", &truncated);
+  ASSERT_EQ(all.size(), RESULT_CAP);
+  EXPECT_EQ(all.front(), 0);
+  EXPECT_EQ(all.back(), RESULT_CAP - 1);
+  EXPECT_TRUE(truncated);
   const Verses narrow = query(bytes, "zz59", &truncated);
   EXPECT_FALSE(truncated);
   EXPECT_EQ(narrow.size(), 111u) << "zz59, zz590-zz599, zz5900-zz5999";
@@ -269,6 +286,231 @@ TEST(BibleSearchIndex, ReportsATruncatedOrForeignFileAsUnreadable) {
   const uint32_t pastEnd = static_cast<uint32_t>(bytes.size()) + 1;
   memcpy(badOffsets.data() + 40, &pastEnd, sizeof(pastEnd));
   EXPECT_EQ(reader.open(sourceOf(badOffsets), FINGERPRINT), IndexReader::Status::Unreadable);
+}
+
+// Hostile and damaged files. Each case breaks exactly one invariant, so no
+// other check can mask the one under test.
+namespace {
+
+void put16At(Bytes& bytes, const size_t at, const uint16_t v) { memcpy(bytes.data() + at, &v, sizeof(v)); }
+void put32At(Bytes& bytes, const size_t at, const uint32_t v) { memcpy(bytes.data() + at, &v, sizeof(v)); }
+uint32_t get32At(const Bytes& bytes, const size_t at) {
+  uint32_t v = 0;
+  memcpy(&v, bytes.data() + at, sizeof(v));
+  return v;
+}
+
+constexpr size_t AT_VERSION = 4;
+constexpr size_t AT_VERSE_COUNT = 16;
+constexpr size_t AT_TERM_TABLE = 32;
+constexpr size_t AT_TERM_STRINGS = 36;
+constexpr size_t AT_POSTINGS = 40;
+constexpr size_t AT_FILE_SIZE = 44;
+
+// Where `term`'s postings start, in a corpus index.
+size_t postingsAt(const Bytes& bytes, const char* term) {
+  IndexReader reader;
+  EXPECT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  TermEntry entry;
+  EXPECT_TRUE(reader.findExact(term, entry));
+  return reader.header().postingsOffset + entry.postingsOffset;
+}
+
+bool postingsOf(const Bytes& bytes, const char* term, Verses& out) {
+  IndexReader reader;
+  EXPECT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  TermEntry entry;
+  EXPECT_TRUE(reader.findExact(term, entry));
+  return reader.postings(entry, out, entry.postingCount);
+}
+
+}  // namespace
+
+TEST(BibleSearchIndexHostile, RefusesAnOlderFormatVersionAsUnreadable) {
+  Bytes bytes = corpusIndex();
+  put16At(bytes, AT_VERSION, INDEX_FORMAT_VERSION - 1);
+  IndexReader reader;
+  EXPECT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Unreadable);
+}
+
+TEST(BibleSearchIndexHostile, RefusesAHeaderThatDisagreesWithItself) {
+  struct Case {
+    const char* name;
+    void (*corrupt)(Bytes&);
+  };
+  const Case cases[] = {
+      {"verse count past MAX_VERSES, every offset consistent with it",
+       [](Bytes& b) {
+         const uint32_t verses = MAX_VERSES + 1;
+         const uint32_t end = static_cast<uint32_t>(INDEX_HEADER_BYTES + verses * VERSE_ENTRY_BYTES);
+         Bytes forged(end, 0);
+         memcpy(forged.data(), b.data(), INDEX_HEADER_BYTES);
+         put32At(forged, AT_VERSE_COUNT, verses);
+         put32At(forged, 20, 0);  // termCount
+         put32At(forged, AT_TERM_TABLE, end);
+         put32At(forged, AT_TERM_STRINGS, end);
+         put32At(forged, AT_POSTINGS, end);
+         put32At(forged, AT_FILE_SIZE, end);
+         b = forged;
+       }},
+      {"term table not where the verse table ends",
+       [](Bytes& b) {
+         put32At(b, AT_TERM_TABLE, get32At(b, AT_TERM_TABLE) + 1);
+         put32At(b, AT_TERM_STRINGS, get32At(b, AT_TERM_STRINGS) + 1);
+       }},
+      {"term strings not where the term table ends",
+       [](Bytes& b) { put32At(b, AT_TERM_STRINGS, get32At(b, AT_TERM_STRINGS) + 1); }},
+      {"postings before the term strings", [](Bytes& b) { put32At(b, AT_POSTINGS, get32At(b, AT_TERM_STRINGS) - 1); }},
+      {"recorded size larger than the file",
+       [](Bytes& b) {
+         put32At(b, AT_FILE_SIZE, get32At(b, AT_FILE_SIZE) + 1);
+         put32At(b, AT_POSTINGS, get32At(b, AT_FILE_SIZE));
+       }},
+  };
+  for (const Case& c : cases) {
+    Bytes bytes = corpusIndex();
+    c.corrupt(bytes);
+    IndexReader reader;
+    EXPECT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Unreadable) << c.name;
+  }
+}
+
+TEST(BibleSearchIndexHostile, RefusesAPostingPastTheLastVerse) {
+  Bytes bytes = corpusIndex();
+  bytes[postingsAt(bytes, "celoso")] = 0x7F;  // verse 127 of 9
+  Verses out;
+  EXPECT_FALSE(postingsOf(bytes, "celoso", out));
+}
+
+TEST(BibleSearchIndexHostile, RefusesARepeatedVerseInOnePostingList) {
+  Bytes bytes = corpusIndex();
+  // amor: 0, 1, 4, 8 is deltas 0, 1, 3, 4. A zero is legal only first.
+  bytes[postingsAt(bytes, "amor") + 1] = 0x00;
+  Verses out;
+  EXPECT_FALSE(postingsOf(bytes, "amor", out));
+}
+
+TEST(BibleSearchIndexHostile, RefusesAVarintLongerThanThreeBytes) {
+  // celoso's one posting, verse 1, re-encoded in four bytes: a value that
+  // would be valid if the length were not checked.
+  Bytes bytes = corpusIndex();
+  const size_t at = postingsAt(bytes, "celoso");
+  bytes[at] = 0x81;
+  bytes[at + 1] = 0x80;
+  bytes[at + 2] = 0x80;
+  bytes[at + 3] = 0x00;
+  Verses out;
+  EXPECT_FALSE(postingsOf(bytes, "celoso", out));
+}
+
+TEST(BibleSearchIndexHostile, RefusesATermStringWithNoTerminator) {
+  // A 32-byte term, the longest a token can be: its NUL is the 33rd byte, the
+  // last one the reader may look at.
+  IndexBuilder builder;
+  const std::string longest(MAX_TOKEN_BYTES, 'z');
+  builder.addVerse(1, 1, 1, 0, 0);
+  ASSERT_TRUE(builder.addVerseText(0, "amor " + longest));
+  Bytes bytes = written(builder);
+  IndexReader reader;
+  ASSERT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  TermEntry entry;
+  ASSERT_TRUE(reader.findExact(longest, entry));
+  bytes[reader.header().termStringsOffset + entry.stringOffset + MAX_TOKEN_BYTES] = 'z';
+  ASSERT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  char text[MAX_TOKEN_BYTES + 1];
+  size_t length = 0;
+  EXPECT_FALSE(reader.termString(entry, text, length));
+}
+
+TEST(BibleSearchIndex, DecodesVarintsAtTheirByteBoundaries) {
+  // Deltas of 127 and 128 straddle the one-byte boundary; 16,383 and 16,384
+  // the two-byte one.
+  IndexBuilder builder;
+  const uint32_t marked[] = {0, 127, 255, 16638, 33022};
+  size_t next = 0;
+  for (uint32_t i = 0; i <= 33022; i++) {
+    const uint32_t n = builder.addVerse(1, 1, 1, 0, i);
+    const bool isMarked = next < std::size(marked) && marked[next] == i;
+    if (isMarked) next++;
+    ASSERT_TRUE(builder.addVerseText(n, isMarked ? "marca" : "otro"));
+  }
+  const Bytes bytes = written(builder);
+  Verses out;
+  ASSERT_TRUE(postingsOf(bytes, "marca", out));
+  EXPECT_EQ(out, (Verses{0, 127, 255, 16638, 33022}));
+}
+
+TEST(BibleSearchIndex, FindsTheLastTermInTheTableByPrefix) {
+  const Bytes bytes = corpusIndex();
+  IndexReader reader;
+  ASSERT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  uint32_t first = 0;
+  uint32_t last = 0;
+  ASSERT_TRUE(reader.findPrefixRange("y", first, last));
+  ASSERT_TRUE(reader.findPrefixRange("te", first, last));
+  EXPECT_EQ(last, reader.termCount()) << "'ten' sorts last in the corpus";
+  EXPECT_EQ(last - first, 1u);
+}
+
+TEST(BibleSearchIndex, BuildsPastHashGrowthAndChunkBoundaries) {
+  // 24,000 distinct terms pass the first hash table's 70% load (22,937 of
+  // 32,768 slots), and ~190 KB of strings cross three 64 KB string chunks.
+  // The last 1,000 verses repeat early terms after the rehash, which must find
+  // them rather than insert duplicates.
+  const auto word = [](uint32_t i) {
+    std::string w = "w";
+    for (int k = 0; k < 4; k++, i /= 26) w.push_back(static_cast<char>('a' + i % 26));
+    return w + "xyz";
+  };
+  constexpr uint32_t TERMS = 24000;
+  constexpr uint32_t REPEATS = 1000;
+  IndexBuilder builder;
+  for (uint32_t i = 0; i < TERMS + REPEATS; i++) {
+    const uint32_t n = builder.addVerse(1, 1, 1, 0, i);
+    ASSERT_TRUE(builder.addVerseText(n, word(i < TERMS ? i : i - TERMS)));
+  }
+  EXPECT_EQ(builder.termCount(), TERMS);
+  const Bytes bytes = written(builder);
+  IndexReader reader;
+  ASSERT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  ASSERT_GT(reader.header().postingsOffset - reader.header().termStringsOffset, 3u * 64 * 1024);
+  for (uint32_t i = 0; i < TERMS; i++) {
+    Verses out;
+    TermEntry entry;
+    ASSERT_TRUE(reader.findExact(word(i), entry)) << word(i);
+    ASSERT_TRUE(reader.postings(entry, out, entry.postingCount));
+    const Verses expected = i < REPEATS ? Verses{static_cast<uint16_t>(i), static_cast<uint16_t>(TERMS + i)}
+                                        : Verses{static_cast<uint16_t>(i)};
+    ASSERT_EQ(out, expected) << word(i);
+  }
+}
+
+TEST(BibleSearchIndex, AFailedStringAllocationRecordsNoTerm) {
+  // The strings pool asks for 64 KB chunks; refusing exactly that size fails
+  // the term's string while its record could still be allocated.
+  const BuildAllocator noStrings{
+      [](size_t bytes) -> void* { return bytes == 64 * 1024 ? nullptr : std::malloc(bytes); },
+      [](void* block) { std::free(block); }};
+  IndexBuilder builder(noStrings);
+  builder.addVerse(1, 1, 1, 0, 0);
+  EXPECT_FALSE(builder.addVerseText(0, "amor"));
+  EXPECT_TRUE(builder.failed());
+  EXPECT_EQ(builder.termCount(), 0u);
+}
+
+TEST(BibleSearchIndex, AFailedCheckpointReadMarksTheBuilderFailed) {
+  IndexBuilder first;
+  addCorpus(first, 0, 5);
+  Bytes checkpoint;
+  ASSERT_TRUE(first.writeCheckpoint(appendToBytes, &checkpoint, FINGERPRINT, 2));
+  ByteSource headerOnly = sourceOf(checkpoint);
+  headerOnly.readAt = [](void* ctx, const uint32_t offset, void* dst, const uint32_t len) {
+    return offset < INDEX_HEADER_BYTES && readFromBytes(ctx, offset, dst, len);
+  };
+  IndexBuilder resumed;
+  uint32_t docsDone = 0;
+  EXPECT_FALSE(resumed.loadCheckpoint(headerOnly, FINGERPRINT, docsDone));
+  EXPECT_TRUE(resumed.failed());
 }
 
 TEST(BibleSearchIndex, ResumingFromACheckpointWritesAByteIdenticalFile) {
@@ -352,6 +594,204 @@ TEST(BibleSearchIndex, StopsWhenTheAllocatorRunsOut) {
   }
   EXPECT_FALSE(ok);
   EXPECT_TRUE(builder.failed());
+}
+
+// Read cost. A counting source stands in for the SD card, where every readAt is
+// a HalFile seek and read under storageMutex.
+namespace {
+
+struct CountingSource {
+  const Bytes* bytes;
+  size_t reads = 0;
+  bool failAfterOpen = false;
+};
+
+ByteSource countingSourceOf(CountingSource& counter) {
+  ByteSource s;
+  s.ctx = &counter;
+  s.readAt = [](void* ctx, const uint32_t offset, void* dst, const uint32_t len) {
+    auto* c = static_cast<CountingSource*>(ctx);
+    if (c->failAfterOpen && offset >= INDEX_HEADER_BYTES) return false;
+    c->reads++;
+    return readFromBytes(const_cast<Bytes*>(c->bytes), offset, dst, len);
+  };
+  s.size = static_cast<uint32_t>(counter.bytes->size());
+  return s;
+}
+
+// 20,000 verses, each with its own "pa..." term and one shared word: a prefix
+// range of 20,000 terms whose postings span ~40 KB.
+Bytes wideIndex() {
+  IndexBuilder builder;
+  for (uint32_t i = 0; i < 20000; i++) {
+    const uint32_t n = builder.addVerse(1, 1, 1, 0, i);
+    std::string text = "pa";
+    for (uint32_t k = 0, v = i; k < 4; k++, v /= 26) text.push_back(static_cast<char>('a' + v % 26));
+    EXPECT_TRUE(builder.addVerseText(n, text + (i % 2 == 0 ? " par" : "")));
+  }
+  return written(builder);
+}
+
+}  // namespace
+
+TEST(BibleSearchIndexReads, CachedTermIndexServesLookupsWithoutReading) {
+  const Bytes bytes = wideIndex();
+  CountingSource counter{&bytes};
+  IndexReader reader;
+  ASSERT_EQ(reader.open(countingSourceOf(counter), FINGERPRINT), IndexReader::Status::Ok);
+  counter.reads = 0;
+  ASSERT_TRUE(reader.cacheTermIndex());
+  EXPECT_EQ(counter.reads, 1u) << "the term table and strings load in one sequential read";
+  EXPECT_TRUE(reader.cacheTermIndex()) << "a second call keeps the cache";
+  EXPECT_EQ(counter.reads, 1u);
+  counter.reads = 0;
+  TermEntry entry;
+  ASSERT_TRUE(reader.findExact("par", entry));
+  uint32_t first = 0;
+  uint32_t last = 0;
+  ASSERT_TRUE(reader.findPrefixRange("pa", first, last));
+  EXPECT_EQ(counter.reads, 0u);
+  EXPECT_EQ(last - first, 20001u);
+}
+
+TEST(BibleSearchIndexReads, APrefixRangeCostsOneReadPerPageOfItsSpan) {
+  const Bytes bytes = wideIndex();
+  CountingSource counter{&bytes};
+  IndexReader reader;
+  ASSERT_EQ(reader.open(countingSourceOf(counter), FINGERPRINT), IndexReader::Status::Ok);
+  ASSERT_TRUE(reader.cacheTermIndex());
+  const uint32_t span = reader.header().fileSize - reader.header().postingsOffset;
+  counter.reads = 0;
+  const QueryResult result = runQuery(reader, "pa");
+  ASSERT_TRUE(result.ok);
+  EXPECT_EQ(result.verses.size(), RESULT_CAP);
+  EXPECT_LE(counter.reads, span / IndexReader::PAGE_BYTES + 2) << "span " << span << " B over 20,001 terms";
+  counter.reads = 0;
+  const QueryResult narrowed = runQuery(reader, "par pa");
+  ASSERT_TRUE(narrowed.ok);
+  EXPECT_EQ(narrowed.verses.size(), RESULT_CAP);
+  EXPECT_TRUE(narrowed.truncated) << "10,000 verses match";
+  EXPECT_LE(counter.reads, span / IndexReader::PAGE_BYTES + 4);
+}
+
+TEST(BibleSearchIndexReads, WithoutTheCacheEveryAnswerIsTheSame) {
+  const Bytes bytes = wideIndex();
+  CountingSource counter{&bytes};
+  IndexReader cached;
+  IndexReader uncached;
+  ASSERT_EQ(cached.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  ASSERT_TRUE(cached.cacheTermIndex());
+  ASSERT_EQ(uncached.open(countingSourceOf(counter), FINGERPRINT), IndexReader::Status::Ok);
+  for (const char* q : {"pa", "par pa", "paab", "par paqq", "zz"}) {
+    const QueryResult a = runQuery(cached, q);
+    const QueryResult b = runQuery(uncached, q);
+    EXPECT_EQ(a.verses, b.verses) << q;
+    EXPECT_EQ(a.truncated, b.truncated) << q;
+  }
+}
+
+TEST(BibleSearchIndexReads, AnUnallocatableCacheFallsBackToTheSource) {
+  const Bytes bytes = wideIndex();
+  const BuildAllocator smallOnly{[](size_t n) -> void* { return n > 64 * 1024 ? nullptr : std::malloc(n); },
+                                 [](void* block) { std::free(block); }};
+  IndexReader reader(smallOnly);
+  ASSERT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  EXPECT_FALSE(reader.cacheTermIndex());
+  EXPECT_FALSE(reader.termIndexCached());
+  EXPECT_EQ(runQuery(reader, "paabaa").verses, (Verses{26}));
+}
+
+TEST(BibleSearchIndexReads, AnUnallocatablePageStillReads) {
+  const Bytes bytes = corpusIndex();
+  const BuildAllocator nothing{[](size_t) -> void* { return nullptr; }, [](void*) {}};
+  IndexReader reader(nothing);
+  ASSERT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  const QueryResult result = runQuery(reader, "amor");
+  EXPECT_FALSE(result.ok) << "the query's own working memory could not be allocated";
+  Verses out;
+  TermEntry entry;
+  ASSERT_TRUE(reader.findExact("amor", entry));
+  ASSERT_TRUE(reader.postings(entry, out, entry.postingCount));
+  EXPECT_EQ(out, (Verses{0, 1, 4, 8}));
+}
+
+TEST(BibleSearchIndexQuery, ReportsAnIoFailureApartFromNoResults) {
+  const Bytes bytes = corpusIndex();
+  CountingSource counter{&bytes};
+  IndexReader reader;
+  ASSERT_EQ(reader.open(countingSourceOf(counter), FINGERPRINT), IndexReader::Status::Ok);
+  const QueryResult none = runQuery(reader, "zzz");
+  EXPECT_TRUE(none.ok);
+  EXPECT_TRUE(none.verses.empty());
+  counter.failAfterOpen = true;
+  for (const char* q : {"amor", "el amor", "el amor paciente"}) {
+    const QueryResult failed = runQuery(reader, q);
+    EXPECT_FALSE(failed.ok) << q;
+    EXPECT_TRUE(failed.verses.empty()) << q;
+  }
+}
+
+TEST(BibleSearchIndexQuery, IntersectsEveryFullWord) {
+  IndexBuilder builder;
+  const char* texts[] = {"gama", "beta gama", "alfa gama", "alfa beta gama"};
+  for (uint32_t i = 0; i < 4; i++) ASSERT_TRUE(builder.addVerseText(builder.addVerse(1, 1, 1, 0, i), texts[i]));
+  const Bytes bytes = written(builder);
+  EXPECT_EQ(query(bytes, "alfa beta ga"), (Verses{3}));
+  EXPECT_EQ(query(bytes, "beta alfa ga"), (Verses{3}));
+  EXPECT_EQ(query(bytes, "alfa ga"), (Verses{2, 3}));
+
+  IndexBuilder disjoint;
+  ASSERT_TRUE(disjoint.addVerseText(disjoint.addVerse(1, 1, 1, 0, 0), "beta gama"));
+  ASSERT_TRUE(disjoint.addVerseText(disjoint.addVerse(1, 1, 1, 0, 1), "alfa gama"));
+  EXPECT_TRUE(query(written(disjoint), "alfa beta ga").empty());
+}
+
+TEST(BibleSearchIndexQuery, SizesItsWorkingMemoryByTheRarestWord) {
+  // "comun" is in 20,000 verses (40 KB of candidates), "rara" in two. An
+  // allocator that refuses anything over 16 KB still answers, because the
+  // candidate buffer is sized by the rarest full word.
+  IndexBuilder builder;
+  for (uint32_t i = 0; i < 20000; i++) {
+    const uint32_t n = builder.addVerse(1, 1, 1, 0, i);
+    ASSERT_TRUE(builder.addVerseText(n, (i == 7 || i == 19000) ? "comun rara fin" : "comun fin"));
+  }
+  const Bytes bytes = written(builder);
+  const BuildAllocator small{[](size_t n) -> void* { return n > 16 * 1024 ? nullptr : std::malloc(n); },
+                             [](void* block) { std::free(block); }};
+  IndexReader reader(small);
+  ASSERT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  for (const char* q : {"comun rara fi", "rara comun fi"}) {
+    const QueryResult result = runQuery(reader, q);
+    ASSERT_TRUE(result.ok) << q;
+    EXPECT_EQ(result.verses, (Verses{7, 19000})) << q;
+  }
+}
+
+TEST(BibleSearchIndexQuery, ReportsAMalformedPostingListAsNotOk) {
+  Bytes bytes = corpusIndex();
+  bytes[postingsAt(bytes, "celoso")] = 0x7F;
+  IndexReader reader;
+  ASSERT_EQ(reader.open(sourceOf(bytes), FINGERPRINT), IndexReader::Status::Ok);
+  EXPECT_FALSE(runQuery(reader, "celoso").ok);
+  EXPECT_FALSE(runQuery(reader, "celoso amor").ok);
+}
+
+TEST(BibleSearchIndex, BatchesWritesThroughAnAllocatedBuffer) {
+  IndexBuilder builder;
+  for (uint32_t i = 0; i < 2000; i++) ASSERT_TRUE(builder.addVerseText(builder.addVerse(1, 1, 1, 0, i), "palabra"));
+  struct Counted {
+    Bytes bytes;
+    size_t calls = 0;
+  } counted;
+  ASSERT_TRUE(builder.write(
+      [](void* ctx, const void* data, const size_t length) {
+        auto* c = static_cast<Counted*>(ctx);
+        c->calls++;
+        return appendToBytes(&c->bytes, data, length);
+      },
+      &counted, FINGERPRINT));
+  EXPECT_EQ(counted.bytes, written(builder));
+  EXPECT_LE(counted.calls, counted.bytes.size() / IndexBuilder::SINK_BUFFER_BYTES + 1);
 }
 
 // The Task 2 fixtures, in canonical order, through the scanner and the builder
