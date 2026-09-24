@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/victorstein/berean-os/compare/v1.13.0...v1.14.0) (2026-09-24)
+
+
+### Features
+
+* show Bible books as an abbreviation grid ([#90](https://github.com/victorstein/berean-os/issues/90)) ([7fbc3c3](https://github.com/victorstein/berean-os/commit/7fbc3c3faf2463ab813e772de442cf555ce418d4))
+
 ## [1.13.0](https://github.com/victorstein/berean-os/compare/v1.12.2...v1.13.0) (2026-09-23)
 
 
