@@ -19,9 +19,9 @@ namespace BibleNav {
 inline constexpr const char* BOOK_NAV_FILENAME = "biblebooknav.xhtml";
 inline constexpr const char* CHAPTER_NAV_PREFIX = "biblechapternav";
 
-// Link and heading text past this many bytes is cut on a UTF-8 boundary, so a
-// malformed page cannot grow memory without bound. The longest real
-// abbreviation measured (nwt_S) is 7 characters.
+// Link and heading text past this many bytes is cut on a UTF-8 boundary. This
+// bounds memory against a malformed or hostile page while comfortably
+// exceeding any real abbreviation or heading.
 inline constexpr size_t MAX_TEXT_BYTES = 47;
 
 struct BookNavSection {

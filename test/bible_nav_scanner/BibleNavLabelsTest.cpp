@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 
 #include "BibleNavScanner.h"
@@ -30,6 +31,16 @@ BibleNav::BookNavPage scanBookNav(const std::string& xhtml) {
   BibleNav::Scanner scanner;
   EXPECT_TRUE(scanner.valid());
   EXPECT_TRUE(scanner.feed(xhtml.data(), xhtml.size(), /*isFinal=*/true));
+  return scanner.takeBookNav();
+}
+
+BibleNav::BookNavPage scanBookNavInChunks(const std::string& xhtml, const size_t chunkBytes) {
+  BibleNav::Scanner scanner;
+  for (size_t offset = 0; offset < xhtml.size(); offset += chunkBytes) {
+    const size_t length = std::min(chunkBytes, xhtml.size() - offset);
+    const bool isFinal = offset + length >= xhtml.size();
+    if (!scanner.feed(xhtml.data() + offset, length, isFinal)) return {};
+  }
   return scanner.takeBookNav();
 }
 
@@ -90,6 +101,26 @@ TEST(BibleNavLabels, AnEmptyLinkYieldsAnEmptyLabel) {
   EXPECT_EQ(page.labels[1], "B");
 }
 
+TEST(BibleNavLabels, ALinkWithoutHrefYieldsNoTargetOrLabel) {
+  const auto page = scanBookNav("<html><body><a>NoHref</a><a href=\"b.xhtml\">B</a></body></html>");
+
+  ASSERT_EQ(page.targets.size(), page.labels.size());
+  ASSERT_EQ(page.targets.size(), 1u);
+  EXPECT_EQ(page.targets[0], "b.xhtml");
+  EXPECT_EQ(page.labels[0], "B");
+}
+
+TEST(BibleNavLabels, ALinkInsideAHeadingStaysALink) {
+  const auto page = scanBookNav("<html><body><strong>x<a href=\"b.xhtml\">In</a>y</strong></body></html>");
+
+  ASSERT_EQ(page.targets.size(), 1u);
+  EXPECT_EQ(page.targets[0], "b.xhtml");
+  ASSERT_EQ(page.labels.size(), 1u);
+  EXPECT_EQ(page.labels[0], "In");
+  ASSERT_EQ(page.sections.size(), 1u);
+  EXPECT_EQ(page.sections[0].title, "xy");
+}
+
 TEST(BibleNavLabels, APageWithoutHeadingsHasNoSections) {
   const auto page = scanBookNav("<html><body><a href=\"a.xhtml\">A</a></body></html>");
 
@@ -98,14 +129,49 @@ TEST(BibleNavLabels, APageWithoutHeadingsHasNoSections) {
 }
 
 TEST(BibleNavLabels, OverlongTextIsCappedOnACharacterBoundary) {
-  // 40 two-byte characters: 80 bytes, well past the cap.
+  // 40 two-byte characters: 80 bytes, well past the 47-byte cap. The cap backs
+  // off to the last full character, landing at 46 bytes (23 characters).
   std::string longText;
   for (int i = 0; i < 40; i++) longText += "\xC3\xA9";
   const auto page = scanBookNav("<html><body><a href=\"a.xhtml\">" + longText + "</a></body></html>");
 
+  std::string expected;
+  for (int i = 0; i < 23; i++) expected += "\xC3\xA9";
   ASSERT_EQ(page.labels.size(), 1u);
-  EXPECT_LE(page.labels[0].size(), BibleNav::MAX_TEXT_BYTES);
-  EXPECT_EQ(page.labels[0].size() % 2, 0u);
+  EXPECT_EQ(page.labels[0], expected);
+}
+
+TEST(BibleNavLabels, TextDeliveredAfterTheCapIsDropped) {
+  // Two separate feed() calls force expat to flush the first chunk of text
+  // through the character-data handler before the second chunk arrives, so an
+  // append that does not check its own cap flag would keep growing the label.
+  std::string longText;
+  for (int i = 0; i < 40; i++) longText += "\xC3\xA9";
+  const std::string prefix = "<html><body><a href=\"a.xhtml\">" + longText;
+  const std::string suffix = "XYZ</a></body></html>";
+
+  BibleNav::Scanner scanner;
+  ASSERT_TRUE(scanner.valid());
+  ASSERT_TRUE(scanner.feed(prefix.data(), prefix.size(), /*isFinal=*/false));
+  ASSERT_TRUE(scanner.feed(suffix.data(), suffix.size(), /*isFinal=*/true));
+  const auto page = scanner.takeBookNav();
+
+  std::string expected;
+  for (int i = 0; i < 23; i++) expected += "\xC3\xA9";
+  ASSERT_EQ(page.labels.size(), 1u);
+  EXPECT_EQ(page.labels[0], expected);
+}
+
+TEST(BibleNavLabels, ChunkBoundariesDoNotChangeLabelsOrSections) {
+  const auto whole = scanBookNav(kSpanishBookNav);
+  const auto chunked = scanBookNavInChunks(kSpanishBookNav, 1);
+
+  EXPECT_EQ(chunked.labels, whole.labels);
+  ASSERT_EQ(chunked.sections.size(), whole.sections.size());
+  for (size_t i = 0; i < whole.sections.size(); i++) {
+    EXPECT_EQ(chunked.sections[i].title, whole.sections[i].title);
+    EXPECT_EQ(chunked.sections[i].firstLink, whole.sections[i].firstLink);
+  }
 }
 
 TEST(BibleNavLabels, AMalformedPageYieldsNothing) {
