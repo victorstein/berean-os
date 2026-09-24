@@ -25,6 +25,12 @@ TEST(BookGridColumns, TinyLabelsAreCappedAtTheCeiling) {
   EXPECT_EQ(BookGrid::columnsFor(PORTRAIT_W, 4), BookGrid::MAX_COLS);
 }
 
+TEST(BookGridColumns, ExactFitUsesTheTrailingGap) {
+  // stride = 64 + 16 + 8 = 88; (432 + 8) / 88 = 5 exactly. Dropping the "+ gap"
+  // numerator would round this down to 4.
+  EXPECT_EQ(BookGrid::columnsFor(432, SPANISH_WIDEST_LABEL), 5);
+}
+
 TEST(BookGridPages, TheNwtSplitsIntoOnePagePerTestament) {
   const auto layout = BookGrid::layoutFor(66, NWT_SECTION_STARTS, 2, PORTRAIT_W, PORTRAIT_H, SPANISH_WIDEST_LABEL);
 
@@ -44,6 +50,16 @@ TEST(BookGridPages, EveryPageStaysWithinTheCellCap) {
 
   EXPECT_LE(layout.cols * layout.rows, NumberGrid::MAX_CELLS);
   for (int p = 0; p < layout.pageCount; p++) EXPECT_LE(layout.pages[p].count, layout.cols * layout.rows);
+}
+
+TEST(BookGridPages, CellCapLimitsRowsWhenManyColumnsFit) {
+  // Tiny labels earn all 6 columns, so rowsNeeded (11) and rowsFit (31) both
+  // clear MAX_CELLS / cols (8) -- only the cell cap can be the binding limit.
+  const auto layout = BookGrid::layoutFor(66, nullptr, 0, PORTRAIT_W, 2000, 4);
+
+  EXPECT_EQ(layout.cols, BookGrid::MAX_COLS);
+  EXPECT_EQ(layout.rows, 8);
+  EXPECT_LE(layout.cols * layout.rows, NumberGrid::MAX_CELLS);
 }
 
 TEST(BookGridPages, NoSectionsPagesContinuously) {
@@ -74,13 +90,30 @@ TEST(BookGridPages, ASectionLargerThanAPageSplitsWithinItself) {
 
 TEST(BookGridPages, InvalidSectionStartsFallBackToContinuous) {
   constexpr int outOfRange[] = {0, 90};
+  constexpr int atBookCount[] = {0, 66};
   constexpr int unordered[] = {39, 0};
+  constexpr int duplicateStart[] = {0, 0};
   constexpr int notFromZero[] = {5, 39};
 
-  for (const int* starts : {outOfRange, unordered, notFromZero}) {
+  for (const int* starts : {outOfRange, atBookCount, unordered, duplicateStart, notFromZero}) {
     const auto layout = BookGrid::layoutFor(66, starts, 2, PORTRAIT_W, PORTRAIT_H, SPANISH_WIDEST_LABEL);
     EXPECT_EQ(layout.pages[0].section, -1);
   }
+}
+
+TEST(BookGridPages, ZeroContentHeightStillYieldsOneRow) {
+  const auto layout = BookGrid::layoutFor(66, nullptr, 0, PORTRAIT_W, 0, SPANISH_WIDEST_LABEL);
+  EXPECT_EQ(layout.rows, 1);
+}
+
+TEST(BookGridPages, OneRowRectReportsTruncation) {
+  // rows == 1 caps each page at 5 books; 12 pages cover 60 of the 66, so
+  // coveredBooks must fall short and pageCount hits MAX_PAGES.
+  const auto layout = BookGrid::layoutFor(66, nullptr, 0, PORTRAIT_W, 60, SPANISH_WIDEST_LABEL);
+
+  ASSERT_EQ(layout.rows, 1);
+  EXPECT_EQ(layout.pageCount, BookGrid::MAX_PAGES);
+  EXPECT_LT(layout.coveredBooks, 66);
 }
 
 TEST(BookGridPages, PageOfFindsTheOwningPage) {

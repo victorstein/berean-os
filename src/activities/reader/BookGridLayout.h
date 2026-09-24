@@ -20,8 +20,10 @@ constexpr int LABEL_PADDING = 16;
 // continuously instead.
 constexpr int MAX_SECTIONS = 4;
 // Layout is returned by value onto the render task's stack, so it is kept well
-// under the 256-byte local budget: 12 pages of 6 bytes. 66 books need at most
-// 12 pages at MIN_COLS x 2 rows, and any real content rect earns far more rows.
+// under the 256-byte local budget: 12 pages of 6 bytes. A content rect thin
+// enough to force very few rows can need more pages than this to cover every
+// book; appendPages then stops early, leaving layout.coveredBooks short of the
+// requested count.
 constexpr int MAX_PAGES = 12;
 
 struct Page {
@@ -36,6 +38,9 @@ struct Layout {
   int rows = 0;
   Page pages[MAX_PAGES] = {};
   int pageCount = 0;
+  // Sum of pages[*].count. Less than the book count passed to layoutFor means
+  // MAX_PAGES was hit and trailing books have no page.
+  int16_t coveredBooks = 0;
 };
 
 inline int columnsFor(const int contentW, const int widestLabelPx, const int gap = NumberGrid::GAP) {
@@ -58,14 +63,15 @@ inline bool sectionsUsable(const int bookCount, const int* sectionStarts, const 
 inline void appendPages(Layout& layout, const int first, const int count, const int section) {
   const int perPage = layout.cols * layout.rows;
   for (int offset = 0; offset < count && layout.pageCount < MAX_PAGES; offset += perPage) {
-    layout.pages[layout.pageCount++] = Page{static_cast<int16_t>(first + offset),
-                                             static_cast<int16_t>(std::min(perPage, count - offset)),
-                                             static_cast<int16_t>(section)};
+    const int16_t pageBooks = static_cast<int16_t>(std::min(perPage, count - offset));
+    layout.pages[layout.pageCount++] =
+        Page{static_cast<int16_t>(first + offset), pageBooks, static_cast<int16_t>(section)};
+    layout.coveredBooks += pageBooks;
   }
 }
 
 inline Layout layoutFor(const int bookCount, const int* sectionStarts, const int sectionCount, const int contentW,
-                         const int contentH, const int widestLabelPx, const int gap = NumberGrid::GAP) {
+                        const int contentH, const int widestLabelPx, const int gap = NumberGrid::GAP) {
   Layout layout;
   if (bookCount <= 0) return layout;
 
