@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/victorstein/berean-os/compare/v1.14.0...v1.14.1) (2026-09-24)
+
+
+### Documentation
+
+* the panel drives 4-level grayscale ([#92](https://github.com/victorstein/berean-os/issues/92)) ([045ed43](https://github.com/victorstein/berean-os/commit/045ed43967c3e5591de64704ee5dc82297ae78be)), closes [#59](https://github.com/victorstein/berean-os/issues/59)
+
 ## [1.14.0](https://github.com/victorstein/berean-os/compare/v1.13.0...v1.14.0) (2026-09-24)
 
 
