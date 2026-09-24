@@ -32,14 +32,16 @@ struct BibleBookNames {
 // One activity walks every state so the index reader, the build and the result
 // rows are owned in one place and released in one onExit.
 //
-//   Opening --(index ready)--> keyboard -> Results <-> keyboard
+//   Opening --(index ready)--> keyboard -> Searching -> Results <-> keyboard
 //   Opening --(not ready)----> Prompt -> Starting -> Building -> Finishing -> Ready -> keyboard
 //   Building -> Saving (Cancel, Back, Home) -> navigation screen
 //   Starting, Building, Finishing -> Failed on a build failure
 //
-// Opening, Starting, Saving, Finishing and Ready each paint their frame before
-// their SD work starts: that work stalls the loop task for seconds, and the
-// frame is the only sign the tap registered. Building steps the indexer one
+// Opening, Starting, Saving, Finishing, Ready and Searching each paint their
+// frame before their SD work starts: that work stalls the loop task for
+// seconds, and the frame is the only sign the tap registered. Input that
+// arrives around that work (Cancel or Back while Starting, the home gesture in
+// any of them) is remembered and acted on once the work returns. Building steps the indexer one
 // document per loop pass and repaints at most once per whole percent and once
 // every PROGRESS_MIN_INTERVAL_MS.
 //
@@ -70,6 +72,7 @@ class BibleSearchActivity final : public UiListActivity {
     Ready,
     Failed,
     AwaitingQuery,
+    Searching,
     Results,
   };
 
@@ -133,6 +136,12 @@ class BibleSearchActivity final : public UiListActivity {
   bool goHomeAfterCancel = false;
   bool prepareRequested = false;
   bool dismissRequested = false;
+  // The home gesture during Opening, Finishing, Ready or Searching, honoured
+  // once their work returns rather than by tearing the activity down mid-write.
+  bool homeRequested = false;
+  // finish() keeps a finished build when the card write fails; it is retried
+  // once before the work is kept as a checkpoint instead.
+  bool finishRetried = false;
   // finish() only takes effect once loop() returns; nothing may run after it.
   bool leaving = false;
 
@@ -182,6 +191,7 @@ class BibleSearchActivity final : public UiListActivity {
   void publishProgress(bool force);
   void handleDialogInput();
   void leave();
+  void goHome();
 
   void openKeyboard();
   void onQueryEntered(const char* text);

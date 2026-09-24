@@ -127,6 +127,9 @@ void BibleSearchActivity::enterState(const State next, const bool fullRefresh) {
   {
     RenderLock lock;
     state = next;
+    // Entering a busy state it has already shown (a second search) must still
+    // wait for the new frame. AwaitingQuery is never busy.
+    shownState.store(State::AwaitingQuery);
   }
   if (fullRefresh) fullRefreshPending.store(true);
   requestUpdate();
@@ -134,7 +137,7 @@ void BibleSearchActivity::enterState(const State next, const bool fullRefresh) {
 
 bool BibleSearchActivity::isBusy(const State s) const {
   return s == State::Opening || s == State::Starting || s == State::Saving || s == State::Finishing ||
-         s == State::Ready;
+         s == State::Ready || s == State::Searching;
 }
 
 void BibleSearchActivity::loop() {
@@ -164,19 +167,36 @@ void BibleSearchActivity::loop() {
     case State::Saving:
     case State::Finishing:
     case State::Ready:
+    case State::Searching:
+      if (state == State::Starting) {
+        if (mappedInput.wasReleased(MappedInputManager::Button::Back)) cancelRequested = true;
+        routeTouch(mappedInput);
+      }
       if (shownState.load() == state) runBusyWork();
       return;
   }
 }
 
 void BibleSearchActivity::runBusyWork() {
+  if (homeRequested && (state == State::Opening || state == State::Ready || state == State::Searching)) {
+    goHome();
+    return;
+  }
   switch (state) {
     case State::Opening:
     case State::Ready:
       openIndex();
       return;
     case State::Starting:
+      // Cancelled before begin() ran: there is nothing to save.
+      if (cancelRequested) {
+        cancelBuild();
+        return;
+      }
       beginBuild();
+      return;
+    case State::Searching:
+      runSearch();
       return;
     case State::Saving:
       cancelBuild();
@@ -235,6 +255,12 @@ void BibleSearchActivity::beginBuild() {
   if (!indexer->begin()) {
     const Failure reason = indexer->failure();
     indexer.reset();
+    LOG_ERR(MODULE, "begin() failed: %d", static_cast<int>(reason));
+    // The user already asked to leave while begin() ran.
+    if (cancelRequested) {
+      cancelBuild();
+      return;
+    }
     showFailure(reason == Failure::None ? Failure::NotABible : reason);
     return;
   }
@@ -243,12 +269,15 @@ void BibleSearchActivity::beginBuild() {
   buildStartDocs = indexer->docsDone();
   publishedPercent = -1;
   lastProgressPublishMs = 0;
-  cancelRequested = false;
-  goHomeAfterCancel = false;
+  finishRetried = false;
   LOG_INF(MODULE, "Build starts at document %u of %u", static_cast<unsigned>(buildStartDocs),
           static_cast<unsigned>(indexer->totalDocs()));
 
   publishProgress(/*force=*/true);
+  if (cancelRequested) {
+    enterState(State::Saving);
+    return;
+  }
   enterState(indexer->allDocumentsIndexed() ? State::Finishing : State::Building);
 }
 
@@ -304,14 +333,34 @@ void BibleSearchActivity::publishProgress(const bool force) {
 }
 
 void BibleSearchActivity::finishBuild() {
-  const bool written = indexer->finish();
-  const Failure reason = indexer->failure();
-  indexer.reset();
-  if (!written) {
+  if (!indexer->finish()) {
+    const Failure reason = indexer->failure();
+    if (!indexer->failed()) {
+      // A card write failed and the finished build is still held. The retry
+      // runs on the next pass: the Finishing frame is already up.
+      if (!finishRetried) {
+        finishRetried = true;
+        LOG_ERR(MODULE, "Index write failed (%d); retrying once", static_cast<int>(reason));
+        return;
+      }
+      // Kept as a checkpoint, so the next attempt only has to write.
+      indexer->cancel();
+    }
+    indexer.reset();
+    if (homeRequested) {
+      LOG_ERR(MODULE, "Index not written (%d); going home as asked", static_cast<int>(reason));
+      goHome();
+      return;
+    }
     showFailure(reason == Failure::None ? Failure::WriteFailed : reason);
     return;
   }
+  indexer.reset();
   LOG_INF(MODULE, "Build finished in %lu s", (millis() - buildStartMs) / 1000);
+  if (homeRequested) {
+    goHome();
+    return;
+  }
   // Ready's work opens the new index, and its frame stays up while it does.
   enterState(State::Ready, /*fullRefresh=*/true);
 }
@@ -322,11 +371,16 @@ void BibleSearchActivity::cancelBuild() {
     indexer.reset();
   }
   if (goHomeAfterCancel) {
-    leaving = true;
-    onGoHome();
+    goHome();
     return;
   }
   leave();
+}
+
+void BibleSearchActivity::goHome() {
+  leaving = true;
+  app.clearTapFlash();
+  onGoHome();
 }
 
 void BibleSearchActivity::leave() {
@@ -339,14 +393,24 @@ void BibleSearchActivity::leave() {
 }
 
 bool BibleSearchActivity::handleHomeGesture() {
-  if (state == State::Building) {
-    cancelRequested = true;
-    goHomeAfterCancel = true;
-    return true;
+  switch (state) {
+    case State::Starting:
+    case State::Building:
+      cancelRequested = true;
+      goHomeAfterCancel = true;
+      return true;
+    case State::Saving:
+      goHomeAfterCancel = true;
+      return true;
+    case State::Opening:
+    case State::Finishing:
+    case State::Ready:
+    case State::Searching:
+      homeRequested = true;
+      return true;
+    default:
+      return false;
   }
-  // A busy state's SD work is already committed to; it ends in a state that
-  // takes the gesture.
-  return isBusy(state);
 }
 
 void BibleSearchActivity::handleDialogInput() {
@@ -367,6 +431,8 @@ void BibleSearchActivity::handleDialogInput() {
       RenderLock lock;
       progress = Progress{};
     }
+    cancelRequested = false;
+    goHomeAfterCancel = false;
     enterState(State::Starting, /*fullRefresh=*/true);
     return;
   }
@@ -426,7 +492,8 @@ void BibleSearchActivity::onQueryEntered(const char* text) {
     memcpy(query, text, static_cast<size_t>(kept));
     query[kept] = '\0';
   }
-  runSearch();
+  // runQuery and the first page's verse text wait for this frame.
+  enterState(State::Searching);
 }
 
 void BibleSearchActivity::runSearch() {
@@ -657,6 +724,9 @@ void BibleSearchActivity::buildScreen(UiScreen& screen) {
     case State::Results:
       buildResults(screen);
       return;
+    case State::Searching:
+      screen.centeredText(tr(STR_BIBLE_SEARCH_SEARCHING), screen.theme().bodyText);
+      return;
     case State::Opening:
     case State::AwaitingQuery:
       screen.centeredText(tr(STR_LOADING_POPUP), screen.theme().bodyText);
@@ -743,10 +813,16 @@ void BibleSearchActivity::buildProgress(UiScreen& screen) {
     snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_BIBLE_SEARCH_SAVING_PROGRESS));
   } else if (state == State::Finishing) {
     snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_BIBLE_SEARCH_FINISHING));
+  } else if (state == State::Starting) {
+    snprintf(statusLine, sizeof(statusLine), "%s",
+             promptStatus == Status::Incomplete ? tr(STR_BIBLE_SEARCH_RESUMING) : tr(STR_BIBLE_SEARCH_STARTING));
   } else if (state == State::Building && progress.book != 0) {
     const char* name = bookNames.forBook(progress.book);
-    if (progress.chapter > 0) {
-      snprintf(statusLine, sizeof(statusLine), tr(STR_BIBLE_SEARCH_STATUS), name, static_cast<int>(progress.chapter));
+    const int chapter = static_cast<int>(progress.chapter);
+    if (name[0] != '\0' && chapter > 0) {
+      snprintf(statusLine, sizeof(statusLine), tr(STR_BIBLE_SEARCH_STATUS), name, chapter);
+    } else if (chapter > 0) {
+      snprintf(statusLine, sizeof(statusLine), tr(STR_BIBLE_SEARCH_CHAPTER), chapter);
     } else {
       snprintf(statusLine, sizeof(statusLine), "%s", name);
     }
@@ -762,9 +838,10 @@ void BibleSearchActivity::buildProgress(UiScreen& screen) {
   screen.target().text(screen.takeTop(smallHeight, static_cast<int16_t>(gap * 2)), timeLine, timeStyle);
 
   // The band is reserved in every progress state so nothing moves when the
-  // button comes and goes; it is offered only while cancelling can be heard.
+  // button comes and goes. While Starting, a tap is remembered and acted on as
+  // soon as begin() returns.
   const fui::Rect area = screen.takeTop(buttonHeight);
-  if (state != State::Building) return;
+  if (state != State::Building && state != State::Starting) return;
   const auto buttonWidth = static_cast<int16_t>(area.width / 3);
   fui::ButtonProps cancel;
   cancel.label = tr(STR_CANCEL);
@@ -873,6 +950,7 @@ void BibleSearchActivity::drawFooter() {
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       return;
     }
+    case State::Starting:
     case State::Building: {
       const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
