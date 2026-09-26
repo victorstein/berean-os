@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.3](https://github.com/victorstein/berean-os/compare/v1.16.2...v1.16.3) (2026-09-26)
+
+
+### Bug Fixes
+
+* stop aborting when fallible allocations fail ([#122](https://github.com/victorstein/berean-os/issues/122)) ([39e5992](https://github.com/victorstein/berean-os/commit/39e59925f0996fa7f7105ddcd6bd4d0509a4ce76)), closes [#108](https://github.com/victorstein/berean-os/issues/108)
+
 ## [1.16.2](https://github.com/victorstein/berean-os/compare/v1.16.1...v1.16.2) (2026-09-26)
 
 
