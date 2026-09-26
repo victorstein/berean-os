@@ -355,7 +355,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = "Download failed: " + file.name;
+      char message[128];
+      snprintf(message, sizeof(message), tr(STR_FONT_FILE_DOWNLOAD_FAILED), file.name.c_str());
+      errorMessage_ = message;
       return;
     }
 
@@ -367,7 +369,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = "Failed to compute checksum: " + file.name;
+      char message[128];
+      snprintf(message, sizeof(message), tr(STR_FONT_FILE_CHECKSUM_FAILED), file.name.c_str());
+      errorMessage_ = message;
       return;
     }
     if (actualCrc != file.crc32) {
@@ -377,7 +381,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = "Checksum mismatch: " + file.name;
+      char message[128];
+      snprintf(message, sizeof(message), tr(STR_FONT_FILE_CHECKSUM_MISMATCH), file.name.c_str());
+      errorMessage_ = message;
       return;
     }
     LOG_DBG("FONT", "Downloaded %s (size=%zu crc32=%08x)", file.name.c_str(), file.size, actualCrc);
@@ -389,7 +395,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = "Invalid font file: " + file.name;
+      char message[128];
+      snprintf(message, sizeof(message), tr(STR_FONT_FILE_INVALID), file.name.c_str());
+      errorMessage_ = message;
       return;
     }
     currentFileIndex_++;
