@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <Serialization.h>
 
 #include <new>
@@ -76,7 +77,12 @@ std::unique_ptr<PageImage> PageImage::deserialize(HalFile& file) {
   serialization::readPod(file, yPos);
 
   auto ib = ImageBlock::deserialize(file);
-  return std::unique_ptr<PageImage>(new PageImage(std::move(ib), xPos, yPos));
+  auto pageImage = makeUniqueNoThrow<PageImage>(std::move(ib), xPos, yPos);
+  if (!pageImage) {
+    LOG_ERR("PGE", "OOM: PageImage during deserialization");
+    return nullptr;
+  }
+  return pageImage;
 }
 
 void PageHorizontalRule::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) {
@@ -169,7 +175,11 @@ bool Page::serialize(HalFile& file) const {
 }
 
 std::unique_ptr<Page> Page::deserialize(HalFile& file) {
-  auto page = std::unique_ptr<Page>(new Page());
+  auto page = makeUniqueNoThrow<Page>();
+  if (!page) {
+    LOG_ERR("PGE", "OOM: Page during deserialization");
+    return nullptr;
+  }
 
   uint16_t count;
   serialization::readPod(file, count);
