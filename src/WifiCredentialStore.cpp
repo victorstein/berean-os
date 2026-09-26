@@ -1,6 +1,7 @@
 #include "WifiCredentialStore.h"
 
 #include <CredentialIntegrity.h>
+#include <FormatVersion.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
 
@@ -10,6 +11,7 @@
 
 void WifiCredentialStore::toJson(JsonDocument& doc) const {
   std::lock_guard<std::mutex> lock(credentialMutex);
+  doc["v"] = FORMAT_VERSION;
   doc["lastConnectedSsid"] = lastConnectedSsid;
 
   JsonArray arr = doc["credentials"].to<JsonArray>();
@@ -27,6 +29,12 @@ void WifiCredentialStore::toJson(JsonDocument& doc) const {
 
 bool WifiCredentialStore::fromJson(JsonVariantConst doc) {
   std::lock_guard<std::mutex> lock(credentialMutex);
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) {
+    LOG_ERR("WCS", "Refusing %s: unknown format v%d (this build knows v1..v%d)", getFilePath(), version,
+            FORMAT_VERSION);
+    return false;
+  }
   lastConnectedSsid = doc["lastConnectedSsid"] | "";
 
   // Tolerate a missing/invalid 'credentials' key (treat as empty list); only

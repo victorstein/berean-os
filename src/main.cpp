@@ -29,6 +29,7 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "WifiCredentialStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/boot_sleep/MigrationScreen.h"
@@ -411,6 +412,10 @@ void setup() {
   SETTINGS.loadFromFile();
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
+  // Loaded with the others so nothing can save it unread: the web server's Wi-Fi
+  // API is reachable in hotspot mode without passing through WifiSelectionActivity,
+  // and a save of an unloaded store replaces every credential on the card.
+  WIFI_STORE.loadFromFile();
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
