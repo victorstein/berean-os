@@ -13,7 +13,7 @@ TEST(FormatVersion, AnOlderVersionIsKnown) {
 }
 
 TEST(FormatVersion, ZeroIsRefused) {
-  EXPECT_FALSE(persist::isKnownFormatVersion(0, 1)) << "an absent \"v\" reads as 1; a written 0 no build wrote";
+  EXPECT_FALSE(persist::isKnownFormatVersion(0, 1)) << "0 is how a store that requires \"v\" refuses its absence";
 }
 
 TEST(FormatVersion, ANegativeVersionIsRefused) { EXPECT_FALSE(persist::isKnownFormatVersion(-1, 1)); }

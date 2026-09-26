@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <Epub.h>
+#include <FormatVersion.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -65,7 +66,8 @@ std::optional<std::vector<std::string>> readLedger() {
   if (status != DocReadStatus::Ok) return std::nullopt;
   // The one nullopt cause nothing else reports: a well-formed future-format
   // file reads Ok, so readDocFromFileAdopting stays silent.
-  if ((doc["v"] | 0) > LEDGER_FORMAT_VERSION) {
+  const int version = doc["v"] | LEDGER_FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, LEDGER_FORMAT_VERSION)) {
     LOG_ERR(MODULE, "Refusing to read a newer ledger format");
     return std::nullopt;
   }
@@ -92,7 +94,8 @@ bool appendLedger(const std::string& name, const uint16_t passages) {
     LOG_ERR(MODULE, "Migration ledger unreadable; refusing to overwrite it");
     return false;
   }
-  if ((doc["v"] | 0) > LEDGER_FORMAT_VERSION) {
+  const int version = doc["v"] | LEDGER_FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, LEDGER_FORMAT_VERSION)) {
     LOG_ERR(MODULE, "Refusing to rewrite a newer ledger format");
     return false;
   }

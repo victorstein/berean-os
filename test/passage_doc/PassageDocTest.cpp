@@ -50,6 +50,37 @@ TEST(PassageDocRoundTrip, RejectsAFutureFormatVersion) {
   EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()));
 }
 
+TEST(PassageDocVersion, AnAbsentVersionIsRefused) {
+  JsonDocument json;
+  json["p"].to<JsonArray>();
+  study::PassageDoc doc;
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>())) << "the passage file has always required \"v\"";
+}
+
+TEST(PassageDocVersion, APresentZeroIsRefused) {
+  JsonDocument json;
+  json["v"] = 0;
+  json["p"].to<JsonArray>();
+  study::PassageDoc doc;
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()));
+}
+
+TEST(PassageDocVersion, ANegativeVersionIsRefused) {
+  JsonDocument json;
+  json["v"] = -1;
+  json["p"].to<JsonArray>();
+  study::PassageDoc doc;
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()));
+}
+
+TEST(PassageDocVersion, TheCurrentVersionIsAccepted) {
+  JsonDocument json;
+  json["v"] = study::PassageDoc::FORMAT_VERSION;
+  json["p"].to<JsonArray>();
+  study::PassageDoc doc;
+  EXPECT_TRUE(doc.fromJson(json.as<JsonVariantConst>()));
+}
+
 TEST(PassageDocRoundTrip, DropsAPassageWhoseStartUnitIsUnparseable) {
   JsonDocument json;
   json["v"] = study::PassageDoc::FORMAT_VERSION;

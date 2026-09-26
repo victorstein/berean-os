@@ -10,6 +10,7 @@ add_executable(PassageDocTest
 target_include_directories(PassageDocTest PRIVATE
   ${REPO_ROOT}/lib/StudyStore
   ${REPO_ROOT}/lib/Utf8
+  ${REPO_ROOT}/lib/Serialization
 )
 
 target_link_libraries(PassageDocTest PRIVATE

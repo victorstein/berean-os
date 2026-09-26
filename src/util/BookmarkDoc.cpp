@@ -1,5 +1,6 @@
 #include "BookmarkDoc.h"
 
+#include <FormatVersion.h>
 #include <Utf8.h>
 
 namespace BookmarkDoc {
@@ -29,7 +30,7 @@ bool fromJson(const JsonVariantConst doc, std::vector<BookmarkEntry>& bookmarks)
   // unconvertible, so an absent "v" reads as 1 (a file written before
   // versioning) while a written 0 keeps its value and is refused.
   const int version = doc["v"] | FORMAT_VERSION;
-  if (version <= 0 || version > FORMAT_VERSION) return false;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) return false;
 
   JsonArrayConst arr = doc["bookmarks"].as<JsonArrayConst>();
   bookmarks.reserve(arr.size());

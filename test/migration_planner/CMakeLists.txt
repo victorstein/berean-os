@@ -18,6 +18,7 @@ target_include_directories(MigrationPlannerTest PRIVATE
   ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/expat
+  ${REPO_ROOT}/lib/Serialization
 )
 
 target_compile_definitions(MigrationPlannerTest PRIVATE XML_GE=0 XML_CONTEXT_BYTES=1024)

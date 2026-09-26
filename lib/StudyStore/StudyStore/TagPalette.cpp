@@ -1,5 +1,7 @@
 #include "StudyStore/TagPalette.h"
 
+#include <FormatVersion.h>
+
 #include <algorithm>
 
 namespace study {
@@ -76,7 +78,7 @@ void TagPalette::toJson(JsonDocument& doc) const {
 bool TagPalette::fromJson(const JsonVariantConst doc) {
   if (!doc.is<JsonObjectConst>()) return false;
   const int version = doc["v"] | 0;
-  if (version <= 0 || version > FORMAT_VERSION) return false;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) return false;
 
   entries_.clear();
   uint16_t highest = 0;

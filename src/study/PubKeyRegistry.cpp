@@ -1,6 +1,7 @@
 #include "PubKeyRegistry.h"
 
 #include <ArduinoJson.h>
+#include <FormatVersion.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <PersistableStore.h>
@@ -25,8 +26,8 @@ bool record(const std::string& bookPath, const study::RegisteredPub& pub) {
     LOG_ERR(MODULE, "Registry unreadable; refusing to overwrite it");
     return false;
   }
-  const int version = doc["v"] | 0;
-  if (version > FORMAT_VERSION) {
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) {
     LOG_ERR(MODULE, "Refusing to rewrite a newer registry format");
     return false;
   }
@@ -54,7 +55,8 @@ bool record(const std::string& bookPath, const study::RegisteredPub& pub) {
 std::optional<std::string> findBySymbol(std::initializer_list<std::string_view> symbols, const std::string_view issue) {
   JsonDocument doc;
   if (PersistableStoreBase::readDocFromFileAdopting(PATH, doc) != DocReadStatus::Ok) return std::nullopt;
-  if ((doc["v"] | 0) > FORMAT_VERSION) return std::nullopt;
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) return std::nullopt;
 
   const JsonObjectConst entries = doc["p"];
   if (entries.isNull()) return std::nullopt;
@@ -80,7 +82,8 @@ std::optional<study::RegisteredPub> lookup(const std::string& bookPath) {
 
   JsonDocument doc;
   if (PersistableStoreBase::readDocFromFileAdopting(PATH, doc) != DocReadStatus::Ok) return std::nullopt;
-  if ((doc["v"] | 0) > FORMAT_VERSION) return std::nullopt;
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) return std::nullopt;
 
   const JsonVariantConst entry = doc["p"][bookPath];
   if (!entry.is<JsonObjectConst>()) return std::nullopt;

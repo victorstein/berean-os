@@ -7,6 +7,7 @@ add_executable(HighlightDocTest
 target_include_directories(HighlightDocTest PRIVATE
   ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/Utf8
+  ${REPO_ROOT}/lib/Serialization
 )
 
 target_link_libraries(HighlightDocTest PRIVATE
