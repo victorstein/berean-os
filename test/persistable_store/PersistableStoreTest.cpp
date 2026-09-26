@@ -1,5 +1,6 @@
 // The save guard issue #101 adds to PersistableStore: a store that refused its
-// file's format must not write over it. Runs the real template and the real
+// file's format must not write over it, including a file that #98's .tmp
+// adoption promoted into place. Runs the real template and the real
 // PersistableStore.cpp against the in-memory HalStorage fake.
 
 #include <ArduinoJson.h>
@@ -110,4 +111,19 @@ TEST_F(PersistableStoreGuard, AnUnparseableFileIsStillOverwritableAsBefore) {
   store().value = 1;
   EXPECT_TRUE(store().saveToFileAtomic()) << "#101 does not change corrupt-file handling";
   EXPECT_EQ(bytesOn(PATH), R"({"v":1,"value":1})");
+}
+
+TEST_F(PersistableStoreGuard, AFutureVersionTempIsPromotedThenRefusedAndNeverOverwritten) {
+  storage_fake::putFile(TMP_PATH, NEWER);
+
+  EXPECT_FALSE(store().loadFromFile());
+  EXPECT_EQ(store().value, 0) << "a refused load keeps the pre-load value";
+  EXPECT_EQ(bytesOn(PATH), NEWER) << "the load promoted the .tmp before refusing it";
+  EXPECT_EQ(bytesOn(TMP_PATH), "<absent>");
+
+  store().value = 42;
+  EXPECT_FALSE(store().saveToFileAtomic());
+  EXPECT_FALSE(store().saveToFile());
+  EXPECT_EQ(bytesOn(PATH), NEWER);
+  EXPECT_EQ(bytesOn(TMP_PATH), "<absent>") << "refused before the temp file is written";
 }
