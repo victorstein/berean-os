@@ -1,4 +1,6 @@
 #pragma once
+#include <TempAdoption.h>
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -16,12 +18,7 @@
 // server ever writes bookmarks alongside it, add a mutex.
 namespace BookmarkFile {
 
-enum class LoadResult : uint8_t {
-  Loaded,             // file read and parsed
-  Empty,              // genuinely absent -- safe to save over
-  RecoveredFromTemp,  // a failed rename left .tmp as the only copy; promoted
-  Failed,             // unreadable or unparseable -- DATA MAY STILL EXIST
-};
+using LoadResult = AdoptedLoad;
 
 // Loads the bookmarks for bookPath. The vector is cleared first.
 //
