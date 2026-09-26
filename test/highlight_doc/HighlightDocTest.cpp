@@ -70,6 +70,29 @@ TEST(HighlightDoc, IgnoresUnknownKeysButRejectsAFutureVersion) {
       << "a future version may redefine start/end; reinterpreting it then saving v1 destroys data";
 }
 
+TEST(HighlightDocVersion, AnAbsentVersionIsReadAsTheCurrentOne) {
+  JsonDocument doc;
+  ASSERT_FALSE(
+      deserializeJson(doc, R"({"tags":["a"],"highlights":[{"si":1,"start":5,"end":9,"t":[0],"text":"x"}]})"));
+  HighlightDoc parsed;
+  ASSERT_TRUE(parsed.fromJson(doc)) << "every build has written \"v\"; an absent one is still accepted";
+  EXPECT_EQ(parsed.highlights().size(), 1u);
+}
+
+TEST(HighlightDocVersion, APresentZeroIsRefused) {
+  JsonDocument doc;
+  ASSERT_FALSE(deserializeJson(doc, R"({"v":0,"tags":[],"highlights":[]})"));
+  HighlightDoc parsed;
+  EXPECT_FALSE(parsed.fromJson(doc)) << "a written 0 is a version no build wrote";
+}
+
+TEST(HighlightDocVersion, ANegativeVersionIsRefused) {
+  JsonDocument doc;
+  ASSERT_FALSE(deserializeJson(doc, R"({"v":-1,"tags":[],"highlights":[]})"));
+  HighlightDoc parsed;
+  EXPECT_FALSE(parsed.fromJson(doc));
+}
+
 TEST(HighlightDoc, DropsTagReferencesOutsideThePalette) {
   JsonDocument doc;
   ASSERT_FALSE(deserializeJson(doc, R"({"v":1,"tags":["a"],"highlights":[{"si":0,"start":0,"end":5,"t":[0,7]}]})"));

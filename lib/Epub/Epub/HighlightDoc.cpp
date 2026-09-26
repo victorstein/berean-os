@@ -1,5 +1,6 @@
 #include "HighlightDoc.h"
 
+#include <FormatVersion.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -118,8 +119,8 @@ void HighlightDoc::toJson(JsonDocument& doc) const {
 }
 
 bool HighlightDoc::fromJson(JsonVariantConst doc) {
-  const int version = doc["v"] | 0;
-  if (version > FORMAT_VERSION) return false;
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) return false;
 
   std::vector<std::string> tags;
   const JsonArrayConst tagsArr = doc["tags"].as<JsonArrayConst>();
