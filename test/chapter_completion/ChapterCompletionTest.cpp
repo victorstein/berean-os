@@ -273,6 +273,16 @@ TEST(ChapterCompletionJson, RefusesAMissingVersion) {
   EXPECT_FALSE(parses(R"({"b":{"1":"01"}})", record));
 }
 
+TEST(ChapterCompletionJson, RefusesAPresentZeroVersion) {
+  study::ChapterCompletion record;
+  EXPECT_FALSE(parses(R"({"v":0,"b":{"1":"01"}})", record));
+}
+
+TEST(ChapterCompletionJson, RefusesANegativeVersion) {
+  study::ChapterCompletion record;
+  EXPECT_FALSE(parses(R"({"v":-1,"b":{"1":"01"}})", record));
+}
+
 // Each of these is a file this firmware never writes. Reporting failure is what
 // latches saving off, so the file is left on the card rather than replaced.
 TEST(ChapterCompletionJson, RefusesACorruptRecordRatherThanLoadingPartOfIt) {

@@ -3,7 +3,10 @@ add_executable(ChapterCompletionTest
   ${REPO_ROOT}/lib/StudyStore/StudyStore/ChapterCompletion.cpp
 )
 
-target_include_directories(ChapterCompletionTest PRIVATE ${REPO_ROOT}/lib/StudyStore)
+target_include_directories(ChapterCompletionTest PRIVATE
+  ${REPO_ROOT}/lib/StudyStore
+  ${REPO_ROOT}/lib/Serialization
+)
 
 target_link_libraries(ChapterCompletionTest PRIVATE
   crosspoint_test_common

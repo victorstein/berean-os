@@ -1,5 +1,7 @@
 #include "StudyStore/ChapterCompletion.h"
 
+#include <FormatVersion.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -109,7 +111,7 @@ bool ChapterCompletion::toJsonWithinBudget(JsonDocument& doc, const size_t budge
 bool ChapterCompletion::fromJson(const JsonVariantConst doc) {
   if (!doc.is<JsonObjectConst>()) return false;
   const int version = doc["v"] | 0;
-  if (version <= 0 || version > FORMAT_VERSION) return false;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) return false;
   if (!doc["b"].is<JsonObjectConst>()) return false;
 
   ChapterCompletion parsed;
