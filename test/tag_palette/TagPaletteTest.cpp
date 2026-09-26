@@ -93,6 +93,29 @@ TEST(TagPaletteRoundTrip, RejectsAFutureFormatVersion) {
       << "reinterpreting a newer file is how an OTA rollback destroys data";
 }
 
+TEST(TagPaletteVersion, AnAbsentVersionIsRefused) {
+  JsonDocument doc;
+  doc["t"].to<JsonArray>();
+  study::TagPalette q;
+  EXPECT_FALSE(q.fromJson(doc.as<JsonVariantConst>())) << "the palette has always required \"v\"";
+}
+
+TEST(TagPaletteVersion, APresentZeroIsRefused) {
+  JsonDocument doc;
+  doc["v"] = 0;
+  doc["t"].to<JsonArray>();
+  study::TagPalette q;
+  EXPECT_FALSE(q.fromJson(doc.as<JsonVariantConst>()));
+}
+
+TEST(TagPaletteVersion, ANegativeVersionIsRefused) {
+  JsonDocument doc;
+  doc["v"] = -1;
+  doc["t"].to<JsonArray>();
+  study::TagPalette q;
+  EXPECT_FALSE(q.fromJson(doc.as<JsonVariantConst>()));
+}
+
 TEST(TagPaletteRoundTrip, RecoversNextIdFromTheHighestSeenWhenTheFieldIsMissing) {
   JsonDocument doc;
   doc["v"] = study::TagPalette::FORMAT_VERSION;

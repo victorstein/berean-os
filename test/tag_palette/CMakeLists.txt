@@ -3,7 +3,10 @@ add_executable(TagPaletteTest
   ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
 )
 
-target_include_directories(TagPaletteTest PRIVATE ${REPO_ROOT}/lib/StudyStore)
+target_include_directories(TagPaletteTest PRIVATE
+  ${REPO_ROOT}/lib/StudyStore
+  ${REPO_ROOT}/lib/Serialization
+)
 
 target_link_libraries(TagPaletteTest PRIVATE
   crosspoint_test_common
