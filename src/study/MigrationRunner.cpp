@@ -28,8 +28,6 @@
 namespace {
 
 constexpr const char* MODULE = "MIGRATE";
-constexpr const char* BEREAN_DIR = "/.berean";
-constexpr const char* LEGACY_DIR = "/.crosspoint/highlights";
 constexpr int LEDGER_FORMAT_VERSION = 1;
 
 struct FileReport {
@@ -46,7 +44,7 @@ struct FileReport {
 
 std::vector<std::string> legacySources() {
   std::vector<std::string> out;
-  for (const String& entry : Storage.listFiles(LEGACY_DIR, 200)) {
+  for (const String& entry : Storage.listFiles(sdpaths::HIGHLIGHTS_DIR, 200)) {
     const std::string name(entry.c_str());
     if (name.size() > 5 && name.compare(name.size() - 5, 5, ".json") == 0) out.push_back(name);
   }
@@ -114,7 +112,7 @@ bool appendLedger(const std::string& name, const uint16_t passages) {
     return false;
   }
 
-  Storage.mkdir(BEREAN_DIR);
+  Storage.mkdir(sdpaths::BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(MigrationRunner::LEDGER_PATH, doc);
 }
 
@@ -169,7 +167,7 @@ void writeReport(const MigrationRunner::Summary& summary, const std::vector<File
     for (const auto& d : f.drops) drops.add(d);
   }
 
-  Storage.mkdir(BEREAN_DIR);
+  Storage.mkdir(sdpaths::BEREAN_DIR);
   if (!PersistableStoreBase::writeDocToFileAtomic(MigrationRunner::REPORT_PATH, doc)) {
     LOG_ERR(MODULE, "Could not write the migration report");
   }
