@@ -54,7 +54,9 @@ body:
       label: Logs, crash report, screenshots
       description: |
         After a crash the firmware writes a report to the root of the SD card — attach it. For a
-        serial log, run `python3 scripts/debugging_monitor.py`. Images can be dragged in here.
+        serial log, flash a development build (see the User Guide) and run
+        `python3 scripts/debugging_monitor.py`; OTA builds do not log over serial. Images can be
+        dragged in here.
       render: shell
     validations:
       required: false

@@ -388,7 +388,9 @@ usual cause: delete `.crosspoint/settings.json` and `.crosspoint/state.json` fro
 **Crash reports.** After a crash the firmware writes a report to the root of the SD card. Attach it
 to any bug report.
 
-**Serial logs.** Connect the device over USB and run:
+**Serial logs.** Only a development build writes a log over serial; the build that **Check for
+updates** installs does not. Build one with `pio run -e x4pro` and install it over USB or with **SD
+firmware update** (section 16). Then connect the device over USB and run:
 
 ```bash
 python3 scripts/debugging_monitor.py
@@ -404,6 +406,3 @@ monitor fails setting a baud rate. Either use the script above or read the port 
 ```bash
 cat /dev/cu.usbmodem1101 > serial.log
 ```
-
-Release builds log at a lower level than development builds, so a reproduction with the serial log is
-worth far more from a build flashed over USB than from an OTA image.
