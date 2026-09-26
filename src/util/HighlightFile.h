@@ -1,5 +1,7 @@
 #pragma once
 
+#include <TempAdoption.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -7,24 +9,18 @@
 #include "Epub/HighlightDoc.h"
 
 // Storage shell for a book's highlights: moves bytes between HighlightDoc and
-// /.crosspoint/highlights/. All format rules live in HighlightDoc; the .tmp
-// promotion decision and the never-overwrite-on-failure rule live in
-// Serialization/TempAdoption.h, and the save budget check in
-// util/HighlightFileAction.h, so they can be host-tested even though this file
-// (which reaches Arduino.h through PersistableStore.h) cannot be built on the
-// host. See util/HighlightFileAction.h for why.
+// /.crosspoint/highlights/. All format rules live in HighlightDoc; .tmp
+// adoption and the never-overwrite-on-failure rule live in
+// PersistableStoreBase::loadAdopting and Serialization/TempAdoption.h, and the
+// save budget check in util/HighlightFileAction.h. Those are host-tested; this
+// file has no host suite of its own.
 //
 // Single-writer only: the static helpers here take no lock. If the web
 // server ever writes highlights alongside the main task, add a mutex --
 // PersistableStore.h documents the same hazard for storeMutex.
 namespace HighlightFile {
 
-enum class LoadResult : uint8_t {
-  Loaded,             // file read and parsed
-  Empty,              // genuinely absent -- safe to save over
-  RecoveredFromTemp,  // a failed rename left .tmp as the only copy; promoted
-  Failed,             // unreadable or unparseable -- DATA MAY STILL EXIST
-};
+using LoadResult = AdoptedLoad;
 
 // Loads the highlights for bookPath.
 //

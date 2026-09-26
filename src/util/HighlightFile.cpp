@@ -6,7 +6,6 @@
 #include <PathFlatten.h>
 #include <PersistableStore.h>
 #include <SdPaths.h>
-#include <TempAdoption.h>
 
 #include "HighlightFileAction.h"
 
@@ -24,51 +23,10 @@ namespace HighlightFile {
 
 LoadResult load(const std::string& bookPath, HighlightDoc& doc) {
   const std::string path = highlightPath(bookPath);
-  const std::string tmpPath = path + ".tmp";
-
-  JsonDocument primaryJson;
-  const DocReadStatus primaryStatus = PersistableStoreBase::readDocFromFileChecked(path.c_str(), primaryJson);
-
-  bool tempExists = false;
-  bool tempParsed = false;
-  JsonDocument tempJson;
-  if (primaryStatus == DocReadStatus::Missing) {
-    tempExists = Storage.exists(tmpPath.c_str());
-    if (tempExists) {
-      tempParsed = PersistableStoreBase::readDocFromFileChecked(tmpPath.c_str(), tempJson) == DocReadStatus::Ok;
-    }
-  }
-
-  switch (tempAdoptionAction(primaryStatus, tempExists, tempParsed)) {
-    case TempAdoptionAction::UseLoaded:
-      if (doc.fromJson(primaryJson.as<JsonVariantConst>())) return LoadResult::Loaded;
-      LOG_ERR("HLFILE", "Rejected %s (future format version?)", path.c_str());
-      return LoadResult::Failed;
-
-    case TempAdoptionAction::ReportEmpty:
-      return LoadResult::Empty;
-
-    case TempAdoptionAction::PromoteTempAndUseIt: {
-      // Promote first: the rename is what rescues the only surviving copy of
-      // the user's data. Do this before trusting the parsed content, so a
-      // validation failure below can never leave the rescue undone -- the
-      // primary path is Missing, so nothing here can be overwritten.
-      if (!Storage.rename(tmpPath.c_str(), path.c_str())) {
-        LOG_ERR("HLFILE", "Failed to promote %s into place", tmpPath.c_str());
-      }
-      if (doc.fromJson(tempJson.as<JsonVariantConst>())) return LoadResult::RecoveredFromTemp;
-      LOG_ERR("HLFILE", "Recovered %s but rejected its contents (future format version?)", path.c_str());
-      return LoadResult::Failed;
-    }
-
-    case TempAdoptionAction::KeepTempReportEmpty:
-      Storage.remove(tmpPath.c_str());
-      return LoadResult::Empty;
-
-    case TempAdoptionAction::ReportFailed:
-      return LoadResult::Failed;
-  }
-  return LoadResult::Failed;
+  return PersistableStoreBase::loadAdopting(
+      path.c_str(), &PersistableStoreBase::readDocFromFileChecked,
+      [](void* target, JsonVariantConst json) { return static_cast<HighlightDoc*>(target)->fromJson(json); },
+      &doc);
 }
 
 SaveResult save(const std::string& bookPath, const HighlightDoc& doc) {
