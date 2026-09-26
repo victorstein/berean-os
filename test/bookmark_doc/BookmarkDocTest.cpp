@@ -107,6 +107,14 @@ TEST(BookmarkDocVersion, APresentZeroIsRefused) {
       << "absent is legacy; a written 0 is a version this build does not know";
 }
 
+TEST(BookmarkDocVersion, ANegativeVersionIsRefused) {
+  JsonDocument doc;
+  doc["v"] = -1;
+  doc["bookmarks"].to<JsonArray>();
+  std::vector<BookmarkEntry> out;
+  EXPECT_FALSE(BookmarkDoc::fromJson(doc.as<JsonVariantConst>(), out));
+}
+
 TEST(BookmarkDocVersion, AFutureVersionIsRefusedRatherThanReinterpreted) {
   JsonDocument doc;
   doc["v"] = BookmarkDoc::FORMAT_VERSION + 1;
