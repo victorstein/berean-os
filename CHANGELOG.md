@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.2](https://github.com/victorstein/berean-os/compare/v1.16.1...v1.16.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* translate font-download and SD-card error text ([#117](https://github.com/victorstein/berean-os/issues/117)) ([8f824f0](https://github.com/victorstein/berean-os/commit/8f824f02e1539875d71c6ef3c175f44e04633f9f)), closes [#113](https://github.com/victorstein/berean-os/issues/113)
+
 ## [1.16.1](https://github.com/victorstein/berean-os/compare/v1.16.0...v1.16.1) (2026-09-26)
 
 
