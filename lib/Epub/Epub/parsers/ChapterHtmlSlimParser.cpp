@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <Utf8.h>
 #include <XmlParserUtils.h>
 #include <expat.h>
@@ -231,7 +232,11 @@ void ChapterHtmlSlimParser::flushPendingAnchor() {
     if (currentPage && !currentPage->elements.empty()) {
       completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
       completedPageCount++;
-      currentPage.reset(new Page());
+      currentPage = makeUniqueNoThrow<Page>();
+      if (!currentPage) {
+        markAllocationFailed("Page at TOC boundary");
+        return;
+      }
       currentPageNextY = 0;
       currentPageVisibleOffsetSet = false;
     }
@@ -280,6 +285,11 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
 }
 
 // start a new text block if needed
+void ChapterHtmlSlimParser::markAllocationFailed(const char* what) {
+  LOG_ERR("EHP", "OOM: %s", what);
+  allocationFailed_ = true;
+}
+
 void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
   nextWordContinues = false;  // New block = new paragraph, no continuation
   if (currentTextBlock) {
@@ -322,7 +332,15 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
   // If the pending anchor is a TOC chapter boundary, force a page break after the previous
   // block is flushed so the chapter starts on a fresh page.
   flushPendingAnchor();
-  currentTextBlock.reset(new ParsedText(extraParagraphSpacing, hyphenationEnabled, focusReadingEnabled, blockStyle));
+  // On failure the previous block stays current, so the callers that dereference
+  // currentTextBlock straight after this call never see null; the build is abandoned anyway.
+  auto nextTextBlock =
+      makeUniqueNoThrow<ParsedText>(extraParagraphSpacing, hyphenationEnabled, focusReadingEnabled, blockStyle);
+  if (!nextTextBlock) {
+    markAllocationFailed("ParsedText");
+    return;
+  }
+  currentTextBlock = std::move(nextTextBlock);
   wordsExtractedInBlock = 0;
   listItemBulletOnly = false;
 }
@@ -338,9 +356,9 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
   }
 
   if (!currentPage) {
-    currentPage.reset(new (std::nothrow) Page());
+    currentPage = makeUniqueNoThrow<Page>();
     if (!currentPage) {
-      LOG_ERR("EHP", "Failed to create page for horizontal rule");
+      markAllocationFailed("Page for horizontal rule");
       return;
     }
     currentPageNextY = 0;
@@ -365,9 +383,9 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
     setCurrentPageVisibleOffset(visibleCounter_.offset);
     completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
     completedPageCount++;
-    currentPage.reset(new (std::nothrow) Page());
+    currentPage = makeUniqueNoThrow<Page>();
     if (!currentPage) {
-      LOG_ERR("EHP", "Failed to create page after horizontal-rule page break");
+      markAllocationFailed("Page after horizontal-rule page break");
       return;
     }
     currentPageNextY = 0;
@@ -771,17 +789,17 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                   self->completePageFn(std::move(self->currentPage), self->xpathParagraphIndex,
                                        self->xpathListItemIndex, self->currentPageVisibleOffset);
                   self->completedPageCount++;
-                  self->currentPage.reset(new Page());
+                  self->currentPage = makeUniqueNoThrow<Page>();
                   if (!self->currentPage) {
-                    LOG_ERR("EHP", "Failed to create new page");
+                    self->markAllocationFailed("Page for image");
                     return;
                   }
                   self->currentPageNextY = 0;
                   self->currentPageVisibleOffsetSet = false;
                 } else if (!self->currentPage) {
-                  self->currentPage.reset(new Page());
+                  self->currentPage = makeUniqueNoThrow<Page>();
                   if (!self->currentPage) {
-                    LOG_ERR("EHP", "Failed to create initial page");
+                    self->markAllocationFailed("Initial page for image");
                     return;
                   }
                   self->currentPageNextY = 0;
@@ -1551,6 +1569,9 @@ bool ChapterHtmlSlimParser::beginParse() {
   const auto align = rootBlockStyle.alignment;
   paragraphAlignmentBlockStyle.alignment = align;
   startNewTextBlock(paragraphAlignmentBlockStyle);
+  if (allocationFailed_) {
+    return false;
+  }
 
   xmlParser_ = XML_ParserCreate(nullptr);
   if (!xmlParser_) {
@@ -1603,6 +1624,10 @@ ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
     return ParseStatus::Error;
   }
 
+  if (allocationFailed_) {
+    return ParseStatus::Error;
+  }
+
   return done ? ParseStatus::Done : ParseStatus::More;
 }
 
@@ -1628,6 +1653,11 @@ bool ChapterHtmlSlimParser::finishParse() {
   // Process last page if there is still text
   if (currentTextBlock) {
     makePages();
+    // Before completePageFn: a failed trailing allocation leaves currentPage null, and
+    // Section::onPageComplete dereferences it unchecked.
+    if (allocationFailed_) {
+      return false;
+    }
     if (!pendingAnchorId.empty()) {
       anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
       pendingAnchorId.clear();
@@ -1639,7 +1669,7 @@ bool ChapterHtmlSlimParser::finishParse() {
     currentTextBlock.reset();
   }
 
-  return true;
+  return !allocationFailed_;
 }
 
 bool ChapterHtmlSlimParser::parseAndBuildPages() {
@@ -1660,11 +1690,18 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
 }
 
 void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line, const uint32_t visibleOffset) {
+  if (allocationFailed_) {
+    return;
+  }
   const int lineHeight =
       renderer.getLineHeight(fontId, lineCompression) + line->getRubyShift(renderer.getFontAscenderSize(fontId));
 
   if (!currentPage) {
-    currentPage.reset(new Page());
+    currentPage = makeUniqueNoThrow<Page>();
+    if (!currentPage) {
+      markAllocationFailed("Page for line");
+      return;
+    }
     currentPageNextY = 0;
     currentPageVisibleOffsetSet = false;
   }
@@ -1673,7 +1710,11 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line, const
     setCurrentPageVisibleOffset(visibleOffset);
     completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
     completedPageCount++;
-    currentPage.reset(new Page());
+    currentPage = makeUniqueNoThrow<Page>();
+    if (!currentPage) {
+      markAllocationFailed("Page after page break");
+      return;
+    }
     currentPageNextY = 0;
     currentPageVisibleOffsetSet = false;
   }
@@ -1695,13 +1736,20 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line, const
 }
 
 void ChapterHtmlSlimParser::makePages() {
+  if (allocationFailed_) {
+    return;
+  }
   if (!currentTextBlock) {
     LOG_ERR("EHP", "!! No text block to make pages for !!");
     return;
   }
 
   if (!currentPage) {
-    currentPage.reset(new Page());
+    currentPage = makeUniqueNoThrow<Page>();
+    if (!currentPage) {
+      markAllocationFailed("Page for text block");
+      return;
+    }
     currentPageNextY = 0;
     currentPageVisibleOffsetSet = false;
   }
