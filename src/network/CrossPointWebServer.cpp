@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cinttypes>
 #include <string_view>
 
 #include "CrossPointSettings.h"
@@ -106,7 +107,7 @@ void CrossPointWebServer::begin() {
   // Store AP mode flag for later use (e.g., in handleStatus)
   apMode = isInApMode;
 
-  LOG_DBG("WEB", "[MEM] Free heap before begin: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEB", "[MEM] Free heap before begin: %" PRIu32 " bytes", ESP.getFreeHeap());
   LOG_DBG("WEB", "Network mode: %s", apMode ? "AP" : "STA");
 
   LOG_DBG("WEB", "Creating web server on port %d...", port);
@@ -122,7 +123,7 @@ void CrossPointWebServer::begin() {
   // Note: WebServer class doesn't have setNoDelay() in the standard ESP32 library.
   // We rely on disabling WiFi sleep for responsiveness.
 
-  LOG_DBG("WEB", "[MEM] Free heap after WebServer allocation: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEB", "[MEM] Free heap after WebServer allocation: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   if (!server) {
     LOG_ERR("WEB", "OOM: WebServer");
@@ -177,7 +178,7 @@ void CrossPointWebServer::begin() {
   server->on("/api/wifi/delete", HTTP_POST, [this] { handleDeleteWifiNetwork(); });
 
   server->onNotFound([this] { handleNotFound(); });
-  LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEB", "[MEM] Free heap after route setup: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Collect WebDAV headers and register handler
   const char* davHeaders[] = {"Depth", "Destination", "Overwrite", "If", "Lock-Token", "Timeout"};
@@ -224,7 +225,7 @@ void CrossPointWebServer::begin() {
   const String ipAddr = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
   LOG_DBG("WEB", "Access at http://%s/", ipAddr.c_str());
   LOG_DBG("WEB", "WebSocket at ws://%s:%d/", ipAddr.c_str(), wsPort);
-  LOG_DBG("WEB", "[MEM] Free heap after server.begin(): %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEB", "[MEM] Free heap after server.begin(): %" PRIu32 " bytes", ESP.getFreeHeap());
 }
 
 void CrossPointWebServer::abortWsUpload(const char* tag) {
@@ -252,7 +253,7 @@ void CrossPointWebServer::stop() {
   LOG_DBG("WEB", "STOP INITIATED - setting running=false first");
   running = false;  // Set this FIRST to prevent handleClient from using server
 
-  LOG_DBG("WEB", "[MEM] Free heap before stop: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEB", "[MEM] Free heap before stop: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Close any in-progress WebSocket upload and remove partial file
   if (wsUploadInProgress && wsUploadFile) {
@@ -277,18 +278,18 @@ void CrossPointWebServer::stop() {
   delay(20);
 
   server->stop();
-  LOG_DBG("WEB", "[MEM] Free heap after server->stop(): %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEB", "[MEM] Free heap after server->stop(): %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Brief delay before deletion
   delay(10);
 
   server.reset();
   LOG_DBG("WEB", "Web server stopped and deleted");
-  LOG_DBG("WEB", "[MEM] Free heap after delete server: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEB", "[MEM] Free heap after delete server: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Note: Static upload variables (uploadFileName, uploadPath, uploadError) are declared
   // later in the file and will be cleared when they go out of scope or on next upload
-  LOG_DBG("WEB", "[MEM] Free heap final: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEB", "[MEM] Free heap final: %" PRIu32 " bytes", ESP.getFreeHeap());
 }
 
 void CrossPointWebServer::handleClient() {
@@ -687,7 +688,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     }
 
     LOG_DBG("WEB", "[UPLOAD] START: %s to path: %s", state.fileName.c_str(), state.path.c_str());
-    LOG_DBG("WEB", "[UPLOAD] Free heap: %d bytes", ESP.getFreeHeap());
+    LOG_DBG("WEB", "[UPLOAD] Free heap: %" PRIu32 " bytes", ESP.getFreeHeap());
 
     String filePath = state.path;
     if (!filePath.endsWith("/")) filePath += "/";

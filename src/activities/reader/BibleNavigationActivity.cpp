@@ -531,7 +531,7 @@ void BibleNavigationActivity::drawFooter() {
   if (subHeaderHeight() == 0 || bookLayout.pageCount == 0) return;
   const int page = BookGrid::pageOf(bookLayout, nav.selected);
   const int section = bookLayout.pages[page].section;
-  char pageIndicator[12];
+  char pageIndicator[24];
   snprintf(pageIndicator, sizeof(pageIndicator), "%d/%d", page + 1, bookLayout.pageCount);
 
   const auto& metrics = UITheme::getInstance().getMetrics();

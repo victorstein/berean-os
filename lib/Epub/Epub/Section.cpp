@@ -5,6 +5,8 @@
 #include <Memory.h>
 #include <Serialization.h>
 
+#include <cinttypes>
+
 #include "Epub/css/CssParser.h"
 #include "Page.h"
 #include "hyphenation/Hyphenator.h"
@@ -310,7 +312,7 @@ bool Section::ensureHtmlCache(std::string& parsePath, bool& promoted, std::strin
       return false;
     }
 
-    LOG_DBG("SCT", "Streamed temp HTML to %s (%d bytes)", tmpHtmlPath.c_str(), fileSize);
+    LOG_DBG("SCT", "Streamed temp HTML to %s (%" PRIu32 " bytes)", tmpHtmlPath.c_str(), fileSize);
 
     // Promote to the persistent HTML cache immediately -- the inflate is complete and the bytes are
     // valid regardless of whether the layout build finishes, so reopening (even a window-only spine

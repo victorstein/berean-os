@@ -8,6 +8,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <cinttypes>
 #include <cstdio>
 #include <cstring>
 
@@ -516,7 +517,7 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   LOG_DBG("JPG", "Converting JPEG to %s BMP (target: %dx%d)", oneBit ? "1-bit" : "2-bit", targetWidth, targetHeight);
 
   if (ESP.getFreeHeap() < MIN_FREE_HEAP) {
-    LOG_ERR("JPG", "Not enough heap for JPEG decoder (%u free, need %u)", ESP.getFreeHeap(), MIN_FREE_HEAP);
+    LOG_ERR("JPG", "Not enough heap for JPEG decoder (%" PRIu32 " free, need %u)", ESP.getFreeHeap(), MIN_FREE_HEAP);
     return false;
   }
 

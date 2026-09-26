@@ -4,6 +4,7 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <cinttypes>
 #include <cmath>
 #include <cstring>
 
@@ -894,7 +895,7 @@ CrossPointPosition ProgressMapper::toCrossPoint(const std::shared_ptr<Epub>& epu
       result.visibleTextOffset =
           static_cast<uint32_t>(std::min<size_t>(s.getTargetVisChars(), static_cast<size_t>(UINT32_MAX)));
       result.hasVisibleTextOffset = true;
-      LOG_DBG("PM", "XPath body/text()[%d]+%d -> offset=%u", xpathTextNode, xpathChar, result.visibleTextOffset);
+      LOG_DBG("PM", "XPath body/text()[%d]+%d -> offset=%" PRIu32, xpathTextNode, xpathChar, result.visibleTextOffset);
     }
   } else if (xpathP > 0) {
     ParagraphStreamer s(xpathP, xpathChar, xpathTextNode);
@@ -920,14 +921,14 @@ CrossPointPosition ProgressMapper::toCrossPoint(const std::shared_ptr<Epub>& epu
     if (const auto offsetPage = tempSection.getPageForVisibleTextOffset(result.visibleTextOffset, imageAnchor)) {
       result.pageNumber = *offsetPage;
       result.totalPages = std::max(result.totalPages, result.pageNumber + 1);
-      LOG_DBG("PM", "XPath content offset %u -> spine=%d page=%d/%d", result.visibleTextOffset, result.spineIndex,
-              result.pageNumber, result.totalPages);
+      LOG_DBG("PM", "XPath content offset %" PRIu32 " -> spine=%d page=%d/%d", result.visibleTextOffset,
+              result.spineIndex, result.pageNumber, result.totalPages);
       return result;
     }
     // A valid content anchor without a local pagination LUT cannot yet be turned
     // into a page. Retain it on the result, but use protocol percentage for the
     // immediate page fallback.
-    LOG_DBG("PM", "No page-offset LUT for spine=%d offset=%u; using percentage fallback", result.spineIndex,
+    LOG_DBG("PM", "No page-offset LUT for spine=%d offset=%" PRIu32 "; using percentage fallback", result.spineIndex,
             result.visibleTextOffset);
   }
   const size_t bytesIn = (targetBytes > prevCum) ? (targetBytes - prevCum) : 0;

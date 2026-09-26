@@ -5,6 +5,7 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <cinttypes>
 
 struct ZipInflateCtx {
   HalFile* file = nullptr;
@@ -377,7 +378,7 @@ uint8_t* ZipFile::readFileToMemory(const char* filename, size_t* size, const boo
   const auto dataSize = trailingNullByte ? inflatedDataSize + 1 : inflatedDataSize;
   const auto data = static_cast<uint8_t*>(malloc(dataSize));
   if (data == nullptr) {
-    LOG_ERR("ZIP", "Failed to allocate memory for output buffer (%zu bytes)", dataSize);
+    LOG_ERR("ZIP", "Failed to allocate memory for output buffer (%" PRIu32 " bytes)", dataSize);
     return nullptr;
   }
 
@@ -541,7 +542,7 @@ bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t ch
                   totalProduced);
           break;
         }
-        LOG_DBG("ZIP", "Decompressed %d bytes into %d bytes", deflatedDataSize, inflatedDataSize);
+        LOG_DBG("ZIP", "Decompressed %" PRIu32 " bytes into %" PRIu32 " bytes", deflatedDataSize, inflatedDataSize);
         success = true;
         break;
       }

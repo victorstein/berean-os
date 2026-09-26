@@ -10,6 +10,7 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cinttypes>
 
 #include "BitBlit.h"
 #include "FontCacheManager.h"
@@ -450,7 +451,7 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
                            const bool pixelState, const EpdFontFamily::Style style) {
   const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
   if (!glyph) {
-    LOG_ERR("GFX", "No glyph for codepoint %d", cp);
+    LOG_ERR("GFX", "No glyph for codepoint %" PRIu32, cp);
     return;
   }
 

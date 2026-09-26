@@ -39,7 +39,7 @@ static HardwareSerial& logSerial = Serial;
 #define LOG_SERIAL_HAS_TX_TIMEOUT 0
 #endif
 
-void logPrintf(const char* level, const char* origin, const char* format, ...);
+void logPrintf(const char* level, const char* origin, const char* format, ...) __attribute__((format(printf, 3, 4)));
 
 #ifdef ENABLE_SERIAL_LOG
 #if LOG_LEVEL >= 0
@@ -81,7 +81,7 @@ class MySerialImpl : public Print {
   //   if (Serial) or while (!Serial)
   operator bool() const { return logSerial; }
 
-  __attribute__((deprecated("Use LOG_* macro instead"))) size_t printf(const char* format, ...);
+  __attribute__((deprecated("Use LOG_* macro instead"), format(printf, 2, 3))) size_t printf(const char* format, ...);
   size_t write(uint8_t b) override;
   size_t write(const uint8_t* buffer, size_t size) override;
   void flush() override;
