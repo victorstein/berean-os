@@ -71,6 +71,11 @@ class LauncherActivity final : public Activity {
   // This week's publication, from the cache the meetings screen fills.
   static std::optional<std::string> thisWeeksMeetingPublication();
   static std::optional<std::string> findMeetingPublicationOnCard();
+  // A Bible that did not come through Buscar, recognised by the CDN's filename.
+  static std::optional<std::string> findBibleOnCard();
+  // The edition's name for the tile, from what is already in memory or in the
+  // path; empty when neither says anything worth showing.
+  static std::string bibleTitleFor(const std::string& path, const std::vector<RecentBook>& recents);
   // Height of a tile's text block, so computeLayout can size a tile around its
   // contents and drawTile can centre the same block inside it.
   int tileTextHeight(int titleFont, bool hasSubtitle) const;
