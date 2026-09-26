@@ -121,11 +121,3 @@ bool GfxRenderer::isFontCacheScanning() const { return false; }
 
 // Called by the inline ~GfxRenderer().
 void GfxRenderer::freeBwBufferChunks() {}
-
-// TextBlock::serialize/deserialize reference these. No host suite exercises
-// page serialization, so they are inert.
-size_t HalFile::read(void*, size_t) { return 0; }
-size_t HalFile::write(const uint8_t*, size_t) { return 0; }
-bool HalFile::seek(size_t) { return false; }
-size_t HalFile::position() { return 0; }
-size_t HalFile::size() { return 0; }

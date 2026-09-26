@@ -11,7 +11,8 @@
 //
 // Kept free of Arduino, HalStorage and PersistableStore -- the same shape as
 // classifyDocRead in DocReadStatus.h and fitsBudget in SaveBudget.h -- so the
-// branch logic is host-testable even though the I/O around it is not.
+// branch logic is host-testable on its own. The I/O around it is host-tested
+// against the Storage fake in test/storage_io/.
 
 // What a load should do next, given the primary file's read status and what is
 // known about `<path>.tmp`. tempExists/tempParsed only matter when

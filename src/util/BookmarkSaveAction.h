@@ -5,11 +5,10 @@
 
 // Pure decision logic behind BookmarkFile::save.
 //
-// BookmarkFile.cpp includes <PersistableStore.h>, which includes <Arduino.h>
-// unconditionally and cannot be built on the host -- util/HighlightFileAction.h
-// documents why there is no stub. This header carries the one rule specific to
-// bookmarks, free of Arduino and HalStorage, so it can be host-tested even
-// though the I/O around it cannot.
+// This header carries the one rule specific to bookmarks, free of Arduino and
+// HalStorage, so it can be host-tested on its own. BookmarkFile.cpp itself has
+// no host suite yet; test/stubs now carries an Arduino.h and an in-memory
+// Storage fake it can be built against (see test/storage_io/).
 //
 // Growth stops at `budget`. A document already over it may still be written
 // when it is strictly SHRINKING and stays readable, so a bookmark file

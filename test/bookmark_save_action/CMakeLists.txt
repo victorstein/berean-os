@@ -1,5 +1,5 @@
-# Only the pure decision logic (util/BookmarkSaveAction.h) is host-buildable --
-# BookmarkFile.cpp pulls Arduino.h transitively through PersistableStore.h.
+# Only the pure decision logic (util/BookmarkSaveAction.h) is built here.
+# BookmarkFile.cpp has no host suite yet; see test/storage_io/ for the pattern.
 add_executable(BookmarkSaveActionTest
   BookmarkSaveActionTest.cpp
 )

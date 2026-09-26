@@ -100,6 +100,7 @@ add_subdirectory(ota_version)
 
 add_subdirectory(save_budget)
 add_subdirectory(temp_adoption)
+add_subdirectory(storage_io)
 add_subdirectory(unit_type)
 add_subdirectory(paragraph_anchors)
 add_subdirectory(unit_anchors)

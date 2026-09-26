@@ -7,10 +7,12 @@
 #
 # lib/hal and lib/Logging are deliberately absent from the include path below.
 # <HalDisplay.h>, <HalStorage.h> and <Logging.h> resolve to test/stubs instead,
-# which keeps <Arduino.h> and the freeink-sdk panel chain out of the build.
+# which keeps the real Arduino core and the freeink-sdk panel chain out of the
+# build. TextBlock's HalFile calls link against the in-memory Storage fake.
 add_executable(PaginationInvarianceTest
   PaginationInvarianceTest.cpp
   GfxRendererFake.cpp
+  ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
   ${REPO_ROOT}/lib/Epub/Epub/ParsedText.cpp
   ${REPO_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp
   ${REPO_ROOT}/lib/Epub/Epub/hyphenation/Hyphenator.cpp
@@ -23,7 +25,7 @@ add_executable(PaginationInvarianceTest
 )
 
 target_include_directories(PaginationInvarianceTest PRIVATE
-  ${REPO_ROOT}/test/stubs  # no-op Logging.h / HalDisplay.h / HalStorage.h
+  ${REPO_ROOT}/test/stubs  # no-op Logging.h / HalDisplay.h, fake HalStorage.h
   ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/EpdFont
