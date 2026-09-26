@@ -1,5 +1,6 @@
 #include "StudyStore/PassageDoc.h"
 
+#include <FormatVersion.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -219,7 +220,7 @@ void PassageDoc::toJson(JsonDocument& doc) const {
 bool PassageDoc::fromJson(const JsonVariantConst doc) {
   if (!doc.is<JsonObjectConst>()) return false;
   const int version = doc["v"] | 0;
-  if (version <= 0 || version > FORMAT_VERSION) return false;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) return false;
 
   passages_.clear();
   for (const JsonVariantConst v : doc["p"].as<JsonArrayConst>()) {
