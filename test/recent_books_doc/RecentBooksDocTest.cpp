@@ -297,6 +297,15 @@ TEST(RecentBooksDocVersion, APresentZeroIsRefused) {
       << "absent is legacy; a written 0 is a version this build does not know";
 }
 
+TEST(RecentBooksDocVersion, ANegativeVersionIsRefused) {
+  JsonDocument doc;
+  doc["v"] = -1;
+  doc["books"].to<JsonArray>();
+  std::vector<RecentBook> out;
+  bool needsResave = false;
+  EXPECT_FALSE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave));
+}
+
 TEST(RecentBooksDocVersion, AFutureVersionIsRefusedRatherThanReinterpreted) {
   JsonDocument doc;
   doc["v"] = RecentBooksDoc::FORMAT_VERSION + 1;
