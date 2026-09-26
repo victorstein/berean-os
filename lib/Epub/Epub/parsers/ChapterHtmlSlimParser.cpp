@@ -284,12 +284,12 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
   listItemBulletOnly = false;
 }
 
-// start a new text block if needed
 void ChapterHtmlSlimParser::markAllocationFailed(const char* what) {
   LOG_ERR("EHP", "OOM: %s", what);
   allocationFailed_ = true;
 }
 
+// start a new text block if needed
 void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
   nextWordContinues = false;  // New block = new paragraph, no continuation
   if (currentTextBlock) {
