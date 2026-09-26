@@ -1,9 +1,8 @@
 // Host coverage for BookmarkFile::save's decision rule.
 //
-// BookmarkFile.cpp itself cannot be built on the host: it includes
-// <PersistableStore.h>, which includes <Arduino.h> unconditionally. See the
-// comment atop util/HighlightFileAction.h for the full reasoning. This suite
-// drives the pure rule; the Storage call sequence around it is device-verified.
+// This suite drives the pure rule. BookmarkFile.cpp itself is not host-built
+// yet, so the Storage call sequence around it is device-verified; test/stubs now
+// has the Storage fake a suite for it would need (see test/storage_io/).
 
 #include <SaveBudget.h>
 #include <gtest/gtest.h>

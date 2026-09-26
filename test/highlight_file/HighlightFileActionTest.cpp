@@ -1,9 +1,8 @@
 // Host coverage for HighlightFile's save budget check.
 //
-// HighlightFile.cpp itself cannot be built on the host: it includes
-// <PersistableStore.h>, which includes <Arduino.h> unconditionally, and
-// Arduino.h reaches FreeRTOS, esp32-hal and other ESP32-only headers that have
-// no stub in test/stubs and are not worth faking convincingly.
+// HighlightFile.cpp itself is not host-built yet. test/stubs now has an
+// Arduino.h and an in-memory Storage fake that it could be built against, as
+// test/storage_io/ does for TagPaletteFile.
 //
 // The load-side decision this suite used to cover moved to
 // test/temp_adoption/ when the rule became shared with PersistableStore.

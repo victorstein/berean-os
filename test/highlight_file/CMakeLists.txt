@@ -1,7 +1,7 @@
-# Only the pure decision logic (util/HighlightFileAction.h) is host-buildable
-# -- HighlightFile.cpp itself pulls Arduino.h transitively through
-# PersistableStore.h and cannot be built here. The .tmp promotion rule it used
-# to hold now lives in test/temp_adoption/.
+# Only the pure decision logic (util/HighlightFileAction.h) is built here.
+# HighlightFile.cpp has no host suite yet; test/storage_io/ shows how to build
+# a store against the Storage fake in test/stubs. The .tmp promotion rule it
+# used to hold now lives in test/temp_adoption/.
 add_executable(HighlightFileActionTest
   HighlightFileActionTest.cpp
 )
