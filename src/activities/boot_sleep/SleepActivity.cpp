@@ -11,6 +11,7 @@
 #include <I18n.h>
 #include <Memory.h>
 #include <PNGdec.h>
+#include <SdPaths.h>
 
 #include <algorithm>
 #include <cmath>
@@ -820,7 +821,7 @@ void SleepActivity::renderCoverSleepScreen() const {
 
   if (FsHelpers::hasEpubExtension(APP_STATE.openEpubPath)) {
     // Handle EPUB file
-    Epub lastEpub(APP_STATE.openEpubPath, "/.crosspoint");
+    Epub lastEpub(APP_STATE.openEpubPath, sdpaths::CROSSPOINT_DIR);
     // Skip loading css since we only need metadata here
     if (!lastEpub.load(true, true)) {
       LOG_ERR("SLP", "Failed to load last epub");

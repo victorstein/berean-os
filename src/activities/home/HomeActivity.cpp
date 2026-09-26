@@ -7,6 +7,7 @@
 #include <HalDisplay.h>
 #include <HalStorage.h>
 #include <I18n.h>
+#include <SdPaths.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -60,7 +61,7 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
       if (!Storage.exists(coverPath.c_str())) {
         // If epub, try to load the metadata for title/author and cover
         if (FsHelpers::hasEpubExtension(book.path)) {
-          Epub epub(book.path, "/.crosspoint");
+          Epub epub(book.path, sdpaths::CROSSPOINT_DIR);
           // Skip loading css since we only need metadata here
           epub.load(false, true);
 

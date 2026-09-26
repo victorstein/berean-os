@@ -1,5 +1,7 @@
 #pragma once
 
+#include <SdPaths.h>
+
 #include <initializer_list>
 #include <optional>
 #include <string>
@@ -27,6 +29,6 @@ std::optional<study::RegisteredPub> lookup(const std::string& bookPath);
 // without requiring the book to have been opened.
 std::optional<std::string> findBySymbol(std::initializer_list<std::string_view> symbols, std::string_view issue = {});
 
-inline constexpr const char* PATH = "/.berean/pubkeys.json";
+inline constexpr const char* PATH = sdpaths::PUBKEYS_FILE;
 
 }  // namespace PubKeyRegistry

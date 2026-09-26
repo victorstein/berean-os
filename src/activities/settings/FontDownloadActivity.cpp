@@ -89,7 +89,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   auto result = HttpDownloader::downloadToFile(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
   if (result != HttpDownloader::OK) {
     LOG_ERR("FONT", "Failed to fetch manifest from %s", FONT_MANIFEST_URL);
-    errorMessage_ = "Failed to fetch font list";
+    errorMessage_ = tr(STR_FONT_LIST_FETCH_FAILED);
     Storage.remove(MANIFEST_TMP);
     return false;
   }
@@ -99,7 +99,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   if (!Storage.openFileForRead("FONT", MANIFEST_TMP, manifestFile)) {
     LOG_ERR("FONT", "Failed to open temp manifest");
     Storage.remove(MANIFEST_TMP);
-    errorMessage_ = "Failed to read font list";
+    errorMessage_ = tr(STR_FONT_LIST_READ_FAILED);
     return false;
   }
 
@@ -110,14 +110,14 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
   if (err) {
     LOG_ERR("FONT", "Manifest parse error: %s", err.c_str());
-    errorMessage_ = "Invalid font manifest";
+    errorMessage_ = tr(STR_FONT_MANIFEST_INVALID);
     return false;
   }
 
   int version = doc["version"] | 0;
   if (version != FONTS_MANIFEST_VERSION) {
     LOG_ERR("FONT", "Unsupported manifest version: %d", version);
-    errorMessage_ = "Unsupported manifest version";
+    errorMessage_ = tr(STR_FONT_MANIFEST_VERSION_UNSUPPORTED);
     return false;
   }
 
@@ -145,7 +145,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
       if (!fileObj["crc32"].is<uint32_t>()) {
         LOG_ERR("FONT", "Malformed manifest file entry: missing or invalid crc32 for %s", file.name.c_str());
-        errorMessage_ = "Invalid font manifest";
+        errorMessage_ = tr(STR_FONT_MANIFEST_INVALID);
         return false;
       }
       file.crc32 = fileObj["crc32"].as<uint32_t>();
@@ -292,7 +292,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
   if (!fontInstaller_.ensureFamilyDir(family.name.c_str())) {
     RenderLock lock(*this);
     state_ = ERROR;
-    errorMessage_ = "Failed to create font directory";
+    errorMessage_ = tr(STR_FONT_DIR_CREATE_FAILED);
     return;
   }
 
@@ -355,7 +355,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = "Download failed: " + file.name;
+      char message[128];
+      snprintf(message, sizeof(message), tr(STR_FONT_FILE_DOWNLOAD_FAILED), file.name.c_str());
+      errorMessage_ = message;
       return;
     }
 
@@ -367,7 +369,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = "Failed to compute checksum: " + file.name;
+      char message[128];
+      snprintf(message, sizeof(message), tr(STR_FONT_FILE_CHECKSUM_FAILED), file.name.c_str());
+      errorMessage_ = message;
       return;
     }
     if (actualCrc != file.crc32) {
@@ -377,7 +381,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = "Checksum mismatch: " + file.name;
+      char message[128];
+      snprintf(message, sizeof(message), tr(STR_FONT_FILE_CHECKSUM_MISMATCH), file.name.c_str());
+      errorMessage_ = message;
       return;
     }
     LOG_DBG("FONT", "Downloaded %s (size=%zu crc32=%08x)", file.name.c_str(), file.size, actualCrc);
@@ -389,7 +395,9 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       family.hasUpdate = false;
       RenderLock lock(*this);
       state_ = ERROR;
-      errorMessage_ = "Invalid font file: " + file.name;
+      char message[128];
+      snprintf(message, sizeof(message), tr(STR_FONT_FILE_INVALID), file.name.c_str());
+      errorMessage_ = message;
       return;
     }
     currentFileIndex_++;
@@ -429,7 +437,7 @@ void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& resu
   if (fontInstaller_.deleteFamily(family.name.c_str()) != FontInstaller::Error::OK) {
     RenderLock lock(*this);
     state_ = ERROR;
-    errorMessage_ = "Failed to delete font";
+    errorMessage_ = tr(STR_FONT_DELETE_FAILED);
   } else {
     fontInstaller_.refreshRegistry();
     family.installed = false;

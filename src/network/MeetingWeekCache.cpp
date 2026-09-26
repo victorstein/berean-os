@@ -5,11 +5,11 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
+#include <SdPaths.h>
 
 namespace {
 
 constexpr const char* MODULE = "MEETWK";
-constexpr const char* BEREAN_DIR = "/.berean";
 constexpr int FORMAT_VERSION = 1;
 
 }  // namespace
@@ -52,7 +52,7 @@ bool save(MeetingWeekTable& table) {
     return false;
   }
 
-  Storage.mkdir(BEREAN_DIR);
+  Storage.mkdir(sdpaths::BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(PATH, doc);
 }
 

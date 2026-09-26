@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <SdPaths.h>
 
 #include <cstring>
 #include <vector>
@@ -14,7 +15,6 @@
 namespace {
 
 constexpr const char* MODULE = "UNITIDX";
-constexpr const char* UNITS_DIR = "/.berean/units";
 
 struct ScanContext {
   study::UnitScanner scanner;
@@ -45,7 +45,7 @@ bool feedNav(void* ctx, const char* chunk, const size_t length, const bool isFin
 UnitIndexCache::UnitIndexCache(std::shared_ptr<Epub> epub, std::string pubKey, GfxRenderer& renderer)
     : epub_(std::move(epub)), pubKey_(std::move(pubKey)), renderer_(renderer) {}
 
-std::string UnitIndexCache::indexPath() const { return std::string(UNITS_DIR) + "/" + pubKey_ + ".bin"; }
+std::string UnitIndexCache::indexPath() const { return std::string(sdpaths::UNITS_DIR) + "/" + pubKey_ + ".bin"; }
 
 bool UnitIndexCache::begin() {
   ready_ = false;
@@ -89,7 +89,7 @@ bool UnitIndexCache::begin() {
     // The index is a pure cache, so a stale or corrupt one is discarded whole
     // rather than repaired. Losing it costs a rescan of the documents actually
     // visited, not of the publication.
-    Storage.mkdir(UNITS_DIR);
+    Storage.mkdir(sdpaths::UNITS_DIR);
     HalFile fresh;
     if (!Storage.openFileForWrite(MODULE, path, fresh)) {
       LOG_ERR(MODULE, "Cannot create %s", path.c_str());

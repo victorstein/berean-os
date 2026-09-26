@@ -1,6 +1,7 @@
 #pragma once
 #include <ArduinoJson.h>
 #include <PersistableStore.h>
+#include <SdPaths.h>
 
 #include <optional>
 #include <string>
@@ -44,7 +45,7 @@ class WifiCredentialStore : public PersistableStore<WifiCredentialStore> {
   // discards anything over MAX_PASSWORD_LENGTH on the next boot (:52-56).
   static constexpr size_t SAVE_BUDGET = 8192;
 
-  static const char* getFilePath() { return "/.crosspoint/wifi.json"; }
+  static const char* getFilePath() { return sdpaths::WIFI_FILE; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 
