@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.4](https://github.com/victorstein/berean-os/compare/v1.16.3...v1.16.4) (2026-09-26)
+
+
+### Bug Fixes
+
+* version the four inherited stores and refuse unknown formats ([#123](https://github.com/victorstein/berean-os/issues/123)) ([2674c3c](https://github.com/victorstein/berean-os/commit/2674c3c23957f345bdffe7a91ea5686fcee70aeb)), closes [#101](https://github.com/victorstein/berean-os/issues/101)
+
 ## [1.16.3](https://github.com/victorstein/berean-os/compare/v1.16.2...v1.16.3) (2026-09-26)
 
 
