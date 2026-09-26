@@ -1,5 +1,8 @@
 #include "Bitmap.h"
 
+#include <Logging.h>
+#include <Memory.h>
+
 #include <cstdlib>
 #include <cstring>
 
@@ -12,14 +15,6 @@
 // For cover images, dithering is done in JpegToBmpConverter.cpp instead.
 constexpr bool USE_ATKINSON = true;  // Use Atkinson dithering instead of Floyd-Steinberg
 // ============================================================================
-
-Bitmap::~Bitmap() {
-  delete[] errorCurRow;
-  delete[] errorNextRow;
-
-  delete atkinsonDitherer;
-  delete fsDitherer;
-}
 
 uint16_t Bitmap::readLE16(HalFile& f) {
   const int c0 = f.read();
@@ -167,10 +162,20 @@ BmpReaderError Bitmap::parseHeaders() {
   //  - High-color + dithering disabled → simple quantization (no error diffusion)
   const bool highColor = !nativePalette;
   if (highColor && dithering) {
+    // Dithering is a quality pass: when it cannot be allocated, readNextRow's quantize
+    // branch still renders the image.
     if (USE_ATKINSON) {
-      atkinsonDitherer = new AtkinsonDitherer(width);
+      atkinsonDitherer = makeUniqueNoThrow<AtkinsonDitherer>(width);
+      if (!atkinsonDitherer || !atkinsonDitherer->valid()) {
+        LOG_ERR("GFX", "OOM: AtkinsonDitherer (%d px), rendering undithered", width);
+        atkinsonDitherer.reset();
+      }
     } else {
-      fsDitherer = new FloydSteinbergDitherer(width);
+      fsDitherer = makeUniqueNoThrow<FloydSteinbergDitherer>(width);
+      if (!fsDitherer || !fsDitherer->valid()) {
+        LOG_ERR("GFX", "OOM: FloydSteinbergDitherer (%d px), rendering undithered", width);
+        fsDitherer.reset();
+      }
     }
   }
 
