@@ -276,19 +276,19 @@ This gets appended to `test/stubs/Arduino.h`:
 class String {
  public:
   String() = default;
-  String(const char* s) : s_(s ? s : "") {}
-  String(std::string s) : s_(std::move(s)) {}
-  const char* c_str() const { return s_.c_str(); }
-  size_t length() const { return s_.size(); }
-  bool isEmpty() const { return s_.empty(); }
-  size_t write(uint8_t c) { s_.push_back(static_cast<char>(c)); return 1; }
-  size_t write(const uint8_t* p, size_t n) { s_.append(reinterpret_cast<const char*>(p), n); return n; }
-  String& operator+=(char c) { s_.push_back(c); return *this; }
+  String(const char* s) : text(s ? s : "") {}
+  String(std::string s) : text(std::move(s)) {}
+  const char* c_str() const { return text.c_str(); }
+  size_t length() const { return text.size(); }
+  bool isEmpty() const { return text.empty(); }
+  size_t write(uint8_t c) { text.push_back(static_cast<char>(c)); return 1; }
+  size_t write(const uint8_t* p, size_t n) { text.append(reinterpret_cast<const char*>(p), n); return n; }
+  String& operator+=(char c) { text.push_back(c); return *this; }
   using const_iterator = std::string::const_iterator;
-  const_iterator begin() const { return s_.begin(); }
-  const_iterator end() const { return s_.end(); }
+  const_iterator begin() const { return text.begin(); }
+  const_iterator end() const { return text.end(); }
  private:
-  std::string s_;
+  std::string text;
 };
 ```
 
