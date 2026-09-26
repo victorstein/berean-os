@@ -5,6 +5,7 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
+#include <SdPaths.h>
 #include <TempAdoption.h>
 
 #include <string>
@@ -12,7 +13,6 @@
 namespace {
 
 constexpr const char* MODULE = "TAGS";
-constexpr const char* BEREAN_DIR = "/.berean";
 
 }  // namespace
 
@@ -71,7 +71,7 @@ SaveResult save(const study::TagPalette& palette) {
     return SaveResult::TooLarge;
   }
 
-  Storage.mkdir(BEREAN_DIR);
+  Storage.mkdir(sdpaths::BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(PATH, json) ? SaveResult::Ok : SaveResult::WriteFailed;
 }
 
