@@ -41,9 +41,25 @@ accepted.
    "none of them includes `<Arduino.h>`" paragraph is rewritten. Three
    comment-only edits are added to Files touched: `test/stubs/Arduino.h:3-7`,
    `test/pagination/CMakeLists.txt:8-10,26` and `TempAdoptionTest.cpp:3-7`. The
-   per-store CMakeLists comments (`highlight_file`, `credential_integrity`,
-   `bookmark_save_action`) are left alone. They are still true, because those
-   stores' `.cpp` files don't get host suites in this change.
+   per-store "cannot be built on the host" comments are handled in the pass-1
+   entry below.
+5. **Pass-1 MINOR, "cannot be built on the host" comments.** Review:
+   `docs/superpowers/reviews/issue-99-spec-review-1.md`, finding 1. Pass 0's
+   reason for keeping these comments, "they are still true", was wrong. The
+   comments say the stores *cannot* be host-built and give the missing stubs as
+   the reason, and after this change `HighlightFile.cpp` and `BookmarkFile.cpp`
+   compile against the fake. The non-goal is narrowed from "byte-identical" to
+   "no behavioural change; comment-only edits allowed" (A-20). These comments are
+   rewritten for the merged state, to say the code is *not yet* host-tested and
+   that `test/stubs` now has the `Storage` fake:
+   - `lib/Serialization/TempAdoption.h:12-14`
+   - `src/util/HighlightFileAction.h:10-15`
+   - `src/util/BookmarkSaveAction.h:9-11`
+   - `test/highlight_file/CMakeLists.txt:1-4` and `HighlightFileActionTest.cpp:3-6`
+   - `test/bookmark_save_action/CMakeLists.txt:1-2` and `BookmarkSaveActionTest.cpp:3-6`
+   - `test/credential_integrity/CMakeLists.txt:12-13`
+
+   The `SDCardManager.cpp:293` citation is corrected to `:294`.
 4. **MINOR 4, mechanical gaps.**
    - The defined list now includes `HalStorage::HalStorage()` and the definition of
      `HalStorage HalStorage::instance`, which the inline `getInstance()`
@@ -109,8 +125,9 @@ building on the host (research §3):
 
 ## Non-goals
 
-- **No production code changes.** Every file under `lib/` and `src/` stays
-  byte-identical. If a test exposes a production defect, it is reported as a
+- **No production behaviour changes.** Under `lib/` and `src/`, the only edits are
+  comment-only corrections to "cannot be built on the host" claims this change
+  makes false (A-20). If a test exposes a production defect, it is reported as a
   follow-up issue and not fixed here (A-19).
 - **No fix for #98's policy split.** No test in this change asserts what a
   per-store loader does on `DeleteTempReportEmpty`. #98 owns that arm and would
@@ -131,7 +148,7 @@ building on the host (research §3):
 | **A-2** | The fake header declares the real public API of `HalStorage` and `HalFile` with **the real signatures** (`lib/hal/HalStorage.h:13-98`), minus three items: `readFileToStream` (takes `Print&`), `HalFile`'s `Print` base, and `class StorageLock`. With the base gone, `override` is dropped from `write(const uint8_t*, size_t)` and `write(uint8_t)` (`HalStorage.h:88,90`); those are the only signature edits. The fake `.cpp` defines only the subset this change and #98 need. Any other declared method fails the **link** when it is first used, which is `GfxRendererFake.cpp:7-10`'s "fails loudly" property. | §Architecture |
 | **A-3** | Test controls live in a **separate** header, `test/stubs/HalStorageFake.h` (namespace `storage_fake`), so the `HalStorage` class in the stub stays a mirror of the real one and carries no test-only members. | §Architecture |
 | **A-4** | `readFile` returns at most **50,000** bytes, truncating silently, and returns `""` for a missing or failing file, mirroring `SDCardManager.cpp:190-210` (`maxSize` at `:202`). | §Semantics |
-| **A-5** | `writeFile` **removes an existing destination first**, then writes, and returns true only on a full write, mirroring `SDCardManager.cpp:282-293`. | §Semantics |
+| **A-5** | `writeFile` **removes an existing destination first**, then writes, and returns true only on a full write, mirroring `SDCardManager.cpp:282-294`. | §Semantics |
 | **A-6** | `rename` **fails if the destination exists**, the source is missing, or the destination's parent directory is missing, mirroring SdFat 2.3.1's `O_CREAT \| O_EXCL` open (`FatFile.cpp:974`, research §1). `mkdir` returns **false if the path already exists**, the same `O_EXCL` (`FatFile.cpp:379`). With `pFlag` (the default, `HalStorage.h:34`) it creates missing parents. | §Semantics |
 | **A-7** | Writes (`writeFile`, `openFileForWrite`, a `rename` destination) **require the parent directory to exist**, as on SdFat. `storage_fake::putFile` (test seeding) creates parents implicitly, so a test can stage a card state without going through `mkdir`. | §Semantics |
 | **A-8** | **Injected read failure:** `exists` stays true, `readFile` returns `""`, and `openFileForRead` returns false. This is the case `PersistableStore.cpp:96-100` calls "indistinguishable from an empty file". | §Error handling |
@@ -146,6 +163,7 @@ building on the host (research §3):
 | **A-17** | Adoption is tested **through the shared helper** `readDocFromFileAdopting`, asserting its documented keep-the-`.tmp` policy. The `TagPaletteFile` tests cover only the arms #98 won't change: Loaded, Empty, RecoveredFromTemp, TooLarge and Failed. | §Testing |
 | **A-18** | The ASan/UBSan CI job (the issue's "also worth doing") is **out of scope**. It edits `.github/workflows/ci.yml`, which is outside the `data` surface (`.claude/agents/data-dev.md`), and the issue marks it optional. The PR names it as a follow-up. Local ASan/UBSan works (research §4), so the implement phase runs the new suite under it once, by hand, as extra evidence. | §Testing |
 | **A-19** | A production defect found by these tests is recorded in the PR as a follow-up issue. It is not fixed here, and a test that would fail on it is not committed red. | §Error handling |
+| **A-20** | Comment-only edits to `lib/Serialization/TempAdoption.h:12-14`, `src/util/HighlightFileAction.h:10-15` and `src/util/BookmarkSaveAction.h:9-11` are allowed, so that comments stay true for the merged state (`CLAUDE.md`, "Comments"). No code token changes, so no `pio run` is required (`CLAUDE.md`, Testing checklist item 1). | §Architecture |
 
 ---
 
@@ -166,7 +184,15 @@ building on the host (research §3):
 | `test/storage_io/CMakeLists.txt` + four `*Test.cpp` | New suite (A-14) |
 | `test/CMakeLists.txt` | **Not edited.** One line reported in the PR |
 
-No file under `lib/` or `src/` changes.
+Comment-only (A-20):
+
+- `lib/Serialization/TempAdoption.h`, `src/util/HighlightFileAction.h`,
+  `src/util/BookmarkSaveAction.h`
+- `test/highlight_file/{CMakeLists.txt,HighlightFileActionTest.cpp}`,
+  `test/bookmark_save_action/{CMakeLists.txt,BookmarkSaveActionTest.cpp}`,
+  `test/credential_integrity/CMakeLists.txt`
+
+No code token under `lib/` or `src/` changes.
 
 ### The stub header (A-1, A-2)
 
@@ -295,7 +321,7 @@ corrected (Files touched).
 | `rename(a, b)` | false if `a` is absent, `b` exists, or `b`'s parent dir is missing; otherwise moves the bytes | `SDCardManager.h:61`, `FatFile.cpp:974` (A-6) |
 | `mkdir(p, pFlag=true)` | false if `p` exists; creates missing parents when `pFlag` | `SDCardManager.h:57`, `FatFile.cpp:379` (A-6) |
 | `readFile(p)` | `""` if absent or read-failed; else the first ≤50,000 bytes | `SDCardManager.cpp:190-210` (A-4) |
-| `writeFile(p, s)` | removes `p` if present; false if the parent is missing or write-failed; else stores `s` | `SDCardManager.cpp:276-293` (A-5, A-7) |
+| `writeFile(p, s)` | removes `p` if present; false if the parent is missing or write-failed; else stores `s` | `SDCardManager.cpp:276-294` (A-5, A-7) |
 | `openFileForRead(m, p, f)` | false if absent or read-failed; else a read handle at position 0 | `SDCardManager.cpp:320` (`O_RDONLY`) |
 | `openFileForWrite(m, p, f)` | false if the parent is missing or write-failed; else truncates or creates | `SDCardManager.cpp:337` (`O_RDWR \| O_CREAT \| O_TRUNC`) |
 
@@ -464,7 +490,7 @@ PR; there is no CI change.
 
 - `./bin/clang-format-fix` over the full tree. New files have to be `git add`ed
   first, because the wrapper skips untracked files.
-- No `pio run` is needed: no firmware source changes. The PR says so explicitly.
+- No `pio run` is needed: firmware sources change only in comments (A-20). The PR says so explicitly.
 
 ### What only the human tester can verify
 
