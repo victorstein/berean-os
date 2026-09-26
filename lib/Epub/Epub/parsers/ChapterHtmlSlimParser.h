@@ -124,9 +124,13 @@ class ChapterHtmlSlimParser {
   XML_Parser xmlParser_ = nullptr;
   HalFile parseFile_;
   uint32_t parseStartTime_ = 0;
+  // A failed Page or ParsedText allocation stops the build: parseStep() then reports Error so
+  // Section abandons it, rather than committing a section with text missing.
+  bool allocationFailed_ = false;
 
   void updateEffectiveInlineStyle();
   void startNewTextBlock(const BlockStyle& blockStyle);
+  void markAllocationFailed(const char* what);
   void flushPendingAnchor();
   void flushPartWordBuffer();
   void setCurrentPageVisibleOffset(uint32_t offset);
@@ -186,7 +190,7 @@ class ChapterHtmlSlimParser {
   enum class ParseStatus { More, Done, Error };
   bool beginParse();
   ParseStatus parseStep();
-  bool finishParse();  // flush the trailing page and tear down; returns true
+  bool finishParse();  // flush the trailing page and tear down; false if an allocation failed
   void abortParse();   // tear down without flushing (error / abandon)
 
   void addLineToPage(std::shared_ptr<TextBlock> line, uint32_t visibleOffset);
