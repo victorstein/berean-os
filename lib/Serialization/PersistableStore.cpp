@@ -3,12 +3,11 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
+#include <SdPaths.h>
 
 #include <cstring>
 #include <limits>
 #include <string>
-
-#include "SdPaths.h"
 
 bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& doc) {
   Storage.mkdir(sdpaths::CROSSPOINT_DIR);

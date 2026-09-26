@@ -2,9 +2,10 @@
 
 #include <string_view>
 
-// Every fixed path this firmware reads or writes on the SD card. Full paths are
-// written out whole because C++20 cannot join named constants at compile time;
-// the static_asserts below keep each one under its root.
+// The firmware's two SD roots, /.crosspoint and /.berean, and every fixed path
+// under them. Full paths are written out whole because C++20 cannot join named
+// constants at compile time; the static_asserts below keep each one under its
+// root.
 namespace sdpaths {
 
 inline constexpr char CROSSPOINT_DIR[] = "/.crosspoint";
