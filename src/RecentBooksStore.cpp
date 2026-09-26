@@ -13,14 +13,18 @@ void RecentBooksStore::toJson(JsonDocument& doc) const { RecentBooksDoc::toJson(
 
 bool RecentBooksStore::fromJson(const JsonVariantConst doc) {
   bool needsResave = false;
-  const bool ok = RecentBooksDoc::fromJson(doc, recentBooks, needsResave);
+  if (!RecentBooksDoc::fromJson(doc, recentBooks, needsResave)) {
+    LOG_ERR("RBS", "Refusing %s: unknown format v%d (this build knows v1..v%d)", getFilePath(),
+            doc["v"] | RecentBooksDoc::FORMAT_VERSION, RecentBooksDoc::FORMAT_VERSION);
+    return false;
+  }
   // An entry the load path had to shorten must reach the card, or the file stays
   // over budget and disagrees with what is in memory. loadFromFile performs the
   // save after releasing storeMutex; calling saveToFileAtomic() from here would
   // deadlock on it.
   if (needsResave) requestResave();
   LOG_DBG("RBS", "Recent books loaded from file (%d entries)", getCount());
-  return ok;
+  return true;
 }
 
 void RecentBooksStore::addBook(const std::string& path, const std::string& title, const std::string& author,

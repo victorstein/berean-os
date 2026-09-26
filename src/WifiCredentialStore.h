@@ -44,6 +44,7 @@ class WifiCredentialStore : public PersistableStore<WifiCredentialStore> {
   // server, which does not bound it (CrossPointWebServer.cpp:1385); the load path
   // discards anything over MAX_PASSWORD_LENGTH on the next boot (:52-56).
   static constexpr size_t SAVE_BUDGET = 8192;
+  static constexpr int FORMAT_VERSION = 1;
 
   static const char* getFilePath() { return sdpaths::WIFI_FILE; }
   void toJson(JsonDocument& doc) const;

@@ -1,5 +1,6 @@
 #include "CrossPointSettings.h"
 
+#include <FormatVersion.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
@@ -62,6 +63,7 @@ uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue)
 
 void CrossPointSettings::toJson(JsonDocument& doc) const {
   const CrossPointSettings& s = *this;
+  doc["v"] = FORMAT_VERSION;
 
   for (const auto& info : getSettingsList()) {
     if (!info.key) continue;
@@ -105,6 +107,12 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
 }
 
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) {
+    LOG_ERR("CPS", "Refusing %s: unknown format v%d (this build knows v1..v%d)", getFilePath(), version,
+            FORMAT_VERSION);
+    return false;
+  }
   CrossPointSettings& s = *this;
   bool needsResave = false;
 

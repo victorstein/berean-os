@@ -39,7 +39,7 @@ TEST(RecentBooksDocBudget, DocumentOverheadMatchesTheMeasuredConstants) {
                           RecentBooksDoc::MAX_RECENT_BOOKS * RecentBooksDoc::ENTRY_OVERHEAD_BYTES;
   EXPECT_EQ(measureJson(doc), expected) << "ten empty entries measured " << measureJson(doc)
                                         << "; DOC_WRAPPER_BYTES/ENTRY_OVERHEAD_BYTES no longer describe the shape";
-  EXPECT_EQ(expected, 541u);
+  EXPECT_EQ(expected, 547u);
 }
 
 // The whole point of issue #40's second half: the budget is now a real figure,
@@ -47,7 +47,7 @@ TEST(RecentBooksDocBudget, DocumentOverheadMatchesTheMeasuredConstants) {
 TEST(RecentBooksDocBudget, IsTighterThanTheDefaultAndClearOfTheReadCap) {
   EXPECT_LT(RecentBooksDoc::SAVE_BUDGET, persist::DEFAULT_SAVE_BUDGET);
   EXPECT_LT(persist::DEFAULT_SAVE_BUDGET, persist::SD_READ_TRUNCATION_CAP);
-  EXPECT_EQ(RecentBooksDoc::SAVE_BUDGET, 11421u) << "derived from the field caps; recompute, do not tidy";
+  EXPECT_EQ(RecentBooksDoc::SAVE_BUDGET, 11427u) << "derived from the field caps; recompute, do not tidy";
 }
 
 TEST(RecentBooksDoc, RoundTripsEveryField) {
@@ -259,6 +259,78 @@ TEST(RecentBooksDocNormalise, ErasesEmbeddedNuls) {
   EXPECT_EQ(book.title, "abcd");
   EXPECT_EQ(book.author, "efgh");
   EXPECT_EQ(book.title.find('\0'), std::string::npos);
+}
+
+TEST(RecentBooksDocVersion, ToJsonStampsTheCurrentVersion) {
+  JsonDocument doc;
+  RecentBooksDoc::toJson({makeBook("/books/a.epub", "A", "", "")}, doc);
+  EXPECT_EQ(doc["v"] | 0, RecentBooksDoc::FORMAT_VERSION);
+}
+
+TEST(RecentBooksDocVersion, AnAbsentVersionIsReadAsOneWithEveryEntry) {
+  // A recent.json written before this field existed -- every card in the field.
+  JsonDocument doc;
+  JsonArray arr = doc["books"].to<JsonArray>();
+  for (int i = 0; i < 3; ++i) {
+    JsonObject obj = arr.add<JsonObject>();
+    obj["path"] = "/books/a.epub";
+    obj["title"] = "A";
+    obj["author"] = "";
+    obj["coverBmpPath"] = "";
+  }
+
+  std::vector<RecentBook> out;
+  bool needsResave = true;
+  ASSERT_TRUE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave))
+      << "a pre-versioning recent.json must still load";
+  EXPECT_EQ(out.size(), 3u);
+  EXPECT_FALSE(needsResave) << "an absent version alone does not force a rewrite";
+}
+
+TEST(RecentBooksDocVersion, APresentZeroIsRefused) {
+  JsonDocument doc;
+  doc["v"] = 0;
+  doc["books"].to<JsonArray>();
+  std::vector<RecentBook> out;
+  bool needsResave = false;
+  EXPECT_FALSE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave))
+      << "absent is legacy; a written 0 is a version this build does not know";
+}
+
+TEST(RecentBooksDocVersion, AFutureVersionIsRefusedRatherThanReinterpreted) {
+  JsonDocument doc;
+  doc["v"] = RecentBooksDoc::FORMAT_VERSION + 1;
+  doc["books"].to<JsonArray>();
+  std::vector<RecentBook> out;
+  bool needsResave = false;
+  EXPECT_FALSE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave));
+}
+
+TEST(RecentBooksDocVersion, AStringVersionReadsAsTheDefault) {
+  // ArduinoJson's operator| yields the default for an unconvertible value, so a
+  // string "v" reads as 1. No build writes one; this pins the accepted behaviour.
+  JsonDocument doc;
+  doc["v"] = "2";
+  JsonObject obj = doc["books"].to<JsonArray>().add<JsonObject>();
+  obj["path"] = "/books/a.epub";
+
+  std::vector<RecentBook> out;
+  bool needsResave = false;
+  ASSERT_TRUE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave));
+  EXPECT_EQ(out.size(), 1u);
+}
+
+TEST(RecentBooksDocVersion, ARefusedDocumentLeavesTheListUntouched) {
+  JsonDocument doc;
+  doc["v"] = RecentBooksDoc::FORMAT_VERSION + 1;
+  JsonObject obj = doc["books"].to<JsonArray>().add<JsonObject>();
+  obj["path"] = "/books/from-a-newer-build.epub";
+
+  std::vector<RecentBook> out{makeBook("/books/kept.epub", "Kept", "", "")};
+  bool needsResave = false;
+  ASSERT_FALSE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave));
+  ASSERT_EQ(out.size(), 1u) << "the refusal must come before books.clear()";
+  EXPECT_EQ(out[0].path, "/books/kept.epub");
 }
 
 // The real guard. Built through the REAL toJson, from the same constants

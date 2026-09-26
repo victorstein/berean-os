@@ -1,5 +1,8 @@
 #include "CrossPointState.h"
 
+#include <FormatVersion.h>
+#include <Logging.h>
+
 #include <algorithm>
 #include <cstring>
 
@@ -41,6 +44,7 @@ void CrossPointState::pushRecentOverlaySleep(uint16_t idx) {
 }
 
 void CrossPointState::toJson(JsonDocument& doc) const {
+  doc["v"] = FORMAT_VERSION;
   doc["openEpubPath"] = openEpubPath;
   doc["bibleCoverPath"] = bibleCoverPath;
   JsonArray recentArr = doc["recentSleepImages"].to<JsonArray>();
@@ -57,6 +61,12 @@ void CrossPointState::toJson(JsonDocument& doc) const {
 }
 
 bool CrossPointState::fromJson(JsonVariantConst doc) {
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) {
+    LOG_ERR("STATE", "Refusing %s: unknown format v%d (this build knows v1..v%d)", getFilePath(), version,
+            FORMAT_VERSION);
+    return false;
+  }
   openEpubPath = doc["openEpubPath"] | "";
   bibleCoverPath = doc["bibleCoverPath"] | "";
 

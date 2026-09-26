@@ -425,9 +425,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Unlocked for the same reason as statusBarSpec(); see the note above.
   ReaderRenderSpec readerRenderSpec(uint16_t viewportWidth, uint16_t viewportHeight) const;
 
-  // One key per SettingsList.h row plus nine written by hand in toJson();
-  // values are almost all single bytes. ~1,600 B worst case.
+  // One key per SettingsList.h row plus ten written by hand in toJson() -- the
+  // format version and nine settings; values are almost all single bytes.
+  // ~1,600 B worst case.
   static constexpr size_t SAVE_BUDGET = 4096;
+  static constexpr int FORMAT_VERSION = 1;
 
   static const char* getFilePath() { return sdpaths::SETTINGS_FILE; }
   void toJson(JsonDocument& doc) const;

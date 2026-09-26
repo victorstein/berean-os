@@ -374,6 +374,105 @@ the book's last chapter (English versification, 1,189 chapters), non-hex, an
 odd length — rejects the whole file. Every chapter read serialises to under
 1 KB; the save budget is 4,096 bytes.
 
+## The `/.crosspoint/*.json` stores (shared rules)
+
+Four JSON files inherited from CrossPoint, each a `PersistableStore` singleton
+(`lib/Serialization/PersistableStore.h`). All four follow the same version rule:
+
+- `v` — format version, written first. A file with no `v` was written before versioning
+  and reads as 1. Any other value this build does not know (0, a negative, or a number
+  above its own) is refused: the store runs on its defaults, and every save of that store
+  is refused until a later load succeeds or finds no file. A build that knows the format
+  then reads it intact. The rule lives in `lib/Serialization/FormatVersion.h`.
+- Every save goes through `saveToFileAtomic()`: a temp file, then a rename, after a byte
+  budget check.
+
+Unparseable or unreadable files are not covered by the version rule. Those files load as
+defaults and are overwritten by the next save.
+
+## `/.crosspoint/settings.json`
+
+Owned by `src/CrossPointSettings.{h,cpp}`. One key per `SettingsList.h` row, using that
+row's `key` (an obfuscated string row is stored as `<key>_obf`), plus the hand-written
+`frontButtonBack`, `frontButtonConfirm`, `frontButtonLeft`, `frontButtonRight`,
+`fontFamily`, `fontSize` (a point size), `sdFontFamilyName` (only when set),
+`longPressMenuFunction` and `language` (an ISO code such as `"EN"`).
+
+### Version 1
+
+- `v` — format version. Absent reads as 1. Any other value this build does not know is
+  refused: the store runs on defaults and is not written until a later load succeeds or finds
+  no file (`lib/Serialization/FormatVersion.h`).
+
+```json
+{"v":1,"sleepTimeoutMinutes":10,"fontFamily":0,"fontSize":14,"language":"EN"}
+```
+
+Values are clamped to their row's range on load. Persisted enums keep their numeric
+values. Older shapes (`sleepTimeout`, a font size of 0-3, the OpenDyslexic family slot)
+are upgraded in memory and resaved. Save budget: 4,096 bytes.
+
+## `/.crosspoint/state.json`
+
+Owned by `src/CrossPointState.{h,cpp}`. Runtime state: `openEpubPath`,
+`bibleCoverPath`, the sleep-image history (`recentSleepImages` and
+`recentOverlaySleepImages`, 16 entries each, with their `…Pos` and `…Fill` cursors),
+`readerActivityLoadCount`, `lastSleepFromReader` and `showBootScreen`.
+
+### Version 1
+
+- `v` — format version. Absent reads as 1. Any other value this build does not know is
+  refused: the store runs on defaults and is not written until a later load succeeds or finds
+  no file (`lib/Serialization/FormatVersion.h`).
+
+```json
+{"v":1,"openEpubPath":"/books/nwt_S.epub","bibleCoverPath":"","recentSleepImages":[0,0],"recentSleepPos":0,"recentSleepFill":0,"showBootScreen":true}
+```
+
+(Arrays shortened here; the file always writes 16 entries.) A legacy `lastSleepImage` is
+read into the history when the history is empty. Save budget: 2,048 bytes.
+
+## `/.crosspoint/wifi.json`
+
+Owned by `src/WifiCredentialStore.{h,cpp}`. Loaded at boot alongside the other three.
+
+### Version 1
+
+- `v` — format version. Absent reads as 1. Any other value this build does not know is
+  refused: the store runs on defaults and is not written until a later load succeeds or finds
+  no file (`lib/Serialization/FormatVersion.h`).
+
+```json
+{"v":1,"lastConnectedSsid":"Home","credentials":[{"ssid":"Home","password_obf":"…","password_len":8,"password_crc32":305419896}]}
+```
+
+- `credentials` — at most 8. `password_obf` is the password XORed with a device-bound key
+  and base64-encoded (`lib/Serialization/ObfuscationUtils`). It is not encryption.
+- `password_len` and `password_crc32` let the loader discard a value that decodes but is
+  corrupt. An entry without them, or with a plaintext `password`, is accepted and resaved
+  in the current shape.
+
+Passwords over 64 bytes are dropped on load. Save budget: 8,192 bytes.
+
+## `/.crosspoint/recent.json`
+
+Owned by `src/util/RecentBooksDoc.{h,cpp}` (format, host-tested) and
+`src/RecentBooksStore.cpp` (storage).
+
+### Version 1
+
+- `v` — format version. Absent reads as 1. Any other value this build does not know is
+  refused: the store runs on defaults and is not written until a later load succeeds or finds
+  no file (`lib/Serialization/FormatVersion.h`).
+
+```json
+{"v":1,"books":[{"path":"/books/w_S_202601.epub","title":"La Atalaya","author":"","coverBmpPath":""}]}
+```
+
+At most 10 books. `title` and `author` are capped at 128 and 96 bytes on a codepoint
+boundary; `path` is never shortened. The save budget, 11,427 bytes, is derived from those
+caps (`RecentBooksDoc::worstCaseBytes()`).
+
 ## `/.berean/search/bible.idx`
 
 The Bible verse search index. Owned by `lib/BibleSearch/BibleSearch/IndexFormat.{h,cpp}`

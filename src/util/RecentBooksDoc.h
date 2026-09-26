@@ -18,6 +18,9 @@
 // saveToFileAtomic() is the only place that measures.
 namespace RecentBooksDoc {
 
+// Written as "v". A file from before versioning has none and reads as 1.
+inline constexpr int FORMAT_VERSION = 1;
+
 // Entry-count cap. size_t, so it compares cleanly against vector::size().
 inline constexpr size_t MAX_RECENT_BOOKS = 10;
 
@@ -43,8 +46,8 @@ inline constexpr size_t PATH_BUDGET_ALLOWANCE = 512;
 // Epub.h:48 and Epub.cpp:653.
 inline constexpr size_t COVER_PATH_BUDGET_ALLOWANCE = 128;
 
-// {"books":[]}
-inline constexpr size_t DOC_WRAPPER_BYTES = 12;
+// {"v":1,"books":[]}
+inline constexpr size_t DOC_WRAPPER_BYTES = 18;
 // {"path":"","title":"","author":"","coverBmpPath":""}
 inline constexpr size_t ENTRY_OVERHEAD_BYTES = 52;
 // Worst-case JSON escape expansion. ArduinoJson 7.4.2 emits two bytes for
@@ -80,10 +83,9 @@ void toJson(const std::vector<RecentBook>& books, JsonDocument& doc);
 // Fills `books`, capping the count at MAX_RECENT_BOOKS and re-bounding every
 // entry — a file on an SD card is not a trusted input. Sets `needsResave` when
 // normalise() changed anything. A missing or non-array "books" key is tolerated
-// as an empty list; only a JSON parse error is fatal, and that is handled
-// upstream in PersistableStoreBase::readDocFromFileChecked. Returns true: unlike
-// BookmarkDoc there is no format version to police, so there is nothing to
-// refuse. The bool is kept because PersistableStore's fromJson contract is bool.
+// as an empty list; a JSON parse error is handled upstream in
+// PersistableStoreBase::readDocFromFileChecked. Returns false, leaving `books`
+// untouched, for a format version this build does not know.
 bool fromJson(JsonVariantConst doc, std::vector<RecentBook>& books, bool& needsResave);
 
 }  // namespace RecentBooksDoc

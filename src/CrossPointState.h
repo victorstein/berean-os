@@ -30,9 +30,10 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
 
-  // Fixed key set: 11 keys, two 16-element uint16_t arrays, seven scalars, and
-  // two SD path strings assumed <= 255 B each. ~1,180 B worst case.
+  // Fixed key set: 12 keys, two 16-element uint16_t arrays, eight scalars, and
+  // two SD path strings assumed <= 255 B each. ~1,190 B worst case.
   static constexpr size_t SAVE_BUDGET = 2048;
+  static constexpr int FORMAT_VERSION = 1;
 
   static const char* getFilePath() { return sdpaths::STATE_FILE; }
   void toJson(JsonDocument& doc) const;
