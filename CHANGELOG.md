@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.6](https://github.com/victorstein/berean-os/compare/v1.16.5...v1.16.6) (2026-09-26)
+
+
+### Bug Fixes
+
+* drop serial logging from release builds ([#126](https://github.com/victorstein/berean-os/issues/126)) ([c0c5db9](https://github.com/victorstein/berean-os/commit/c0c5db9f6f806707ff3272942d7221739791b78e)), closes [#112](https://github.com/victorstein/berean-os/issues/112)
+
 ## [1.16.5](https://github.com/victorstein/berean-os/compare/v1.16.4...v1.16.5) (2026-09-26)
 
 
