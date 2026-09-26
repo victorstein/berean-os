@@ -181,10 +181,11 @@ std::optional<std::string> LauncherActivity::thisWeeksMeetingPublication() {
 // and the only name it can be recognised by is the CDN's. When several
 // languages are on the card the download folder's copy wins, then the root's.
 std::optional<std::string> LauncherActivity::findBibleOnCard() {
-  for (std::string& path : CardBooks::list()) {
-    if (isCdnNamedCopyOf(path, BIBLE_SYMBOL)) return std::move(path);
-  }
-  return std::nullopt;
+  const std::vector<std::string> books = CardBooks::list();
+  const auto bible = std::find_if(books.begin(), books.end(),
+                                  [](const std::string& path) { return isCdnNamedCopyOf(path, BIBLE_SYMBOL); });
+  if (bible == books.end()) return std::nullopt;
+  return *bible;
 }
 
 // Never opens the EPUB for this: its title lives in book.bin, and loading that
