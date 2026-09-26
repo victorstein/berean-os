@@ -1,6 +1,6 @@
 // PersistableStoreBase::writeDocToFileAtomic against the Storage fake: the
 // write goes to <path>.tmp, the old file is removed, and the .tmp is renamed
-// into place (PersistableStore.cpp:22-44).
+// into place.
 
 #include <ArduinoJson.h>
 #include <HalStorage.h>

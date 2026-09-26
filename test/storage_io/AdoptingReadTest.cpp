@@ -1,6 +1,6 @@
 // PersistableStoreBase::readDocFromFileAdopting against the Storage fake. The
 // decision table is covered by test/temp_adoption; this suite covers the card
-// operations that carry each decision out (PersistableStore.cpp:63-106).
+// operations that carry each decision out.
 
 #include <ArduinoJson.h>
 #include <HalStorage.h>
@@ -17,10 +17,12 @@ namespace {
 constexpr const char* PATH = "/.berean/doc.json";
 constexpr const char* TMP_PATH = "/.berean/doc.json.tmp";
 
+// The bytes jsonOfSize spends on {"s":""} around its string value.
+constexpr size_t JSON_OVERHEAD = sizeof(R"({"s":""})") - 1;
+
 // A valid JSON document of exactly `bytes` bytes: {"s":"xxx..."}.
 std::string jsonOfSize(size_t bytes) {
-  const size_t overhead = std::string(R"({"s":""})").size();
-  return R"({"s":")" + std::string(bytes - overhead, 'x') + R"("})";
+  return R"({"s":")" + std::string(bytes - JSON_OVERHEAD, 'x') + R"("})";
 }
 
 class AdoptingRead : public ::testing::Test {
@@ -98,7 +100,7 @@ TEST_F(AdoptingRead, AValidDocumentPastTheReadCapIsAParseError) {
 TEST_F(AdoptingRead, ADocumentAtTheSaveBudgetReadsBackWhole) {
   storage_fake::putFile(PATH, jsonOfSize(persist::DEFAULT_SAVE_BUDGET));
   EXPECT_EQ(PersistableStoreBase::readDocFromFileAdopting(PATH, doc), DocReadStatus::Ok);
-  EXPECT_EQ(doc["s"].as<std::string>().size(), persist::DEFAULT_SAVE_BUDGET - 8);
+  EXPECT_EQ(doc["s"].as<std::string>().size(), persist::DEFAULT_SAVE_BUDGET - JSON_OVERHEAD);
 }
 
 }  // namespace

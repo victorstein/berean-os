@@ -42,10 +42,6 @@ class String {
     text.append(reinterpret_cast<const char*>(p), n);
     return n;
   }
-  String& operator+=(char c) {
-    text.push_back(c);
-    return *this;
-  }
 
  private:
   std::string text;

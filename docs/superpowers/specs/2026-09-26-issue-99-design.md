@@ -283,7 +283,6 @@ class String {
   bool isEmpty() const { return text.empty(); }
   size_t write(uint8_t c) { text.push_back(static_cast<char>(c)); return 1; }
   size_t write(const uint8_t* p, size_t n) { text.append(reinterpret_cast<const char*>(p), n); return n; }
-  String& operator+=(char c) { text.push_back(c); return *this; }
   using const_iterator = std::string::const_iterator;
   const_iterator begin() const { return text.begin(); }
   const_iterator end() const { return text.end(); }
