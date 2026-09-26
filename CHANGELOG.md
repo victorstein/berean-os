@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.8](https://github.com/victorstein/berean-os/compare/v1.16.7...v1.16.8) (2026-09-26)
+
+
+### Refactor
+
+* route every store version check through isKnownFormatVersion ([#135](https://github.com/victorstein/berean-os/issues/135)) ([a27c564](https://github.com/victorstein/berean-os/commit/a27c564ece174d4a98e4471cbf80ad90ed5a401e)), closes [#132](https://github.com/victorstein/berean-os/issues/132)
+
 ## [1.16.7](https://github.com/victorstein/berean-os/compare/v1.16.6...v1.16.7) (2026-09-26)
 
 
