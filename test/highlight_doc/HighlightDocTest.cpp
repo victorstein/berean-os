@@ -72,8 +72,7 @@ TEST(HighlightDoc, IgnoresUnknownKeysButRejectsAFutureVersion) {
 
 TEST(HighlightDocVersion, AnAbsentVersionIsReadAsTheCurrentOne) {
   JsonDocument doc;
-  ASSERT_FALSE(
-      deserializeJson(doc, R"({"tags":["a"],"highlights":[{"si":1,"start":5,"end":9,"t":[0],"text":"x"}]})"));
+  ASSERT_FALSE(deserializeJson(doc, R"({"tags":["a"],"highlights":[{"si":1,"start":5,"end":9,"t":[0],"text":"x"}]})"));
   HighlightDoc parsed;
   ASSERT_TRUE(parsed.fromJson(doc)) << "every build has written \"v\"; an absent one is still accepted";
   EXPECT_EQ(parsed.highlights().size(), 1u);
