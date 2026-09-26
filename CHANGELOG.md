@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/victorstein/berean-os/compare/v1.16.0...v1.16.1) (2026-09-26)
+
+
+### Refactor
+
+* move SD path literals into one header ([#118](https://github.com/victorstein/berean-os/issues/118)) ([6748001](https://github.com/victorstein/berean-os/commit/674800120f9d5b001cbdd6b2a86f0cf5903a2083)), closes [#111](https://github.com/victorstein/berean-os/issues/111)
+
 ## [1.16.0](https://github.com/victorstein/berean-os/compare/v1.15.0...v1.16.0) (2026-09-24)
 
 
