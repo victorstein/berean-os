@@ -18,6 +18,20 @@
 
 ---
 
+## Review history
+
+**Pass 0** (`docs/superpowers/reviews/issue-98-spec-review-0.md`): `CLEAR`, no blockers, no majors,
+four minors — all accepted, each re-verified against the cited line, and applied inline:
+1. Stale `PersistableStore.h:76-87` and `test/storage_io/CMakeLists.txt` comments added to the edit
+   list (§Call sites).
+2. `PassageFile`'s silent zero-length branch gets a `LOG_ERR` in the reader (§Error handling).
+3. A-2's rationale corrected to the one §Architecture actually gives.
+4. The device recipe says when the load really runs (§Testing).
+
+No decision was reversed and scope is unchanged.
+
+---
+
 ## Problem
 
 Two policies exist for the same situation — primary file missing, `<path>.tmp` present but
@@ -72,7 +86,7 @@ switch sequence (research §1-2), and a sixth store copying any of the five woul
 | | Assumption | Decided in |
 |---|---|---|
 | **A-1** | The policy is **keep** the `.tmp`. `DeleteTempReportEmpty` is renamed **`KeepTempReportEmpty`**, and no code path calls `Storage.remove` on a `.tmp` in response to it. | §Policy |
-| **A-2** | The new helper is `PersistableStoreBase::loadAdopting`, a static in `PersistableStore.{h,cpp}` beside `readDocFromFileAdopting` — not a new file, because `PersistableStore.cpp` is the one TU that holds the JSON parser (`PersistableStore.h:14-22`). | §Architecture |
+| **A-2** | The new helper is `PersistableStoreBase::loadAdopting`, a static in `PersistableStore.{h,cpp}` beside `readDocFromFileAdopting` — not a new file, because the private core must be shared with `readDocFromFileAdopting` (A-7), which already lives there. | §Architecture |
 | **A-3** | A new `enum class AdoptedLoad : uint8_t { Loaded, Empty, RecoveredFromTemp, Failed }` lives in `lib/Serialization/TempAdoption.h`. Each of the five per-store `LoadResult` enums is replaced by `using LoadResult = AdoptedLoad;`. Values, order and names are identical to all five today (`ChapterCompletionFile.h:22`, `PassageFile.h:21-26`, `TagPaletteFile.h:16`, `BookmarkFile.h:19-24`, `HighlightFile.h:22-27`). | §Result type |
 | **A-4** | A new pure `constexpr AdoptedLoad adoptedLoad(TempAdoptionAction action, bool accepted)` maps the decision plus the store's `fromJson` verdict to the result — the load-side sibling of `adoptedReadStatus`. It is the host-tested unit for the result mapping. | §Control flow |
 | **A-5** | The reader is a parameter: `using DocReader = DocReadStatus (*)(const char* path, JsonDocument& doc);`. Four loaders pass `&PersistableStoreBase::readDocFromFileChecked`; `PassageFile` passes its streaming `readInto`, whose signature changes from `const std::string&` to `const char*`. The **same** reader is used for the primary and the `.tmp`, as every loader does today. | §Hooks |
@@ -284,6 +298,16 @@ free of Arduino (`TempAdoption.h:12-15`). Comments that described the per-store 
 `PersistableStore.h:73-74` ("An unparseable .tmp is … left on the card; see the call site for why")
 is updated to point at `KeepTempReportEmpty`'s comment, which becomes the single home of the reason.
 
+Other comments this change makes stale, updated in the same change (spec review 0, MINOR 1):
+
+- `PersistableStore.h:76-78` says `readDocFromFileChecked` stays for callers that read their own
+  `<path>.tmp` ("the three study files"). After this change no store does; it becomes the default
+  `DocReader` for `loadAdopting`, and the comment says that.
+- `PersistableStore.h:80-87`, the renaming-read hazard, is stated once on `loadAdopting` — naming the
+  five study and annotation files beside the three `/.berean/` files — and
+  `readDocFromFileAdopting`'s comment refers to it.
+- `test/storage_io/CMakeLists.txt:1-5` is refreshed to name the new loaders and `loadAdopting`.
+
 ## Error handling
 
 - **`Failed` still means "may still hold data"** — a primary that exists but cannot be read or
@@ -293,7 +317,12 @@ is updated to point at `KeepTempReportEmpty`'s comment, which becomes the single
   "Recovered" line (`PersistableStore.cpp:83-88`, moved unchanged).
 - **Rejected contents** log `LOG_ERR` and return `Failed` on both arms (A-10).
 - **Unusable `.tmp`** returns `Empty` with no log from the helper; the reader has already logged the
-  read or parse error (`PersistableStore.cpp:53,58`, `PassageFile.cpp:36,44`).
+  read or parse error (`PersistableStore.cpp:53,58`, `PassageFile.cpp:36,44`). The one exception
+  today is `PassageFile`'s zero-length branch (`PassageFile.cpp:39`), which returns `Unreadable`
+  silently — and a zero-byte `.tmp` is the likeliest leftover of a write interrupted before its
+  first byte. `readInto` gains `LOG_ERR(MODULE, "%s is empty", path)` on that branch, matching
+  `PersistableStore.cpp:52-53`; the log goes in the reader, not the core, so A-7's promise that
+  `readDocFromFileAdopting`'s log lines are unchanged holds (spec review 0, MINOR 2).
 - No `abort`, no exceptions, no new allocation path that can fail silently.
 
 ## Testing
@@ -349,6 +378,8 @@ changed nothing about `readDocFromFileAdopting`.
 ### What only the device can verify
 
 Flag for the human tester, adapted from #64's recipe: on a dev build, with the card in a reader,
-delete `/.berean/tags.json` and put a truncated `/.berean/tags.json.tmp` beside it. Boot and open
-the tag list. **Expected:** the palette is empty, serial shows the parse error for the `.tmp`, and
-`tags.json.tmp` is **still on the card** until the first tag is saved. Today it is removed at boot.
+delete `/.berean/tags.json` and put a truncated `/.berean/tags.json.tmp` beside it. Boot, open any
+book and open its tag list — `TagPaletteFile::load` runs when a publication is opened
+(`StudyStore.cpp:43`), not at boot. **Expected:** the palette is empty, serial shows the parse error
+for the `.tmp`, and `tags.json.tmp` is **still on the card** until the first tag is saved. Today it
+is removed when a publication is opened.
