@@ -173,7 +173,7 @@ Two, both X4 Pro:
 * `x4pro-gh_release` — production, `LOG_LEVEL=0`, no serial logging. This is what
   OTA installs.
 
-**Standard**: C++20 (`-std=c++2a`). No exceptions, no RTTI.
+**Standard**: C++20 as GNU++20 (`-std=gnu++2a`, `platformio.ini:40`). No exceptions, no RTTI.
 **Logging**: always `LOG_INF` / `LOG_DBG` / `LOG_ERR` from `Logging.h`. Raw
 `Serial` output is deprecated.
 

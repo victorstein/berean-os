@@ -1,2 +1,2 @@
 CompileFlags:
-    Add: [-std=c++2a]
+    Add: [-std=gnu++2a]
