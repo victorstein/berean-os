@@ -1,5 +1,7 @@
 #pragma once
 
+#include <TempAdoption.h>
+
 #include <cstdint>
 #include <string>
 
@@ -18,12 +20,7 @@ namespace PassageFile {
 
 std::string path(const std::string& pubKey);
 
-enum class LoadResult : uint8_t {
-  Loaded,
-  Empty,              // genuinely absent -- safe to save over
-  RecoveredFromTemp,  // a failed rename left .tmp as the only copy; promoted
-  Failed,             // unreadable, unparseable or over budget -- DATA MAY STILL EXIST
-};
+using LoadResult = AdoptedLoad;
 
 // Failed means the bytes could not be read, parsed or validated AND THE FILE MAY
 // STILL HOLD THE USER'S DATA. The caller MUST latch saving off for the session.

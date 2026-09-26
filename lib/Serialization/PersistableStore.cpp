@@ -61,8 +61,15 @@ DocReadStatus PersistableStoreBase::readDocFromFileChecked(const char* path, Jso
   return classifyDocRead(true, false, false);
 }
 
-DocReadStatus PersistableStoreBase::readDocFromFileAdopting(const char* path, JsonDocument& doc) {
-  const DocReadStatus primary = readDocFromFileChecked(path, doc);
+namespace {
+
+// Reads `path` with `read`; when it is Missing, reads `<path>.tmp` into the
+// same doc and promotes it if it parsed. `primary` receives the primary's
+// status. Both readers return before touching doc for a missing path, so the
+// .tmp never lands on top of a half-read primary.
+TempAdoptionAction readAdopting(const char* path, const PersistableStoreBase::DocReader read, JsonDocument& doc,
+                                DocReadStatus& primary) {
+  primary = read(path, doc);
 
   bool tempExists = false;
   bool tempParsed = false;
@@ -70,40 +77,56 @@ DocReadStatus PersistableStoreBase::readDocFromFileAdopting(const char* path, Js
   if (primary == DocReadStatus::Missing) {
     tmpPath = std::string(path) + ".tmp";
     tempExists = Storage.exists(tmpPath.c_str());
-    if (tempExists) tempParsed = readDocFromFileChecked(tmpPath.c_str(), doc) == DocReadStatus::Ok;
+    if (tempExists) tempParsed = read(tmpPath.c_str(), doc) == DocReadStatus::Ok;
   }
 
   const TempAdoptionAction action = tempAdoptionAction(primary, tempExists, tempParsed);
-  switch (action) {
-    case TempAdoptionAction::PromoteTempAndUseIt:
-      // Promote first: the rename is what rescues the only surviving copy. The
-      // primary path is Missing, so nothing here can be overwritten.
-      if (Storage.rename(tmpPath.c_str(), path)) {
-        LOG_INF("PERSIST", "Recovered %s from an interrupted write", path);
-      } else {
-        // Still Ok: the document is in hand and the .tmp survives for the next
-        // boot to retry. Only the rename failed, so do not claim a recovery --
-        // that log line is what the on-device test reads as "the file is back".
-        LOG_ERR("PERSIST", "Failed to promote %s into place", tmpPath.c_str());
-      }
-      break;
-    case TempAdoptionAction::DeleteTempReportEmpty:
-      // deserializeJson leaves the partially parsed document behind, and callers
-      // that ignore the status read it immediately. Deliberately NOT extended to
-      // the ReportFailed arm: clearing there would make a read-modify-write
-      // caller overwrite a corrupt-but-present file instead of merging onto what
-      // did parse.
-      doc.clear();
-      // The .tmp is left alone on purpose. Removing it buys nothing -- the next
-      // save truncates it, since SDCardManager::writeFile removes the
-      // destination before re-creating it -- and a transient SD read failure is
-      // indistinguishable from an empty file, so deleting here could destroy the
-      // only surviving copy.
-      break;
-    default:
-      break;
+  if (action == TempAdoptionAction::PromoteTempAndUseIt) {
+    // Promote first: the rename is what rescues the only surviving copy. The
+    // primary path is Missing, so nothing here can be overwritten.
+    if (Storage.rename(tmpPath.c_str(), path)) {
+      LOG_INF("PERSIST", "Recovered %s from an interrupted write", path);
+    } else {
+      // Still usable: the document is in hand and the .tmp survives for the
+      // next boot to retry. Only the rename failed, so do not claim a recovery
+      // -- that log line is what the on-device test reads as "the file is back".
+      LOG_ERR("PERSIST", "Failed to promote %s into place", tmpPath.c_str());
+    }
+  }
+  return action;
+}
+
+}  // namespace
+
+DocReadStatus PersistableStoreBase::readDocFromFileAdopting(const char* path, JsonDocument& doc) {
+  DocReadStatus primary = DocReadStatus::Missing;
+  const TempAdoptionAction action = readAdopting(path, readDocFromFileChecked, doc, primary);
+  if (action == TempAdoptionAction::KeepTempReportEmpty) {
+    // deserializeJson leaves the partially parsed document behind, and callers
+    // that ignore the status read it immediately. Deliberately NOT extended to
+    // the ReportFailed arm: clearing there would make a read-modify-write
+    // caller overwrite a corrupt-but-present file instead of merging onto what
+    // did parse.
+    doc.clear();
   }
   return adoptedReadStatus(primary, action);
+}
+
+AdoptedLoad PersistableStoreBase::loadAdopting(const char* path, const DocReader read, const DocAcceptor accept,
+                                               void* target) {
+  JsonDocument doc;
+  DocReadStatus primary = DocReadStatus::Missing;
+  const TempAdoptionAction action = readAdopting(path, read, doc, primary);
+
+  bool accepted = false;
+  if (action == TempAdoptionAction::UseLoaded) {
+    accepted = accept(target, doc.as<JsonVariantConst>());
+    if (!accepted) LOG_ERR("PERSIST", "Rejected %s (future format version, over budget, or corrupt)", path);
+  } else if (action == TempAdoptionAction::PromoteTempAndUseIt) {
+    accepted = accept(target, doc.as<JsonVariantConst>());
+    if (!accepted) LOG_ERR("PERSIST", "Recovered %s but rejected its contents", path);
+  }
+  return adoptedLoad(action, accepted);
 }
 
 bool PersistableStoreBase::readDocFromFile(const char* path, JsonDocument& doc) {

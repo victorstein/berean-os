@@ -5,7 +5,6 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SdPaths.h>
-#include <TempAdoption.h>
 
 namespace {
 
@@ -28,20 +27,23 @@ class HalFileReader {
   HalFile& file_;
 };
 
-DocReadStatus readInto(const std::string& path, JsonDocument& json) {
-  if (!Storage.exists(path.c_str())) return classifyDocRead(false, false, false);
+DocReadStatus readInto(const char* path, JsonDocument& json) {
+  if (!Storage.exists(path)) return classifyDocRead(false, false, false);
 
   HalFile file;
   if (!Storage.openFileForRead(MODULE, path, file)) {
-    LOG_ERR(MODULE, "Failed to open %s", path.c_str());
+    LOG_ERR(MODULE, "Failed to open %s", path);
     return classifyDocRead(true, true, false);
   }
-  if (file.size() == 0) return classifyDocRead(true, true, false);
+  if (file.size() == 0) {
+    LOG_ERR(MODULE, "%s is empty", path);
+    return classifyDocRead(true, true, false);
+  }
 
   HalFileReader reader(file);
   const auto error = deserializeJson(json, reader);
   if (error) {
-    LOG_ERR(MODULE, "JSON parse error in %s: %s", path.c_str(), error.c_str());
+    LOG_ERR(MODULE, "JSON parse error in %s: %s", path, error.c_str());
     return classifyDocRead(true, false, true);
   }
   return classifyDocRead(true, false, false);
@@ -55,47 +57,10 @@ std::string path(const std::string& pubKey) { return std::string(sdpaths::PASSAG
 
 LoadResult load(const std::string& pubKey, study::PassageDoc& doc) {
   const std::string primaryPath = path(pubKey);
-  const std::string tmpPath = primaryPath + ".tmp";
-
-  JsonDocument primaryJson;
-  const DocReadStatus primaryStatus = readInto(primaryPath, primaryJson);
-
-  bool tempExists = false;
-  bool tempParsed = false;
-  JsonDocument tempJson;
-  if (primaryStatus == DocReadStatus::Missing) {
-    tempExists = Storage.exists(tmpPath.c_str());
-    if (tempExists) tempParsed = readInto(tmpPath, tempJson) == DocReadStatus::Ok;
-  }
-
-  switch (tempAdoptionAction(primaryStatus, tempExists, tempParsed)) {
-    case TempAdoptionAction::UseLoaded:
-      if (doc.fromJson(primaryJson.as<JsonVariantConst>())) return LoadResult::Loaded;
-      LOG_ERR(MODULE, "Rejected %s (future format version, or over budget)", primaryPath.c_str());
-      return LoadResult::Failed;
-
-    case TempAdoptionAction::ReportEmpty:
-      return LoadResult::Empty;
-
-    case TempAdoptionAction::PromoteTempAndUseIt: {
-      // Promote first: the rename is what rescues the only surviving copy of
-      // the user's data. The primary path is Missing, so nothing can be lost.
-      if (!Storage.rename(tmpPath.c_str(), primaryPath.c_str())) {
-        LOG_ERR(MODULE, "Failed to promote %s into place", tmpPath.c_str());
-      }
-      if (doc.fromJson(tempJson.as<JsonVariantConst>())) return LoadResult::RecoveredFromTemp;
-      LOG_ERR(MODULE, "Recovered %s but rejected its contents", primaryPath.c_str());
-      return LoadResult::Failed;
-    }
-
-    case TempAdoptionAction::DeleteTempReportEmpty:
-      Storage.remove(tmpPath.c_str());
-      return LoadResult::Empty;
-
-    case TempAdoptionAction::ReportFailed:
-      return LoadResult::Failed;
-  }
-  return LoadResult::Failed;
+  return PersistableStoreBase::loadAdopting(
+      primaryPath.c_str(), readInto,
+      [](void* target, JsonVariantConst json) { return static_cast<study::PassageDoc*>(target)->fromJson(json); },
+      &doc);
 }
 
 SaveResult save(const std::string& pubKey, const study::PassageDoc& doc) {

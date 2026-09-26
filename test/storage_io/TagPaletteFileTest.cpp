@@ -1,6 +1,4 @@
-// TagPaletteFile's load and save round trip against the Storage fake. The
-// DeleteTempReportEmpty arm is deliberately not asserted: issue #98 changes what
-// the per-store loaders do with an unusable .tmp.
+// TagPaletteFile's load and save round trip against the Storage fake.
 
 #include <ArduinoJson.h>
 #include <HalStorage.h>
@@ -78,6 +76,14 @@ TEST_F(TagPaletteFileIo, AnInterruptedSaveIsRecoveredFromTheTemp) {
   EXPECT_EQ(loaded.name(*prayer), "oracion");
   EXPECT_EQ(storage_fake::fileBytes(PATH), serialised(saved));
   EXPECT_FALSE(Storage.exists(TMP_PATH.c_str()));
+}
+
+TEST_F(TagPaletteFileIo, AGarbageTempIsKeptAndTheLoadIsEmpty) {
+  storage_fake::putFile(TMP_PATH, R"({"v":)");
+  study::TagPalette palette;
+  EXPECT_EQ(TagPaletteFile::load(palette), TagPaletteFile::LoadResult::Empty);
+  EXPECT_EQ(storage_fake::fileBytes(TMP_PATH), R"({"v":)");
+  EXPECT_FALSE(Storage.exists(PATH.c_str()));
 }
 
 TEST_F(TagPaletteFileIo, AnOverBudgetPaletteIsRefusedAndNothingIsWritten) {

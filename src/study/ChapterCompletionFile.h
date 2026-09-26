@@ -1,5 +1,7 @@
 #pragma once
 
+#include <TempAdoption.h>
+
 #include <cstdint>
 #include <string>
 
@@ -19,7 +21,7 @@ namespace ChapterCompletionFile {
 
 std::string path(const std::string& pubKey);
 
-enum class LoadResult : uint8_t { Loaded, Empty, RecoveredFromTemp, Failed };
+using LoadResult = AdoptedLoad;
 
 // Failed means the file may still hold the user's reading history. The caller
 // MUST latch saving off: an empty record saved over it erases that history.

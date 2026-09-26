@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SdPaths.h>
+#include <TempAdoption.h>
 
 #include <cstdint>
 
@@ -13,7 +14,7 @@
 // passages file.
 namespace TagPaletteFile {
 
-enum class LoadResult : uint8_t { Loaded, Empty, RecoveredFromTemp, Failed };
+using LoadResult = AdoptedLoad;
 
 // Failed means the file may still hold the user's vocabulary. The caller MUST
 // latch saving off: a palette overwritten with an empty one orphans the tag ids
