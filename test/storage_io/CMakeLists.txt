@@ -9,14 +9,19 @@ add_executable(StorageIoTest
   HalStorageFakeTest.cpp
   AtomicWriteTest.cpp
   AdoptingReadTest.cpp
+  TagPaletteFileTest.cpp
   ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
   ${REPO_ROOT}/test/stubs/ObfuscationUtilsStub.cpp
   ${REPO_ROOT}/lib/Serialization/PersistableStore.cpp
+  ${REPO_ROOT}/src/study/TagPaletteFile.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
 )
 
 target_include_directories(StorageIoTest PRIVATE
   ${REPO_ROOT}/test/stubs
   ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/StudyStore
+  ${REPO_ROOT}/src/study
 )
 
 target_link_libraries(StorageIoTest PRIVATE
