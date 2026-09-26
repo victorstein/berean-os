@@ -8,6 +8,7 @@
 #include <string>
 
 #include "DocReadStatus.h"
+#include "FormatVersion.h"
 #include "SaveBudget.h"
 #include "TempAdoption.h"
 
@@ -44,6 +45,11 @@ class PersistableStoreBase {
   void requestResave() { resaveRequested = true; }
 
   bool resaveRequested = false;
+
+  // Set when a load read the file but fromJson refused it -- a format this build
+  // does not know. Every save is then refused so the file survives for a build
+  // that can read it. Written only by loadFromFile(), per persist::loadRefusedAfter.
+  bool loadRefused = false;
 
  public:
   // Public so non-store JSON files (e.g. per-book bookmarks) can reuse them
@@ -116,6 +122,10 @@ class PersistableStoreBase {
  * Concurrency: saveToFile/loadFromFile lock storeMutex, so toJson/fromJson
  * always run under it. fromJson must signal legacy-shape upgrades with
  * requestResave(), never by calling saveToFileAtomic() directly (deadlock).
+ *
+ * Format versions: fromJson returns false for a format it does not know, before
+ * touching any member. The store then keeps its pre-load values and refuses
+ * every save until a later load is accepted or finds no file.
  */
 template <typename T>
 class PersistableStore : public PersistableStoreBase {
@@ -147,6 +157,10 @@ class PersistableStore : public PersistableStoreBase {
   // it has to be deliberate; stores use saveToFileAtomic().
   bool saveToFile() const {
     std::lock_guard<std::mutex> lock(storeMutex);
+    if (loadRefused) {
+      LOG_ERR("PERSIST", "Refusing to save %s: its format is unknown to this build", T::getFilePath());
+      return false;
+    }
     JsonDocument doc;
     static_cast<const T*>(this)->toJson(doc);
     return writeDocToFile(T::getFilePath(), doc);
@@ -164,6 +178,10 @@ class PersistableStore : public PersistableStoreBase {
   // SAVE_BUDGET` to tighten the ceiling.
   bool saveToFileAtomic() const {
     std::lock_guard<std::mutex> lock(storeMutex);
+    if (loadRefused) {
+      LOG_ERR("PERSIST", "Refusing to save %s: its format is unknown to this build", T::getFilePath());
+      return false;
+    }
     JsonDocument doc;
     static_cast<const T*>(this)->toJson(doc);
 
@@ -177,16 +195,16 @@ class PersistableStore : public PersistableStoreBase {
   }
 
   bool loadFromFile() {
-    bool ok;
+    bool ok = false;
     bool doResave;
     {
       std::lock_guard<std::mutex> lock(storeMutex);
       resaveRequested = false;
       JsonDocument doc;
-      if (readDocFromFileAdopting(T::getFilePath(), doc) != DocReadStatus::Ok) {
-        return false;
-      }
-      ok = static_cast<T*>(this)->fromJson(doc.as<JsonVariantConst>());
+      const DocReadStatus status = readDocFromFileAdopting(T::getFilePath(), doc);
+      if (status == DocReadStatus::Ok) ok = static_cast<T*>(this)->fromJson(doc.as<JsonVariantConst>());
+      loadRefused = persist::loadRefusedAfter(status, ok, loadRefused);
+      if (status != DocReadStatus::Ok) return false;
       // Read the flag under the lock that guards the fromJson() that set it.
       doResave = resaveRequested;
       resaveRequested = false;
