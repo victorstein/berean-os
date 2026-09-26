@@ -75,7 +75,7 @@ LoadResult load(const std::string& bookPath, std::vector<BookmarkEntry>& bookmar
       return LoadResult::Failed;
     }
 
-    case TempAdoptionAction::DeleteTempReportEmpty:
+    case TempAdoptionAction::KeepTempReportEmpty:
       Storage.remove(tmpPath.c_str());
       return LoadResult::Empty;
 

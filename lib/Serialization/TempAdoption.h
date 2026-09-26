@@ -22,9 +22,14 @@
 enum class TempAdoptionAction : uint8_t {
   UseLoaded,              // primary parsed -- use it
   ReportEmpty,            // genuinely nothing on disk
-  PromoteTempAndUseIt,    // .tmp is the only surviving copy; rescue it now
-  DeleteTempReportEmpty,  // .tmp exists but is unusable
-  ReportFailed,           // primary bytes exist but could not be read/parsed
+  PromoteTempAndUseIt,  // .tmp is the only surviving copy; rescue it now
+  // .tmp exists but is unusable, and is left on the card. Removing it buys
+  // nothing -- the next save truncates it, since SDCardManager::writeFile
+  // removes the destination before re-creating it -- and a transient SD read
+  // failure is indistinguishable from an empty file, so deleting here could
+  // destroy the only surviving copy.
+  KeepTempReportEmpty,
+  ReportFailed,  // primary bytes exist but could not be read/parsed
 };
 
 constexpr TempAdoptionAction tempAdoptionAction(const DocReadStatus primary, const bool tempExists,
@@ -38,7 +43,7 @@ constexpr TempAdoptionAction tempAdoptionAction(const DocReadStatus primary, con
     case DocReadStatus::Missing:
     default:
       if (!tempExists) return TempAdoptionAction::ReportEmpty;
-      return tempParsed ? TempAdoptionAction::PromoteTempAndUseIt : TempAdoptionAction::DeleteTempReportEmpty;
+      return tempParsed ? TempAdoptionAction::PromoteTempAndUseIt : TempAdoptionAction::KeepTempReportEmpty;
   }
 }
 
@@ -52,7 +57,7 @@ constexpr DocReadStatus adoptedReadStatus(const DocReadStatus primary, const Tem
     case TempAdoptionAction::PromoteTempAndUseIt:
       return DocReadStatus::Ok;
     case TempAdoptionAction::ReportEmpty:
-    case TempAdoptionAction::DeleteTempReportEmpty:
+    case TempAdoptionAction::KeepTempReportEmpty:
       return DocReadStatus::Missing;
     case TempAdoptionAction::ReportFailed:
     default:

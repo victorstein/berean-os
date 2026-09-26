@@ -87,18 +87,13 @@ DocReadStatus PersistableStoreBase::readDocFromFileAdopting(const char* path, Js
         LOG_ERR("PERSIST", "Failed to promote %s into place", tmpPath.c_str());
       }
       break;
-    case TempAdoptionAction::DeleteTempReportEmpty:
+    case TempAdoptionAction::KeepTempReportEmpty:
       // deserializeJson leaves the partially parsed document behind, and callers
       // that ignore the status read it immediately. Deliberately NOT extended to
       // the ReportFailed arm: clearing there would make a read-modify-write
       // caller overwrite a corrupt-but-present file instead of merging onto what
       // did parse.
       doc.clear();
-      // The .tmp is left alone on purpose. Removing it buys nothing -- the next
-      // save truncates it, since SDCardManager::writeFile removes the
-      // destination before re-creating it -- and a transient SD read failure is
-      // indistinguishable from an empty file, so deleting here could destroy the
-      // only surviving copy.
       break;
     default:
       break;

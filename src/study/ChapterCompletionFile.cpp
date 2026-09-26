@@ -52,7 +52,7 @@ LoadResult load(const std::string& pubKey, study::ChapterCompletion& record) {
       return LoadResult::Failed;
     }
 
-    case TempAdoptionAction::DeleteTempReportEmpty:
+    case TempAdoptionAction::KeepTempReportEmpty:
       Storage.remove(tmpPath.c_str());
       return LoadResult::Empty;
 

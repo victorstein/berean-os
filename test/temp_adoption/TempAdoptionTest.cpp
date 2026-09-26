@@ -37,8 +37,8 @@ TEST(TempAdoptionAction, MissingPrimaryWithAParsedTempIsPromoted) {
   EXPECT_EQ(tempAdoptionAction(DocReadStatus::Missing, true, true), TempAdoptionAction::PromoteTempAndUseIt);
 }
 
-TEST(TempAdoptionAction, MissingPrimaryWithAnUnparseableTempIsDiscarded) {
-  EXPECT_EQ(tempAdoptionAction(DocReadStatus::Missing, true, false), TempAdoptionAction::DeleteTempReportEmpty);
+TEST(TempAdoptionAction, MissingPrimaryWithAnUnparseableTempIsKeptAndReportedEmpty) {
+  EXPECT_EQ(tempAdoptionAction(DocReadStatus::Missing, true, false), TempAdoptionAction::KeepTempReportEmpty);
 }
 
 TEST(AdoptedReadStatus, UsableDocumentsReportOk) {
@@ -52,9 +52,9 @@ TEST(AdoptedReadStatus, NothingOnDiskReportsMissing) {
 }
 
 TEST(AdoptedReadStatus, AnUnusableTempStillReportsMissing) {
-  // The caller declines to delete the .tmp, but the status is unchanged -- the
-  // primary is genuinely absent, so overwriting it loses nothing.
-  EXPECT_EQ(adoptedReadStatus(DocReadStatus::Missing, TempAdoptionAction::DeleteTempReportEmpty),
+  // The .tmp is kept, but the primary is genuinely absent, so overwriting it
+  // loses nothing.
+  EXPECT_EQ(adoptedReadStatus(DocReadStatus::Missing, TempAdoptionAction::KeepTempReportEmpty),
             DocReadStatus::Missing);
 }
 
