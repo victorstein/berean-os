@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.7](https://github.com/victorstein/berean-os/compare/v1.16.6...v1.16.7) (2026-09-26)
+
+
+### Bug Fixes
+
+* register sd_paths tests and use SdPaths for the sleep frame ([#130](https://github.com/victorstein/berean-os/issues/130)) ([64740d8](https://github.com/victorstein/berean-os/commit/64740d85161432bb8f9ab4eb04a57cf5df173777)), closes [#111](https://github.com/victorstein/berean-os/issues/111)
+
 ## [1.16.6](https://github.com/victorstein/berean-os/compare/v1.16.5...v1.16.6) (2026-09-26)
 
 
