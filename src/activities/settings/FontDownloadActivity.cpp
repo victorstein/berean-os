@@ -89,7 +89,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   auto result = HttpDownloader::downloadToFile(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
   if (result != HttpDownloader::OK) {
     LOG_ERR("FONT", "Failed to fetch manifest from %s", FONT_MANIFEST_URL);
-    errorMessage_ = "Failed to fetch font list";
+    errorMessage_ = tr(STR_FONT_LIST_FETCH_FAILED);
     Storage.remove(MANIFEST_TMP);
     return false;
   }
@@ -99,7 +99,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   if (!Storage.openFileForRead("FONT", MANIFEST_TMP, manifestFile)) {
     LOG_ERR("FONT", "Failed to open temp manifest");
     Storage.remove(MANIFEST_TMP);
-    errorMessage_ = "Failed to read font list";
+    errorMessage_ = tr(STR_FONT_LIST_READ_FAILED);
     return false;
   }
 
@@ -110,14 +110,14 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
   if (err) {
     LOG_ERR("FONT", "Manifest parse error: %s", err.c_str());
-    errorMessage_ = "Invalid font manifest";
+    errorMessage_ = tr(STR_FONT_MANIFEST_INVALID);
     return false;
   }
 
   int version = doc["version"] | 0;
   if (version != FONTS_MANIFEST_VERSION) {
     LOG_ERR("FONT", "Unsupported manifest version: %d", version);
-    errorMessage_ = "Unsupported manifest version";
+    errorMessage_ = tr(STR_FONT_MANIFEST_VERSION_UNSUPPORTED);
     return false;
   }
 
@@ -145,7 +145,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
       if (!fileObj["crc32"].is<uint32_t>()) {
         LOG_ERR("FONT", "Malformed manifest file entry: missing or invalid crc32 for %s", file.name.c_str());
-        errorMessage_ = "Invalid font manifest";
+        errorMessage_ = tr(STR_FONT_MANIFEST_INVALID);
         return false;
       }
       file.crc32 = fileObj["crc32"].as<uint32_t>();
