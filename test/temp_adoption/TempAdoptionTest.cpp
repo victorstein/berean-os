@@ -89,3 +89,54 @@ TEST(AdoptedReadStatus, ANonMissingPrimaryIsNeverReportedMissing) {
     }
   }
 }
+
+TEST(AdoptedLoad, AnAcceptedDocumentIsLoadedOrRecovered) {
+  EXPECT_EQ(adoptedLoad(TempAdoptionAction::UseLoaded, true), AdoptedLoad::Loaded);
+  EXPECT_EQ(adoptedLoad(TempAdoptionAction::PromoteTempAndUseIt, true), AdoptedLoad::RecoveredFromTemp);
+}
+
+TEST(AdoptedLoad, ARejectedDocumentFails) {
+  EXPECT_EQ(adoptedLoad(TempAdoptionAction::UseLoaded, false), AdoptedLoad::Failed);
+  EXPECT_EQ(adoptedLoad(TempAdoptionAction::PromoteTempAndUseIt, false), AdoptedLoad::Failed)
+      << "a promoted .tmp the store rejects must still latch saving off";
+}
+
+TEST(AdoptedLoad, NothingUsableOnDiskIsEmpty) {
+  for (const bool accepted : {false, true}) {
+    EXPECT_EQ(adoptedLoad(TempAdoptionAction::ReportEmpty, accepted), AdoptedLoad::Empty);
+    EXPECT_EQ(adoptedLoad(TempAdoptionAction::KeepTempReportEmpty, accepted), AdoptedLoad::Empty);
+  }
+}
+
+TEST(AdoptedLoad, AnUnreadablePrimaryFails) {
+  for (const bool accepted : {false, true}) {
+    EXPECT_EQ(adoptedLoad(TempAdoptionAction::ReportFailed, accepted), AdoptedLoad::Failed);
+  }
+}
+
+TEST(AdoptedLoad, NeverReportsEmptyOverAPresentPrimaryOrSuccessForARejectedDocument) {
+  // Empty is the only result that tells a caller "safe to save over"; inventing
+  // it over a primary whose bytes are still on the card is how data is lost.
+  constexpr DocReadStatus every[] = {DocReadStatus::Ok, DocReadStatus::Missing, DocReadStatus::Unreadable,
+                                     DocReadStatus::ParseError};
+  for (const DocReadStatus primary : every) {
+    for (const bool tempExists : {false, true}) {
+      for (const bool tempParsed : {false, true}) {
+        for (const bool accepted : {false, true}) {
+          const AdoptedLoad result = adoptedLoad(tempAdoptionAction(primary, tempExists, tempParsed), accepted);
+          if (primary != DocReadStatus::Missing) {
+            EXPECT_NE(result, AdoptedLoad::Empty)
+                << "primary=" << static_cast<int>(primary) << " exists=" << tempExists << " parsed=" << tempParsed;
+          }
+          if (!accepted) {
+            EXPECT_NE(result, AdoptedLoad::Loaded);
+            EXPECT_NE(result, AdoptedLoad::RecoveredFromTemp);
+          }
+          if (primary == DocReadStatus::Ok && accepted) {
+            EXPECT_EQ(result, AdoptedLoad::Loaded);
+          }
+        }
+      }
+    }
+  }
+}

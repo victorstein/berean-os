@@ -64,3 +64,30 @@ constexpr DocReadStatus adoptedReadStatus(const DocReadStatus primary, const Tem
       return primary;
   }
 }
+
+// What a load built on PersistableStoreBase::loadAdopting reports. Each
+// per-store LoadResult is an alias of this.
+enum class AdoptedLoad : uint8_t {
+  Loaded,             // primary read, parsed and accepted
+  Empty,              // nothing usable on disk -- safe to save over
+  RecoveredFromTemp,  // an interrupted write left .tmp as the only copy; promoted and accepted
+  Failed,             // unreadable, unparseable or rejected -- DATA MAY STILL EXIST
+};
+
+// `accepted` is the store's fromJson verdict and only matters for the two
+// actions that hand it a document. An action added later lands in `default`
+// and fails, which is the safe direction.
+constexpr AdoptedLoad adoptedLoad(const TempAdoptionAction action, const bool accepted) {
+  switch (action) {
+    case TempAdoptionAction::UseLoaded:
+      return accepted ? AdoptedLoad::Loaded : AdoptedLoad::Failed;
+    case TempAdoptionAction::PromoteTempAndUseIt:
+      return accepted ? AdoptedLoad::RecoveredFromTemp : AdoptedLoad::Failed;
+    case TempAdoptionAction::ReportEmpty:
+    case TempAdoptionAction::KeepTempReportEmpty:
+      return AdoptedLoad::Empty;
+    case TempAdoptionAction::ReportFailed:
+    default:
+      return AdoptedLoad::Failed;
+  }
+}
