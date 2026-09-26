@@ -1,10 +1,9 @@
 // Host coverage for the shared .tmp adoption decision.
 //
-// PersistableStore.cpp cannot be built on the host: PersistableStore.h:3
-// includes <Arduino.h> unconditionally, and test/stubs/HalStorage.h is a bare
-// HalFile with no Storage singleton. So this suite drives the pure branch
-// logic -- which file wins, and what status the caller is told -- and the
-// Storage call sequence in readDocFromFileAdopting stays device-verified only.
+// This suite drives the pure branch logic -- which file wins, and what status
+// the caller is told. The Storage call sequence that carries each decision out
+// in readDocFromFileAdopting is covered against the in-memory card fake in
+// test/storage_io/.
 
 #include <gtest/gtest.h>
 

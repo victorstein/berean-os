@@ -9,8 +9,8 @@ target_link_libraries(CredentialIntegrityTest PRIVATE
 
 gtest_discover_tests(CredentialIntegrityTest)
 
-# WifiCredentialStore.cpp reaches Arduino.h through PersistableStore.h, so only
-# the pure edit and rollback rule (util/WifiCredentialEdit.h) is host-built.
+# WifiCredentialStore.cpp is not host-built; only the pure edit and rollback
+# rule (util/WifiCredentialEdit.h) is.
 add_executable(WifiCredentialEditTest
   WifiCredentialEditTest.cpp
 )

@@ -7,12 +7,10 @@
 // used to carry now lives in Serialization/TempAdoption.h, shared with
 // PersistableStoreBase::readDocFromFileAdopting.
 //
-// HighlightFile.cpp itself cannot be built on the host -- it includes
-// <PersistableStore.h>, which includes <Arduino.h> unconditionally, a
-// genuinely ESP32-specific header (FreeRTOS, esp32-hal, pins_arduino,
-// soc/gpio_reg) with no host stub anywhere in this repo and too costly to fake
-// convincingly. So the branch logic lives here, free of Arduino and
-// HalStorage, and is host-tested in test/highlight_file/.
+// The branch logic lives here, free of Arduino and HalStorage, and is
+// host-tested in test/highlight_file/. HighlightFile.cpp itself has no host
+// suite yet; test/stubs now carries an Arduino.h and an in-memory Storage fake
+// it can be built against (see test/storage_io/).
 
 // Whether save() may write, given the serialised size it measured. Checked
 // BEFORE any file is touched: measure first, refuse over budget, write only
