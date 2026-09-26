@@ -32,15 +32,14 @@ constexpr int QR_CODE_WIDTH = 198;
 constexpr int QR_CODE_HEIGHT = 198;
 
 // DNS server for captive portal (redirects all DNS queries to our IP)
-DNSServer* dnsServer = nullptr;
+std::unique_ptr<DNSServer> dnsServer;
 constexpr uint16_t DNS_PORT = 53;
 
 void stopDnsServer() {
   if (!dnsServer) return;
 
   dnsServer->stop();
-  delete dnsServer;
-  dnsServer = nullptr;
+  dnsServer.reset();
 }
 
 void restartMdns(const char* hostname, const char* tag) {
@@ -233,10 +232,15 @@ void CrossPointWebServerActivity::startAccessPoint() {
   // Start DNS server for captive portal behavior
   // This redirects all DNS queries to our IP, making any domain typed resolve to us
   stopDnsServer();
-  dnsServer = new DNSServer();
-  dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
-  dnsServer->start(DNS_PORT, "*", apIP);
-  LOG_DBG("WEBACT", "DNS server started for captive portal");
+  dnsServer = makeUniqueNoThrow<DNSServer>();
+  if (!dnsServer) {
+    // The web UI stays reachable by IP; only the captive-portal redirect is lost.
+    LOG_ERR("WEBACT", "OOM: DNSServer, captive portal disabled");
+  } else {
+    dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer->start(DNS_PORT, "*", apIP);
+    LOG_DBG("WEBACT", "DNS server started for captive portal");
+  }
 
   LOG_DBG("WEBACT", "Free heap after AP start: %d bytes", ESP.getFreeHeap());
 

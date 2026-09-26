@@ -6,6 +6,7 @@
 #include <HalGPIO.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <ProtectedPath.h>
 #include <WiFi.h>
 #include <esp_efuse.h>
@@ -109,7 +110,7 @@ void CrossPointWebServer::begin() {
   LOG_DBG("WEB", "Network mode: %s", apMode ? "AP" : "STA");
 
   LOG_DBG("WEB", "Creating web server on port %d...", port);
-  server.reset(new WebServer(port));
+  server = makeUniqueNoThrow<WebServer>(port);
 
   // Disable WiFi sleep to improve responsiveness and prevent 'unreachable' errors.
   // This is critical for reliable web server operation on ESP32.
@@ -124,7 +125,7 @@ void CrossPointWebServer::begin() {
   LOG_DBG("WEB", "[MEM] Free heap after WebServer allocation: %d bytes", ESP.getFreeHeap());
 
   if (!server) {
-    LOG_ERR("WEB", "Failed to create WebServer!");
+    LOG_ERR("WEB", "OOM: WebServer");
     return;
   }
 
@@ -181,14 +182,28 @@ void CrossPointWebServer::begin() {
   // Collect WebDAV headers and register handler
   const char* davHeaders[] = {"Depth", "Destination", "Overwrite", "If", "Lock-Token", "Timeout"};
   server->collectHeaders(davHeaders, 6);
-  server->addHandler(new WebDAVHandler());  // Note: WebDAVHandler will be deleted by WebServer when server is stopped
+  // Raw nothrow new: WebServer takes ownership and ~WebServer deletes its handlers.
+  auto* webDavHandler = new (std::nothrow) WebDAVHandler();
+  if (!webDavHandler) {
+    LOG_ERR("WEB", "OOM: WebDAVHandler");
+    server.reset();
+    return;
+  }
+  server->addHandler(webDavHandler);
   LOG_DBG("WEB", "WebDAV handler initialized");
 
   server->begin();
 
   // Start WebSocket server for fast binary uploads
   LOG_DBG("WEB", "Starting WebSocket server on port %d...", wsPort);
-  wsServer.reset(new WebSocketsServer(wsPort));
+  wsServer = makeUniqueNoThrow<WebSocketsServer>(wsPort);
+  if (!wsServer) {
+    LOG_ERR("WEB", "OOM: WebSocketsServer");
+    // Same order as stop(): the HTTP server is already listening.
+    server->stop();
+    server.reset();
+    return;
+  }
   wsInstance = const_cast<CrossPointWebServer*>(this);
   wsServer->begin();
   wsServer->onEvent(wsEventCallback);
