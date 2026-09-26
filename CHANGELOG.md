@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.5](https://github.com/victorstein/berean-os/compare/v1.16.4...v1.16.5) (2026-09-26)
+
+
+### Bug Fixes
+
+* keep an unusable .tmp on every study-data load ([#127](https://github.com/victorstein/berean-os/issues/127)) ([c46f87a](https://github.com/victorstein/berean-os/commit/c46f87a2fed2bba6a7e6b0466e0413dadb367ed0)), closes [#98](https://github.com/victorstein/berean-os/issues/98)
+
 ## [1.16.4](https://github.com/victorstein/berean-os/compare/v1.16.3...v1.16.4) (2026-09-26)
 
 
