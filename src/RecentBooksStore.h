@@ -1,6 +1,7 @@
 #pragma once
 #include <ArduinoJson.h>
 #include <PersistableStore.h>
+#include <SdPaths.h>
 
 #include <string>
 #include <vector>
@@ -24,7 +25,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   // capped -- so the worst case is a real figure. See worstCaseBytes().
   static constexpr size_t SAVE_BUDGET = RecentBooksDoc::SAVE_BUDGET;
 
-  static const char* getFilePath() { return "/.crosspoint/recent.json"; }
+  static const char* getFilePath() { return sdpaths::RECENT_BOOKS_FILE; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 
