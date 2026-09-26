@@ -151,9 +151,12 @@ Compiling and linking `PersistableStore.cpp` on the host needs four things:
    defines only `millis()` and `micros()`.
    - Off-Arduino, ArduinoJson 7.4.2 sets `ARDUINOJSON_ENABLE_ARDUINO_STRING 0`
      (`build/test/_deps/arduinojson-src/src/ArduinoJson/Configuration.hpp:177-178`).
-   - A stub `String` still works as **input**: ArduinoJson adapts any type with
-     `c_str()`/`data()` plus `length()`/`size()`
-     (`Strings/Adapters/StringObject.hpp:14-17`).
+   - As **input** to `deserializeJson`, a class type needs `const_iterator` plus
+     `begin()`/`end()` (`Deserialization/Readers/IteratorReader.hpp:33-39`), or a
+     `read()` method for the default `Reader`. *Corrected after spec review 0:*
+     this bullet originally cited `Strings/Adapters/StringObject.hpp:14-17`, which
+     adapts JSON keys and values, not parser input. A `String` with only
+     `c_str()`/`length()` fails with "no member named 'read' in 'String'".
    - As **output**, `is_std_string<T>` requires `T& append(const char*)` and `void
      push_back(char)` (`Serialization/Writers/StdStringWriter.hpp:15-19`). A class
      that inherits from `std::string` fails that test, because `append` returns

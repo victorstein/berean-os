@@ -13,6 +13,44 @@ read for this spec.
   include path. Host targets never put `lib/hal` on the path, so there is no
   include-order hazard.
 
+## What changed after the pass-0 review, and why
+
+Review: `docs/superpowers/reviews/issue-99-spec-review-0.md`. All four findings are
+accepted.
+
+1. **BLOCKER 1, `String` could not be parsed from.** A-11 cited
+   `StringObject.hpp`, which is the adapter for JSON keys and values, not the
+   `deserializeJson` input path. For a class type, input goes through
+   `Reader<TSource, void_t<typename TSource::const_iterator>>`, which needs
+   `const_iterator` plus `begin()`/`end()`
+   (`Deserialization/Readers/IteratorReader.hpp:33-39`), or through a default
+   `Reader` that calls `read()`. The stub `String` now has `const_iterator`,
+   `begin()` and `end()`, and A-11 cites the right file. The reviewer compiled the
+   real `PersistableStore.cpp` against the corrected class with no errors or
+   warnings. The research note's §3.1 carried the same error and is corrected in
+   the same commit.
+2. **MAJOR 2, sticky hooks versus the chained test.** A-10 had failure hooks
+   cleared only by `reset()`, which also wipes the card, so the atomic-write test
+   could never let the follow-up adopting read promote the `.tmp`. `storage_fake`
+   gains `clearFailures()`, which drops every hook and keeps files and directories.
+   A-10 and the controls block say so, and the chained test calls it between the
+   failed write and the adopting read.
+3. **MINOR 3, comments this change makes false.** The new stub `HalStorage.h`
+   includes the stub `Arduino.h`, so the pagination suite now reaches it too. That
+   is harmless because nothing there names `String`, `millis` or `micros`. The
+   "none of them includes `<Arduino.h>`" paragraph is rewritten. Three
+   comment-only edits are added to Files touched: `test/stubs/Arduino.h:3-7`,
+   `test/pagination/CMakeLists.txt:8-10,26` and `TempAdoptionTest.cpp:3-7`. The
+   per-store CMakeLists comments (`highlight_file`, `credential_integrity`,
+   `bookmark_save_action`) are left alone. They are still true, because those
+   stores' `.cpp` files don't get host suites in this change.
+4. **MINOR 4, mechanical gaps.**
+   - The defined list now includes `HalStorage::HalStorage()` and the definition of
+     `HalStorage HalStorage::instance`, which the inline `getInstance()`
+     (`lib/hal/HalStorage.h:48,53`) needs.
+   - A-2 now says `override` is dropped from `write(const uint8_t*, size_t)` and
+     `write(uint8_t)` (`:88,90`) along with the `Print` base.
+
 ---
 
 ## Problem
@@ -90,7 +128,7 @@ building on the host (research §3):
 | | Assumption | Decided in |
 |---|---|---|
 | **A-1** | The fake **replaces** `test/stubs/HalStorage.h` in place, not beside it. Same name, same include-path shadowing as `test/stubs/HalDisplay.h:1-14`. The pagination suite (the only current consumer, `test/pagination/CMakeLists.txt:26`) moves onto it in the same change. | §Architecture |
-| **A-2** | The fake header declares the real public API of `HalStorage` and `HalFile` with **the real signatures** (`lib/hal/HalStorage.h:13-98`), minus three items: `readFileToStream` (takes `Print&`), `HalFile`'s `Print` base, and `class StorageLock`. The fake `.cpp` defines only the subset this change and #98 need. Any other declared method fails the **link** when it is first used, which is `GfxRendererFake.cpp:7-10`'s "fails loudly" property. | §Architecture |
+| **A-2** | The fake header declares the real public API of `HalStorage` and `HalFile` with **the real signatures** (`lib/hal/HalStorage.h:13-98`), minus three items: `readFileToStream` (takes `Print&`), `HalFile`'s `Print` base, and `class StorageLock`. With the base gone, `override` is dropped from `write(const uint8_t*, size_t)` and `write(uint8_t)` (`HalStorage.h:88,90`); those are the only signature edits. The fake `.cpp` defines only the subset this change and #98 need. Any other declared method fails the **link** when it is first used, which is `GfxRendererFake.cpp:7-10`'s "fails loudly" property. | §Architecture |
 | **A-3** | Test controls live in a **separate** header, `test/stubs/HalStorageFake.h` (namespace `storage_fake`), so the `HalStorage` class in the stub stays a mirror of the real one and carries no test-only members. | §Architecture |
 | **A-4** | `readFile` returns at most **50,000** bytes, truncating silently, and returns `""` for a missing or failing file, mirroring `SDCardManager.cpp:190-210` (`maxSize` at `:202`). | §Semantics |
 | **A-5** | `writeFile` **removes an existing destination first**, then writes, and returns true only on a full write, mirroring `SDCardManager.cpp:282-293`. | §Semantics |
@@ -98,8 +136,8 @@ building on the host (research §3):
 | **A-7** | Writes (`writeFile`, `openFileForWrite`, a `rename` destination) **require the parent directory to exist**, as on SdFat. `storage_fake::putFile` (test seeding) creates parents implicitly, so a test can stage a card state without going through `mkdir`. | §Semantics |
 | **A-8** | **Injected read failure:** `exists` stays true, `readFile` returns `""`, and `openFileForRead` returns false. This is the case `PersistableStore.cpp:96-100` calls "indistinguishable from an empty file". | §Error handling |
 | **A-9** | **Injected rename failure:** `rename` returns false and changes nothing. **Injected write failure:** `writeFile` removes an existing destination, then returns false and creates nothing, which is what `SDCardManager.cpp:282-291` does when the open fails after the remove. The write hook goes beyond the issue's two hooks; it is justified by the atomic write's first failure branch (`PersistableStore.cpp:30-33`), which can't be reached without it. | §Error handling |
-| **A-10** | Failure hooks are **sticky per path until `storage_fake::reset()`**, not one-shot. The fake is single-threaded, holds no mutex, and doesn't model `storageMutex` (`HalStorage.cpp:38-40`). | §Error handling |
-| **A-11** | `String` is added to **`test/stubs/Arduino.h`**. It is a `std::string`-backed class with `c_str()`, `length()`, `isEmpty()`, `write(uint8_t)` and `write(const uint8_t*, size_t)`, which is the shape ArduinoJson 7.4.2 adapts on input (`StringObject.hpp:14-17`) and writes through on output (`Writer.hpp:11-26`). It deliberately does **not** inherit from `std::string` (research §3: `is_std_string` would reject it). | §Architecture |
+| **A-10** | Failure hooks are **sticky per path** until cleared, not one-shot. `storage_fake::clearFailures()` drops every hook and keeps the card; `storage_fake::reset()` drops hooks *and* empties the card. The fake is single-threaded, holds no mutex, and doesn't model `storageMutex` (`HalStorage.cpp:38-40`). | §Error handling |
+| **A-11** | `String` is added to **`test/stubs/Arduino.h`**. It is a `std::string`-backed class. For `deserializeJson` input, it has `const_iterator`, `begin()` and `end()`, which is what ArduinoJson 7.4.2's `IteratorReader` specialisation requires (`Deserialization/Readers/IteratorReader.hpp:33-39`). For `serializeJson` output, it has `write(uint8_t)` and `write(const uint8_t*, size_t)`, which the default `Writer` calls (`Writer.hpp:11-26`). It also has `c_str()`, `length()` and `isEmpty()` for `PersistableStore.cpp:51` and the fake's own `readFile`/`writeFile`. It deliberately does **not** inherit from `std::string` (research §3: `is_std_string` would reject it). | §Architecture |
 | **A-12** | `obfuscation::deobfuscateFromBase64(const char*, size_t, bool*, bool*)`, the only obfuscation symbol `PersistableStore.cpp` references (`:122`), gets a link-time body in `test/stubs/ObfuscationUtilsStub.cpp`. It reports `ok = false`, `tooLong = false` and returns `""`. No test in this change calls it. | §Architecture |
 | **A-13** | Shared fake sources are listed per suite in `add_executable`, the way `test/pagination/CMakeLists.txt:11-23` lists `GfxRendererFake.cpp` alongside real `lib/` sources. **No new CMake library target.** | §Architecture |
 | **A-14** | One new suite, **`test/storage_io/`**, with one executable (`StorageIoTest`) and four test files. That means **one** `add_subdirectory(storage_io)` line in the shared `test/CMakeLists.txt`, reported in the PR and not committed (`.claude/agents/data-dev.md`, "Shared files"). | §Testing |
@@ -120,10 +158,11 @@ building on the host (research §3):
 | `test/stubs/HalStorage.h` | Rewritten: full real-signature `HalStorage` + `HalFile` declarations, `Storage` macro (A-1, A-2) |
 | `test/stubs/HalStorageFake.h` | New: `storage_fake` test controls (A-3) |
 | `test/stubs/HalStorageFake.cpp` | New: the in-memory implementation |
-| `test/stubs/Arduino.h` | Adds `String` (A-11) |
+| `test/stubs/Arduino.h` | Adds `String` (A-11); header comment `:3-7` rewritten, since it now reaches pagination through `HalStorage.h` |
 | `test/stubs/ObfuscationUtilsStub.cpp` | New: one link-time body (A-12) |
 | `test/pagination/GfxRendererFake.cpp` | Drops `:125-131` (A-15) |
-| `test/pagination/CMakeLists.txt` | Adds `${REPO_ROOT}/test/stubs/HalStorageFake.cpp` to sources (A-15) |
+| `test/pagination/CMakeLists.txt` | Adds `${REPO_ROOT}/test/stubs/HalStorageFake.cpp` to sources (A-15); comments `:8-10` and `:26` corrected (the stub `Arduino.h` now reaches it; `HalStorage.h` is no longer a no-op) |
+| `test/temp_adoption/TempAdoptionTest.cpp` | Comment-only: `:3-7` now points at `test/storage_io/` for the Storage call sequence, instead of saying it is device-verified only |
 | `test/storage_io/CMakeLists.txt` + four `*Test.cpp` | New suite (A-14) |
 | `test/CMakeLists.txt` | **Not edited.** One line reported in the PR |
 
@@ -165,8 +204,10 @@ empty rather than dangling. Writes land in the map immediately, which matches
 SdFat's write-through behaviour for this purpose. Because
 `DESTRUCTOR_CLOSES_FILE=1`, the destructor just drops the `Impl`.
 
-**Defined `HalStorage` methods** (the subset A-2 promises):
+**Defined `HalStorage` members** (the subset A-2 promises):
 
+- `HalStorage::HalStorage()` and the definition of `HalStorage HalStorage::instance`,
+  which the inline `getInstance()` returns (`lib/hal/HalStorage.h:48,53`)
 - `exists`, `remove`, `rename`, `mkdir`, `ensureDirectoryExists`
 - `readFile`, `writeFile`
 - the three `openFileForRead` overloads and the three `openFileForWrite` overloads
@@ -188,6 +229,7 @@ That covers `PersistableStore.cpp`, `TagPaletteFile.cpp`, `PassageFile.cpp`'s
 ```cpp
 namespace storage_fake {
 void reset();                                          // empty card: only "/" exists, no hooks
+void clearFailures();                                  // drops every hook, keeps files and dirs
 void putFile(const std::string& path, std::string bytes);  // seeds; creates parent dirs
 std::optional<std::string> fileBytes(const std::string& path);
 bool isDir(const std::string& path);
@@ -216,6 +258,9 @@ class String {
   size_t write(uint8_t c) { s_.push_back(static_cast<char>(c)); return 1; }
   size_t write(const uint8_t* p, size_t n) { s_.append(reinterpret_cast<const char*>(p), n); return n; }
   String& operator+=(char c) { s_.push_back(c); return *this; }
+  using const_iterator = std::string::const_iterator;
+  const_iterator begin() const { return s_.begin(); }
+  const_iterator end() const { return s_.end(); }
  private:
   std::string s_;
 };
@@ -228,10 +273,16 @@ ArduinoJson's default `Writer`, which **does not clear the destination first**
 (`:13`, `:27`), so appending is equivalent. **This is recorded, not relied on
 silently:** the first `AtomicWrite` test asserts the exact bytes written.
 
-The suites that already put `test/stubs` on their include path would also see
-`String`, but none of them includes `<Arduino.h>` apart from `font_page_slots`
-(`test/stubs/Arduino.h:3-7`), and that suite uses only `millis`/`micros`. Adding a
-class that nothing names changes nothing for them.
+Two suites now reach the stub `Arduino.h`:
+
+- `font_page_slots`, directly (`test/stubs/Arduino.h:3-7`)
+- `pagination`, newly, through the stub `HalStorage.h`, which includes it for
+  `String`
+
+Neither names `String`, and pagination names neither `millis` nor `micros` (pass-0
+review, finding 3: grep over `test/pagination/*.cpp` and its compiled sources, 0
+hits). So the addition is inert for both. The stale comments this makes false are
+corrected (Files touched).
 
 ---
 
@@ -264,7 +315,9 @@ rename(path.tmp, path)             -> failRenamesFrom(path.tmp): false => return
 ```
 
 The rename-failure outcome is exactly the state `readDocFromFileAdopting` exists to
-recover. One test chains the two to prove it.
+recover. One test chains the two to prove it. It calls `storage_fake::clearFailures()`
+between the failed write and the adopting read (A-10), because otherwise the
+promotion would hit the same rename hook.
 
 ### Adopting read under the fake (`PersistableStore.cpp:63-106`)
 
@@ -348,6 +401,7 @@ All fixtures are synthetic JSON, because this is a public repository.
 - a streamed read through `openFileForRead` + `read(buf,n)` + `read()` returns the
   bytes and then `-1` at EOF (for #98's reader path)
 - `reset()` clears files, directories and hooks (A-10)
+- `clearFailures()` drops hooks but keeps files and directories (A-10)
 
 **`AtomicWriteTest.cpp`** (`writeDocToFileAtomic`):
 
@@ -357,8 +411,9 @@ All fixtures are synthetic JSON, because this is a public repository.
 - a stale `path.tmp` from an earlier crash doesn't block the write (A-5)
 - `failWritesTo(path.tmp)` returns false and leaves the old primary byte-identical
 - `failRenamesFrom(path.tmp)` returns false, leaves the primary absent and `.tmp`
-  holding the new bytes. A following `readDocFromFileAdopting` returns Ok with the
-  new document and promotes it.
+  holding the new bytes. After `storage_fake::clearFailures()`, a following
+  `readDocFromFileAdopting` returns Ok with the new document and promotes it: the
+  primary holds the new bytes and `.tmp` is gone.
 
 **`AdoptingReadTest.cpp`** (`readDocFromFileAdopting`, `readDocFromFileChecked`):
 
