@@ -9,6 +9,7 @@ add_executable(StorageIoTest
   HalStorageFakeTest.cpp
   AtomicWriteTest.cpp
   AdoptingReadTest.cpp
+  LoadAdoptingTest.cpp
   TagPaletteFileTest.cpp
   ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
   ${REPO_ROOT}/test/stubs/ObfuscationUtilsStub.cpp

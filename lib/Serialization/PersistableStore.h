@@ -69,29 +69,43 @@ class PersistableStoreBase {
   // does not exist (expected on first boot); logs on read/parse failure.
   static bool readDocFromFile(const char* path, JsonDocument& doc);
 
-  // As readDocFromFile, but reports why the read failed.
+  // As readDocFromFile, but reports why the read failed. Also the DocReader
+  // most loadAdopting callers pass.
   static DocReadStatus readDocFromFileChecked(const char* path, JsonDocument& doc);
 
   // Crash-safe counterpart to readDocFromFileChecked, and the read-side partner
   // of writeDocToFileAtomic. When `path` is absent but `<path>.tmp` is present
   // and parses, that .tmp is by construction the most recent complete write --
-  // an interrupted rename between PersistableStore.cpp:38 and :39 -- so it is
-  // renamed into place and used. An unparseable .tmp is reported as "nothing
-  // there" and left on the card; see the call site for why it is not deleted.
+  // an interrupted rename in writeDocToFileAtomic -- so it is renamed into place
+  // and used. An unusable .tmp is reported as "nothing there" and left on the
+  // card; TempAdoptionAction::KeepTempReportEmpty says why.
   //
-  // Prefer this wherever losing the file matters. readDocFromFileChecked stays
-  // for callers that must read literally the path they name -- the three study
-  // files pass it their own `<path>.tmp`.
-  //
-  // This is the first read path in this firmware that RENAMES. It is safe
-  // without a lock of its own only because every reader and writer of the
-  // adopting files runs on the Arduino loop task; the CRTP stores additionally
-  // hold storeMutex, but /.berean/pubkeys.json, migration-ledger.json and
-  // meeting-weeks.json rely on that single-task property alone. If a background
-  // task ever touches /.berean/, give those files a mutex or move them back to
-  // readDocFromFileChecked -- otherwise an adopting read on one task can rename
-  // the .tmp another task is still writing.
+  // It renames, so loadAdopting's single-task constraint below applies to it.
   static DocReadStatus readDocFromFileAdopting(const char* path, JsonDocument& doc);
+
+  // Reads one file into doc. A store whose file can outgrow
+  // SDCardManager::readFile's 50,000-byte cap passes a streaming reader.
+  using DocReader = DocReadStatus (*)(const char* path, JsonDocument& doc);
+
+  // Hands a parsed document to its store. False rejects it -- a future format
+  // version, over budget, or corrupt.
+  using DocAcceptor = bool (*)(void* target, JsonVariantConst json);
+
+  // The same adoption for a store with its own document type: reads `path`
+  // with `read`, and `<path>.tmp` with the same reader when `path` is missing;
+  // promotes a .tmp that parses, then hands the document to `accept`.
+  // Promotion comes first, so a .tmp the store rejects is still rescued.
+  //
+  // This and readDocFromFileAdopting are the read paths in this firmware that
+  // RENAME. They take no lock of their own and are safe only because every
+  // reader and writer of the adopting files runs on the Arduino loop task. The
+  // CRTP stores additionally hold storeMutex, but /.berean/pubkeys.json,
+  // migration-ledger.json, meeting-weeks.json and the files behind
+  // ChapterCompletionFile, PassageFile, TagPaletteFile, BookmarkFile and
+  // HighlightFile rely on that single-task property alone. If a background
+  // task ever touches them, give them a mutex -- otherwise an adopting read on
+  // one task can rename the .tmp another task is still writing.
+  static AdoptedLoad loadAdopting(const char* path, DocReader read, DocAcceptor accept, void* target);
 
  protected:
   /**
