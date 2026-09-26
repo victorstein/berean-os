@@ -8,6 +8,7 @@
 add_executable(StorageIoTest
   HalStorageFakeTest.cpp
   AtomicWriteTest.cpp
+  AdoptingReadTest.cpp
   ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
   ${REPO_ROOT}/test/stubs/ObfuscationUtilsStub.cpp
   ${REPO_ROOT}/lib/Serialization/PersistableStore.cpp
