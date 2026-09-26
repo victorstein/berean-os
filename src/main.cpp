@@ -15,6 +15,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <SPI.h>
+#include <SdPaths.h>
 #include <WiFi.h>
 #include <XteinkDetect.h>
 #include <builtinFonts/all.h>
@@ -225,7 +226,7 @@ bool handleX4ProFrontlightDoubleClick() {
   return true;
 }
 
-constexpr char SLEEP_FRAME_FILE[] = "/.crosspoint/sleep_frame.bin";
+constexpr const char* SLEEP_FRAME_FILE = sdpaths::SLEEP_FRAME_FILE;
 
 static void saveSleepFrameBuffer() {
   HalFile file;
