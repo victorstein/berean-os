@@ -4,12 +4,12 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <PersistableStore.h>
+#include <SdPaths.h>
 #include <TempAdoption.h>
 
 namespace {
 
 constexpr const char* MODULE = "PASSAGE";
-constexpr const char* PASSAGES_DIR = "/.berean/passages";
 
 // ArduinoJson reader over HalFile, so a passages file larger than
 // SDCardManager::readFile's 50,000-byte cap still parses in full.
@@ -51,7 +51,7 @@ DocReadStatus readInto(const std::string& path, JsonDocument& json) {
 
 namespace PassageFile {
 
-std::string path(const std::string& pubKey) { return std::string(PASSAGES_DIR) + "/" + pubKey + ".json"; }
+std::string path(const std::string& pubKey) { return std::string(sdpaths::PASSAGES_DIR) + "/" + pubKey + ".json"; }
 
 LoadResult load(const std::string& pubKey, study::PassageDoc& doc) {
   const std::string primaryPath = path(pubKey);
@@ -107,7 +107,7 @@ SaveResult save(const std::string& pubKey, const study::PassageDoc& doc) {
     return SaveResult::TooLarge;
   }
 
-  Storage.mkdir(PASSAGES_DIR);
+  Storage.mkdir(sdpaths::PASSAGES_DIR);
   const std::string target = path(pubKey);
   return PersistableStoreBase::writeDocToFileAtomic(target.c_str(), json) ? SaveResult::Ok : SaveResult::WriteFailed;
 }

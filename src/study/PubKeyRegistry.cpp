@@ -5,11 +5,11 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
+#include <SdPaths.h>
 
 namespace {
 
 constexpr const char* MODULE = "PUBKEYS";
-constexpr const char* BEREAN_DIR = "/.berean";
 constexpr int FORMAT_VERSION = 1;
 
 }  // namespace
@@ -42,7 +42,7 @@ bool record(const std::string& bookPath, const study::RegisteredPub& pub) {
     return false;
   }
 
-  Storage.mkdir(BEREAN_DIR);
+  Storage.mkdir(sdpaths::BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(PATH, doc);
 }
 

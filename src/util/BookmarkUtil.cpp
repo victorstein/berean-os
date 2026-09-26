@@ -1,13 +1,14 @@
 #include "BookmarkUtil.h"
 
 #include <PathFlatten.h>
+#include <SdPaths.h>
 #include <Utf8.h>
 
 #include <utility>
 
 #include "BookmarkDoc.h"
 
-std::string BookmarkUtil::getBookmarksDir() { return "/.crosspoint/bookmarks/"; }
+std::string BookmarkUtil::getBookmarksDir() { return std::string(sdpaths::BOOKMARKS_DIR) + "/"; }
 
 std::string BookmarkUtil::getBookmarkPath(const std::string& bookPath) {
   return getBookmarksDir() + pathflatten::toCacheName(bookPath) + ".json";

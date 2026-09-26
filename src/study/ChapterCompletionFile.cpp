@@ -4,18 +4,18 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <PersistableStore.h>
+#include <SdPaths.h>
 #include <TempAdoption.h>
 
 namespace {
 
 constexpr const char* MODULE = "COMPLETE";
-constexpr const char* COMPLETION_DIR = "/.berean/completion";
 
 }  // namespace
 
 namespace ChapterCompletionFile {
 
-std::string path(const std::string& pubKey) { return std::string(COMPLETION_DIR) + "/" + pubKey + ".json"; }
+std::string path(const std::string& pubKey) { return std::string(sdpaths::COMPLETION_DIR) + "/" + pubKey + ".json"; }
 
 LoadResult load(const std::string& pubKey, study::ChapterCompletion& record) {
   const std::string primaryPath = path(pubKey);
@@ -69,7 +69,7 @@ SaveResult save(const std::string& pubKey, const study::ChapterCompletion& recor
     return SaveResult::TooLarge;
   }
 
-  Storage.mkdir(COMPLETION_DIR);
+  Storage.mkdir(sdpaths::COMPLETION_DIR);
   const std::string target = path(pubKey);
   return PersistableStoreBase::writeDocToFileAtomic(target.c_str(), json) ? SaveResult::Ok : SaveResult::WriteFailed;
 }

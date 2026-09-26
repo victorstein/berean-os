@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <Epub/ReaderRenderSpec.h>
 #include <PersistableStore.h>
+#include <SdPaths.h>
 
 #include <cstdint>
 
@@ -428,7 +429,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // values are almost all single bytes. ~1,600 B worst case.
   static constexpr size_t SAVE_BUDGET = 4096;
 
-  static const char* getFilePath() { return "/.crosspoint/settings.json"; }
+  static const char* getFilePath() { return sdpaths::SETTINGS_FILE; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 

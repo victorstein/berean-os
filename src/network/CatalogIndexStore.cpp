@@ -10,6 +10,7 @@
 #include <HalStorage.h>
 #include <InflateReader.h>
 #include <Logging.h>
+#include <SdPaths.h>
 #include <esp_heap_caps.h>
 // clang-format on
 
@@ -24,7 +25,6 @@
 namespace {
 
 constexpr const char* MODULE = "CATIDX";
-constexpr const char* STUDY_DIR = "/.berean";
 constexpr size_t READ_CHUNK_BYTES = 4096;
 // Inflating ~217 KB into PSRAM through uzlib's bit-by-bit Huffman decoder runs
 // long enough to matter against the 5 s watchdog window.
@@ -48,7 +48,9 @@ CatalogIndexStore::PsramBuffer CatalogIndexStore::allocatePsram(const size_t byt
 
 const char* CatalogIndexStore::language() { return CrossPointSettings::langWritten(SETTINGS.publicationLanguage); }
 
-std::string CatalogIndexStore::indexPath() { return std::string(STUDY_DIR) + "/catalog-" + language() + ".idx"; }
+std::string CatalogIndexStore::indexPath() {
+  return std::string(sdpaths::BEREAN_DIR) + "/catalog-" + language() + ".idx";
+}
 
 std::string CatalogIndexStore::stagedPath() { return indexPath() + ".part"; }
 
@@ -201,8 +203,8 @@ void CatalogIndexStore::release() {
 
 CatalogIndexStore::Status CatalogIndexStore::checkRemote(const ProgressCallback onProgress, void* ctx,
                                                          bool* cancelFlag) {
-  if (!Storage.exists(STUDY_DIR) && !Storage.mkdir(STUDY_DIR)) {
-    LOG_ERR(MODULE, "mkdir %s failed", STUDY_DIR);
+  if (!Storage.exists(sdpaths::BEREAN_DIR) && !Storage.mkdir(sdpaths::BEREAN_DIR)) {
+    LOG_ERR(MODULE, "mkdir %s failed", sdpaths::BEREAN_DIR);
     return Status::FetchFailed;
   }
 

@@ -7,6 +7,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <SdPaths.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -80,7 +81,7 @@ void PublicationsActivity::refresh() {
 bool PublicationsActivity::loadThumb(Entry& entry, bool& generatedAny) {
   if (!FsHelpers::hasEpubExtension(entry.path)) return false;
 
-  Epub epub(entry.path, "/.crosspoint");
+  Epub epub(entry.path, sdpaths::CROSSPOINT_DIR);
   const std::string thumbPath = epub.getThumbBmpPath(THUMB_HEIGHT);
   if (!Storage.exists(thumbPath.c_str())) {
     generatedAny = true;

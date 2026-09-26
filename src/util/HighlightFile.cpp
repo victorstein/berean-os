@@ -5,13 +5,14 @@
 #include <Logging.h>
 #include <PathFlatten.h>
 #include <PersistableStore.h>
+#include <SdPaths.h>
 #include <TempAdoption.h>
 
 #include "HighlightFileAction.h"
 
 namespace {
 
-std::string highlightsDir() { return "/.crosspoint/highlights/"; }
+std::string highlightsDir() { return std::string(sdpaths::HIGHLIGHTS_DIR) + "/"; }
 
 std::string highlightPath(const std::string& bookPath) {
   return highlightsDir() + pathflatten::toCacheName(bookPath) + ".json";

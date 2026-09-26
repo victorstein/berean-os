@@ -1,5 +1,7 @@
 #pragma once
 
+#include <SdPaths.h>
+
 #include <cstdint>
 
 // Migrates /.crosspoint/highlights/*.json into the /.berean/ study store.
@@ -48,7 +50,7 @@ bool pending();
 // activity, so main.cpp's global renderer is the one to pass.
 bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgress& progress = {});
 
-inline constexpr const char* REPORT_PATH = "/.berean/migration-report.json";
-inline constexpr const char* LEDGER_PATH = "/.berean/migration-ledger.json";
+inline constexpr const char* REPORT_PATH = sdpaths::MIGRATION_REPORT_FILE;
+inline constexpr const char* LEDGER_PATH = sdpaths::MIGRATION_LEDGER_FILE;
 
 }  // namespace MigrationRunner

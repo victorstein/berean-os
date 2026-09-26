@@ -1,5 +1,7 @@
 #pragma once
 
+#include <SdPaths.h>
+
 #include <cstdint>
 
 #include "StudyStore/TagPalette.h"
@@ -22,6 +24,6 @@ enum class SaveResult : uint8_t { Ok, TooLarge, WriteFailed };
 
 SaveResult save(const study::TagPalette& palette);
 
-inline constexpr const char* PATH = "/.berean/tags.json";
+inline constexpr const char* PATH = sdpaths::TAGS_FILE;
 
 }  // namespace TagPaletteFile
