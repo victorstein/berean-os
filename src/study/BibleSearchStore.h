@@ -6,6 +6,7 @@
 #include <BibleSearch/VerseTextScanner.h>
 #include <Epub.h>
 #include <HalStorage.h>
+#include <SdPaths.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -29,9 +30,9 @@ class BibleSearchStore {
  public:
   using Status = BibleSearch::IndexReader::Status;
 
-  static constexpr const char* SEARCH_DIR = "/.berean/search";
-  static constexpr const char* INDEX_PATH = "/.berean/search/bible.idx";
-  static constexpr const char* CHECKPOINT_PATH = "/.berean/search/bible.partial";
+  static constexpr const char* SEARCH_DIR = sdpaths::SEARCH_DIR;
+  static constexpr const char* INDEX_PATH = sdpaths::SEARCH_INDEX_FILE;
+  static constexpr const char* CHECKPOINT_PATH = sdpaths::SEARCH_CHECKPOINT_FILE;
   // The NWT's index is ~1.47 MB. The budget bounds a runaway build, not the
   // 50,000-byte readFile cap: this file is only ever read by offset.
   static constexpr size_t INDEX_BYTE_BUDGET = 8u * 1024u * 1024u;

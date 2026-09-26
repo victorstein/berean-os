@@ -1,6 +1,7 @@
 #pragma once
 #include <ArduinoJson.h>
 #include <PersistableStore.h>
+#include <SdPaths.h>
 
 #include <cstdint>
 #include <string>
@@ -33,7 +34,7 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   // two SD path strings assumed <= 255 B each. ~1,180 B worst case.
   static constexpr size_t SAVE_BUDGET = 2048;
 
-  static const char* getFilePath() { return "/.crosspoint/state.json"; }
+  static const char* getFilePath() { return sdpaths::STATE_FILE; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 

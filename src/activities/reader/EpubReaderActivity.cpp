@@ -12,6 +12,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <SdPaths.h>
 #include <esp_system.h>
 
 #include <algorithm>
@@ -176,7 +177,7 @@ EpubReaderActivity::~EpubReaderActivity() {
 }
 
 bool EpubReaderActivity::loadBook() {
-  auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, "/.crosspoint");
+  auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, sdpaths::CROSSPOINT_DIR);
   if (!loadedEpub) {
     LOG_ERR("ERS", "Failed to allocate EPUB object");
     return false;

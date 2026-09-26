@@ -3,13 +3,14 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
+#include <SdPaths.h>
 
 #include <cstring>
 #include <limits>
 #include <string>
 
 bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& doc) {
-  Storage.mkdir("/.crosspoint");
+  Storage.mkdir(sdpaths::CROSSPOINT_DIR);
   String json;
   serializeJson(doc, json);
   if (!Storage.writeFile(path, json)) {
@@ -20,7 +21,7 @@ bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& 
 }
 
 bool PersistableStoreBase::writeDocToFileAtomic(const char* path, const JsonDocument& doc) {
-  Storage.mkdir("/.crosspoint");
+  Storage.mkdir(sdpaths::CROSSPOINT_DIR);
   const std::string finalPath = path;
   const std::string tmpPath = finalPath + ".tmp";
 
