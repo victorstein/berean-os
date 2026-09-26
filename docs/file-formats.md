@@ -401,8 +401,8 @@ row's `key` (an obfuscated string row is stored as `<key>_obf`), plus the hand-w
 ### Version 1
 
 - `v` — format version. Absent reads as 1. Any other value this build does not know is
-  refused: the store runs on defaults and is not written until a build that knows the format
-  loads it (`lib/Serialization/FormatVersion.h`).
+  refused: the store runs on defaults and is not written until a later load succeeds or finds
+  no file (`lib/Serialization/FormatVersion.h`).
 
 ```json
 {"v":1,"sleepTimeoutMinutes":10,"fontFamily":0,"fontSize":14,"language":"EN"}
@@ -422,8 +422,8 @@ Owned by `src/CrossPointState.{h,cpp}`. Runtime state: `openEpubPath`,
 ### Version 1
 
 - `v` — format version. Absent reads as 1. Any other value this build does not know is
-  refused: the store runs on defaults and is not written until a build that knows the format
-  loads it (`lib/Serialization/FormatVersion.h`).
+  refused: the store runs on defaults and is not written until a later load succeeds or finds
+  no file (`lib/Serialization/FormatVersion.h`).
 
 ```json
 {"v":1,"openEpubPath":"/books/nwt_S.epub","bibleCoverPath":"","recentSleepImages":[0,0],"recentSleepPos":0,"recentSleepFill":0,"showBootScreen":true}
@@ -439,8 +439,8 @@ Owned by `src/WifiCredentialStore.{h,cpp}`. Loaded at boot alongside the other t
 ### Version 1
 
 - `v` — format version. Absent reads as 1. Any other value this build does not know is
-  refused: the store runs on defaults and is not written until a build that knows the format
-  loads it (`lib/Serialization/FormatVersion.h`).
+  refused: the store runs on defaults and is not written until a later load succeeds or finds
+  no file (`lib/Serialization/FormatVersion.h`).
 
 ```json
 {"v":1,"lastConnectedSsid":"Home","credentials":[{"ssid":"Home","password_obf":"…","password_len":8,"password_crc32":305419896}]}
@@ -462,8 +462,8 @@ Owned by `src/util/RecentBooksDoc.{h,cpp}` (format, host-tested) and
 ### Version 1
 
 - `v` — format version. Absent reads as 1. Any other value this build does not know is
-  refused: the store runs on defaults and is not written until a build that knows the format
-  loads it (`lib/Serialization/FormatVersion.h`).
+  refused: the store runs on defaults and is not written until a later load succeeds or finds
+  no file (`lib/Serialization/FormatVersion.h`).
 
 ```json
 {"v":1,"books":[{"path":"/books/w_S_202601.epub","title":"La Atalaya","author":"","coverBmpPath":""}]}
