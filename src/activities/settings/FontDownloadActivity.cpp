@@ -292,7 +292,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
   if (!fontInstaller_.ensureFamilyDir(family.name.c_str())) {
     RenderLock lock(*this);
     state_ = ERROR;
-    errorMessage_ = "Failed to create font directory";
+    errorMessage_ = tr(STR_FONT_DIR_CREATE_FAILED);
     return;
   }
 
@@ -429,7 +429,7 @@ void FontDownloadActivity::onDeleteConfirmationResult(const ActivityResult& resu
   if (fontInstaller_.deleteFamily(family.name.c_str()) != FontInstaller::Error::OK) {
     RenderLock lock(*this);
     state_ = ERROR;
-    errorMessage_ = "Failed to delete font";
+    errorMessage_ = tr(STR_FONT_DELETE_FAILED);
   } else {
     fontInstaller_.refreshRegistry();
     family.installed = false;
