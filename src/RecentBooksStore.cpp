@@ -14,8 +14,8 @@ void RecentBooksStore::toJson(JsonDocument& doc) const { RecentBooksDoc::toJson(
 bool RecentBooksStore::fromJson(const JsonVariantConst doc) {
   bool needsResave = false;
   if (!RecentBooksDoc::fromJson(doc, recentBooks, needsResave)) {
-    LOG_ERR("RBS", "Refusing %s: unknown format v%d (this build knows v1..v%d)", getFilePath(), doc["v"] | 0,
-            RecentBooksDoc::FORMAT_VERSION);
+    LOG_ERR("RBS", "Refusing %s: unknown format v%d (this build knows v1..v%d)", getFilePath(),
+            doc["v"] | RecentBooksDoc::FORMAT_VERSION, RecentBooksDoc::FORMAT_VERSION);
     return false;
   }
   // An entry the load path had to shorten must reach the card, or the file stays

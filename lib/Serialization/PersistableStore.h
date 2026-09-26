@@ -133,6 +133,15 @@ class PersistableStore : public PersistableStoreBase {
   PersistableStore() = default;
   ~PersistableStore() = default;
 
+ private:
+  // Caller holds storeMutex.
+  bool saveBlockedByRefusedLoad() const {
+    if (loadRefused) {
+      LOG_ERR("PERSIST", "Refusing to save %s: its format is unknown to this build", T::getFilePath());
+    }
+    return loadRefused;
+  }
+
  public:
   // Delete copy constructor and assignment
   PersistableStore(const PersistableStore&) = delete;
@@ -157,10 +166,7 @@ class PersistableStore : public PersistableStoreBase {
   // it has to be deliberate; stores use saveToFileAtomic().
   bool saveToFile() const {
     std::lock_guard<std::mutex> lock(storeMutex);
-    if (loadRefused) {
-      LOG_ERR("PERSIST", "Refusing to save %s: its format is unknown to this build", T::getFilePath());
-      return false;
-    }
+    if (saveBlockedByRefusedLoad()) return false;
     JsonDocument doc;
     static_cast<const T*>(this)->toJson(doc);
     return writeDocToFile(T::getFilePath(), doc);
@@ -178,10 +184,7 @@ class PersistableStore : public PersistableStoreBase {
   // SAVE_BUDGET` to tighten the ceiling.
   bool saveToFileAtomic() const {
     std::lock_guard<std::mutex> lock(storeMutex);
-    if (loadRefused) {
-      LOG_ERR("PERSIST", "Refusing to save %s: its format is unknown to this build", T::getFilePath());
-      return false;
-    }
+    if (saveBlockedByRefusedLoad()) return false;
     JsonDocument doc;
     static_cast<const T*>(this)->toJson(doc);
 
