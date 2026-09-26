@@ -4,8 +4,8 @@
 #include <cstdint>
 
 // Pure decision logic behind HighlightFile::save. The load-side rule this file
-// used to carry now lives in Serialization/TempAdoption.h, shared with
-// PersistableStoreBase::readDocFromFileAdopting.
+// used to carry now lives in Serialization/TempAdoption.h, applied by
+// PersistableStoreBase::loadAdopting.
 //
 // The branch logic lives here, free of Arduino and HalStorage, and is
 // host-tested in test/highlight_file/. HighlightFile.cpp itself has no host

@@ -5,8 +5,8 @@
 #include "DocReadStatus.h"
 
 // The shared rule for recovering a write that was interrupted between
-// PersistableStore.cpp:38 (remove the destination) and :39 (rename the temp
-// file over it). In that window neither file exists, but a complete
+// writeDocToFileAtomic's remove of the destination and its rename of the temp
+// file over it. In that window neither file exists, but a complete
 // `<path>.tmp` is on the card.
 //
 // Kept free of Arduino, HalStorage and PersistableStore -- the same shape as
