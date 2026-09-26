@@ -620,6 +620,7 @@ void loop() {
     lastMemPrint = millis();
   }
 
+#ifdef ENABLE_SERIAL_LOG
   // Handle incoming serial commands,
   // nb: we use logSerial from logging to avoid deprecation warnings
   if (logSerial.available() > 0) {
@@ -636,6 +637,7 @@ void loop() {
       }
     }
   }
+#endif
 
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
