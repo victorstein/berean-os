@@ -11,11 +11,14 @@ add_executable(StorageIoTest
   AdoptingReadTest.cpp
   LoadAdoptingTest.cpp
   TagPaletteFileTest.cpp
+  ChapterCompletionFileTest.cpp
   ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
   ${REPO_ROOT}/test/stubs/ObfuscationUtilsStub.cpp
   ${REPO_ROOT}/lib/Serialization/PersistableStore.cpp
   ${REPO_ROOT}/src/study/TagPaletteFile.cpp
+  ${REPO_ROOT}/src/study/ChapterCompletionFile.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
+  ${REPO_ROOT}/lib/StudyStore/StudyStore/ChapterCompletion.cpp
 )
 
 target_include_directories(StorageIoTest PRIVATE
