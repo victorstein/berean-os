@@ -40,6 +40,7 @@ class ProbeStore : public PersistableStore<ProbeStore> {
 const std::string PATH = ProbeStore::getFilePath();
 const std::string TMP_PATH = PATH + ".tmp";
 const std::string NEWER = R"({"v":2,"value":7})";
+const std::string TORN = R"({"v":1,"val)";
 
 std::string bytesOn(const std::string& path) {
   const auto bytes = storage_fake::fileBytes(path);
@@ -126,4 +127,22 @@ TEST_F(PersistableStoreGuard, AFutureVersionTempIsPromotedThenRefusedAndNeverOve
   EXPECT_FALSE(store().saveToFile());
   EXPECT_EQ(bytesOn(PATH), NEWER);
   EXPECT_EQ(bytesOn(TMP_PATH), "<absent>") << "refused before the temp file is written";
+}
+
+TEST_F(PersistableStoreGuard, AGarbageTempIsKeptByTheLoadAndStillLiftsTheRefusal) {
+  // Start refused: from a clear flag, a load that wrongly reported the .tmp's
+  // ParseError would keep the flag clear and this save would pass anyway.
+  storage_fake::putFile(PATH, NEWER);
+  ASSERT_FALSE(store().loadFromFile());
+  ASSERT_TRUE(Storage.remove(PATH.c_str()));
+  storage_fake::putFile(TMP_PATH, TORN);
+
+  EXPECT_FALSE(store().loadFromFile()) << "Missing";
+  EXPECT_EQ(bytesOn(TMP_PATH), TORN) << "an unusable .tmp stays on the card";
+  EXPECT_EQ(bytesOn(PATH), "<absent>");
+
+  store().value = 9;
+  EXPECT_TRUE(store().saveToFileAtomic());
+  EXPECT_EQ(bytesOn(PATH), R"({"v":1,"value":9})");
+  EXPECT_EQ(bytesOn(TMP_PATH), "<absent>") << "the save replaced the torn .tmp";
 }
