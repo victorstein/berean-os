@@ -675,9 +675,9 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
 
   // Allocate grayscale row buffer - batch-convert each scanline to avoid
   // per-pixel getPixelGray() switch overhead in the hot loops
-  auto* grayRow = static_cast<uint8_t*>(malloc(width));
+  auto grayRow = makeUniqueNoThrow<uint8_t[]>(width);
   if (!grayRow) {
-    LOG_ERR("PNG", "Failed to allocate grayscale row buffer");
+    LOG_ERR("PNG", "OOM: grayscale row buffer");
     return false;
   }
 
@@ -694,7 +694,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
     }
 
     // Batch-convert entire scanline to grayscale (one branch, tight loop)
-    convertScanlineToGray(ctx, grayRow);
+    convertScanlineToGray(ctx, grayRow.get());
 
     if (!needsScaling) {
       // Direct output (no scaling)
@@ -824,8 +824,6 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
     ctx.previousRow = ctx.currentRow;
     ctx.currentRow = temp;
   }
-
-  free(grayRow);
 
   if (success) {
     LOG_DBG("PNG", "Successfully converted PNG to BMP");

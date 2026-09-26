@@ -11,7 +11,6 @@ add_executable(DitherersTest
 target_include_directories(DitherersTest PRIVATE
   ${REPO_ROOT}/test/stubs
   ${REPO_ROOT}/lib
-  ${REPO_ROOT}/lib/Memory
 )
 
 # Clang may omit a replaceable operator new called from a new-expression when
