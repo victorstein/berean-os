@@ -46,6 +46,4 @@ TEST(SdPaths, IsUnderRejectsASiblingSharingAPrefix) {
   EXPECT_FALSE(sdpaths::isUnder("/.bereanx/tags.json", "/.berean"));
 }
 
-TEST(SdPaths, IsUnderRejectsAnotherRoot) {
-  EXPECT_FALSE(sdpaths::isUnder("/.crosspoint/settings.json", "/.berean"));
-}
+TEST(SdPaths, IsUnderRejectsAnotherRoot) { EXPECT_FALSE(sdpaths::isUnder("/.crosspoint/settings.json", "/.berean")); }

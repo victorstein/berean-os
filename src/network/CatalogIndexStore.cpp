@@ -48,7 +48,9 @@ CatalogIndexStore::PsramBuffer CatalogIndexStore::allocatePsram(const size_t byt
 
 const char* CatalogIndexStore::language() { return CrossPointSettings::langWritten(SETTINGS.publicationLanguage); }
 
-std::string CatalogIndexStore::indexPath() { return std::string(sdpaths::BEREAN_DIR) + "/catalog-" + language() + ".idx"; }
+std::string CatalogIndexStore::indexPath() {
+  return std::string(sdpaths::BEREAN_DIR) + "/catalog-" + language() + ".idx";
+}
 
 std::string CatalogIndexStore::stagedPath() { return indexPath() + ".part"; }
 
