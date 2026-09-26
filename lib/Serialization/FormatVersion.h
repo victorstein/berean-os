@@ -7,9 +7,10 @@
 // host-testable even though most stores applying them are not.
 namespace persist {
 
-// Callers read the version as `doc["v"] | FORMAT_VERSION`, so a file written
-// before versioning -- no "v" -- arrives here as 1 and loads. No build ever
-// wrote 0 or a negative.
+// A caller decides what an absent "v" means by the default it reads with:
+// `doc["v"] | FORMAT_VERSION` loads a file written before versioning, and
+// `doc["v"] | 0` refuses it, because 0 is never known. A written 0 or negative
+// is refused either way; no build ever wrote one.
 constexpr bool isKnownFormatVersion(const int version, const int newestKnown) {
   return version > 0 && version <= newestKnown;
 }
