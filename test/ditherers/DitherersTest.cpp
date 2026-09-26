@@ -52,3 +52,48 @@ TEST(DitherersGolden, AtkinsonOutputIsUnchanged) { expectGoldenAcrossReset<Atkin
 TEST(DitherersGolden, FloydSteinbergOutputIsUnchanged) {
   expectGoldenAcrossReset<FloydSteinbergDitherer>(kFloydSteinbergGolden);
 }
+
+namespace {
+
+template <typename Ditherer>
+void expectEachRowFailureReported(const std::size_t rowCount) {
+  for (std::size_t n = 1; n <= rowCount; n++) {
+    bool fired = false;
+    bool valid = true;
+    {
+      failing_new::ScopedNthNothrowFailure failure(n);
+      const Ditherer ditherer(kWidth);
+      fired = failure.fired();
+      valid = ditherer.valid();
+    }
+    EXPECT_TRUE(fired) << "row " << n;
+    EXPECT_FALSE(valid) << "row " << n;
+  }
+
+  bool fired = true;
+  bool valid = false;
+  {
+    failing_new::ScopedNthNothrowFailure failure(rowCount + 1);
+    const Ditherer ditherer(kWidth);
+    fired = failure.fired();
+    valid = ditherer.valid();
+  }
+  EXPECT_FALSE(fired) << "the ditherer made more than " << rowCount << " nothrow allocations";
+  EXPECT_TRUE(valid);
+}
+
+}  // namespace
+
+TEST(DitherersValid, AllocatedAtRealisticWidths) {
+  for (const int width : {1, 480, 2048}) {
+    EXPECT_TRUE(Atkinson1BitDitherer(width).valid()) << width;
+    EXPECT_TRUE(AtkinsonDitherer(width).valid()) << width;
+    EXPECT_TRUE(FloydSteinbergDitherer(width).valid()) << width;
+  }
+}
+
+TEST(DitherersOom, Atkinson1BitReportsEachFailedRow) { expectEachRowFailureReported<Atkinson1BitDitherer>(3); }
+
+TEST(DitherersOom, AtkinsonReportsEachFailedRow) { expectEachRowFailureReported<AtkinsonDitherer>(3); }
+
+TEST(DitherersOom, FloydSteinbergReportsEachFailedRow) { expectEachRowFailureReported<FloydSteinbergDitherer>(2); }
