@@ -1,6 +1,7 @@
 #include "network/MeetingWeekCache.h"
 
 #include <ArduinoJson.h>
+#include <FormatVersion.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <PersistableStore.h>
@@ -21,7 +22,8 @@ bool load(MeetingWeekTable& out) {
 
   JsonDocument doc;
   if (PersistableStoreBase::readDocFromFileAdopting(PATH, doc) != DocReadStatus::Ok) return false;
-  if ((doc["v"] | 0) > FORMAT_VERSION) {
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) {
     LOG_ERR(MODULE, "Refusing to read a newer week cache format");
     return false;
   }
