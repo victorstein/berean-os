@@ -25,8 +25,7 @@ LoadResult load(const std::string& bookPath, HighlightDoc& doc) {
   const std::string path = highlightPath(bookPath);
   return PersistableStoreBase::loadAdopting(
       path.c_str(), &PersistableStoreBase::readDocFromFileChecked,
-      [](void* target, JsonVariantConst json) { return static_cast<HighlightDoc*>(target)->fromJson(json); },
-      &doc);
+      [](void* target, JsonVariantConst json) { return static_cast<HighlightDoc*>(target)->fromJson(json); }, &doc);
 }
 
 SaveResult save(const std::string& bookPath, const HighlightDoc& doc) {

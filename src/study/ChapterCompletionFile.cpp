@@ -20,7 +20,9 @@ LoadResult load(const std::string& pubKey, study::ChapterCompletion& record) {
   const std::string primaryPath = path(pubKey);
   return PersistableStoreBase::loadAdopting(
       primaryPath.c_str(), &PersistableStoreBase::readDocFromFileChecked,
-      [](void* target, JsonVariantConst json) { return static_cast<study::ChapterCompletion*>(target)->fromJson(json); },
+      [](void* target, JsonVariantConst json) {
+        return static_cast<study::ChapterCompletion*>(target)->fromJson(json);
+      },
       &record);
 }
 

@@ -54,8 +54,7 @@ TEST(AdoptedReadStatus, NothingOnDiskReportsMissing) {
 TEST(AdoptedReadStatus, AnUnusableTempStillReportsMissing) {
   // The .tmp is kept, but the primary is genuinely absent, so overwriting it
   // loses nothing.
-  EXPECT_EQ(adoptedReadStatus(DocReadStatus::Missing, TempAdoptionAction::KeepTempReportEmpty),
-            DocReadStatus::Missing);
+  EXPECT_EQ(adoptedReadStatus(DocReadStatus::Missing, TempAdoptionAction::KeepTempReportEmpty), DocReadStatus::Missing);
 }
 
 TEST(AdoptedReadStatus, PreservesUnreadable) {

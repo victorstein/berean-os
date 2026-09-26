@@ -20,8 +20,8 @@
 // present (whether readable or not), because it must never overwrite or
 // second-guess a file that may still hold the user's data.
 enum class TempAdoptionAction : uint8_t {
-  UseLoaded,              // primary parsed -- use it
-  ReportEmpty,            // genuinely nothing on disk
+  UseLoaded,            // primary parsed -- use it
+  ReportEmpty,          // genuinely nothing on disk
   PromoteTempAndUseIt,  // .tmp is the only surviving copy; rescue it now
   // .tmp exists but is unusable, and is left on the card. Removing it buys
   // nothing -- the next save truncates it, since SDCardManager::writeFile

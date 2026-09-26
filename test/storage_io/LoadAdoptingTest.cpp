@@ -43,8 +43,7 @@ class LoadAdopting : public ::testing::Test {
   }
 
   AdoptedLoad load() {
-    return PersistableStoreBase::loadAdopting(PATH, &PersistableStoreBase::readDocFromFileChecked, acceptInto,
-                                              &target);
+    return PersistableStoreBase::loadAdopting(PATH, &PersistableStoreBase::readDocFromFileChecked, acceptInto, &target);
   }
 
   Target target;
