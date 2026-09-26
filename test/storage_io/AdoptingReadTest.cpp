@@ -21,9 +21,7 @@ constexpr const char* TMP_PATH = "/.berean/doc.json.tmp";
 constexpr size_t JSON_OVERHEAD = sizeof(R"({"s":""})") - 1;
 
 // A valid JSON document of exactly `bytes` bytes: {"s":"xxx..."}.
-std::string jsonOfSize(size_t bytes) {
-  return R"({"s":")" + std::string(bytes - JSON_OVERHEAD, 'x') + R"("})";
-}
+std::string jsonOfSize(size_t bytes) { return R"({"s":")" + std::string(bytes - JSON_OVERHEAD, 'x') + R"("})"; }
 
 class AdoptingRead : public ::testing::Test {
  protected:
