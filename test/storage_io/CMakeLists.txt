@@ -7,15 +7,20 @@
 # <HalStorage.h> resolve to the stubs, never to lib/hal or the Arduino core.
 add_executable(StorageIoTest
   HalStorageFakeTest.cpp
+  AtomicWriteTest.cpp
   ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
+  ${REPO_ROOT}/test/stubs/ObfuscationUtilsStub.cpp
+  ${REPO_ROOT}/lib/Serialization/PersistableStore.cpp
 )
 
 target_include_directories(StorageIoTest PRIVATE
   ${REPO_ROOT}/test/stubs
+  ${REPO_ROOT}/lib/Serialization
 )
 
 target_link_libraries(StorageIoTest PRIVATE
   crosspoint_test_common
+  ArduinoJson
   GTest::gtest_main
 )
 
