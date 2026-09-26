@@ -1,5 +1,7 @@
 #pragma once
 
+#include <SdPaths.h>
+
 #include <string>
 
 #include "network/MeetingWeekTable.h"
@@ -28,6 +30,6 @@ bool save(MeetingWeekTable& table);
 // resolved a week.
 bool record(const IsoWeek& week, const std::string& watchtower, const std::string& workbook);
 
-inline constexpr const char* PATH = "/.berean/meeting-weeks.json";
+inline constexpr const char* PATH = sdpaths::MEETING_WEEKS_FILE;
 
 }  // namespace MeetingWeekCache
