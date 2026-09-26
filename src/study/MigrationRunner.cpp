@@ -8,6 +8,7 @@
 #include <Memory.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
+#include <SdPaths.h>
 
 #include <memory>
 #include <optional>
@@ -263,7 +264,7 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
     summary.tagsAdopted = static_cast<uint16_t>(palette.activeCount());
     (void)tagsBefore;
 
-    auto epub = makeUniqueNoThrow<Epub>(*bookPath, "/.crosspoint");
+    auto epub = makeUniqueNoThrow<Epub>(*bookPath, sdpaths::CROSSPOINT_DIR);
     const bool sourceAvailable = epub && epub->load(/*buildIfMissing=*/true);
 
     study::PubKeyInputs keyInputs;

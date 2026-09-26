@@ -10,6 +10,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <SdPaths.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -227,7 +228,7 @@ std::optional<std::string> LauncherActivity::findMeetingPublicationOnCard() {
 std::string LauncherActivity::coverThumbFor(const std::string& bookPath, const int height, bool& generatedAny) {
   if (bookPath.empty() || height <= 0 || !FsHelpers::hasEpubExtension(bookPath)) return {};
 
-  Epub epub(bookPath, "/.crosspoint");
+  Epub epub(bookPath, sdpaths::CROSSPOINT_DIR);
   const std::string path = epub.getThumbBmpPath(height);
   if (Storage.exists(path.c_str())) return path;
 
