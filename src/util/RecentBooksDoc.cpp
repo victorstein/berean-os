@@ -1,5 +1,6 @@
 #include "RecentBooksDoc.h"
 
+#include <FormatVersion.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -40,6 +41,7 @@ bool normalise(RecentBook& book) {
 }
 
 void toJson(const std::vector<RecentBook>& books, JsonDocument& doc) {
+  doc["v"] = FORMAT_VERSION;
   JsonArray arr = doc["books"].to<JsonArray>();
   for (const auto& book : books) {
     JsonObject obj = arr.add<JsonObject>();
@@ -51,8 +53,10 @@ void toJson(const std::vector<RecentBook>& books, JsonDocument& doc) {
 }
 
 bool fromJson(const JsonVariantConst doc, std::vector<RecentBook>& books, bool& needsResave) {
-  books.clear();
   needsResave = false;
+  const int version = doc["v"] | FORMAT_VERSION;
+  if (!persist::isKnownFormatVersion(version, FORMAT_VERSION)) return false;
+  books.clear();
 
   // A missing or non-array "books" key yields a null JsonArrayConst, which
   // iterates zero times — the tolerated "no data yet" case.
