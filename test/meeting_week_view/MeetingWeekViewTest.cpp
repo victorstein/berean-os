@@ -62,3 +62,65 @@ TEST(WeekStrip, UnsetSameDayAndOutOfRangeSettings) {
 
   for (const WeekStripCell& cell : buildWeekStrip(civil(2026, 9, 21), nullptr, 8, 200)) EXPECT_FALSE(cell.meeting);
 }
+
+namespace {
+
+constexpr const char* EN_SAME_MONTH = "Week of %u–%u %s";
+constexpr const char* EN_TWO_MONTHS = "Week of %u %s – %u %s";
+constexpr const char* ES_SAME_MONTH = "Semana del %u al %u de %s";
+constexpr const char* ES_TWO_MONTHS = "Semana del %u de %s al %u de %s";
+constexpr const char* EN_MONTHS =
+    "January February March April May June July August September October November December";
+constexpr const char* ES_MONTHS =
+    "enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre";
+
+}  // namespace
+
+TEST(FormatWeekRange, SameMonthTakesOnlyThatMonthsName) {
+  char out[96];
+  ASSERT_TRUE(formatWeekRange(civil(2026, 9, 21), EN_SAME_MONTH, EN_TWO_MONTHS, EN_MONTHS, out, sizeof(out)));
+  EXPECT_STREQ(out, "Week of 21–27 September");
+  // The month is a view into the middle of the list; unterminated, %s would run on.
+  EXPECT_EQ(strstr(out, "October"), nullptr);
+
+  ASSERT_TRUE(formatWeekRange(civil(2026, 9, 21), ES_SAME_MONTH, ES_TWO_MONTHS, ES_MONTHS, out, sizeof(out)));
+  EXPECT_STREQ(out, "Semana del 21 al 27 de septiembre");
+}
+
+TEST(FormatWeekRange, TwoMonthsAndTwoYears) {
+  char out[96];
+  ASSERT_TRUE(formatWeekRange(civil(2026, 9, 28), EN_SAME_MONTH, EN_TWO_MONTHS, EN_MONTHS, out, sizeof(out)));
+  EXPECT_STREQ(out, "Week of 28 September – 4 October");
+  ASSERT_TRUE(formatWeekRange(civil(2026, 9, 28), ES_SAME_MONTH, ES_TWO_MONTHS, ES_MONTHS, out, sizeof(out)));
+  EXPECT_STREQ(out, "Semana del 28 de septiembre al 4 de octubre");
+  ASSERT_TRUE(formatWeekRange(civil(2026, 12, 28), ES_SAME_MONTH, ES_TWO_MONTHS, ES_MONTHS, out, sizeof(out)));
+  EXPECT_STREQ(out, "Semana del 28 de diciembre al 3 de enero");
+}
+
+TEST(FormatWeekRange, TooSmallBufferWritesNothing) {
+  char out[8] = "junk";
+  EXPECT_FALSE(formatWeekRange(civil(2026, 9, 21), EN_SAME_MONTH, EN_TWO_MONTHS, EN_MONTHS, out, sizeof(out)));
+  EXPECT_STREQ(out, "");
+}
+
+TEST(FormatWeekRange, MissingMonthNameFails) {
+  char out[96] = "junk";
+  EXPECT_FALSE(formatWeekRange(civil(2026, 9, 21), EN_SAME_MONTH, EN_TWO_MONTHS, "January", out, sizeof(out)));
+  EXPECT_STREQ(out, "");
+}
+
+TEST(CopyWordAt, CopiesOneTerminatedWord) {
+  char out[8];
+  ASSERT_TRUE(copyWordAt("L M X J V S D", 2, out, sizeof(out)));
+  EXPECT_STREQ(out, "X");
+  ASSERT_TRUE(copyWordAt("L M X J V S D", 6, out, sizeof(out)));
+  EXPECT_STREQ(out, "D");
+}
+
+TEST(CopyWordAt, FailsPastTheEndOrWhenTooSmall) {
+  char out[4] = "x";
+  EXPECT_FALSE(copyWordAt("L M X J V S D", 7, out, sizeof(out)));
+  EXPECT_STREQ(out, "");
+  EXPECT_FALSE(copyWordAt(ES_MONTHS, 8, out, sizeof(out)));
+  EXPECT_STREQ(out, "");
+}
