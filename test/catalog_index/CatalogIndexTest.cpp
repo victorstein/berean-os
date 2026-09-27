@@ -160,7 +160,8 @@ TEST(CatalogRecordsV2, ReadsTheFlagInAllThreeStates) {
 }
 
 TEST(CatalogRecordsV2, ATitleContainingATabStaysWhole) {
-  const std::string index = "berean-catalog\t2\tS\tid\t2026-10-05\nw\t202607\t2026\tperiodical\t1\tLa Atalaya\tedicion\n";
+  const std::string index =
+      "berean-catalog\t2\tS\tid\t2026-10-05\nw\t202607\t2026\tperiodical\t1\tLa Atalaya\tedicion\n";
   const auto entries = allEntries(index);
   ASSERT_EQ(entries.size(), 1u);
   EXPECT_EQ(entries[0].title, "La Atalaya\tedicion");
@@ -240,9 +241,8 @@ TEST(CatalogSearchScan, EachBufferIsReadByItsOwnHeader) {
 
 TEST(CatalogSearchScan, AnUnreadableVersionVisitsNothing) {
   bool truncated = true;
-  const auto visited =
-      searchAll("berean-catalog\t3\tS\tid\t2026-10-05\ng\t19800422\t1980\tperiodical\t1\t\tx 1980\n", "1980", 64,
-                truncated);
+  const auto visited = searchAll("berean-catalog\t3\tS\tid\t2026-10-05\ng\t19800422\t1980\tperiodical\t1\t\tx 1980\n",
+                                 "1980", 64, truncated);
   EXPECT_TRUE(visited.symbols.empty());
   EXPECT_FALSE(truncated);
   EXPECT_TRUE(searchAll("no header at all\n", "no", 64, truncated).symbols.empty());

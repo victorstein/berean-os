@@ -45,14 +45,16 @@ TEST(CatalogIssueDate, AMonthlyIssueReadsAsACapitalisedMonth) {
 }
 
 TEST(CatalogIssueDate, AMalformedCodeIsShownAsWritten) {
-  for (const char* code : {"1980042", "19801322", "19800400", "19800432", "1980A4", "198013", "198000", "abcdefgh", "2026"}) {
+  for (const char* code :
+       {"1980042", "19801322", "19800400", "19800432", "1980A4", "198013", "198000", "abcdefgh", "2026"}) {
     EXPECT_EQ(spanish(code), code);
   }
 }
 
 TEST(CatalogIssueDate, AShortMonthListFallsBackToTheRawCode) {
   char out[48] = "";
-  ASSERT_TRUE(catalog::formatIssueDate("19800422", "enero febrero marzo", kSpanishDay, kSpanishMonth, out, sizeof(out)));
+  ASSERT_TRUE(
+      catalog::formatIssueDate("19800422", "enero febrero marzo", kSpanishDay, kSpanishMonth, out, sizeof(out)));
   EXPECT_STREQ(out, "19800422") << "a translation missing months must not print an empty month";
 }
 
@@ -68,8 +70,9 @@ TEST(CatalogDisplayTitle, APeriodicalDropsTheTrailingYear) {
 }
 
 TEST(CatalogDisplayTitle, OtherYearFormsAreLeftAlone) {
-  EXPECT_EQ(catalog::displayTitle("Guía de actividades para la reunión Vida y Ministerio Cristianos (2016)", "2016", true),
-            "Guía de actividades para la reunión Vida y Ministerio Cristianos (2016)");
+  EXPECT_EQ(
+      catalog::displayTitle("Guía de actividades para la reunión Vida y Ministerio Cristianos (2016)", "2016", true),
+      "Guía de actividades para la reunión Vida y Ministerio Cristianos (2016)");
   EXPECT_EQ(catalog::displayTitle("La Atalaya. Anunciando el Reino de Jehová 2013 (lenguaje sencillo)", "2013", true),
             "La Atalaya. Anunciando el Reino de Jehová 2013 (lenguaje sencillo)");
   EXPECT_EQ(catalog::displayTitle("¡Despertad! 1980", "1981", true), "¡Despertad! 1980");

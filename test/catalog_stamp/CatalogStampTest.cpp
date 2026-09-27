@@ -75,9 +75,7 @@ TEST(CatalogAcceptance, BothReadableVersionsAreAccepted) {
   EXPECT_TRUE(catalog::indexAcceptable(catalog::parseHeader("berean-catalog\t2\tS\tid\t2026-10-05\n"), "S"));
 }
 
-TEST(CatalogStamp, CopiesTheFormatVersion) {
-  EXPECT_EQ(catalog::stampOf(catalog::parseHeader(kIndex)).version, 1);
-}
+TEST(CatalogStamp, CopiesTheFormatVersion) { EXPECT_EQ(catalog::stampOf(catalog::parseHeader(kIndex)).version, 1); }
 
 TEST(CatalogStaleness, AnotherFormatVersionIsANewRelease) {
   // One builder run writes v1 and v2 with the same manifest id and date; a

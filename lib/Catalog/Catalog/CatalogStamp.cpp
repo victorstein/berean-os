@@ -1,8 +1,8 @@
 #include "Catalog/CatalogStamp.h"
 
-#include "Catalog/CatalogLabel.h"
-
 #include <cstdio>
+
+#include "Catalog/CatalogLabel.h"
 
 namespace catalog {
 namespace {

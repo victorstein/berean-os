@@ -88,7 +88,7 @@ using SearchVisitor = void (*)(void* ctx, const Entry& entry);
 // and sets `truncated` when more matched. The version is read from `index`'s own
 // header on every call, because the buffer is replaced when an update is
 // installed while Buscar is open. Returns how many were visited.
-size_t search(std::string_view index, std::string_view query, size_t maxResults, bool& truncated,
-              SearchVisitor visit, void* ctx);
+size_t search(std::string_view index, std::string_view query, size_t maxResults, bool& truncated, SearchVisitor visit,
+              void* ctx);
 
 }  // namespace catalog
