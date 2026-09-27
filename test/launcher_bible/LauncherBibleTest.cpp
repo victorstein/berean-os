@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "activities/launcher/LauncherBible.h"
 
 // The card scan is the launcher's only way to find a Bible the registry does
@@ -36,4 +40,53 @@ TEST(LauncherBible, RejectsMalformedNames) {
   EXPECT_FALSE(isCdnNamedCopyOf("/nwt.epub", BIBLE_SYMBOL));
   EXPECT_FALSE(isCdnNamedCopyOf("", BIBLE_SYMBOL));
   EXPECT_FALSE(isCdnNamedCopyOf("/nwt_S.epub", ""));
+}
+
+// The order is what keeps a registered Bible ahead of any book whose title
+// merely says "New World", and the recents guess behind both real lookups.
+
+namespace {
+
+std::optional<std::string> resolveRecording(std::vector<BibleLookup>& tried, const BibleLookup hitAt) {
+  return resolveBible([&](const BibleLookup step) -> std::optional<std::string> {
+    tried.push_back(step);
+    if (step == hitAt) return std::string("/hit.epub");
+    return std::nullopt;
+  });
+}
+
+}  // namespace
+
+TEST(LauncherBible, TriesTheRegistryThenTheCardThenRecentsAndOffersNothingWhenAllMiss) {
+  std::vector<BibleLookup> tried;
+  const auto found = resolveBible([&](const BibleLookup step) -> std::optional<std::string> {
+    tried.push_back(step);
+    return std::nullopt;
+  });
+  EXPECT_FALSE(found.has_value());
+  EXPECT_EQ(tried, (std::vector<BibleLookup>{BibleLookup::Registry, BibleLookup::CardScan, BibleLookup::Recents}));
+}
+
+TEST(LauncherBible, ARegistryHitSkipsTheCardScanAndRecents) {
+  std::vector<BibleLookup> tried;
+  EXPECT_EQ(resolveRecording(tried, BibleLookup::Registry), std::optional<std::string>("/hit.epub"));
+  EXPECT_EQ(tried, (std::vector<BibleLookup>{BibleLookup::Registry}));
+}
+
+TEST(LauncherBible, ACardScanHitSkipsRecents) {
+  std::vector<BibleLookup> tried;
+  EXPECT_EQ(resolveRecording(tried, BibleLookup::CardScan), std::optional<std::string>("/hit.epub"));
+  EXPECT_EQ(tried, (std::vector<BibleLookup>{BibleLookup::Registry, BibleLookup::CardScan}));
+}
+
+TEST(LauncherBible, RecentsIsReachedOnlyAfterBothRealLookupsMiss) {
+  std::vector<BibleLookup> tried;
+  EXPECT_EQ(resolveRecording(tried, BibleLookup::Recents), std::optional<std::string>("/hit.epub"));
+  EXPECT_EQ(tried, (std::vector<BibleLookup>{BibleLookup::Registry, BibleLookup::CardScan, BibleLookup::Recents}));
+}
+
+TEST(LauncherBible, NamesEachLookupForTheLog) {
+  EXPECT_STREQ(bibleLookupName(BibleLookup::Registry), "registry");
+  EXPECT_STREQ(bibleLookupName(BibleLookup::CardScan), "card scan");
+  EXPECT_STREQ(bibleLookupName(BibleLookup::Recents), "recents");
 }
