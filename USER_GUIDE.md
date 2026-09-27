@@ -228,7 +228,8 @@ the same list from the Power button, and jumps straight there when there is only
 **Settings -> System -> File transfer -> Meeting publications** downloads the current week's *Watchtower* study
 edition and *Life and Ministry Meeting Workbook* as EPUBs onto the SD card.
 
-The device reads its clock, works out the ISO week, fetches that week's meetings page, reads the
+The device reads its clock, works out the ISO week from the local date (the clock's UTC offset setting
+applies), fetches that week's meetings page, reads the
 issue numbers out of the publication links, resolves the download URLs, and writes the files. Either
 publication may be missing for a given week, which is a normal outcome and not an error.
 

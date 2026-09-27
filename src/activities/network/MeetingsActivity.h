@@ -102,7 +102,7 @@ class MeetingsActivity final : public UiListActivity {
   // Rebuilds the week and the cards from the week cache and the card. Runs on
   // every return from a download.
   void refresh();
-  void buildWeekHeader(const IsoWeek* currentWeek, const MeetingWeekEntry* entry, const CivilDate* utcToday,
+  void buildWeekHeader(const IsoWeek* currentWeek, const MeetingWeekEntry* entry, const CivilDate* localToday,
                        WeekHeader& out) const;
   int buildCards(const MeetingWeekEntry* entry, std::array<Card, 2>& out) const;
   void fillCard(Card& card) const;

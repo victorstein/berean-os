@@ -4,7 +4,6 @@
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
-#include <HalClock.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -43,6 +42,7 @@
 #include "study/PubKeyRegistry.h"
 #include "util/CardBooks.h"
 #include "util/CoverThumb.h"
+#include "util/LocalDate.h"
 
 namespace {
 
@@ -175,9 +175,12 @@ void LauncherActivity::resolveTargets() {
 // Empty when the clock is unset or the cache does not cover this week -- the
 // meetings screen is what fills that cache, and it is one tap away.
 std::optional<std::string> LauncherActivity::thisWeeksMeetingPublication() {
-  HalClock::Date today{};
+  CivilDate today;
+  bool todayIsLocal = false;
   IsoWeek week;
-  if (!halClock.getDate(today) || !isoWeekFromUtcDate(today.year, today.month, today.day, week)) return std::nullopt;
+  if (!readLocalDate(today, todayIsLocal) || !isoWeekFromUtcDate(today.year, today.month, today.day, week)) {
+    return std::nullopt;
+  }
 
   MeetingWeekTable table;
   MeetingWeekCache::load(table);

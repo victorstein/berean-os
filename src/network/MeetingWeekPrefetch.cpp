@@ -1,12 +1,12 @@
 #include "network/MeetingWeekPrefetch.h"
 
 #include <Arduino.h>
-#include <HalClock.h>
 #include <Logging.h>
 
 #include "network/HttpDownloader.h"
 #include "network/MeetingPrefetchPlan.h"
 #include "network/MeetingWeekCache.h"
+#include "util/LocalDate.h"
 
 namespace {
 
@@ -23,12 +23,14 @@ namespace MeetingWeekPrefetch {
 bool due(const bool enabled, const bool clockSynced, IsoWeek& week) {
   if (!enabled || !clockSynced) return false;
 
-  HalClock::Date today{};
+  CivilDate today;
+  bool todayIsLocal = false;
   MeetingPrefetchConditions conditions;
   conditions.enabled = enabled;
   conditions.clockSynced = clockSynced;
   conditions.attemptedThisBoot = attemptedWeekThisBoot;
-  if (!halClock.getDate(today) || !isoWeekFromUtcDate(today.year, today.month, today.day, conditions.currentWeek)) {
+  if (!readLocalDate(today, todayIsLocal) ||
+      !isoWeekFromUtcDate(today.year, today.month, today.day, conditions.currentWeek)) {
     LOG_DBG(MODULE, "No usable date; not prefetching");
     return false;
   }

@@ -545,7 +545,27 @@ Header, both versions:
 
 `issue` is `YYYYMMDD` (semimonthly or weekly), `YYYYMM` (monthly), or empty for a
 book. `kind` is `periodical` or `book`. This version is still published unchanged
-for firmware that predates version 2, which refuses any other version.
+for firmware that predates version 2 (v1.17.3 and older), which refuses any other
+version.
+
+It stops being published once both hold: it is on or after 2026-12-28, 13 weeks
+after v1.17.4 (the first release that reads version 2) was published, and no
+supported device is still on v1.17.3 or older. Release download counts cannot
+show this, because the workflow re-uploads every asset weekly and that resets
+them. To retire it (the same checklist is in the header of
+`.github/workflows/catalog-index.yml`):
+
+1. In `.github/workflows/catalog-index.yml`, drop `--out-v1`/`--previous-v1` from
+   both builder calls, the `previous-$lang.txt` fetch, and `"catalog-$lang.txt"`
+   from `publish()`'s indexes, leaving the v2 files there outside `hold`.
+2. Delete the assets, one per call:
+   `for a in catalog-S.txt catalog-S.txt.gz catalog-E.txt catalog-E.txt.gz; do gh release delete-asset catalog "$a" --yes --repo victorstein/berean-os; done`
+3. In `scripts/build_catalog_index.py`, remove `--out-v1`/`--previous-v1`, the
+   legacy `render_index(..., LEGACY_FORMAT_VERSION, ...)` and its write,
+   `LEGACY_FORMAT_VERSION`, and the v1 wording in the module and `render_index`
+   docstrings; drop their tests in `scripts/tests/test_build_catalog_index.py`.
+4. Update this section and the comment in `CatalogIndexStore::assetUrl()`. The
+   device still accepts a v1 file, so no firmware change is needed.
 
 ### Version 2 (`catalog-<lang>.v2.txt`)
 

@@ -76,3 +76,13 @@ inline bool localDateFromUtc(const CivilDate& utc, const uint8_t hour, const uin
   out = addDays(utc, dayShift);
   return true;
 }
+
+// The viewer's date: the UTC date shifted by the local time of day, or the UTC
+// date unchanged when the time could not be read.
+inline bool localDateOrUtc(const CivilDate& utc, const bool haveTime, const uint8_t hour, const uint8_t minute,
+                           const uint8_t offsetQuarterHoursBiased, CivilDate& out) {
+  if (haveTime) return localDateFromUtc(utc, hour, minute, offsetQuarterHoursBiased, out);
+  if (!isValidCivilDate(utc)) return false;
+  out = utc;
+  return true;
+}

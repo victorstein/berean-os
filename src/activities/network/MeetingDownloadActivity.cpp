@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 #include <GfxRenderer.h>
-#include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <WiFi.h>
@@ -16,6 +15,7 @@
 #include "network/HttpDownloader.h"
 #include "network/MeetingWeekCache.h"
 #include "network/PublicationDownloader.h"
+#include "util/LocalDate.h"
 
 namespace fui = freeink::ui;
 
@@ -122,14 +122,15 @@ void MeetingDownloadActivity::runSequence() {
   // for up to a minute each; fetchUrl takes neither a progress nor a cancel hook.
   requestUpdateAndWait();
 
-  HalClock::Date today{};
+  CivilDate today;
+  bool todayIsLocal = false;
   IsoWeek week;
-  if (!halClock.getDate(today) || !isoWeekFromUtcDate(today.year, today.month, today.day, week)) {
+  if (!readLocalDate(today, todayIsLocal) || !isoWeekFromUtcDate(today.year, today.month, today.day, week)) {
     LOG_ERR("MEET", "RTC has no usable date");
     fail(tr(STR_CLOCK_NOT_SET));
     return;
   }
-  LOG_INF("MEET", "Device date %04u-%02u-%02u -> ISO week %u/%02u", static_cast<unsigned>(today.year),
+  LOG_INF("MEET", "Local date %04u-%02u-%02u -> ISO week %u/%02u", static_cast<unsigned>(today.year),
           static_cast<unsigned>(today.month), static_cast<unsigned>(today.day), static_cast<unsigned>(week.year),
           static_cast<unsigned>(week.week));
 

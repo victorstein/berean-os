@@ -25,7 +25,7 @@ struct IsoWeek {
 // 1-12 for a lowercase English month name, 0 for anything else.
 uint8_t monthNumberFromName(const char* name, size_t len);
 
-// ISO-8601 week-based year and week number for a UTC calendar date. Goes through
+// ISO-8601 week-based year and week number for a calendar date. Goes through
 // gmtime_r so strftime's %G/%V see the tm_wday/tm_yday they read.
 bool isoWeekFromUtcDate(uint16_t year, uint8_t month, uint8_t day, IsoWeek& out);
 

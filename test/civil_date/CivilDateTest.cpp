@@ -76,3 +76,16 @@ TEST(CivilDate, LocalDateRefusesAnImpossibleReading) {
   EXPECT_FALSE(localDateFromUtc(civil(2026, 9, 27), 24, 0, UTC, local));
   EXPECT_FALSE(localDateFromUtc(civil(2026, 9, 27), 10, 60, UTC, local));
 }
+
+TEST(CivilDate, TheViewersDateUsesTheOffsetWhenTheTimeIsKnown) {
+  CivilDate local;
+  ASSERT_TRUE(localDateOrUtc(civil(2026, 9, 28), true, 2, 0, 24, local));
+  EXPECT_EQ(text(local), "2026-09-27");
+}
+
+TEST(CivilDate, TheViewersDateIsTheUtcDateWhenTheTimeIsUnknown) {
+  CivilDate local;
+  ASSERT_TRUE(localDateOrUtc(civil(2026, 9, 28), false, 0, 0, 24, local));
+  EXPECT_EQ(text(local), "2026-09-28");
+  EXPECT_FALSE(localDateOrUtc(civil(2026, 2, 30), false, 0, 0, 24, local));
+}
