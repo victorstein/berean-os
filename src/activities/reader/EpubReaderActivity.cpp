@@ -511,7 +511,7 @@ void EpubReaderActivity::loop() {
     switch (SETTINGS.longPressMenuFunction) {
       case CrossPointSettings::LP_MENU_BOOKMARK:
         if (mappedInput.getHeldTime() >= ReaderUtils::BOOKMARK_HOLD_MS) {
-          addBookmark();  // owns the popup: only it knows which of five outcomes happened
+          addBookmark();  // owns the toast: only it knows which of five outcomes happened
           return;
         }
         break;
@@ -1771,7 +1771,7 @@ void EpubReaderActivity::loadCachedBookmarks() {
   }
 
   // Toast on the TRANSITION, not the result: this runs again on every return
-  // from the bookmarks list, and drawPopup ends in a full e-ink refresh.
+  // from the bookmarks list, and every toast costs an e-ink refresh.
   if (BookmarkFile::load(epub->getPath(), cachedBookmarks) == BookmarkFile::LoadResult::Failed &&
       !bookmarksSaveDisabled) {
     bookmarksSaveDisabled = true;
@@ -1784,7 +1784,7 @@ void EpubReaderActivity::loadCachedBookmarks() {
 void EpubReaderActivity::addBookmark() {
   if (!section || !epub) return;
 
-  // Every path from here shows a popup, so arm it once.
+  // Every path from here shows a toast, so arm it once.
   showBookmarkMessage = true;
   bookmarkMessageTime = millis();
 

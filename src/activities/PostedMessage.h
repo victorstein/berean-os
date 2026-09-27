@@ -2,7 +2,7 @@
 
 class GfxRenderer;
 
-// A popup shown over the next screen that finishes rendering, instead of drawn
+// A toast shown over the next screen that finishes rendering, instead of drawn
 // immediately. Every caller of an immediate popup went on to request a render
 // or finish(), and that render painted straight over it -- on e-ink, a flash
 // too brief to read. A refusal the user cannot see is a silent failure.

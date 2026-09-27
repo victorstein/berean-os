@@ -8,7 +8,7 @@
 //
 // A message stays on screen, redrawn by every render, for MIN_DISPLAY_MS after
 // it is first drawn. Screens with a progress bar repaint every second or two,
-// and a popup drawn once would be gone before it could be read. The hold
+// and a toast drawn once would be gone before it could be read. The hold
 // matches the reader's bookmark toast (ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS).
 //
 // Messages are compared by pointer: callers post tr() strings or literals, so

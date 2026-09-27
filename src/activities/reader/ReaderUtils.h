@@ -229,7 +229,7 @@ void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
 // TagPickerActivity and HighlightsActivity all route through this instead of
 // each rolling its own popup+pending-flag dance. Deferred to the next completed
 // render (PostedMessage.h): every caller requests a render or finish()es right
-// after, and a popup drawn immediately was painted over before it could be read.
+// after, and a toast drawn immediately was painted over before it could be read.
 inline void showMessage(const GfxRenderer&, const char* message) { PostedMessage::post(message); }
 
 struct BackNavCallback {
