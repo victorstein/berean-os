@@ -2,10 +2,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "activities/UiListActivity.h"
+#include "network/WifiSession.h"
 
 // Buscar: search the publication catalog and download what you pick.
 //
@@ -122,4 +124,8 @@ class CatalogSearchActivity final : public UiListActivity {
 
   bool cancelDownload = false;
   bool goHomeAfterCancel = false;
+
+  // Opened at entry, not in ensureWifi(): whose Wi-Fi it is depends on the
+  // state when the screen was opened.
+  std::optional<WifiSession> wifiSession;
 };
