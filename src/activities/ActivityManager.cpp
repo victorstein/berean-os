@@ -239,8 +239,6 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
 }
 
 void ActivityManager::goHome(bool cleanInitialRefresh) {
-  // bereanOS's home is the launcher: Bible, Meetings, Publications and Settings
-  // tiles, plus Continue Reading when there is a book to resume.
   replaceActivity(std::make_unique<LauncherActivity>(renderer, mappedInput, cleanInitialRefresh));
 }
 void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }

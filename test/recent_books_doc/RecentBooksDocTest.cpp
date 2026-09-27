@@ -259,16 +259,6 @@ TEST(RecentBooksDocNormalise, ErasesEmbeddedNuls) {
 
 // Nothing has displayed coverBmpPath since UITheme::getCoverThumbPath went (#146),
 // so it is no longer written. The version stays 1; docs/file-formats.md says why.
-TEST(RecentBooksDoc, ToJsonWritesNoCoverPath) {
-  RecentBook book;
-  book.path = "/books/a.epub";
-  book.title = "A";
-
-  JsonDocument doc;
-  RecentBooksDoc::toJson({book}, doc);
-  EXPECT_TRUE(doc["books"][0]["coverBmpPath"].isNull());
-}
-
 TEST(RecentBooksDoc, AFileStillCarryingACoverPathLoadsAndDropsItOnTheNextSave) {
   JsonDocument doc;
   doc["v"] = 1;
