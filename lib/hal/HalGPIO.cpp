@@ -41,6 +41,7 @@ bool readBQ27220CurrentMA(int16_t* outCurrent) {
 
 }  // namespace X3GPIO
 
+#if FREEINK_MCU_C3
 namespace {
 constexpr char HW_NAMESPACE[] = "cphw";
 constexpr char NVS_KEY_DEV_OVERRIDE[] = "dev_ovr";  // 0=auto, 1=x4, 2=x3
@@ -111,6 +112,7 @@ HalGPIO::DeviceType detectDeviceTypeWithFingerprint() {
 }
 
 }  // namespace
+#endif  // FREEINK_MCU_C3
 
 void HalGPIO::begin() {
 #if FREEINK_MCU_C3
