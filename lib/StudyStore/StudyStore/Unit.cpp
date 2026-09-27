@@ -1,5 +1,6 @@
 #include "StudyStore/Unit.h"
 
+#include <cinttypes>
 #include <cstdio>
 
 namespace study {
@@ -51,7 +52,7 @@ bool operator<(const Unit& a, const Unit& b) {
 
 std::string unitToCompact(const Unit& u) {
   char buf[40];
-  snprintf(buf, sizeof(buf), "%c:%u:%u:%u:%u", kindLetter(u.kind), u.book, u.major, u.minor, u.offset);
+  snprintf(buf, sizeof(buf), "%c:%u:%u:%u:%" PRIu32, kindLetter(u.kind), u.book, u.major, u.minor, u.offset);
   return buf;
 }
 

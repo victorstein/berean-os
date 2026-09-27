@@ -8,6 +8,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <cinttypes>
 #include <cstdio>
 #include <cstring>
 
@@ -436,7 +437,8 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   // Skip IHDR CRC
   pngFile.seekCur(4);
 
-  LOG_DBG("PNG", "Image: %ux%u, depth=%u, color=%u, interlace=%u", width, height, bitDepth, colorType, interlace);
+  LOG_DBG("PNG", "Image: %" PRIu32 "x%" PRIu32 ", depth=%u, color=%u, interlace=%u", width, height, bitDepth, colorType,
+          interlace);
 
   if (compression != 0 || filter != 0) {
     LOG_ERR("PNG", "Unsupported compression/filter method");
@@ -453,7 +455,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   constexpr int MAX_IMAGE_HEIGHT = 3072;
 
   if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT || width == 0 || height == 0) {
-    LOG_ERR("PNG", "Image too large or zero (%ux%u)", width, height);
+    LOG_ERR("PNG", "Image too large or zero (%" PRIu32 "x%" PRIu32 ")", width, height);
     return false;
   }
 
@@ -498,7 +500,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
 
   // Validate raw row bytes won't cause memory issues
   if (rawRowBytes > 16384) {
-    LOG_ERR("PNG", "Row too large: %u bytes", rawRowBytes);
+    LOG_ERR("PNG", "Row too large: %" PRIu32 " bytes", rawRowBytes);
     return false;
   }
 
@@ -517,7 +519,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   ctx.currentRow = static_cast<uint8_t*>(malloc(rawRowBytes));
   ctx.previousRow = static_cast<uint8_t*>(calloc(rawRowBytes, 1));
   if (!ctx.currentRow || !ctx.previousRow) {
-    LOG_ERR("PNG", "Failed to allocate scanline buffers (%u bytes each)", rawRowBytes);
+    LOG_ERR("PNG", "Failed to allocate scanline buffers (%" PRIu32 " bytes each)", rawRowBytes);
     free(ctx.currentRow);
     free(ctx.previousRow);
     return false;
@@ -598,8 +600,8 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
     scaleY_fp = (height << 16) / outHeight;
     needsScaling = true;
 
-    LOG_DBG("PNG", "Scaling %ux%u -> %dx%d (target %dx%d)", width, height, outWidth, outHeight, targetWidth,
-            targetHeight);
+    LOG_DBG("PNG", "Scaling %" PRIu32 "x%" PRIu32 " -> %dx%d (target %dx%d)", width, height, outWidth, outHeight,
+            targetWidth, targetHeight);
   }
 
   // Write BMP header
@@ -688,7 +690,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   for (uint32_t y = 0; y < height; y++) {
     // Decode one scanline
     if (!decodeScanline(ctx)) {
-      LOG_ERR("PNG", "Failed to decode scanline %u", y);
+      LOG_ERR("PNG", "Failed to decode scanline %" PRIu32, y);
       success = false;
       break;
     }

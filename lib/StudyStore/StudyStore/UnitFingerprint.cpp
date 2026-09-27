@@ -1,5 +1,6 @@
 #include "StudyStore/UnitFingerprint.h"
 
+#include <cinttypes>
 #include <cstdio>
 
 namespace study {
@@ -41,7 +42,7 @@ Fingerprint fingerprintOf(const std::string_view visibleText) {
 
 std::string fingerprintToCompact(const Fingerprint& f) {
   char buf[32];
-  snprintf(buf, sizeof(buf), "%u:%08x", f.length, f.crc);
+  snprintf(buf, sizeof(buf), "%" PRIu32 ":%08" PRIx32, f.length, f.crc);
   return buf;
 }
 

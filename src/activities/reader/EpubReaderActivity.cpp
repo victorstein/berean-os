@@ -1281,7 +1281,7 @@ void EpubReaderActivity::renderBook() {
 
     const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
-    LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
+    LOG_DBG("ERS", "Rendered page in %lums", millis() - start);
     lastRenderCompleteMs = millis();
   }
 

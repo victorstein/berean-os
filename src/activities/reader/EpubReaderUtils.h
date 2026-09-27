@@ -3,6 +3,7 @@
 #include <Epub.h>
 #include <Logging.h>
 
+#include <cinttypes>
 #include <optional>
 
 #include "ProgressFile.h"
@@ -35,7 +36,8 @@ inline bool saveProgress(const Epub& epub, int spineIndex, int pageNumber, int p
   if (!ProgressFile::writeAtomic(epub.getCachePath(), data, dataSize)) {
     return false;
   }
-  LOG_DBG("ERS", "Progress saved: spine=%d offset=%u page=%d", spineIndex, visibleTextOffset.value_or(0), pageNumber);
+  LOG_DBG("ERS", "Progress saved: spine=%d offset=%" PRIu32 " page=%d", spineIndex, visibleTextOffset.value_or(0),
+          pageNumber);
   return true;
 }
 

@@ -8,6 +8,8 @@
 #include <WiFi.h>
 #include <esp_rom_crc.h>
 
+#include <cinttypes>
+
 #include "MappedInputManager.h"
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
@@ -375,7 +377,8 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       return;
     }
     if (actualCrc != file.crc32) {
-      LOG_ERR("FONT", "CRC32 mismatch for %s: got %08x expected %08x", file.name.c_str(), actualCrc, file.crc32);
+      LOG_ERR("FONT", "CRC32 mismatch for %s: got %08" PRIx32 " expected %08" PRIx32, file.name.c_str(), actualCrc,
+              file.crc32);
       fontInstaller_.deleteFamily(family.name.c_str());
       family.installed = false;
       family.hasUpdate = false;
@@ -386,7 +389,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       errorMessage_ = message;
       return;
     }
-    LOG_DBG("FONT", "Downloaded %s (size=%zu crc32=%08x)", file.name.c_str(), file.size, actualCrc);
+    LOG_DBG("FONT", "Downloaded %s (size=%zu crc32=%08" PRIx32 ")", file.name.c_str(), file.size, actualCrc);
 
     if (!fontInstaller_.validateCpfontFile(destPath)) {
       LOG_ERR("FONT", "Invalid .cpfont: %s", destPath);

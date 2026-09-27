@@ -6,6 +6,7 @@
 #include <Memory.h>
 #include <Serialization.h>
 
+#include <cinttypes>
 #include <cstring>
 
 #include "../../../../src/fontIds.h"
@@ -61,8 +62,10 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
       words.size() > 10000 ||
       (hasFocus && (words.size() != focusBoundary.size() || words.size() != focusSuffixX.size()))) {
     LOG_ERR("TXB",
-            "Construction failed: size mismatch (words=%u, xpos=%u, styles=%u, visibleOffsets=%u, boundary=%u, "
-            "suffixX=%u)",
+            "Construction failed: size mismatch (words=%" PRIu32 ", xpos=%" PRIu32 ", styles=%" PRIu32
+            ", visibleOffsets=%" PRIu32 ", boundary=%" PRIu32
+            ", "
+            "suffixX=%" PRIu32 ")",
             static_cast<uint32_t>(words.size()), static_cast<uint32_t>(wordXpos.size()),
             static_cast<uint32_t>(wordStyles.size()), static_cast<uint32_t>(visibleOffsets.size()),
             static_cast<uint32_t>(focusBoundary.size()), static_cast<uint32_t>(focusSuffixX.size()));
@@ -81,7 +84,7 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
   size_t totalText = 0;
   for (const auto& w : words) totalText += w.size() + 1;
   if (totalText > UINT16_MAX) {
-    LOG_ERR("TXB", "Construction failed: text size %u exceeds arena limit", static_cast<uint32_t>(totalText));
+    LOG_ERR("TXB", "Construction failed: text size %" PRIu32 " exceeds arena limit", static_cast<uint32_t>(totalText));
     numWords = 0;
     focusPresent = false;
     isValid = false;
@@ -92,7 +95,7 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
   const size_t size = arenaSize(numWords, focusPresent, textBytes);
   arena = makeUniqueNoThrow<uint8_t[]>(size);
   if (!arena) {
-    LOG_ERR("TXB", "OOM: arena %u bytes", static_cast<uint32_t>(size));
+    LOG_ERR("TXB", "OOM: arena %" PRIu32 " bytes", static_cast<uint32_t>(size));
     numWords = 0;
     textBytes = 0;
     focusPresent = false;
@@ -326,7 +329,7 @@ bool TextBlock::serialize(HalFile& file) const {
   if (numWords > 0) {
     const size_t size = arenaSize(numWords, focusPresent, textBytes);
     if (file.write(arena.get(), size) != size) {
-      LOG_ERR("TXB", "Serialization failed: arena write (%u bytes)", static_cast<uint32_t>(size));
+      LOG_ERR("TXB", "Serialization failed: arena write (%" PRIu32 " bytes)", static_cast<uint32_t>(size));
       return false;
     }
   }
@@ -387,11 +390,11 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     const size_t size = arenaSize(wc, block->focusPresent, textBytes);
     block->arena = makeUniqueNoThrow<uint8_t[]>(size);
     if (!block->arena) {
-      LOG_ERR("TXB", "OOM: arena %u bytes", static_cast<uint32_t>(size));
+      LOG_ERR("TXB", "OOM: arena %" PRIu32 " bytes", static_cast<uint32_t>(size));
       return nullptr;
     }
     if (file.read(block->arena.get(), size) != size) {
-      LOG_ERR("TXB", "Deserialization failed: arena read (%u bytes)", static_cast<uint32_t>(size));
+      LOG_ERR("TXB", "Deserialization failed: arena read (%" PRIu32 " bytes)", static_cast<uint32_t>(size));
       return nullptr;
     }
     block->bindArenaPointers();
