@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/victorstein/berean-os/compare/v1.17.4...v1.18.0) (2026-09-27)
+
+
+### Features
+
+* show a tagged passage on the sleep screen ([#167](https://github.com/victorstein/berean-os/issues/167)) ([a576e79](https://github.com/victorstein/berean-os/commit/a576e79cc7b28d0dd8902e8d3fd51793388eae34)), closes [#114](https://github.com/victorstein/berean-os/issues/114)
+
 ## [1.17.4](https://github.com/victorstein/berean-os/compare/v1.17.3...v1.17.4) (2026-09-27)
 
 
