@@ -24,6 +24,7 @@
 #include "BereanMark.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "StudySleepScreen.h"
 #include "activities/reader/ReaderUtils.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -544,6 +545,9 @@ void SleepActivity::onEnter() {
       } else {
         return renderCustomSleepScreen();
       }
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::STUDY):
+      if (study_sleep_screen::render(renderer)) return;
+      return renderDefaultSleepScreen();
     default:
       return renderDefaultSleepScreen();
   }
