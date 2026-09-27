@@ -115,6 +115,17 @@ bool mondayOfIsoWeek(const IsoWeek& week, CivilDate& out) {
   return true;
 }
 
+bool localDateFromUtc(const CivilDate& utc, const uint8_t hour, const uint8_t minute, uint8_t offsetQuarterHoursBiased,
+                      CivilDate& out) {
+  if (hour > 23 || minute > 59 || !isValidCivilDate(utc)) return false;
+  // Same clamp as HalClock::formatTime, so a corrupted setting stays inside UTC-12..UTC+14.
+  if (offsetQuarterHoursBiased > 104) offsetQuarterHoursBiased = 104;
+  const int localMinutes = hour * 60 + minute + (static_cast<int>(offsetQuarterHoursBiased) - 48) * 15;
+  const int dayShift = localMinutes < 0 ? -1 : (localMinutes >= 24 * 60 ? 1 : 0);
+  out = addDays(utc, dayShift);
+  return true;
+}
+
 std::string meetingsPageUrl(const IsoWeek& week) {
   // The English page keeps the scanner on ASCII month names and needs no
   // per-language rsconf table; the week -> issue mapping is language-independent.

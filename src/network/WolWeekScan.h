@@ -44,6 +44,11 @@ CivilDate addDays(const CivilDate& date, int days);
 // refused rather than dated as the Monday of 2026/W01.
 bool mondayOfIsoWeek(const IsoWeek& week, CivilDate& out);
 
+// The local calendar date for a UTC date and time, given the clock setting's
+// quarter-hour offset biased by 48 (48 = UTC+0, 0 = UTC-12, 104 = UTC+14).
+bool localDateFromUtc(const CivilDate& utc, uint8_t hour, uint8_t minute, uint8_t offsetQuarterHoursBiased,
+                      CivilDate& out);
+
 std::string meetingsPageUrl(const IsoWeek& week);
 
 // GETPUBMEDIALINKS for any publication symbol. A null or empty `issue` omits the

@@ -259,3 +259,35 @@ TEST(IsoWeekMonday, RefusesAWeekTheYearDoesNotHave) {
   EXPECT_FALSE(mondayOfIsoWeek(isoWeek(2026, 0), monday));
   EXPECT_FALSE(mondayOfIsoWeek(isoWeek(2026, 54), monday));
 }
+
+TEST(LocalDate, ShiftsByTheClockOffset) {
+  constexpr uint8_t UTC_MINUS_6 = 48 - 24;
+  constexpr uint8_t UTC_PLUS_14 = 104;
+  constexpr uint8_t NEPAL_PLUS_5_45 = 48 + 23;
+  CivilDate local;
+
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 27), 23, 30, UTC_MINUS_6, local));
+  expectDate(local, 2026, 9, 27);
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 28), 2, 0, UTC_MINUS_6, local));
+  expectDate(local, 2026, 9, 27);
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 27), 11, 0, UTC_PLUS_14, local));
+  expectDate(local, 2026, 9, 28);
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 27), 18, 15, NEPAL_PLUS_5_45, local));
+  expectDate(local, 2026, 9, 28);
+  ASSERT_TRUE(localDateFromUtc(civil(2027, 1, 1), 1, 0, UTC_MINUS_6, local));
+  expectDate(local, 2026, 12, 31);
+}
+
+TEST(LocalDate, ClampsAnOffsetPastUtcPlus14) {
+  CivilDate local;
+  // Unclamped, 200 would be +38 h and move the date; clamped to +14 h it does not.
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 27), 9, 0, 200, local));
+  expectDate(local, 2026, 9, 27);
+}
+
+TEST(LocalDate, RejectsAnImpossibleTimeOrDate) {
+  CivilDate local;
+  EXPECT_FALSE(localDateFromUtc(civil(2026, 9, 27), 24, 0, 48, local));
+  EXPECT_FALSE(localDateFromUtc(civil(2026, 9, 27), 12, 60, 48, local));
+  EXPECT_FALSE(localDateFromUtc(civil(2026, 2, 30), 12, 0, 48, local));
+}
