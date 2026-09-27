@@ -277,13 +277,14 @@ Use `HalFile` (the mutex-wrapping handle), not a raw SdFat `FsFile` or an Arduin
 `SDCardManager::readFile` (`freeink-sdk/.../SDCardManager.cpp:202`) hard-caps reads
 at `constexpr size_t maxSize = 50000` and returns a **silently truncated** string.
 `PersistableStore::saveToFile` uses the **non-atomic** `writeDocToFile`
-(`lib/Serialization/PersistableStore.cpp:11`); `writeDocToFileAtomic` sits beside
-it and must be opted into.
+(`lib/Serialization/PersistableStore.cpp:93`), which still builds the whole document
+in one `String`. `writeDocToFileAtomic` sits beside it, streams through a 512-byte
+buffer into `<path>.tmp` and renames that into place, and must be opted into.
 
 Left alone, that chain is: a store grows past ~45 KB, saves fine because nothing
 checks, reads back truncated mid-token, fails to parse, initialises empty, and the
 next save overwrites the real file with `{}`. The repo already carries the scar —
-`src/util/HighlightFile.h:40-42`, `SAVE_BYTE_BUDGET = 45000`.
+`src/util/HighlightFile.h:39`, `SAVE_BYTE_BUDGET = 45000`.
 
 **Every store this project introduces must:**
 

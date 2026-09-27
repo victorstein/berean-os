@@ -4,7 +4,7 @@ bereanOS runs on one board, the Xteink X4 Pro: a touchscreen, a capacitive Home 
 
 **There is one supported way to build a new screen: FreeInkUI, hosted through the firmware base classes below.** Touch hit-testing, tap highlighting, long-press, swipe scrolling, and button focus navigation all come from the shared stack; you never hand-roll coordinate math.
 
-The old bridge helpers (`rowTouch`, `colTouch`, `wasTapInRect`, manual rect `contains()` checks) are legacy. They survive only for the two remaining hand-rolled surfaces (the theme-driven home screen and the reader page) and must not appear in new code. PRs that add new uses will be asked to convert.
+The old bridge helpers `rowTouch`, `colTouch` and `wasTapInRect` are gone. Manual rect `contains()` hit-testing survives in two hand-rolled surfaces, the launcher (`src/activities/launcher/LauncherActivity.cpp`) and the reader page, and must not appear in new code. PRs that add new uses will be asked to convert.
 
 The whole input layer below is replaced in Phase 2, `MappedInputManager` included. Until then it is the only supported way to read input, and it is what implements this device's Back.
 
@@ -127,9 +127,7 @@ Two consequences specific to this board. The frontlight owns the top edge, so th
 
 | Helper | Status |
 |---|---|
-| `wasScreenTapped` / `wasScreenTouchDown` / `isScreenTouchHeld` | Consumed by the FUI snapshot builder. Direct use only in the two legacy surfaces |
-| `wasTapInRect(x, y, w, h)` | Legacy one-off hit test |
-| `rowTouch` / `colTouch` | Legacy row/column band math. No remaining caller; kept until the input-layer replacement lands |
+| `wasScreenTapped` / `wasScreenTouchDown` / `isScreenTouchHeld` | Consumed by the FUI snapshot builder. Several non-FUI screens still read them directly for dismiss-on-tap and prompts; new code must not |
 | `wasSwipe()` | Raw swipe direction, for behavior beyond the global gestures (reader page turns) |
 | `hasTouch()` | Still fine anywhere: gate touch-only chrome (on-screen Cancel/OK pairs) on it |
 
