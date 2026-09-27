@@ -63,9 +63,16 @@ jobs:
           TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           version="${TAG#v}"
-          # Not grep -q: it exits on the first match, strings dies of SIGPIPE, and
-          # pipefail turns a found version into a failed step.
-          if ! strings ".pio/build/${{ matrix.pio_env }}/firmware.bin" | grep -xF "$version" >/dev/null; then
+          # The version is matched as a whole token inside any string, not as a
+          # line of its own: the linker may keep the bare literal only as the tail
+          # of "bereanOS-ESP32-<version>", and strings joins adjacent printable
+          # bytes. Written to a file, not piped: grep -q would SIGPIPE strings
+          # under pipefail. The matches are printed so a failure shows its evidence.
+          strings ".pio/build/${{ matrix.pio_env }}/firmware.bin" > firmware-strings.txt
+          token="(^|[^0-9.])${version//./\\.}($|[^0-9.])"
+          echo "Strings mentioning $version:"
+          grep -F -- "$version" firmware-strings.txt | head -n 10 || true
+          if ! grep -Eq -- "$token" firmware-strings.txt; then
             echo "::error::firmware.bin does not contain BEREAN_VERSION \"$version\" for tag $TAG."
             exit 1
           fi
