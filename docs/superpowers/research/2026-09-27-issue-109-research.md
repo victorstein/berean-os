@@ -21,7 +21,10 @@ behave today. Every claim was read or run in this worktree at `dc97292e`.
 | Why Wi-Fi mode costs battery | `lib/hal/HalPowerManager.cpp:39-43` — any `WiFi.getMode() != WIFI_MODE_NULL` forces power saving off |
 
 `grep -rn -E 'WiFi\.|esp_wifi|WIFI_OFF|WIFI_STA|WIFI_AP' src lib` finds no other activity that
-changes Wi-Fi mode. The issue's line ranges are accurate to within a few lines; FontDownload's is
+changes Wi-Fi mode. **Correction (spec review 0):** that grep only finds direct `WiFi.` calls. Settings →
+System → Wi-Fi networks (`SettingsActivity.cpp:75`, `:308-309`) launches a standalone
+`WifiSelectionActivity`, which brings Wi-Fi up and leaves it to its parent
+(`WifiSelectionActivity.cpp:185-187`); `SettingsActivity` has no Wi-Fi code, so the radio stays on. The issue's line ranges are accurate to within a few lines; FontDownload's is
 `:39-54` rather than `:39-48`.
 
 ## The teardown is not "disconnect" — it is `silentRestart()`, and on this board that does not restart
@@ -101,8 +104,11 @@ Launch sites (`grep -rn 'make_unique<(ClockSync|OtaUpdate|CatalogSearch|MeetingD
 - CatalogSearch ← `PublicationsActivity.cpp:239`
 - MeetingDownload ← `MeetingsActivity.cpp:150` and **`CrossPointWebServerActivity.cpp:148`**
 
-Every Wi-Fi activity turns the radio off in its own `onExit()`, so from the settings, publications
-and meetings screens Wi-Fi is off on entry in practice. The one reachable nested case is the web
+**Corrected (spec review 0):** this paragraph originally claimed every Wi-Fi activity turns the
+radio off in its own `onExit()`, so Wi-Fi is off on entry in practice. Settings → Wi-Fi networks
+does not (see the correction above): after connecting there, all four of OTA, FontDownload,
+MeetingDownload and CatalogSearch can be entered with `WL_CONNECTED`. Aside from that path, Wi-Fi is
+off on entry. The one reachable nested case is the web
 server: after a cancelled Join, `onWifiSelectionComplete(false)` (`CrossPointWebServerActivity.cpp:188-190`)
 returns to the mode list with the radio still in `WIFI_STA`, not connected. Choosing Meeting
 Publications then enters `MeetingDownloadActivity` with `getMode() == WIFI_STA` and
