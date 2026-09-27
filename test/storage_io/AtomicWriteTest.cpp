@@ -83,6 +83,17 @@ TEST_F(AtomicWrite, AShortWritePastTheBufferIsCaughtToo) {
   EXPECT_FALSE(Storage.exists(PATH));
 }
 
+TEST_F(AtomicWrite, ADocumentPastTheReadCapIsStreamedWholeAndReadBackWhole) {
+  JsonDocument doc;
+  doc["s"] = std::string(60000, 'x');
+  ASSERT_TRUE(PersistableStoreBase::writeDocToFileAtomic(PATH, doc));
+  EXPECT_EQ(storage_fake::fileBytes(PATH)->size(), 60008u);
+
+  JsonDocument read;
+  ASSERT_EQ(PersistableStoreBase::readDocFromFileStreamed(PATH, read), DocReadStatus::Ok);
+  EXPECT_EQ(read["s"].as<std::string>().size(), 60000u);
+}
+
 TEST_F(AtomicWrite, AFailedRenameLeavesOnlyTheTempWhichTheNextReadAdopts) {
   storage_fake::putFile(PATH, R"({"v":1})");
   storage_fake::failRenamesFrom(TMP_PATH);

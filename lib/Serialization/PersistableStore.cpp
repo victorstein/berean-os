@@ -14,6 +14,23 @@ namespace {
 // One SdFat sector. Under the 4 KB PSRAM routing threshold, so internal SRAM.
 constexpr size_t WRITE_BUFFER_BYTES = 512;
 
+// ArduinoJson reader over HalFile, so a file larger than
+// SDCardManager::readFile's 50,000-byte cap still parses in full.
+class HalFileReader {
+ public:
+  explicit HalFileReader(HalFile& file) : file_(file) {}
+
+  int read() { return file_.read(); }
+
+  size_t readBytes(char* buffer, const size_t length) {
+    const int got = file_.read(buffer, length);
+    return got < 0 ? 0 : static_cast<size_t>(got);
+  }
+
+ private:
+  HalFile& file_;
+};
+
 // ArduinoJson writer over a BufferedFileWriter. ArduinoJson writes strings one
 // character at a time, and every HalFile::write takes storageMutex, hence the
 // buffer. Reports every byte as taken: a short write surfaces through
@@ -113,6 +130,28 @@ DocReadStatus PersistableStoreBase::readDocFromFileChecked(const char* path, Jso
     return classifyDocRead(true, true, false);
   }
   const auto error = deserializeJson(doc, json);
+  if (error) {
+    LOG_ERR("PERSIST", "JSON parse error in %s: %s", path, error.c_str());
+    return classifyDocRead(true, false, true);
+  }
+  return classifyDocRead(true, false, false);
+}
+
+DocReadStatus PersistableStoreBase::readDocFromFileStreamed(const char* path, JsonDocument& doc) {
+  if (!Storage.exists(path)) return classifyDocRead(false, false, false);
+
+  HalFile file;
+  if (!Storage.openFileForRead("PERSIST", path, file)) {
+    LOG_ERR("PERSIST", "Failed to open %s", path);
+    return classifyDocRead(true, true, false);
+  }
+  if (file.size() == 0) {
+    LOG_ERR("PERSIST", "%s is empty", path);
+    return classifyDocRead(true, true, false);
+  }
+
+  HalFileReader reader(file);
+  const auto error = deserializeJson(doc, reader);
   if (error) {
     LOG_ERR("PERSIST", "JSON parse error in %s: %s", path, error.c_str());
     return classifyDocRead(true, false, true);

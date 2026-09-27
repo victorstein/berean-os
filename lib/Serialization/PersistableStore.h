@@ -73,6 +73,11 @@ class PersistableStoreBase {
   // most loadAdopting callers pass.
   static DocReadStatus readDocFromFileChecked(const char* path, JsonDocument& doc);
 
+  // As readDocFromFileChecked, but streams the file into the parser instead of
+  // reading it through Storage.readFile, so a file past that 50,000-byte cap
+  // parses in full.
+  static DocReadStatus readDocFromFileStreamed(const char* path, JsonDocument& doc);
+
   // Crash-safe counterpart to readDocFromFileChecked, and the read-side partner
   // of writeDocToFileAtomic. When `path` is absent but `<path>.tmp` is present
   // and parses, that .tmp is by construction the most recent complete write --
