@@ -10,6 +10,7 @@
 
 #include <cinttypes>
 #include <cstddef>
+#include <string>
 
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
@@ -199,14 +200,9 @@ void CrossPointWebServerActivity::startAccessPoint() {
   WiFi.mode(WIFI_AP);
   delay(100);
 
-  // Start soft AP
-  bool apStarted;
-  if (AP_PASSWORD && strlen(AP_PASSWORD) >= 8) {
-    apStarted = WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
-  } else {
-    // Open network (no password)
-    apStarted = WiFi.softAP(AP_SSID, nullptr, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
-  }
+  static_assert(AP_PASSWORD == nullptr || std::char_traits<char>::length(AP_PASSWORD) >= 8,
+                "AP_PASSWORD must be nullptr (open network) or at least 8 characters for WPA2");
+  const bool apStarted = WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
 
   if (!apStarted) {
     LOG_ERR("WEBACT", "ERROR: Failed to start Access Point!");
