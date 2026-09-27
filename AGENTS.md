@@ -192,6 +192,10 @@ These flags in `platformio.ini` fundamentally affect firmware behaviour:
 -DDESTRUCTOR_CLOSES_FILE=1           // FsFile destructor auto-closes (SdFat)
 ```
 
+`-Wall` is not in `build_flags`: `scripts/enable_repo_warnings.py` adds it per source, to `src/`
+and our own `lib/` only (not `lib/expat`, `lib/miniz`, `lib/uzlib`, `freeink-sdk` or the libdeps).
+The framework's `-Wno-sign-compare` still wins over it, so `-Wsign-compare` stays off.
+
 **`DESTRUCTOR_CLOSES_FILE` implications**:
 
 - SdFat's `FsBaseFile` destructor calls `close()` when the object goes out of scope.
