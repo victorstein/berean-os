@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <Memory.h>
 #include <WiFi.h>
 
 #include <cstdio>
@@ -115,12 +116,14 @@ void BibleDownloadActivity::loop() {
   }
   routeTouch(mappedInput);
 
-  if (chooseFileRequested && state == State::Confirm) {
+  if (chooseFileRequested) {
     chooseFileRequested = false;
-    // Replaces the whole stack, launcher included -- the same place the tile's
-    // no-Bible tap led before this screen existed.
-    activityManager.goToFileBrowser();
-    return;
+    if (state == State::Confirm) {
+      // Replaces the whole stack, launcher included -- the same place the
+      // tile's no-Bible tap led before this screen existed.
+      activityManager.goToFileBrowser();
+      return;
+    }
   }
   if (dismissRequested) {
     dismissRequested = false;
@@ -139,11 +142,18 @@ void BibleDownloadActivity::startDownload() {
     return;
   }
 
+  auto wifiSelection = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, /*autoConnect=*/true,
+                                                                /*meetingPrefetch=*/false);
+  if (!wifiSelection) {
+    LOG_ERR(MODULE, "OOM: Wi-Fi picker");
+    fail(tr(STR_NO_WIFI_CONNECTION));
+    return;
+  }
+
   state = State::WifiSelection;
   statusMessage = tr(STR_CONNECTING);
   requestUpdate();
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, /*autoConnect=*/true,
-                                                                 /*meetingPrefetch=*/false),
+  startActivityForResult(std::move(wifiSelection),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 
