@@ -117,7 +117,7 @@ void migrateCdnNamedCopy(const std::string& folder, const std::string& url, cons
     LOG_ERR(MODULE, "Failed to rename cache dir %s -> %s (non-fatal)", oldCachePath.c_str(), newCachePath.c_str());
   }
 
-  RECENT_BOOKS.updatePath(srcPath, destPath, oldCachePath, newCachePath);
+  RECENT_BOOKS.updatePath(srcPath, destPath);
   if (APP_STATE.openEpubPath == srcPath) {
     APP_STATE.openEpubPath = destPath;
     APP_STATE.saveToFileAtomic();
