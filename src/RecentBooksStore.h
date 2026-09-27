@@ -34,9 +34,6 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
   void addBook(const std::string& path, const std::string& title, const std::string& author,
                const std::string& coverBmpPath);
 
-  void updateBook(const std::string& path, const std::string& title, const std::string& author,
-                  const std::string& coverBmpPath);
-
   // Remove the entry whose path matches (used when a book is removed from recents or finished/read).
   // Returns true if an entry was found and removed (no-op + false otherwise).
   // Persistence is best-effort: a failed save is logged, not reflected in the return.
@@ -60,8 +57,6 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
 
   // Get the count of recent books
   int getCount() const { return static_cast<int>(recentBooks.size()); }
-
-  RecentBook getDataFromBook(std::string path) const;
 };
 
 // Helper macro to access recent books store

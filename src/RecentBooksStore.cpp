@@ -1,10 +1,7 @@
 #include "RecentBooksStore.h"
 
-#include <Epub.h>
-#include <FsHelpers.h>
 #include <HalStorage.h>
 #include <Logging.h>
-#include <SdPaths.h>
 
 #include <algorithm>
 #include <iterator>
@@ -54,22 +51,6 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
   }
 }
 
-void RecentBooksStore::updateBook(const std::string& path, const std::string& title, const std::string& author,
-                                  const std::string& coverBmpPath) {
-  auto it =
-      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
-  if (it != recentBooks.end()) {
-    RecentBook& book = *it;
-    book.title = title;
-    book.author = author;
-    book.coverBmpPath = coverBmpPath;
-    RecentBooksDoc::normalise(book);
-    if (!saveToFileAtomic()) {
-      LOG_ERR("RBS", "Failed to persist metadata update for: %s", path.c_str());
-    }
-  }
-}
-
 bool RecentBooksStore::removeByPath(const std::string& path) {
   auto it =
       std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
@@ -105,26 +86,6 @@ bool RecentBooksStore::pruneMissing() {
   const size_t before = recentBooks.size();
   recentBooks.erase(std::remove_if(recentBooks.begin(), recentBooks.end(), &isMissing), recentBooks.end());
   return recentBooks.size() != before;
-}
-
-RecentBook RecentBooksStore::getDataFromBook(std::string path) const {
-  std::string lastBookFileName = "";
-  const size_t lastSlash = path.find_last_of('/');
-  if (lastSlash != std::string::npos) {
-    lastBookFileName = path.substr(lastSlash + 1);
-  }
-
-  LOG_DBG("RBS", "Loading recent book: %s", path.c_str());
-
-  // If epub, try to load the metadata for title/author and cover.
-  // Use buildIfMissing=false to avoid heavy epub loading on boot; getTitle()/getAuthor() may be
-  // blank until the book is opened, and entries with missing title are omitted from recent list.
-  if (FsHelpers::hasEpubExtension(lastBookFileName)) {
-    Epub epub(path, sdpaths::CROSSPOINT_DIR);
-    epub.load(false, true);
-    return RecentBook{path, epub.getTitle(), epub.getAuthor(), epub.getThumbBmpPath()};
-  }
-  return RecentBook{path, "", "", ""};
 }
 
 static_assert(RecentBooksStore::saveBudget() == RecentBooksDoc::SAVE_BUDGET,
