@@ -2,12 +2,14 @@
 #include <I18n.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "CrossPointSettings.h"
 #include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
+#include "network/WifiSession.h"
 
 enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING };
 
@@ -171,6 +173,9 @@ class SettingsActivity final : public UiTabListActivity {
   // strings (no vector growth).
   std::vector<std::string> rowValues_;
   std::vector<freeink::ui::ListItem> rowItems_;
+  // Held only while the Wi-Fi networks picker is open; nothing here uses the
+  // link once it returns.
+  std::optional<WifiSession> wifiSession;
   void rebuildRowItems();
 
   static constexpr int categoryCount = 4;
