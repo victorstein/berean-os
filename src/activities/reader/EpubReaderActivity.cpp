@@ -786,6 +786,11 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
     case EpubReaderMenuActivity::MenuAction::FRONTLIGHT:
       // Handled in-place by EpubReaderMenuActivity using the live frontlight HAL.
       break;
+    case EpubReaderMenuActivity::MenuAction::AUTO_PAGE_TURN:
+    case EpubReaderMenuActivity::MenuAction::ROTATE_SCREEN:
+      // Chosen in EpubReaderMenuActivity's option popups; the values arrive in
+      // MenuResult, not as an action.
+      break;
     case EpubReaderMenuActivity::MenuAction::GO_TO_PERCENT: {
       float bookProgress = 0.0f;
       if (epub && epub->getBookSize() > 0 && section && section->pageCount > 0) {

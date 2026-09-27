@@ -974,8 +974,9 @@ void WifiSelectionActivity::render(RenderLock&&) {
     case WifiSelectionState::NETWORK_LIST:
       renderNetworkList(&screen, &metrics);
       break;
+    case WifiSelectionState::PASSWORD_ENTRY:
     case WifiSelectionState::HIDDEN_SSID_ENTRY:
-      // Transitioning to/from the SSID keyboard subactivity - nothing to draw
+      // Transitioning to/from a keyboard subactivity - nothing to draw
       break;
     case WifiSelectionState::CONNECTING:
       renderConnecting(&screen, &metrics);

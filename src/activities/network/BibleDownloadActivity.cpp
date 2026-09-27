@@ -272,6 +272,7 @@ void BibleDownloadActivity::runDownload() {
     case publication::Result::NoMediaLink:
     case publication::Result::DownloadFailed:
     case publication::Result::OutOfMemory:
+    case publication::Result::NoEpubEdition:
       fail(tr(STR_BIBLE_DOWNLOAD_FAILED_HINT));
       return;
   }
