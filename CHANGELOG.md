@@ -3,6 +3,11 @@
 ## [1.16.11](https://github.com/victorstein/berean-os/compare/v1.16.10...v1.16.11) (2026-09-27)
 
 
+### Bug Fixes
+
+* stream store saves straight into the temp file ([#145](https://github.com/victorstein/berean-os/issues/145)) ([4597f8a](https://github.com/victorstein/berean-os/commit/4597f8a8e8a3bb7bc7e7eff515b083adb4a18196)), closes [#100](https://github.com/victorstein/berean-os/issues/100)
+
+
 ### Refactor
 
 * remove unreachable fork screens and the RoundedRaff and Lyra Extended themes ([#146](https://github.com/victorstein/berean-os/issues/146)) ([321c6ec](https://github.com/victorstein/berean-os/commit/321c6ecdc1471e954595c32d85119174c98fb219)), closes [#102](https://github.com/victorstein/berean-os/issues/102)
