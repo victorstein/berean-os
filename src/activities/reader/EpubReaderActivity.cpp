@@ -1045,11 +1045,12 @@ void EpubReaderActivity::renderBook() {
     }
     const bool cacheComplete = cacheLoaded && !section->isPartial();
     const bool explicitOffsetJump = pendingOffsetJump.has_value();
-    const std::optional<uint32_t> offsetJump =
-        explicitOffsetJump ? pendingOffsetJump
-        : (pendingPageJump.has_value() || !pendingAnchor.empty() || currentSpineIndex != cachedSpineIndex)
-            ? std::nullopt
-            : cachedVisibleTextOffset;
+    std::optional<uint32_t> offsetJump;
+    if (explicitOffsetJump) {
+      offsetJump = pendingOffsetJump;
+    } else if (!pendingPageJump.has_value() && pendingAnchor.empty() && currentSpineIndex == cachedSpineIndex) {
+      offsetJump = cachedVisibleTextOffset;
+    }
     if (!cacheComplete) {
       if (section->isPartial()) {
         LOG_DBG("ERS", "Partial cache found (%d pages), resuming build...", section->pageCount);
