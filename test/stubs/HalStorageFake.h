@@ -41,4 +41,8 @@ void failWritesTo(const std::string& path);
 // returns short -- a card that fills mid-write. writeFile is unaffected.
 void failWritesAfter(const std::string& path, size_t bytes);
 
+// HalFile::read calls, either overload, on handles opened for this path since the
+// last reset(). Tells a buffered reader from a byte-at-a-time one.
+size_t readCallsOn(const std::string& path);
+
 }  // namespace storage_fake

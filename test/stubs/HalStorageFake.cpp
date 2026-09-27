@@ -31,6 +31,7 @@ struct FakeCard {
   std::set<std::string> failRename;
   std::set<std::string> failWrite;
   std::map<std::string, size_t> writeLimit;
+  std::map<std::string, size_t> readCalls;
 };
 
 FakeCard& card() {
@@ -85,6 +86,11 @@ void failReadsOf(const std::string& path) { card().failRead.insert(path); }
 void failRenamesFrom(const std::string& path) { card().failRename.insert(path); }
 void failWritesTo(const std::string& path) { card().failWrite.insert(path); }
 void failWritesAfter(const std::string& path, const size_t bytes) { card().writeLimit[path] = bytes; }
+
+size_t readCallsOn(const std::string& path) {
+  const auto it = card().readCalls.find(path);
+  return it == card().readCalls.end() ? 0 : it->second;
+}
 
 }  // namespace storage_fake
 
@@ -211,6 +217,7 @@ size_t HalFile::position() const { return impl ? impl->pos : 0; }
 
 int HalFile::read(void* buf, size_t count) {
   if (!impl) return -1;
+  ++card().readCalls[impl->path];
   const std::string* bytes = impl->bytes();
   if (!bytes) return -1;
   const size_t got = impl->pos >= bytes->size() ? 0 : std::min(count, bytes->size() - impl->pos);
