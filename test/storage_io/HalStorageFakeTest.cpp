@@ -154,4 +154,18 @@ TEST_F(HalStorageFake, ClearFailuresKeepsTheCard) {
   EXPECT_TRUE(Storage.rename("/d/f", "/d/h"));
 }
 
+TEST_F(HalStorageFake, ReadCallsAreCountedPerPathUntilReset) {
+  storage_fake::putFile("/d/a", "abc");
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", "/d/a", file));
+  char buf[2];
+  file.read(buf, 2);
+  file.read();
+  EXPECT_EQ(storage_fake::readCallsOn("/d/a"), 2u);
+  EXPECT_EQ(storage_fake::readCallsOn("/d/b"), 0u);
+
+  storage_fake::reset();
+  EXPECT_EQ(storage_fake::readCallsOn("/d/a"), 0u);
+}
+
 }  // namespace

@@ -1,11 +1,9 @@
 #include "TagPaletteFile.h"
 
 #include <ArduinoJson.h>
-#include <HalStorage.h>
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
-#include <SdPaths.h>
 
 #include <string>
 
@@ -33,7 +31,6 @@ SaveResult save(const study::TagPalette& palette) {
     return SaveResult::TooLarge;
   }
 
-  Storage.mkdir(sdpaths::BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(PATH, json) ? SaveResult::Ok : SaveResult::WriteFailed;
 }
 

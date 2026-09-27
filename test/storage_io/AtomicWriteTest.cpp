@@ -94,6 +94,17 @@ TEST_F(AtomicWrite, ADocumentPastTheReadCapIsStreamedWholeAndReadBackWhole) {
   EXPECT_EQ(read["s"].as<std::string>().size(), 60000u);
 }
 
+TEST_F(AtomicWrite, TheStreamedReadPullsTheFileInChunksNotBytes) {
+  JsonDocument doc;
+  doc["s"] = std::string(60000, 'x');
+  ASSERT_TRUE(PersistableStoreBase::writeDocToFileAtomic(PATH, doc));
+
+  JsonDocument read;
+  ASSERT_EQ(PersistableStoreBase::readDocFromFileStreamed(PATH, read), DocReadStatus::Ok);
+  EXPECT_LT(storage_fake::readCallsOn(PATH), 600u)
+      << "every HalFile::read takes storageMutex on the device; a 60 KB file must not cost one per byte";
+}
+
 TEST_F(AtomicWrite, AFailedRenameLeavesOnlyTheTempWhichTheNextReadAdopts) {
   storage_fake::putFile(PATH, R"({"v":1})");
   storage_fake::failRenamesFrom(TMP_PATH);

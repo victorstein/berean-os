@@ -2,11 +2,9 @@
 
 #include <ArduinoJson.h>
 #include <FormatVersion.h>
-#include <HalStorage.h>
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
-#include <SdPaths.h>
 
 namespace {
 
@@ -54,7 +52,6 @@ bool save(MeetingWeekTable& table) {
     return false;
   }
 
-  Storage.mkdir(sdpaths::BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(PATH, doc);
 }
 

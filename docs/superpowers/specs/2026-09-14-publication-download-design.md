@@ -137,6 +137,9 @@ activity, a symbol prompt, the space check, and the HAL wrappers.
 
 ## The optimizer gap — a device-side download cannot use it
 
+*Amended 2026-09-27 (#152): #144 removed the web-UI optimiser, so the `FilesPage.html` lines cited
+below no longer exist. The decision to accept the raw archive stands.*
+
 The web UI has an **"Optimize EPUB"** path (`FilesPage.html:1570`, `:1750`) backed by a browser-side
 pipeline — JSZip unzips the archive and `processImage` / `applyGrayscale` / `createAutoCropPreview` /
 `isSeparatorImage` / `showImagePicker` re-encode the images before upload.
@@ -155,7 +158,7 @@ produces a strictly worse artifact than the path that already exists. Three dire
 | Restrict to text-heavy publications | Avoids the problem by refusing the case that motivated the feature. |
 
 **Decided: accept the raw archive.** Confirmed by reading `lff` un-optimized on the device —
-legibility and page turns are unaffected. The web-UI optimizer stays available for when it is wanted;
+legibility and page turns are unaffected. ~~The web-UI optimizer stays available for when it is wanted;~~ (removed by #144)
 the downloader does not try to reproduce it. This costs card space and transfer time on colour data a
 monochrome panel cannot use, which is an acceptable trade against 16 GB and a ~4-minute transfer.
 

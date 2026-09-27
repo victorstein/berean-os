@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.17.3](https://github.com/victorstein/berean-os/compare/v1.17.2...v1.17.3) (2026-09-27)
+
+
+### Bug Fixes
+
+* find sideloaded Bibles and offer to download one when none is found ([#161](https://github.com/victorstein/berean-os/issues/161)) ([c6314b4](https://github.com/victorstein/berean-os/commit/c6314b4fa74319518b9bc467e300c3c562c6eda3)), closes [#156](https://github.com/victorstein/berean-os/issues/156)
+
+## [1.17.2](https://github.com/victorstein/berean-os/compare/v1.17.1...v1.17.2) (2026-09-27)
+
+
+### Performance
+
+* buffer the streamed JSON reader and clear batch 2 leftovers ([#159](https://github.com/victorstein/berean-os/issues/159)) ([3ba9c2d](https://github.com/victorstein/berean-os/commit/3ba9c2d87a85d45044e3e7d0dd610be461c73d6a)), closes [#152](https://github.com/victorstein/berean-os/issues/152)
+
 ## [1.17.1](https://github.com/victorstein/berean-os/compare/v1.17.0...v1.17.1) (2026-09-27)
 
 

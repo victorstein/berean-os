@@ -23,7 +23,6 @@ class ReaderActivity : public Activity {
   virtual bool loadBook() = 0;
   virtual std::string getBookTitle() const = 0;
   virtual std::string getBookAuthor() const { return ""; }
-  virtual std::string getBookThumbBmpPath() const { return ""; }
 
   virtual bool handleFormatInput() { return false; }
   virtual bool pageTurn(bool isForward) = 0;

@@ -41,15 +41,11 @@ inline constexpr size_t MAX_AUTHOR_BYTES = 96;
 // next boot. It gets a budget allowance instead — two full FAT LFN components
 // (SdFat FsStructs.h), roughly 7x a realistic path on this device.
 inline constexpr size_t PATH_BUDGET_ALLOWANCE = 512;
-// coverBmpPath is bounded by construction at 57 bytes: "/.crosspoint" (12) +
-// "/epub_" (6) + at most 20 hash digits + "/thumb_[HEIGHT].bmp" (19). See
-// Epub.h:48 and Epub.cpp:653.
-inline constexpr size_t COVER_PATH_BUDGET_ALLOWANCE = 128;
 
 // {"v":1,"books":[]}
 inline constexpr size_t DOC_WRAPPER_BYTES = 18;
-// {"path":"","title":"","author":"","coverBmpPath":""}
-inline constexpr size_t ENTRY_OVERHEAD_BYTES = 52;
+// {"path":"","title":"","author":""}
+inline constexpr size_t ENTRY_OVERHEAD_BYTES = 34;
 // Worst-case JSON escape expansion. ArduinoJson 7.4.2 emits two bytes for
 // " \ \b \f \n \r \t and passes every other control character through raw. The
 // one exception is NUL, which becomes a six-byte \u escape, so normalise()
@@ -62,8 +58,8 @@ inline constexpr size_t ESCAPE_FACTOR = 2;
 
 constexpr size_t worstCaseBytes() {
   return DOC_WRAPPER_BYTES + (MAX_RECENT_BOOKS - 1) /* commas between entries */
-         + MAX_RECENT_BOOKS * (ENTRY_OVERHEAD_BYTES + ESCAPE_FACTOR * (MAX_TITLE_BYTES + MAX_AUTHOR_BYTES) +
-                               PATH_BUDGET_ALLOWANCE + COVER_PATH_BUDGET_ALLOWANCE);
+         + MAX_RECENT_BOOKS *
+               (ENTRY_OVERHEAD_BYTES + ESCAPE_FACTOR * (MAX_TITLE_BYTES + MAX_AUTHOR_BYTES) + PATH_BUDGET_ALLOWANCE);
 }
 
 // Derived from the caps above, not a round number: recompute it, do not tidy it.
@@ -74,7 +70,7 @@ inline constexpr size_t SAVE_BUDGET = worstCaseBytes();
 
 // Erases any embedded NUL, then caps title and author through utf8SafeSummary —
 // never resize(), which can cut mid-sequence and produce invalid UTF-8 that the
-// next save serialises. path and coverBmpPath are left alone. Returns true when
+// next save serialises. path is left alone. Returns true when
 // anything changed, which is what drives the load-side resave.
 bool normalise(RecentBook& book);
 

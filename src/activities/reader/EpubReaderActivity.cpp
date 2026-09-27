@@ -44,9 +44,11 @@
 #include "SdCardFontSystem.h"
 #include "SpineHtmlStream.h"
 #include "activities/SettingsSave.h"
+#include "activities/launcher/LauncherBible.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "study/PubKeyRegistry.h"
 #include "study/StudyStore.h"
 #include "util/BookCacheUtils.h"
 #include "util/BookmarkUtil.h"
@@ -147,7 +149,7 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
     }
   }
 
-  RECENT_BOOKS.updatePath(srcPath, dstPath, oldCachePath, newCachePath);
+  RECENT_BOOKS.updatePath(srcPath, dstPath);
   if (APP_STATE.openEpubPath == srcPath) {
     APP_STATE.openEpubPath = dstPath;
     APP_STATE.saveToFileAtomic();
@@ -259,6 +261,21 @@ bool EpubReaderActivity::loadBook() {
   // heap. Nothing is loaded, so nothing can be saved over.
   highlightsLoaded = false;
 #endif
+
+  // A sideloaded Bible has no registry entry, and the launcher can only find it
+  // by the CDN's filename. Registering it here, once, is what lets the Bible
+  // tile find it by symbol from then on, whatever it is called or wherever it is.
+  const auto registration = registerBibleIfUnknown(
+      epub->getBibleBookNavSpineIndex() >= 0, epub->getPath(),
+      [](const std::string& path) { return PubKeyRegistry::lookup(path).has_value(); },
+      [](const std::string& path) {
+        return PubKeyRegistry::record(path, study::RegisteredPub{std::string(BIBLE_SYMBOL), "", ""});
+      });
+  if (registration == BibleRegistration::Recorded) {
+    LOG_INF("ERS", "Registered %s as the Bible", epub->getPath().c_str());
+  } else if (registration == BibleRegistration::Refused) {
+    LOG_ERR("ERS", "Could not register %s as the Bible", epub->getPath().c_str());
+  }
 
   return true;
 }
@@ -449,7 +466,7 @@ void EpubReaderActivity::loop() {
     if (atEndOfBook && !recentsEntryRemoved) {
       recentsEntryRemoved = RECENT_BOOKS.removeByPath(epub->getPath());
     } else if (!atEndOfBook && recentsEntryRemoved) {
-      RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getThumbBmpPath());
+      RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor());
       recentsEntryRemoved = false;
     }
   }

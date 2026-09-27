@@ -7,7 +7,7 @@ ajustes — and the screens below are replaced when that lands. See [ROADMAP.md]
 - [1. The device](#1-the-device)
 - [2. Controls](#2-controls)
 - [3. Power and startup](#3-power-and-startup)
-- [4. Home screen](#4-home-screen)
+- [4. The launcher](#4-the-launcher)
 - [5. Reading](#5-reading)
 - [6. The reader menu](#6-the-reader-menu)
 - [7. Bible navigation](#7-bible-navigation)
@@ -48,7 +48,7 @@ key, or the Power button when you configure it that way.
 | Swipe right from the left edge | **Back** |
 | Swipe down from the top edge | opens the frontlight panel |
 | Swipe up from the bottom edge | Home, on devices without a Home key |
-| **Home**, short press | Home screen; inside some screens it confirms instead (see below) |
+| **Home**, short press | the launcher; inside some screens it confirms instead (see below) |
 | **Home**, long press | runs the **Long-press Menu** function while reading |
 | **Power**, short press | configurable: ignore, sleep, page turn, refresh, footnotes, or Confirm |
 | **Power**, long press | power off |
@@ -56,7 +56,7 @@ key, or the Power button when you configure it that way.
 The left-edge Back swipe routes through GPIO-independent code and is checked before anything else in
 every screen, so it always gets you out.
 
-**Home is context-dependent.** Normally it takes you to the Home screen. Two screens repurpose it
+**Home is context-dependent.** Normally it takes you to the launcher. Two screens repurpose it
 because they have no other way to confirm: passage selection uses a Home tap to set each end of the
 selection, and the tag picker uses it to finish. Both are described below.
 
@@ -85,22 +85,27 @@ Hold **Power** for about half a second to turn the device on or off. A short pre
 
 To reboot, press and release **Reset**, then press and hold **Power** for a few seconds.
 
-On a first boot you land on the Home screen. After that the device reopens the book you were reading.
+On a first boot you land on the launcher. After that the device reopens the book you were reading.
 
 The device sleeps after the inactivity timeout set in **Settings -> System -> Time to sleep**. A
 download or a firmware update in progress does not count as activity, so leave the screen awake, or
 raise the timeout, while one is running.
 
-## 4. Home screen
+## 4. The launcher
 
-The Home screen shows the book you were last reading and four entries:
+The launcher is the device's home. Under the **bereanOS** header it shows four tiles:
 
-- **Browse files** — the SD card, folders and books
-- **Recent books** — recently opened, newest first
-- **File transfer** — Wi-Fi modes, including meeting publication downloads
+- **Bible** — opens your Bible and shows how many chapters you have read. If no Bible has been found
+  on the card, it opens the file browser instead (see [12. Browsing files](#12-browsing-files)).
+- **Meetings** — the week's two meeting publications; opens what is on the card and downloads what
+  is not.
+- **Publications** — every publication on the card, with a search of the jw.org catalog to download
+  more.
 - **Settings**
 
-Selecting the cover resumes reading.
+When there is a book to go back to, a **Continue Reading** tile resumes it.
+
+Tap a tile to open it, or move the selection with **Left** / **Right** and confirm.
 
 ## 5. Reading
 
@@ -195,12 +200,15 @@ the same list from the Power button, and jumps straight there when there is only
 
 ## 10. Meeting publications
 
-**Home -> File transfer -> Meeting publications** downloads the current week's *Watchtower* study
+**Settings -> System -> File transfer -> Meeting publications** downloads the current week's *Watchtower* study
 edition and *Life and Ministry Meeting Workbook* as EPUBs onto the SD card.
 
 The device reads its clock, works out the ISO week, fetches that week's meetings page, reads the
 issue numbers out of the publication links, resolves the download URLs, and writes the files. Either
 publication may be missing for a given week, which is a normal outcome and not an error.
+
+The **Meetings** tile on the launcher lists the same two publications, opening what is on the card
+and downloading what is not.
 
 Files already on the card with a matching checksum are not downloaded again. Where they land is set
 by the download folder, which is editable from the web settings page; blank means the card root.
@@ -235,7 +243,8 @@ Details are in [docs/webserver.md](./docs/webserver.md); the raw endpoints are i
 
 ## 12. Browsing files
 
-**Home -> Browse files** walks the SD card. The current path is shown at the top, directories appear
+The file browser walks the SD card. It opens from the **Bible** tile on the launcher when no Bible has
+been found on the card. The current path is shown at the top, directories appear
 in brackets, and file extensions are shown.
 
 - **Left** / **Right** move the selection; hold either to move a full page.
@@ -248,7 +257,7 @@ Hidden files and folders — anything starting with `.` — are shown only when
 
 ## 13. Settings
 
-**Home -> Settings**, four tabs.
+The **Settings** tile on the launcher, four tabs.
 
 ### Display
 
@@ -382,7 +391,7 @@ or lower **Refresh frequency**.
 **Reader menu -> Delete book cache**, or **Settings -> System -> Clear reading cache**.
 
 **The device will not boot.** Press and release **Reset**, then hold the Home key and **Power** to
-come up on the Home screen instead of resuming a book. If that fails, a corrupt settings file is the
+come up on the launcher instead of resuming a book. If that fails, a corrupt settings file is the
 usual cause: delete `.crosspoint/settings.json` and `.crosspoint/state.json` from the card.
 
 **Crash reports.** After a crash the firmware writes a report to the root of the SD card. Attach it

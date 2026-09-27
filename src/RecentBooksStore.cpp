@@ -1,10 +1,7 @@
 #include "RecentBooksStore.h"
 
-#include <Epub.h>
-#include <FsHelpers.h>
 #include <HalStorage.h>
 #include <Logging.h>
-#include <SdPaths.h>
 
 #include <algorithm>
 #include <iterator>
@@ -27,8 +24,7 @@ bool RecentBooksStore::fromJson(const JsonVariantConst doc) {
   return true;
 }
 
-void RecentBooksStore::addBook(const std::string& path, const std::string& title, const std::string& author,
-                               const std::string& coverBmpPath) {
+void RecentBooksStore::addBook(const std::string& path, const std::string& title, const std::string& author) {
   // Drop stale entries first so a new add can't evict a valid book in their stead.
   pruneMissing();
 
@@ -40,7 +36,7 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
   }
 
   // Add to front, bounded: title and author arrive straight from EPUB metadata.
-  RecentBook book{path, title, author, coverBmpPath};
+  RecentBook book{path, title, author};
   RecentBooksDoc::normalise(book);
   recentBooks.insert(recentBooks.begin(), std::move(book));
 
@@ -51,22 +47,6 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
 
   if (!saveToFileAtomic()) {
     LOG_ERR("RBS", "Failed to persist added recent book: %s", path.c_str());
-  }
-}
-
-void RecentBooksStore::updateBook(const std::string& path, const std::string& title, const std::string& author,
-                                  const std::string& coverBmpPath) {
-  auto it =
-      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
-  if (it != recentBooks.end()) {
-    RecentBook& book = *it;
-    book.title = title;
-    book.author = author;
-    book.coverBmpPath = coverBmpPath;
-    RecentBooksDoc::normalise(book);
-    if (!saveToFileAtomic()) {
-      LOG_ERR("RBS", "Failed to persist metadata update for: %s", path.c_str());
-    }
   }
 }
 
@@ -83,17 +63,13 @@ bool RecentBooksStore::removeByPath(const std::string& path) {
   return true;
 }
 
-void RecentBooksStore::updatePath(const std::string& oldPath, const std::string& newPath,
-                                  const std::string& oldCachePath, const std::string& newCachePath) {
+void RecentBooksStore::updatePath(const std::string& oldPath, const std::string& newPath) {
   auto it = std::find_if(recentBooks.begin(), recentBooks.end(),
                          [&](const RecentBook& book) { return book.path == oldPath; });
   if (it == recentBooks.end()) {
     return;
   }
   it->path = newPath;
-  if (!oldCachePath.empty() && !it->coverBmpPath.empty() && it->coverBmpPath.rfind(oldCachePath, 0) == 0) {
-    it->coverBmpPath = newCachePath + it->coverBmpPath.substr(oldCachePath.size());
-  }
   if (!saveToFileAtomic()) {
     LOG_ERR("RBS", "Failed to persist path change: %s -> %s", oldPath.c_str(), newPath.c_str());
   }
@@ -105,26 +81,6 @@ bool RecentBooksStore::pruneMissing() {
   const size_t before = recentBooks.size();
   recentBooks.erase(std::remove_if(recentBooks.begin(), recentBooks.end(), &isMissing), recentBooks.end());
   return recentBooks.size() != before;
-}
-
-RecentBook RecentBooksStore::getDataFromBook(std::string path) const {
-  std::string lastBookFileName = "";
-  const size_t lastSlash = path.find_last_of('/');
-  if (lastSlash != std::string::npos) {
-    lastBookFileName = path.substr(lastSlash + 1);
-  }
-
-  LOG_DBG("RBS", "Loading recent book: %s", path.c_str());
-
-  // If epub, try to load the metadata for title/author and cover.
-  // Use buildIfMissing=false to avoid heavy epub loading on boot; getTitle()/getAuthor() may be
-  // blank until the book is opened, and entries with missing title are omitted from recent list.
-  if (FsHelpers::hasEpubExtension(lastBookFileName)) {
-    Epub epub(path, sdpaths::CROSSPOINT_DIR);
-    epub.load(false, true);
-    return RecentBook{path, epub.getTitle(), epub.getAuthor(), epub.getThumbBmpPath()};
-  }
-  return RecentBook{path, "", "", ""};
 }
 
 static_assert(RecentBooksStore::saveBudget() == RecentBooksDoc::SAVE_BUDGET,
