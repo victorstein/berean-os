@@ -162,6 +162,15 @@ TEST(MeetingUrls, ASymbolWithAnIssueMatchesTheMeetingForm) {
       << "the meeting downloader and Buscar must resolve the same publication the same way";
 }
 
+TEST(MeetingUrls, TheAnyFormatFormDropsOnlyTheFileformatFilter) {
+  EXPECT_EQ(pubMediaUrlForSymbol("km", "198001", "S", false),
+            "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=km&langwritten=S&issue=198001");
+  EXPECT_EQ(pubMediaUrlForSymbol("lff", "", "S", false),
+            "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=lff&langwritten=S");
+  EXPECT_EQ(pubMediaUrlForSymbol("w", "202607", "S", true), pubMediaUrlForSymbol("w", "202607", "S"))
+      << "the EPUB-only form stays the default";
+}
+
 TEST(MeetingUrls, FilenameComesFromTheLastPathSegment) {
   EXPECT_EQ(filenameFromUrl("https://cfp2.jw-cdn.org/a/717b307/1/o/w_S_202607.epub"), "w_S_202607.epub");
   EXPECT_EQ(filenameFromUrl("mwb_S_202609.epub"), "mwb_S_202609.epub");
