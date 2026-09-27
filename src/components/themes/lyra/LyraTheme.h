@@ -30,18 +30,10 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
                                  .headerTitleAlign = 0,  // left
                                  .headerBatterySide = 0,
                                  .headerBatteryDetached = true,
-                                 .menuRowHeight = 64,
-                                 .menuSpacing = 8,
                                  .tabSpacing = 8,
                                  .tabBarHeight = 40,
                                  .scrollBarWidth = 4,
                                  .scrollBarRightOffset = 5,
-                                 .homeTopPadding = 56,
-                                 .homeCoverHeight = 226,
-                                 .homeCoverTileHeight = 242,
-                                 .homeRecentBooksCount = 1,
-                                 .homeContinueReadingInMenu = false,
-                                 .homeMenuTopOffset = 16,
                                  .buttonHintsHeight = 40,
                                  .sideButtonHintsWidth = 30,
                                  .progressBarHeight = 16,
@@ -97,20 +89,8 @@ class LyraTheme : public BaseTheme {
                          int& index) const override;
   int getListRowStep(bool hasSubtitle) const override;
   int getListPageItems(int contentHeight, bool hasSubtitle) const override;
-  void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
-                const std::function<std::string(int index)>& rowTitle,
-                const std::function<std::string(int index)>& rowSubtitle,
-                const std::function<UIIcon(int index)>& rowIcon, const std::function<std::string(int index)>& rowValue,
-                bool highlightValue, const std::function<bool(int index)>& rowDimmed = nullptr) const override;
   void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                        const char* btn4) const override;
   void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const override;
-  void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
-                      const std::function<std::string(int index)>& buttonLabel,
-                      const std::function<UIIcon(int index)>& rowIcon) const override;
-  void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
-                           const int selectorIndex, bool& coverRendered, bool& coverBufferStored, bool& bufferRestored,
-                           std::function<bool()> storeCoverBuffer) const override;
-  void drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) const;
   bool showsFileIcons() const override { return true; }
 };

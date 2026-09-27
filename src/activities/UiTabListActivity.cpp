@@ -126,7 +126,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   // Pill shape and label size are theme-driven. Label-hugging (Lyra): small
   // text so the pill wraps a compact label, kept tight horizontally so wide
   // labels (e.g. "Controls") still fit their slot at large UI scales.
-  // Full-slot (RoundedRaff): the pill fills its slot like the legacy
+  // Full-slot (tabPillFullSlot): the pill fills its slot like the legacy
   // drawTabBar (slot minus a 4px frame, 8px clearance above the divider) with
   // body-size labels; zero horizontal contentInset disables the tabBar's
   // label-width shrink.
@@ -162,7 +162,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
     tabStyles.selected.foreground = fui::Paint::solid(fui::Color::White);
     tabStyles.selected.radius = screen.theme().listRowRadius;
   } else if (metrics.tabPillFullSlot) {
-    // Legacy RoundedRaff unfocused treatment: same pill, dimmed to dark gray,
+    // Full-slot unfocused treatment: same pill, dimmed to dark gray,
     // text stays inverted; no underline.
     tabStyles.selected.background = fui::Paint::dither(fui::Color::DarkGray);
     tabStyles.selected.foreground = fui::Paint::solid(fui::Color::White);
@@ -178,7 +178,7 @@ void UiTabListActivity::buildTabBar(UiScreen& screen) {
   tabStyles.active = tabStyles.selected;
   tabProps.tabStyles = tabStyles;
   const fui::Rect tabRect = screen.takeTop(tabBand);
-  // Focused band wash is the Lyra treatment; legacy RoundedRaff keeps the
+  // Focused band wash is the Lyra treatment; the full-slot treatment keeps the
   // band plain in both states.
   if (tabsFocused && !metrics.tabPillFullSlot) {
     screen.target().fill(tabRect, fui::Paint::dither(fui::Color::LightGray));
