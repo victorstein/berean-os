@@ -572,9 +572,19 @@ absent, or discontinued.
 
 **Posture.** A recurring CI job pulling a 57.6 MB asset from `app.jw-cdn.org` and
 republishing a derived index is a position worth naming: fetch at low frequency,
-identify the client honestly, redistribute only symbols and titles — never
-publication content — and keep the symbol path as the fallback that survives
-losing the index.
+identify the client honestly, redistribute only symbols, titles and an
+EPUB-availability flag — never publication content — and keep the symbol path as
+the fallback that survives losing the index.
+
+The flag (issue #157) is learned from `GETPUBMEDIALINKS`, one request per entry,
+and that part needs defending, because the builder originally declined to make
+~3,768 such calls per build. The probing it does now asks each `(symbol, issue,
+language)` at most once. The answer is kept in a probe cache published beside the
+index, a positive answer is never asked again, and a negative one only after 90
+days. Requests are at least a second apart, capped at 1,000 per language per run
+and at 1,500 s of probing, and stop at the first 429 or 5xx. The ~7,600-entry
+backlog therefore arrives over about four weekly runs. After that, a week costs
+the newly published entries plus the negatives that came due.
 
 ## What carries over unchanged
 

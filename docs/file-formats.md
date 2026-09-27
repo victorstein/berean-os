@@ -524,3 +524,39 @@ A newer `formatVersion` is refused, never reinterpreted; an older one, a size mi
 offset or count outside the file makes it unreadable. A fingerprint mismatch makes it stale.
 Neither is overwritten until the user confirms a rebuild. The Spanish NWT indexes to 31,078
 verses, 23,568 terms and 1,469,729 bytes; the write budget is 8 MB.
+
+## Catalog index (`catalog-<lang>.txt`, `catalog-<lang>.v2.txt`)
+
+Published on the `catalog` GitHub release by `.github/workflows/catalog-index.yml`,
+cached on the card as `/.berean/catalog-<lang>.idx`, and inflated into PSRAM while
+Buscar is open. UTF-8 text, one record per line, fields separated by tabs. The
+title is always the last field, so a tab inside a title can only land inside it.
+
+Header, both versions:
+
+    berean-catalog\t<version>\t<language>\t<manifestId>\t<builtOn YYYY-MM-DD>
+
+### Version 1 (`catalog-<lang>.txt`)
+
+    symbol\tissue\tyear\tkind\ttitle
+
+`issue` is `YYYYMMDD` (semimonthly or weekly), `YYYYMM` (monthly), or empty for a
+book. `kind` is `periodical` or `book`. This version is still published unchanged
+for firmware that predates version 2, which refuses any other version.
+
+### Version 2 (`catalog-<lang>.v2.txt`)
+
+    symbol\tissue\tyear\tkind\tepub\ttitle
+
+`epub` is `1` (jw.org publishes an EPUB), `0` (probed, no EPUB), or empty (not yet
+probed). Buscar never lists a `0` row. Firmware since issue #157 reads versions 1
+and 2, and refuses anything newer (`catalog::indexAcceptable`).
+
+### Probe cache (`catalog-<lang>.probes.tsv`, CI only)
+
+    berean-probes\t1\t<language>
+    symbol\tissue\tepub\tprobedOn
+
+Never read by the device. It holds the builder's answers so that each entry is
+asked about once. A cache with any other header, or a malformed row, fails the
+build rather than being adopted.
