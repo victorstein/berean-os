@@ -3,14 +3,25 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
-#include <SdPaths.h>
 
 #include <cstring>
 #include <limits>
 #include <string>
 
+namespace {
+
+void ensureParentDirectory(const char* path) {
+  const char* slash = strrchr(path, '/');
+  if (slash == nullptr || slash == path) return;
+  // Fails harmlessly when the directory already exists; a real failure
+  // surfaces as the open that follows failing.
+  Storage.mkdir(std::string(path, static_cast<size_t>(slash - path)).c_str());
+}
+
+}  // namespace
+
 bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& doc) {
-  Storage.mkdir(sdpaths::CROSSPOINT_DIR);
+  ensureParentDirectory(path);
   String json;
   serializeJson(doc, json);
   if (!Storage.writeFile(path, json)) {
@@ -21,7 +32,7 @@ bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& 
 }
 
 bool PersistableStoreBase::writeDocToFileAtomic(const char* path, const JsonDocument& doc) {
-  Storage.mkdir(sdpaths::CROSSPOINT_DIR);
+  ensureParentDirectory(path);
   const std::string finalPath = path;
   const std::string tmpPath = finalPath + ".tmp";
 

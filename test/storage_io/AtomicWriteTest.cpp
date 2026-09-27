@@ -53,6 +53,18 @@ TEST_F(AtomicWrite, AFailedTempWriteLeavesThePrimaryUntouched) {
   EXPECT_EQ(storage_fake::fileBytes(PATH), R"({"v":1})");
 }
 
+TEST_F(AtomicWrite, CreatesTheTargetsOwnParentAndNotCrosspoint) {
+  ASSERT_TRUE(PersistableStoreBase::writeDocToFileAtomic("/.berean/x/store.json", docWithValue(1)));
+  EXPECT_EQ(storage_fake::fileBytes("/.berean/x/store.json"), R"({"v":1})");
+  EXPECT_FALSE(storage_fake::isDir("/.crosspoint"));
+}
+
+TEST_F(AtomicWrite, TheNonAtomicWriteCreatesTheTargetsOwnParentAndNotCrosspoint) {
+  ASSERT_TRUE(PersistableStoreBase::writeDocToFile("/.berean/x/store.json", docWithValue(1)));
+  EXPECT_EQ(storage_fake::fileBytes("/.berean/x/store.json"), R"({"v":1})");
+  EXPECT_FALSE(storage_fake::isDir("/.crosspoint"));
+}
+
 TEST_F(AtomicWrite, AFailedRenameLeavesOnlyTheTempWhichTheNextReadAdopts) {
   storage_fake::putFile(PATH, R"({"v":1})");
   storage_fake::failRenamesFrom(TMP_PATH);
