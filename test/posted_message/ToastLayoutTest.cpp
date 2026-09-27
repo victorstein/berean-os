@@ -46,3 +46,23 @@ TEST(ToastLayout, AReservationTallerThanTheScreenClampsToEmpty) {
 
 static_assert(ToastLayout::bounds(SCREEN_W, SCREEN_H, 0, 0, 0, 0, 0).height == SCREEN_H,
               "bounds must stay usable in a constant expression");
+
+TEST(ToastLayout, PaddingIsHalfTheVerticalMarginAndTheFullSideMarginInsideTheFrame) {
+  // Lyra popup metrics: marginX 16, marginY 12, frame 2.
+  const ToastLayout::Padding pad = ToastLayout::padding(16, 12, 2);
+  EXPECT_EQ(pad.top, 8);
+  EXPECT_EQ(pad.bottom, 8);
+  EXPECT_EQ(pad.left, 18);
+  EXPECT_EQ(pad.right, 18);
+}
+
+TEST(ToastLayout, ClassicPaddingRoundsTheHalfMarginDown) {
+  // Classic popup metrics: marginX 15, marginY 15, frame 2.
+  const ToastLayout::Padding pad = ToastLayout::padding(15, 15, 2);
+  EXPECT_EQ(pad.top, 9);
+  EXPECT_EQ(pad.left, 17);
+}
+
+// The longest posted message (STR_TAG_LIMIT_PER_HIGHLIGHT) measures three
+// lines at the toast's width; the fourth is headroom for kerning.
+static_assert(ToastLayout::MAX_LINES == 4, "the longest refusal must fit without an ellipsis");

@@ -24,4 +24,22 @@ constexpr Bounds bounds(const int screenWidth, const int screenHeight, const int
   return Bounds{insetLeft, insetTop, width < 0 ? 0 : width, height < 0 ? 0 : height};
 }
 
+struct Padding {
+  int top;
+  int right;
+  int bottom;
+  int left;
+};
+
+// fui::popup strokes its frame inside the panel, where drawPopup drew it
+// outside, so the frame is added to keep text off the rim. Half the vertical
+// margin keeps the toast compact.
+constexpr Padding padding(const int popupMarginX, const int popupMarginY, const int frameThickness) {
+  const int vertical = popupMarginY / 2 + frameThickness;
+  const int horizontal = popupMarginX + frameThickness;
+  return Padding{vertical, horizontal, vertical, horizontal};
+}
+
+constexpr uint8_t MAX_LINES = 4;
+
 }  // namespace ToastLayout
