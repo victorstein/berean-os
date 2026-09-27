@@ -58,8 +58,8 @@ bool sizeOf(const std::string& coverPath, int& width, int& height) {
   return width > 0 && height > 0;
 }
 
-int drawNative(const GfxRenderer& renderer, const std::string& coverPath, const int x, const int y,
-               const int boxWidth, const int boxHeight, const int cornerRadius) {
+int drawNative(const GfxRenderer& renderer, const std::string& coverPath, const int x, const int y, const int boxWidth,
+               const int boxHeight, const int cornerRadius) {
   if (coverPath.empty()) return 0;
   HalFile file;
   if (!Storage.openFileForRead(MODULE, coverPath, file)) return 0;
