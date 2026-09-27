@@ -63,7 +63,9 @@ jobs:
           TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           version="${TAG#v}"
-          if ! strings ".pio/build/${{ matrix.pio_env }}/firmware.bin" | grep -qxF "$version"; then
+          # Not grep -q: it exits on the first match, strings dies of SIGPIPE, and
+          # pipefail turns a found version into a failed step.
+          if ! strings ".pio/build/${{ matrix.pio_env }}/firmware.bin" | grep -xF "$version" >/dev/null; then
             echo "::error::firmware.bin does not contain BEREAN_VERSION \"$version\" for tag $TAG."
             exit 1
           fi
