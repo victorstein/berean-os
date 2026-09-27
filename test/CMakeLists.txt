@@ -77,6 +77,7 @@ add_subdirectory(tag_rows)
 
 add_subdirectory(return_stack)
 add_subdirectory(posted_message)
+add_subdirectory(wifi_session)
 
 add_subdirectory(wol_week_scan)
 add_subdirectory(meeting_week_table)

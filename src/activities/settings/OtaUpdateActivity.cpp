@@ -5,7 +5,6 @@
 #include <WiFi.h>
 
 #include "MappedInputManager.h"
-#include "SilentRestart.h"
 #include "activities/PostedMessage.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
@@ -75,6 +74,7 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 
 void OtaUpdateActivity::onEnter() {
   Activity::onEnter();
+  wifiSession.emplace();
 
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");
@@ -86,19 +86,9 @@ void OtaUpdateActivity::onEnter() {
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 
-void OtaUpdateActivity::onExit() {
-  Activity::onExit();
-
-  // Success path reboots via the SHUTTING_DOWN state's plain ESP.restart()
-  // (loop() above) so the new firmware boots normally. Back-out paths land
-  // here with wifi still active; silent-restart to free the LWIP/mbedTLS
-  // fragmentation, same as the other wifi activities.
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
-  }
-}
+// The success path never gets here: SHUTTING_DOWN reboots from loop() so the
+// new firmware boots. Every other exit ends Wi-Fi through wifiSession.
+void OtaUpdateActivity::onExit() { Activity::onExit(); }
 
 void OtaUpdateActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();

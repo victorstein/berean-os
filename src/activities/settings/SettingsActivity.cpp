@@ -306,7 +306,9 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::Network:
-        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), nullptr);
+        wifiSession.emplace();
+        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false),
+                               [this](const ActivityResult&) { wifiSession.reset(); });
         break;
       case SettingAction::FileTransfer:
         // Pushed rather than activityManager.goToFileTransfer(), which replaces

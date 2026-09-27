@@ -19,7 +19,6 @@
 #include <cstdio>
 
 #include "MappedInputManager.h"
-#include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -59,6 +58,7 @@ CatalogSearchActivity::CatalogSearchActivity(GfxRenderer& renderer, MappedInputM
 
 void CatalogSearchActivity::onEnter() {
   UiListActivity::onEnter();
+  wifiSession.emplace();
 
   auto& store = CatalogIndexStore::getInstance();
   const auto status = store.load();
@@ -77,12 +77,6 @@ void CatalogSearchActivity::onExit() {
   // The 217 KB working set is the whole reason the index is loaded lazily.
   CatalogIndexStore::getInstance().release();
   Activity::onExit();
-
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
-  }
 }
 
 // --- Catalog state -----------------------------------------------------------

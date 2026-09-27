@@ -1,8 +1,11 @@
 #pragma once
 
+#include <optional>
+
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
 #include "network/OtaUpdater.h"
+#include "network/WifiSession.h"
 
 class OtaUpdateActivity : public Activity {
   enum State {
@@ -29,6 +32,7 @@ class OtaUpdateActivity : public Activity {
   // Cancel/Update confirmation over the version info (replaces the old
   // hand-rolled bottom tap rects).
   OptionPopup confirmPopup;
+  std::optional<WifiSession> wifiSession;
 
   void onWifiSelectionComplete(bool success);
   void runUpdateInstall();

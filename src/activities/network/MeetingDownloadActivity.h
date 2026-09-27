@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
+#include "network/WifiSession.h"
 #include "network/WolWeekScan.h"
 
 /**
@@ -81,6 +83,8 @@ class MeetingDownloadActivity final : public Activity, private UiAppHost {
   // press, both pumped from the download's own progress callback.
   bool cancelDownload = false;
   bool goHomeAfterCancel = false;
+
+  std::optional<WifiSession> wifiSession;
 
   bool preventAutoSleep() override { return true; }
 };
