@@ -238,13 +238,9 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
   replaceActivity(std::make_unique<FullScreenMessageActivity>(renderer, mappedInput, std::move(message), style));
 }
 
-void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefresh) {
-  // bereanOS's home is the launcher: Bible, Meetings, Buscar, Tags and
-  // settings, plus a resume strip. HomeMenuItem describes the old file-centric
-  // home (browser / recents / transfer / settings) and has no counterpart here.
-  // No caller passes anything but HomeMenuItem::NONE; it stays in the signature
-  // so onGoHome's call sites and the default argument need not change.
-  (void)initialMenuItem;
+void ActivityManager::goHome(bool cleanInitialRefresh) {
+  // bereanOS's home is the launcher: Bible, Meetings, Publications and Settings
+  // tiles, plus Continue Reading when there is a book to resume.
   replaceActivity(std::make_unique<LauncherActivity>(renderer, mappedInput, cleanInitialRefresh));
 }
 void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }
