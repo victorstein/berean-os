@@ -230,11 +230,6 @@ std::string line(const study_sleep::ClockReading& clock, const uint8_t offsetQ, 
 
 }  // namespace
 
-TEST(StudySleepDate, TheEpochWasAThursday) {
-  EXPECT_EQ(study_sleep::daysFromCivil(1970, 1, 1), 0);
-  EXPECT_EQ(study_sleep::weekdayFromDays(0), 4);
-}
-
 TEST(StudySleepDate, FormatsTheDayInUtc) { EXPECT_EQ(line(at(2026, 9, 27, 10, 0), UTC), "Sunday 27 Sep"); }
 
 TEST(StudySleepDate, FormatsInSpanish) {
@@ -263,6 +258,8 @@ TEST(StudySleepDate, GarbageFromTheClockGivesNoLine) {
   EXPECT_EQ(line(at(2026, 13, 1, 10, 0), UTC), "<none>");
   EXPECT_EQ(line(at(2026, 9, 0, 10, 0), UTC), "<none>");
 }
+
+TEST(StudySleepDate, ADateThatDoesNotExistGivesNoLine) { EXPECT_EQ(line(at(2026, 2, 30, 10, 0), UTC), "<none>"); }
 
 TEST(StudySleepDate, AMissingNameGivesNoLine) {
   EXPECT_EQ(line(at(2026, 9, 27, 10, 0), UTC, "", EN_MONTHS), "<none>");

@@ -8,6 +8,7 @@
 
 #include "activities/UiListActivity.h"
 #include "network/WifiSession.h"
+#include "util/ProgressThrottle.h"
 
 namespace catalog {
 struct Entry;
@@ -124,8 +125,7 @@ class CatalogSearchActivity final : public UiListActivity {
 
   size_t downloadProgress = 0;
   size_t downloadTotal = 0;
-  int lastRenderedPercent = -1;
-  unsigned long lastProgressUpdateMs = 0;
+  ProgressThrottle progressThrottle;
 
   bool cancelDownload = false;
   bool goHomeAfterCancel = false;

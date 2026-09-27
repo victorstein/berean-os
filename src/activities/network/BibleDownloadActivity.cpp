@@ -18,6 +18,7 @@
 #include "activities/launcher/LauncherBible.h"
 #include "components/UITheme.h"
 #include "network/PublicationDownloader.h"
+#include "util/PublicationLanguage.h"
 
 namespace fui = freeink::ui;
 
@@ -30,8 +31,6 @@ constexpr fui::ActionId ACTION_CHOOSE_FILE = 2;
 constexpr fui::ActionId ACTION_DISMISS = 3;
 constexpr fui::ActionId ACTION_CANCEL = 4;
 
-constexpr int DOWNLOAD_PROGRESS_STEP_PERCENT = 5;
-constexpr unsigned long DOWNLOAD_PROGRESS_MIN_UPDATE_MS = 5000;
 constexpr uint8_t DIALOG_MESSAGE_LINES = 3;
 
 // Measured 2026-09-27: 14,945,282 B (S) and 15,652,378 B (E). The exact size
@@ -61,8 +60,7 @@ void BibleDownloadActivity::onEnter() {
   statusMessage.clear();
   currentFilename.clear();
 
-  const char* language = SETTINGS.publicationLanguage == CrossPointSettings::PUB_LANG_ENGLISH ? tr(STR_LANG_ENGLISH)
-                                                                                              : tr(STR_LANG_SPANISH);
+  const char* language = I18N.get(publicationLanguageNameId(SETTINGS.publicationLanguage));
   snprintf(promptMessage, sizeof(promptMessage), tr(STR_BIBLE_DOWNLOAD_PROMPT), language, NWT_APPROX_MEGABYTES);
 
   resetUi();
@@ -211,13 +209,7 @@ void BibleDownloadActivity::onDownloadProgress(void* ctx, const size_t downloade
   }
   self->routeTouch(self->mappedInput);
 
-  const int percent = total > 0 ? static_cast<int>(static_cast<uint64_t>(downloaded) * 100 / total) : 0;
-  const unsigned long now = millis();
-  if (percent >= 100 || self->lastRenderedPercent < 0 ||
-      percent >= self->lastRenderedPercent + DOWNLOAD_PROGRESS_STEP_PERCENT ||
-      now - self->lastProgressUpdateMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS) {
-    self->lastRenderedPercent = percent;
-    self->lastProgressUpdateMs = now;
+  if (self->progressThrottle.shouldRepaint(downloaded, total, static_cast<uint32_t>(millis()))) {
     self->requestUpdate(true);
   }
 }
@@ -241,8 +233,7 @@ void BibleDownloadActivity::runDownload() {
 
   downloadProgress = 0;
   downloadTotal = 0;
-  lastRenderedPercent = -1;
-  lastProgressUpdateMs = 0;
+  progressThrottle.reset();
   cancelDownload = false;
   goHomeAfterCancel = false;
 

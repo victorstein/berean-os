@@ -21,8 +21,6 @@ namespace fui = freeink::ui;
 
 namespace {
 constexpr fui::ActionId ACTION_CANCEL = 1;
-constexpr int DOWNLOAD_PROGRESS_STEP_PERCENT = 5;
-constexpr unsigned long DOWNLOAD_PROGRESS_MIN_UPDATE_MS = 5000;
 
 // The week -> issue mapping is language-independent, so the meetings page stays
 // English regardless; only the EPUB request carries the publication language.
@@ -187,7 +185,7 @@ bool MeetingDownloadActivity::scanWeek(const IsoWeek& week, WolWeekScanner& scan
         // length often enough that a bar would sit at zero throughout. This is
         // only here to show the scrape is alive.
         const unsigned long now = millis();
-        if (now - lastRepaintMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS) {
+        if (now - lastRepaintMs >= ProgressThrottle::MIN_UPDATE_MS) {
           lastRepaintMs = now;
           char scanned[64];
           snprintf(scanned, sizeof(scanned), "%s  %u KB", tr(STR_RESOLVING_WEEK), static_cast<unsigned>(bytes / 1024));
@@ -246,13 +244,7 @@ void MeetingDownloadActivity::onDownloadProgress(void* ctx, const size_t downloa
   }
   self->routeTouch(self->mappedInput);
 
-  const int percent = total > 0 ? static_cast<int>(static_cast<uint64_t>(downloaded) * 100 / total) : 0;
-  const unsigned long now = millis();
-  if (percent >= 100 || self->lastRenderedPercent < 0 ||
-      percent >= self->lastRenderedPercent + DOWNLOAD_PROGRESS_STEP_PERCENT ||
-      now - self->lastProgressUpdateMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS) {
-    self->lastRenderedPercent = percent;
-    self->lastProgressUpdateMs = now;
+  if (self->progressThrottle.shouldRepaint(downloaded, total, static_cast<uint32_t>(millis()))) {
     self->requestUpdate(true);
   }
 }
@@ -283,8 +275,7 @@ bool MeetingDownloadActivity::downloadPublication(const MeetingPub pub, const ch
   statusMessage = tr(STR_DOWNLOADING);
   downloadProgress = 0;
   downloadTotal = 0;
-  lastRenderedPercent = -1;
-  lastProgressUpdateMs = 0;
+  progressThrottle.reset();
   requestUpdateAndWait();
 
   std::string destPath;

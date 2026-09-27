@@ -1,13 +1,10 @@
 #include "PublicationsActivity.h"
 
 #include <Bitmap.h>
-#include <Epub.h>
-#include <FsHelpers.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
-#include <SdPaths.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -18,6 +15,7 @@
 #include "components/UiAppHelpers.h"
 #include "study/PubKeyRegistry.h"
 #include "util/CardBooks.h"
+#include "util/CoverThumb.h"
 
 namespace fui = freeink::ui;
 
@@ -79,17 +77,8 @@ void PublicationsActivity::refresh() {
 }
 
 bool PublicationsActivity::loadThumb(Entry& entry, bool& generatedAny) {
-  if (!FsHelpers::hasEpubExtension(entry.path)) return false;
-
-  Epub epub(entry.path, sdpaths::CROSSPOINT_DIR);
-  const std::string thumbPath = epub.getThumbBmpPath(THUMB_HEIGHT);
-  if (!Storage.exists(thumbPath.c_str())) {
-    generatedAny = true;
-    // buildIfMissing: a book that has never been opened has no metadata cache,
-    // and generateThumbBmp refuses without one.
-    epub.load(true, true);
-    if (!epub.generateThumbBmp(THUMB_HEIGHT) || !Storage.exists(thumbPath.c_str())) return false;
-  }
+  const std::string thumbPath = CoverThumb::pathFor(entry.path, THUMB_HEIGHT, generatedAny);
+  if (thumbPath.empty()) return false;
 
   HalFile file;
   if (!Storage.openFileForRead(MODULE, thumbPath, file)) return false;

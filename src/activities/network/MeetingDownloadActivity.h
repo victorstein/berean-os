@@ -8,6 +8,7 @@
 #include "components/UiAppHost.h"
 #include "network/WifiSession.h"
 #include "network/WolWeekScan.h"
+#include "util/ProgressThrottle.h"
 
 /**
  * Downloads the current week's meeting publications — the Watchtower study
@@ -76,8 +77,7 @@ class MeetingDownloadActivity final : public Activity, private UiAppHost {
   size_t downloadTotal = 0;
   // Repaint throttle for the progress hook: a full e-ink refresh per chunk would
   // cost more than the transfer.
-  int lastRenderedPercent = -1;
-  unsigned long lastProgressUpdateMs = 0;
+  ProgressThrottle progressThrottle;
 
   // Read by HttpDownloader between chunks; set by the Cancel button or a Back
   // press, both pumped from the download's own progress callback.

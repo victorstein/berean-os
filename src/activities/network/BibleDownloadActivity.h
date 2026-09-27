@@ -8,6 +8,7 @@
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
 #include "network/WifiSession.h"
+#include "util/ProgressThrottle.h"
 
 // What the Bible tile opens when no Bible is on the card: asks first, then
 // downloads the New World Translation in the publication language through
@@ -71,8 +72,7 @@ class BibleDownloadActivity final : public Activity, private UiAppHost {
   size_t downloadTotal = 0;
   // Repaint throttle for the progress hook: a full e-ink refresh per chunk
   // would cost more than the transfer.
-  int lastRenderedPercent = -1;
-  unsigned long lastProgressUpdateMs = 0;
+  ProgressThrottle progressThrottle;
 
   // Read by HttpDownloader between chunks; set by Cancel, Back or the home
   // gesture, all pumped from the download's own progress hook.
