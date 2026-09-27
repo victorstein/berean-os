@@ -655,9 +655,9 @@ class ParagraphStreamer final : public Print {
                     bool relaxFirstStep = false)
       : fwdTarget(SIZE_MAX),
         revChar(charOff),
+        targetTextNode(textNodeIdx),
         steps(xpathSteps),
         stepCount(xpathStepCount),
-        targetTextNode(textNodeIdx),
         relaxFirstStepDepth(relaxFirstStep) {
     memset(stepEnteredAtDepth, -1, sizeof(stepEnteredAtDepth));
   }
