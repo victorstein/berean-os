@@ -22,10 +22,8 @@
 #include <limits>
 #include <utility>
 
-#include "../../util/BookmarkFile.h"
 #include "BibleNavigationActivity.h"
 #include "BibleSearchActivity.h"
-#include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "EpubReaderBookmarksActivity.h"
@@ -51,13 +49,10 @@
 #include "study/PubKeyRegistry.h"
 #include "study/StudyStore.h"
 #include "util/BookCacheUtils.h"
-#include "util/BookmarkUtil.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
 constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
-constexpr size_t initialBookmarkCacheCapacity = 16;
-constexpr float bookmarkProgressEpsilon = 0.0001f;
 
 int clampPercent(int percent) {
   if (percent < 0) {
@@ -81,36 +76,6 @@ constexpr char READ_FOLDER[] = "/read";
 bool isInReadFolder(const std::string& path) {
   constexpr size_t n = sizeof(READ_FOLDER) - 1;
   return path.size() > n && path.compare(0, n, READ_FOLDER) == 0 && path[n] == '/';
-}
-
-struct ProgressRange {
-  float start;
-  float end;
-};
-
-ProgressRange getPageProgressRange(const std::shared_ptr<Epub>& epub, const int spineIndex, const int page,
-                                   const int pageCount) {
-  if (pageCount <= 1) {
-    return {epub->calculateProgress(spineIndex, 0.0f), epub->calculateProgress(spineIndex, 1.0f)};
-  }
-
-  const float step = 1.0f / static_cast<float>(pageCount - 1);
-  const float anchor = std::clamp(static_cast<float>(page) * step, 0.0f, 1.0f);
-  const float start = std::max(0.0f, anchor - (step * 0.5f));
-  const float end = std::min(1.0f, anchor + (step * 0.5f));
-  return {epub->calculateProgress(spineIndex, start), epub->calculateProgress(spineIndex, end)};
-}
-
-bool bookmarkMatchesProgress(const BookmarkEntry& bookmark, const int spineIndex, const int page, const int pageCount,
-                             const ProgressRange& pageRange) {
-  if (bookmark.computedSpineIndex == spineIndex && bookmark.computedChapterPageCount == pageCount &&
-      bookmark.computedChapterProgress == page) {
-    return true;
-  }
-
-  const float bookmarkProgress = std::clamp(bookmark.percentage, 0.0f, 1.0f);
-  return bookmarkProgress + bookmarkProgressEpsilon >= pageRange.start &&
-         bookmarkProgress - bookmarkProgressEpsilon <= pageRange.end;
 }
 
 std::string buildReadFolderDestination(const std::string& srcPath) {
@@ -241,7 +206,7 @@ bool EpubReaderActivity::loadBook() {
     }
   }
 
-  loadCachedBookmarks();
+  bookmarks.load(renderer, epub, section.get(), currentSpineIndex);
 
 #if BOARD_HAS_PSRAM
   // StudyStore latches saving off itself when a store failed to load, so this
@@ -314,7 +279,7 @@ void EpubReaderActivity::openReaderMenu() {
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), currentPage, totalPages,
                                                bookProgressPercent, SETTINGS.orientation, !currentPageFootnotes.empty(),
-                                               !cachedBookmarks.empty(), hasHighlights, isBible),
+                                               !bookmarks.empty(), hasHighlights, isBible),
       [this](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -379,7 +344,7 @@ void EpubReaderActivity::openHighlightPassage() {
 
 void EpubReaderActivity::openHighlights() {
   // Deliberately NOT progressChangeResultHandler (used by the BOOKMARKS case
-  // below): that lambda calls loadCachedBookmarks() and reopens the reader
+  // below): that lambda calls bookmarks.load() and reopens the reader
   // menu on cancel, both wrong here, and HighlightsActivity's own class
   // comment already documents that wiring this launch site is Task 7's job.
   // The result shape (ProgressChangeResult with hasVisibleTextOffset=true) is
@@ -518,8 +483,7 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  if (showBookmarkMessage && (millis() - bookmarkMessageTime) >= ReaderUtils::BOOKMARK_MESSAGE_DURATION_MS) {
-    showBookmarkMessage = false;
+  if (bookmarks.expireToast(millis())) {
     requestUpdate();
   }
 
@@ -554,7 +518,7 @@ void EpubReaderActivity::loop() {
   if (mappedInput.wasHomeKeyHold()) {
     switch (SETTINGS.longPressMenuFunction) {
       case CrossPointSettings::LP_MENU_BOOKMARK:
-        if (!showBookmarkMessage) {
+        if (!bookmarks.toastVisible()) {
           addBookmark();
         }
         return;
@@ -714,7 +678,7 @@ void EpubReaderActivity::jumpToPercent(int percent) {
 
 void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
-    loadCachedBookmarks();
+    bookmarks.load(renderer, epub, section.get(), currentSpineIndex);
     if (result.isCancelled) {
       openReaderMenu();
     } else {
@@ -1268,7 +1232,7 @@ void EpubReaderActivity::renderBook() {
     return;
   }
 
-  updateBookmarkFlag();
+  bookmarks.refreshPageFlag(epub, section.get(), currentSpineIndex);
 
   {
     auto p = section->loadPage(section->currentPage);
@@ -1315,8 +1279,8 @@ void EpubReaderActivity::renderBook() {
     ScreenshotUtil::takeScreenshot(renderer);
   }
 
-  if (showBookmarkMessage) {
-    GUI.drawToast(renderer, bookmarkToastString(bookmarkToast));
+  if (bookmarks.toastVisible()) {
+    GUI.drawToast(renderer, bookmarks.toastText());
   }
 }
 
@@ -1680,8 +1644,8 @@ void EpubReaderActivity::renderStatusBar() const {
     title = epub ? epub->getTitle() : "";
   }
 
-  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,
-                    section ? section->isBuilding() : false);
+  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true,
+                    bookmarks.currentPageBookmarked(), section ? section->isBuilding() : false);
 }
 
 void EpubReaderActivity::navigateTo(NavTarget target, const ReturnPolicy policy) {
@@ -1762,51 +1726,10 @@ void EpubReaderActivity::restoreSavedPosition() {
   navigateTo({.spineIndex = pos.spineIndex, .pageNumber = pos.pageNumber}, ReturnPolicy::Preserve);
 }
 
-const char* EpubReaderActivity::bookmarkToastString(const BookmarkToast toast) {
-  switch (toast) {
-    case BookmarkToast::Added:
-      return tr(STR_BOOKMARK_ADDED);
-    case BookmarkToast::Removed:
-      return tr(STR_BOOKMARK_REMOVED);
-    case BookmarkToast::TooLarge:
-      return tr(STR_BOOKMARKS_TOO_LARGE);
-    case BookmarkToast::SaveFailed:
-    case BookmarkToast::LoadDisabled:
-      break;
-  }
-  return tr(STR_ERROR_GENERAL_FAILURE);
-}
-
-void EpubReaderActivity::loadCachedBookmarks() {
-  cachedBookmarks.clear();
-  if (cachedBookmarks.capacity() < initialBookmarkCacheCapacity) {
-    cachedBookmarks.reserve(initialBookmarkCacheCapacity);
-  }
-  if (!epub) {
-    currentPageBookmarked = false;
-    return;
-  }
-
-  // Toast on the TRANSITION, not the result: this runs again on every return
-  // from the bookmarks list, and every toast costs an e-ink refresh.
-  if (BookmarkFile::load(epub->getPath(), cachedBookmarks) == BookmarkFile::LoadResult::Failed &&
-      !bookmarksSaveDisabled) {
-    bookmarksSaveDisabled = true;
-    LOG_ERR("ERS", "Bookmarks unreadable; saving disabled while this book is open");
-    ReaderUtils::showMessage(renderer, bookmarkToastString(BookmarkToast::LoadDisabled));
-  }
-  updateBookmarkFlag();
-}
-
 void EpubReaderActivity::addBookmark() {
   if (!section || !epub) return;
 
-  // Every path from here shows a toast, so arm it once.
-  showBookmarkMessage = true;
-  bookmarkMessageTime = millis();
-
-  if (bookmarksSaveDisabled) {
-    bookmarkToast = BookmarkToast::LoadDisabled;
+  if (!bookmarks.beginToggle(millis())) {
     requestUpdate();
     return;
   }
@@ -1820,88 +1743,9 @@ void EpubReaderActivity::addBookmark() {
     currentPage = section->currentPage;
   }
 
-  SavedProgressPosition progress = ProgressMapper::toSavedProgress(epub, getCurrentPosition());
-  const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, currentPage, pageCount);
-
-  // Everything a rollback needs: the entries about to be erased, with the index
-  // each sat at. Collected in ascending order, so re-inserting in that order
-  // restores the original positions. A page matches one bookmark unless the
-  // user built overlapping ones, so one slot is the realistic size.
-  std::vector<std::pair<size_t, BookmarkEntry>> erased;
-  erased.reserve(1);
-  for (size_t i = 0; i < cachedBookmarks.size(); ++i) {
-    if (bookmarkMatchesProgress(cachedBookmarks[i], currentSpineIndex, currentPage, pageCount, pageRange)) {
-      erased.emplace_back(i, cachedBookmarks[i]);
-    }
-  }
-  const bool wasBookmarked = !erased.empty();
-
-  if (wasBookmarked) {
-    // Erase by the indices just collected, descending so each erase leaves the
-    // lower ones valid. Re-deriving the match here instead is what would let an
-    // edit to one copy of the rule make the rollback restore a different set
-    // than the one removed.
-    for (auto it = erased.rbegin(); it != erased.rend(); ++it) {
-      cachedBookmarks.erase(cachedBookmarks.begin() + static_cast<std::ptrdiff_t>(it->first));
-    }
-  } else {
-    std::string pageText;
-    if (currentPage >= 0 && currentPage < pageCount) {
-      pageText = section->getTextFromSectionFile();
-    }
-    BookmarkEntry entry;
-    entry.percentage = progress.percentage;
-    entry.xpath = progress.xpath;
-    entry.summary = BookmarkUtil::sanitizeBookmarkSummary(pageText);
-    entry.computedSpineIndex = currentSpineIndex;
-    entry.computedChapterPageCount = pageCount;
-    entry.computedChapterProgress = currentPage;
-    const std::optional<uint32_t> offset =
-        currentPageVisibleOffset.has_value() ? currentPageVisibleOffset
-        : (currentPage >= 0 && currentPage < section->pageCount)
-            ? section->getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage))
-            : std::nullopt;
-    if (offset.has_value()) {
-      entry.visibleTextOffset = *offset;
-      entry.hasVisibleTextOffset = true;
-    }
-    cachedBookmarks.insert(cachedBookmarks.begin(), entry);
-  }
-
-  const BookmarkFile::SaveResult saved = BookmarkFile::save(epub->getPath(), cachedBookmarks);
-  if (saved == BookmarkFile::SaveResult::Ok) {
-    currentPageBookmarked = !wasBookmarked;
-    bookmarkToast = wasBookmarked ? BookmarkToast::Removed : BookmarkToast::Added;
-    requestUpdate();
-    return;
-  }
-
-  // Nothing reached the card, so the resident list and the page's flag must go
-  // back to what the card still holds -- otherwise the page reads as bookmarked
-  // for something that will not be there after a reopen.
-  if (wasBookmarked) {
-    for (const auto& [index, entry] : erased) {
-      cachedBookmarks.insert(cachedBookmarks.begin() + static_cast<std::ptrdiff_t>(index), entry);
-    }
-  } else {
-    cachedBookmarks.erase(cachedBookmarks.begin());
-  }
-  updateBookmarkFlag();  // derive the flag from the vector the rollback just restored
-  bookmarkToast = (saved == BookmarkFile::SaveResult::TooLarge) ? BookmarkToast::TooLarge : BookmarkToast::SaveFailed;
-  LOG_ERR("ERS", "Bookmark save refused; rolled the change back");
+  const SavedProgressPosition progress = ProgressMapper::toSavedProgress(epub, getCurrentPosition());
+  bookmarks.toggle(epub, *section, currentSpineIndex, currentPage, pageCount, currentPageVisibleOffset, progress);
   requestUpdate();
-}
-
-void EpubReaderActivity::updateBookmarkFlag() {
-  if (!section || !epub || cachedBookmarks.empty()) {
-    currentPageBookmarked = false;
-    return;
-  }
-  const int pageCount = section->estimatedTotalPages();
-  const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, section->currentPage, pageCount);
-  currentPageBookmarked = std::any_of(cachedBookmarks.begin(), cachedBookmarks.end(), [&](const BookmarkEntry& b) {
-    return bookmarkMatchesProgress(b, currentSpineIndex, section->currentPage, pageCount, pageRange);
-  });
 }
 
 ScreenshotInfo EpubReaderActivity::getScreenshotInfo() const {
