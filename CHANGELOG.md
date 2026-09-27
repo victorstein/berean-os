@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.3](https://github.com/victorstein/berean-os/compare/v1.19.2...v1.19.3) (2026-09-27)
+
+
+### Bug Fixes
+
+* enable -Wall for repo sources and fix its warnings ([#176](https://github.com/victorstein/berean-os/issues/176)) ([27bcfa4](https://github.com/victorstein/berean-os/commit/27bcfa42556dc8471e64b8871a9df8bff0e0255f)), closes [#106](https://github.com/victorstein/berean-os/issues/106)
+
 ## [1.19.2](https://github.com/victorstein/berean-os/compare/v1.19.1...v1.19.2) (2026-09-27)
 
 
