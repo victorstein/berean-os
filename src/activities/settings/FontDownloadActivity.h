@@ -1,11 +1,13 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "FontInstaller.h"
 #include "SdCardFont.h"
 #include "activities/UiListActivity.h"
+#include "network/WifiSession.h"
 
 // JSON schema version of the fonts.json manifest. The canonical version for
 // the build tooling lives in lib/EpdFont/scripts/cpfont_version.py. This
@@ -95,6 +97,7 @@ class FontDownloadActivity final : public UiListActivity {
   std::vector<std::string> rowLabels_;
   std::vector<freeink::ui::ListItem> rowItems_;
   bool rowsDirty_ = true;
+  std::optional<WifiSession> wifiSession;
   void rebuildRowItems();
 
   int listCount() const override { return listItemCount(); }

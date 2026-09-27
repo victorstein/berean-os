@@ -12,7 +12,6 @@
 
 #include "MappedInputManager.h"
 #include "SdCardFontSystem.h"
-#include "SilentRestart.h"
 #include "activities/PostedMessage.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -38,20 +37,13 @@ void FontDownloadActivity::activateIndex(const int index) {
 
 void FontDownloadActivity::onEnter() {
   UiListActivity::onEnter();
+  wifiSession.emplace();
   WiFi.mode(WIFI_STA);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 
-void FontDownloadActivity::onExit() {
-  Activity::onExit();
-
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
-  }
-}
+void FontDownloadActivity::onExit() { Activity::onExit(); }
 
 void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {

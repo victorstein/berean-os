@@ -10,7 +10,6 @@
 #include <cstdio>
 
 #include "MappedInputManager.h"
-#include "SilentRestart.h"
 #include "WifiSelectionActivity.h"
 #include "activities/PostedMessage.h"
 #include "components/UITheme.h"
@@ -37,6 +36,7 @@ MeetingDownloadActivity::MeetingDownloadActivity(GfxRenderer& renderer, MappedIn
 
 void MeetingDownloadActivity::onEnter() {
   Activity::onEnter();
+  wifiSession.emplace();
 
   state = State::RESOLVING;
   statusMessage = tr(STR_RESOLVING_WEEK);
@@ -69,15 +69,7 @@ void MeetingDownloadActivity::onEnter() {
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 
-void MeetingDownloadActivity::onExit() {
-  Activity::onExit();
-
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
-  }
-}
+void MeetingDownloadActivity::onExit() { Activity::onExit(); }
 
 void MeetingDownloadActivity::onWifiSelectionComplete(const bool connected) {
   if (!connected) {

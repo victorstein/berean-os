@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.1](https://github.com/victorstein/berean-os/compare/v1.17.0...v1.17.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* leave Wi-Fi as each network screen found it ([#155](https://github.com/victorstein/berean-os/issues/155)) ([d956cc8](https://github.com/victorstein/berean-os/commit/d956cc8bf531b97ebf8e9ba89ca00db3d7766c9c)), closes [#109](https://github.com/victorstein/berean-os/issues/109)
+
 ## [1.17.0](https://github.com/victorstein/berean-os/compare/v1.16.11...v1.17.0) (2026-09-27)
 
 
