@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/victorstein/berean-os/compare/v1.18.0...v1.19.0) (2026-09-27)
+
+
+### Features
+
+* show the meetings week with covers, progress and meeting days ([#169](https://github.com/victorstein/berean-os/issues/169)) ([71c8e32](https://github.com/victorstein/berean-os/commit/71c8e32222edb75ef610e9314b02a130b050ae49)), closes [#115](https://github.com/victorstein/berean-os/issues/115)
+
 ## [1.18.0](https://github.com/victorstein/berean-os/compare/v1.17.4...v1.18.0) (2026-09-27)
 
 
