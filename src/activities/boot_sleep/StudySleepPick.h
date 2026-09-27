@@ -50,4 +50,22 @@ inline std::optional<std::string_view> pubKeyFromFileName(const std::string_view
   return fileName.substr(0, fileName.size() - suffix.size());
 }
 
+struct RingView {
+  const uint32_t* keys;
+  uint8_t capacity;
+  uint8_t pos;  // the slot the next push writes
+  uint8_t fill;
+};
+
+// 0 is the most recent showing. Walks newest-first, so a key held twice reports
+// its newer slot.
+inline std::optional<uint8_t> ageOf(const RingView& ring, const uint32_t key) {
+  const uint8_t held = ring.fill < ring.capacity ? ring.fill : ring.capacity;
+  for (uint8_t age = 0; age < held; ++age) {
+    const auto slot = static_cast<uint8_t>((ring.pos + ring.capacity - 1 - age) % ring.capacity);
+    if (ring.keys[slot] == key) return age;
+  }
+  return std::nullopt;
+}
+
 }  // namespace study_sleep

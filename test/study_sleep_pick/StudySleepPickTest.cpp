@@ -45,3 +45,49 @@ TEST(StudySleepFileName, SkipsTempHiddenAndForeignFiles) {
   EXPECT_EQ(study_sleep::pubKeyFromFileName("notes.txt"), std::nullopt);
   EXPECT_EQ(study_sleep::pubKeyFromFileName(""), std::nullopt);
 }
+
+namespace {
+
+constexpr uint8_t RING = 16;
+
+study_sleep::RingView view(const uint32_t* keys, const uint8_t pos, const uint8_t fill) {
+  return study_sleep::RingView{keys, RING, pos, fill};
+}
+
+}  // namespace
+
+TEST(StudySleepRing, AnEmptyRingHoldsNothing) {
+  const uint32_t keys[RING] = {};
+  EXPECT_EQ(study_sleep::ageOf(view(keys, 0, 0), 0u), std::nullopt);
+}
+
+TEST(StudySleepRing, AgeCountsBackFromTheNewest) {
+  uint32_t keys[RING] = {};
+  keys[0] = 10;
+  keys[1] = 20;
+  const auto ring = view(keys, 2, 2);
+  EXPECT_EQ(study_sleep::ageOf(ring, 20u), std::optional<uint8_t>(0));
+  EXPECT_EQ(study_sleep::ageOf(ring, 10u), std::optional<uint8_t>(1));
+}
+
+TEST(StudySleepRing, SlotsBeyondFillAreIgnored) {
+  const uint32_t keys[RING] = {10};
+  EXPECT_EQ(study_sleep::ageOf(view(keys, 1, 1), 0u), std::nullopt);
+}
+
+TEST(StudySleepRing, WrapsAroundThePosition) {
+  uint32_t keys[RING] = {};
+  keys[0] = 7;
+  keys[RING - 1] = 8;
+  const auto ring = view(keys, 1, RING);
+  EXPECT_EQ(study_sleep::ageOf(ring, 7u), std::optional<uint8_t>(0));
+  EXPECT_EQ(study_sleep::ageOf(ring, 8u), std::optional<uint8_t>(1));
+}
+
+TEST(StudySleepRing, AKeyHeldTwiceReportsItsNewestShowing) {
+  uint32_t keys[RING] = {};
+  keys[0] = 5;
+  keys[1] = 5;
+  keys[2] = 9;
+  EXPECT_EQ(study_sleep::ageOf(view(keys, 3, 3), 5u), std::optional<uint8_t>(1));
+}
