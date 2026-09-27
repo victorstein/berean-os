@@ -1,0 +1,70 @@
+name: Set up PlatformIO
+description: Installs pioarduino's PlatformIO Core and restores the package cache, including the prebuilt custom-sdkconfig framework libs.
+
+inputs:
+  save-cache:
+    description: Save the package cache when the key missed. Only jobs that compile firmware may save it.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        version: "latest"
+        enable-cache: false
+
+    - name: Install PlatformIO Core
+      shell: bash
+      run: |
+        uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+        # platform-espressif32's builder/main.py imports these unconditionally; its own
+        # penv bootstrap (builder/penv_setup.py) is supposed to install them automatically
+        # but isn't picking them up reliably in this runner image, so pin them explicitly.
+        uv pip install --system -U "littlefs-python>=0.16.0" "fatfs-ng>=0.1.14" "pyyaml>=6.0.2" \
+          "rich-click>=1.8.6" "zopfli>=0.2.2" "intelhex>=2.3.0" "rich>=14.0.0" "urllib3<2" \
+          "cryptography>=45.0.3" "certifi>=2025.8.3" "ecdsa>=0.19.1" "bitstring>=4.3.1" \
+          "reedsolo>=1.5.3,<1.8" "esp-idf-size>=2.0.0" "esp-coredump>=1.14.0"
+
+    # Every release-please bump rewrites the [berean] version block, which
+    # changes no package. Hashing the file without it lets the release build
+    # hit the cache that the merge build on main just saved.
+    - name: Compute package cache key
+      id: key
+      shell: bash
+      run: |
+        hash="$(sed '/x-release-please-start-version/,/x-release-please-end/d' platformio.ini | sha256sum | cut -c1-16)"
+        echo "key=pio-v2-${RUNNER_OS}-core6.1.19-${hash}" >> "$GITHUB_OUTPUT"
+
+    # custom_sdkconfig makes the platform rebuild the Arduino/ESP-IDF libs into
+    # ~/.platformio (~5 min parallel). It only skips that rebuild when the
+    # project-dir sdkconfig.defaults it wrote carries a matching hash header
+    # (builder/frameworks/arduino.py, matching_custom_sdkconfig), so the file
+    # has to travel with the package cache or every fresh checkout rebuilds.
+    - name: Cache PlatformIO packages
+      if: inputs.save-cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.platformio
+          sdkconfig.defaults
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: pio-v2-${{ runner.os }}-
+
+    # A job that never compiles the libs would save pristine ones, and whichever
+    # parallel job saves first owns the key.
+    - name: Restore PlatformIO packages
+      if: inputs.save-cache != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.platformio
+          sdkconfig.defaults
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: pio-v2-${{ runner.os }}-
