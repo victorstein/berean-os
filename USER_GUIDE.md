@@ -260,7 +260,7 @@ Hidden files and folders — anything starting with `.` — are shown only when
 - **Hide battery %** — Never, In reader, or Always. The icon always stays.
 - **Refresh frequency** — how often the panel does a full refresh while reading, to clear ghosting:
   every 1, 5, 10, 15 or 30 pages.
-- **UI theme** — Classic, Lyra, Lyra Extended, or RoundedRaff.
+- **UI theme** — Classic or Lyra. Tap to switch between them.
 - **Sunlight fading fix** — a software workaround for panels that fade in direct sunlight.
 - **Restore light on wake** — bring the frontlight back at the brightness it had before sleep.
 

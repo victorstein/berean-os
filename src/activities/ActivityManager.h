@@ -84,7 +84,6 @@ class ActivityManager {
   void goToFileTransfer();
   void goToSettings();
   void goToFileBrowser(std::string path = {});
-  void goToRecentBooks();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);
   void goToBoot();

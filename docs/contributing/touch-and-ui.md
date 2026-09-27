@@ -14,7 +14,7 @@ The whole input layer below is replaced in Phase 2, `MappedInputManager` include
 
 | Your screen is... | Use | In-tree reference |
 |---|---|---|
-| A single list of rows | subclass `UiListActivity` | [`LanguageSelectActivity`](../../src/activities/settings/LanguageSelectActivity.cpp) (minimal), [`RecentBooksActivity`](../../src/activities/home/RecentBooksActivity.cpp) (long-press) |
+| A single list of rows | subclass `UiListActivity` | [`LanguageSelectActivity`](../../src/activities/settings/LanguageSelectActivity.cpp) (minimal), [`FileBrowserActivity`](../../src/activities/home/FileBrowserActivity.cpp) (long-press) |
 | Tabbed lists | subclass `UiTabListActivity` | [`SettingsActivity`](../../src/activities/settings/SettingsActivity.cpp) |
 | Custom FUI layout (sliders, prompts, state machines) | inherit `UiAppHost` directly | [`EpubReaderPercentSelectionActivity`](../../src/activities/reader/EpubReaderPercentSelectionActivity.cpp), [`WifiSelectionActivity`](../../src/activities/network/WifiSelectionActivity.cpp) |
 | A modal picker or confirm inside a legacy activity | `OptionPopup` (or push `ConfirmationActivity`) | [`OtaUpdateActivity`](../../src/activities/settings/OtaUpdateActivity.cpp) |
@@ -129,7 +129,7 @@ Two consequences specific to this board. The frontlight owns the top edge, so th
 |---|---|
 | `wasScreenTapped` / `wasScreenTouchDown` / `isScreenTouchHeld` | Consumed by the FUI snapshot builder. Direct use only in the two legacy surfaces |
 | `wasTapInRect(x, y, w, h)` | Legacy one-off hit test |
-| `rowTouch` / `colTouch` | Legacy row/column band math. Sole remaining user: `HomeActivity` (theme-driven layout) |
+| `rowTouch` / `colTouch` | Legacy row/column band math. No remaining caller; kept until the input-layer replacement lands |
 | `wasSwipe()` | Raw swipe direction, for behavior beyond the global gestures (reader page turns) |
 | `hasTouch()` | Still fine anywhere: gate touch-only chrome (on-screen Cancel/OK pairs) on it |
 

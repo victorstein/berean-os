@@ -7,7 +7,6 @@
 #include <vector>
 
 class GfxRenderer;
-struct RecentBook;
 
 struct Rect {
   int x;
@@ -43,13 +42,13 @@ struct ThemeMetrics {
   // uiScale fonts supply the sizes. Plain data by design — the eventual
   // SD-card theme files will provide exactly these values.
   int listRowGap;          // vertical gap between rows
-  int listRowRadius;       // row corner radius (RoundedRaff cards, Lyra pill)
+  int listRowRadius;       // row corner radius, 0 = square
   int listInset;           // horizontal inset of the whole list band
   int listSidePadding;     // text inset within a row
   int listSelectionStyle;  // 0=invert fill, 1=light pill, 2=underline, 3=triangle (fui::SelectionStyle order)
   int listScrollWidth;     // scroll indicator thickness
   int listScrollSide;      // 0 = right edge, 1 = left edge
-  bool listTitleBold;      // bold row titles (RoundedRaff)
+  bool listTitleBold;      // bold row titles
   // FreeInkUI header shape, same contract as the list fields above.
   int headerSidePadding;    // title text inset
   int headerUnderlineSize;  // bottom rule thickness (Lyra), 0 = none
@@ -57,26 +56,17 @@ struct ThemeMetrics {
   int headerBatterySide;    // 0 = right edge, 1 = left edge
   // Battery in its own corner strip (batteryBarHeight tall) with the title on
   // the lower sub-band spanning the full width (Lyra), vs sharing the title
-  // line with a width reserve (Classic, RoundedRaff).
+  // line with a width reserve (Classic).
   bool headerBatteryDetached;
-  int menuRowHeight;
-  int menuSpacing;
 
   int tabSpacing;
   int tabBarHeight;
-  // Selected-tab pill fills its equal-width slot (legacy RoundedRaff tabs)
-  // instead of shrinking to hug the label (legacy Lyra tabs).
+  // Selected-tab pill fills its equal-width slot instead of shrinking to hug
+  // the label (Lyra).
   bool tabPillFullSlot = false;
 
   int scrollBarWidth;
   int scrollBarRightOffset;
-
-  int homeTopPadding;
-  int homeCoverHeight;
-  int homeCoverTileHeight;
-  int homeRecentBooksCount;
-  bool homeContinueReadingInMenu;
-  int homeMenuTopOffset;
 
   int buttonHintsHeight;
   int sideButtonHintsWidth;
@@ -155,18 +145,10 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .headerTitleAlign = 1,  // centered
                                  .headerBatterySide = 0,
                                  .headerBatteryDetached = false,
-                                 .menuRowHeight = 45,
-                                 .menuSpacing = 8,
                                  .tabSpacing = 10,
                                  .tabBarHeight = 50,
                                  .scrollBarWidth = 4,
                                  .scrollBarRightOffset = 5,
-                                 .homeTopPadding = 40,
-                                 .homeCoverHeight = 400,
-                                 .homeCoverTileHeight = 400,
-                                 .homeRecentBooksCount = 1,
-                                 .homeContinueReadingInMenu = false,
-                                 .homeMenuTopOffset = 10,
                                  .buttonHintsHeight = 40,
                                  .sideButtonHintsWidth = 30,
                                  .progressBarHeight = 16,
@@ -226,18 +208,8 @@ class BaseTheme {
   static void drawHintLabel(GfxRenderer& renderer, int fontId, const char* label, int x, int boxWidth, int boxTop,
                             int boxHeight, int singleLineYOffset);
   virtual void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const;
-  // Menu row height as DRAWN by drawButtonMenu. HomeActivity builds its touch
-  // grid from this, so hit bands always match the visuals (RoundedRaff derives
-  // its row height from the font, not the metrics table).
-  virtual int getMenuRowHeight(const GfxRenderer& renderer) const;
   virtual int getListRowStep(bool hasSubtitle) const;
   virtual int getListPageItems(int contentHeight, bool hasSubtitle) const;
-  virtual void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
-                        const std::function<std::string(int index)>& rowTitle,
-                        const std::function<std::string(int index)>& rowSubtitle = nullptr,
-                        const std::function<UIIcon(int index)>& rowIcon = nullptr,
-                        const std::function<std::string(int index)>& rowValue = nullptr, bool highlightValue = false,
-                        const std::function<bool(int index)>& rowDimmed = nullptr) const;
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
                           const char* subtitle = nullptr) const;
   virtual void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
@@ -246,12 +218,6 @@ class BaseTheme {
                           bool selected) const;
   virtual bool tabIndexFromPoint(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs, int x, int y,
                                  int& index) const;
-  virtual void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
-                                   const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
-                                   bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;
-  virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
-                              const std::function<std::string(int index)>& buttonLabel,
-                              const std::function<UIIcon(int index)>& rowIcon) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
                                int selectedIndex) const;

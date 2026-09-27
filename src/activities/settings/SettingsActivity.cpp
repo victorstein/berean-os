@@ -9,7 +9,6 @@
 #include <cstdio>
 #include <cstring>
 
-#include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
 #include "FontDownloadActivity.h"
@@ -73,11 +72,6 @@ void SettingsActivity::rebuildSettingsLists() {
     }
   }
 
-  // Append device-only ACTION items
-  if (!BoardConfig::hasTouch()) {
-    controlsSettings.insert(controlsSettings.begin(),
-                            SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
-  }
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_FILE_TRANSFER, SettingAction::FileTransfer));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
@@ -308,9 +302,6 @@ void SettingsActivity::toggleCurrentSetting() {
     // changes or changes no setting, so saving here again would repeat or invent
     // a failure message.
     switch (setting.action) {
-      case SettingAction::RemapFrontButtons:
-        startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), nullptr);
-        break;
       case SettingAction::CustomiseStatusBar:
         startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), nullptr);
         break;

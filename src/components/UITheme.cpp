@@ -9,11 +9,8 @@
 #include <memory>
 
 #include "MappedInputManager.h"
-#include "RecentBooksStore.h"
 #include "components/themes/BaseTheme.h"
-#include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
-#include "components/themes/roundedraff/RoundedRaffTheme.h"
 
 UITheme UITheme::instance;
 
@@ -34,20 +31,15 @@ void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
       currentTheme = std::make_unique<BaseTheme>();
       currentMetrics = &BaseMetrics::values;
       break;
+    // Retired themes and any out-of-range raw value resolve to Lyra, so a
+    // settings.json from an older build can never leave currentTheme null.
     case CrossPointSettings::UI_THEME::LYRA:
+    case CrossPointSettings::UI_THEME::LYRA_3_COVERS:
+    case CrossPointSettings::UI_THEME::ROUNDEDRAFF:
+    default:
       LOG_DBG("UI", "Using Lyra theme");
       currentTheme = std::make_unique<LyraTheme>();
       currentMetrics = &LyraMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::ROUNDEDRAFF:
-      LOG_DBG("UI", "Using RoundedRaff theme");
-      currentTheme = std::make_unique<RoundedRaffTheme>();
-      currentMetrics = &RoundedRaffMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::LYRA_3_COVERS:
-      LOG_DBG("UI", "Using Lyra 3 Covers theme");
-      currentTheme = std::make_unique<Lyra3CoversTheme>();
-      currentMetrics = &Lyra3CoversMetrics::values;
       break;
   }
   metricsValid = false;
@@ -119,14 +111,6 @@ Rect UITheme::getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButton
       break;
   }
   return safeArea;
-}
-
-std::string UITheme::getCoverThumbPath(std::string coverBmpPath, int coverHeight) {
-  size_t pos = coverBmpPath.find("[HEIGHT]", 0);
-  if (pos != std::string::npos) {
-    coverBmpPath.replace(pos, 8, std::to_string(coverHeight));
-  }
-  return coverBmpPath;
 }
 
 UIIcon UITheme::getFileIcon(const std::string& filename) {
