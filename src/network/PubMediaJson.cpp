@@ -36,6 +36,7 @@ void PubMediaJsonParser::reset() {
   checksum_[0] = '\0';
   pubName_[0] = '\0';
   filesize_ = 0;
+  languagePresent_ = false;
 }
 
 void PubMediaJsonParser::feed(const char* data, const size_t len) { parser_.feed(data, len); }
@@ -56,6 +57,7 @@ void PubMediaJsonParser::push(const bool isArray) {
     node = Node::Files;
   } else if (parent == Node::Files && !isArray && keyIs(languageKey_)) {
     node = Node::Language;
+    languagePresent_ = true;
   } else if (parent == Node::Language && isArray && keyIs("EPUB")) {
     node = Node::EpubArray;
   } else if (parent == Node::EpubArray && !isArray && stack_[depth_ - 1].index == 0) {

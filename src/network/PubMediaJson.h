@@ -36,6 +36,11 @@ class PubMediaJsonParser {
   // the 196-byte worst case across languages (Khmer).
   const char* pubName() const { return pubName_; }
 
+  // files.<languageKey> appeared in the response, whatever formats it listed.
+  // A response asked without the EPUB filter uses this to tell "no EPUB
+  // edition" apart from "not published in this language".
+  bool languagePresent() const { return languagePresent_; }
+
  private:
   static constexpr size_t MAX_DEPTH = 16;
 
@@ -84,4 +89,5 @@ class PubMediaJsonParser {
   char checksum_[33];
   char pubName_[208];
   uint64_t filesize_;
+  bool languagePresent_;
 };
