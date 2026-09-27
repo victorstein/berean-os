@@ -11,24 +11,25 @@
 
 namespace {
 
-// One SdFat sector. Under the 4 KB PSRAM routing threshold, so internal SRAM.
+// One SdFat sector each. Under the 4 KB PSRAM routing threshold, so internal SRAM.
 constexpr size_t WRITE_BUFFER_BYTES = 512;
+constexpr size_t READ_BUFFER_BYTES = 512;
 
-// ArduinoJson reader over HalFile, so a file larger than
-// SDCardManager::readFile's 50,000-byte cap still parses in full.
-class HalFileReader {
+// ArduinoJson reader over a BufferedFileReader, so a file larger than
+// SDCardManager::readFile's 50,000-byte cap still parses in full. The JSON parser
+// pulls one character per read() and every HalFile::read takes storageMutex,
+// hence the buffer. The parser never calls readBytes, so there is none.
+class JsonFileReader {
  public:
-  explicit HalFileReader(HalFile& file) : file_(file) {}
+  explicit JsonFileReader(serialization::BufferedFileReader& in) : in_(in) {}
 
-  int read() { return file_.read(); }
-
-  size_t readBytes(char* buffer, const size_t length) {
-    const int got = file_.read(buffer, length);
-    return got < 0 ? 0 : static_cast<size_t>(got);
+  int read() {
+    uint8_t c = 0;
+    return in_.read(&c, 1) == 1 ? c : -1;
   }
 
  private:
-  HalFile& file_;
+  serialization::BufferedFileReader& in_;
 };
 
 // ArduinoJson writer over a BufferedFileWriter. ArduinoJson writes strings one
@@ -150,7 +151,8 @@ DocReadStatus PersistableStoreBase::readDocFromFileStreamed(const char* path, Js
     return classifyDocRead(true, true, false);
   }
 
-  HalFileReader reader(file);
+  serialization::BufferedFileReader buffered(file, READ_BUFFER_BYTES);
+  JsonFileReader reader(buffered);
   const auto error = deserializeJson(doc, reader);
   if (error) {
     LOG_ERR("PERSIST", "JSON parse error in %s: %s", path, error.c_str());
