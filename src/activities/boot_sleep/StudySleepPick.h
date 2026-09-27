@@ -158,8 +158,9 @@ struct ClockReading {
 
 // The RTC keeps UTC and HalClock::getDate reports only the UTC date, so the
 // viewer's day comes from shifting it by the local time of day.
+// weekdayNames is Monday first, as isoWeekday() counts.
 inline bool formatDateLine(const ClockReading& clock, uint8_t utcOffsetQuarterHoursBiased,
-                           const std::string_view weekdays, const std::string_view monthsShort, char* out,
+                           const char* const (&weekdayNames)[7], const std::string_view monthsShort, char* out,
                            const size_t outSize) {
   if (!clock.dateValid || !clock.timeValid || out == nullptr || outSize == 0) return false;
 
@@ -170,8 +171,8 @@ inline bool formatDateLine(const ClockReading& clock, uint8_t utcOffsetQuarterHo
   CivilDate local;
   if (!localDateFromUtc(utc, clock.hour, clock.minute, utcOffsetQuarterHoursBiased, local)) return false;
 
-  // The weekday list starts on Sunday; ISO 7 (Sunday) lands on 0.
-  const std::string_view weekday = catalog::wordAt(weekdays, isoWeekday(local) % 7);
+  const char* const name = weekdayNames[isoWeekday(local) - 1];
+  const std::string_view weekday = name != nullptr ? std::string_view(name) : std::string_view();
   const std::string_view month = catalog::wordAt(monthsShort, local.month - 1);
   if (weekday.empty() || month.empty()) return false;
 

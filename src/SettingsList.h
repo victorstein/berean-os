@@ -15,6 +15,7 @@
 #include "CrossPointSettings.h"
 #include "ReaderFontSizes.h"
 #include "activities/settings/SettingsActivity.h"
+#include "util/WeekdayNames.h"
 
 // Build the font family setting dynamically. When registry is non-null, SD card fonts
 // are appended after the built-in fonts. Otherwise only built-in fonts are listed.
@@ -249,13 +250,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
 
     std::vector<StrId> meetingDayValues(CrossPointSettings::MEETING_DAY_COUNT);
     meetingDayValues[CrossPointSettings::MEETING_DAY_NOT_SET] = StrId::STR_NOT_SET;
-    meetingDayValues[CrossPointSettings::MEETING_DAY_MONDAY] = StrId::STR_MONDAY;
-    meetingDayValues[CrossPointSettings::MEETING_DAY_TUESDAY] = StrId::STR_TUESDAY;
-    meetingDayValues[CrossPointSettings::MEETING_DAY_WEDNESDAY] = StrId::STR_WEDNESDAY;
-    meetingDayValues[CrossPointSettings::MEETING_DAY_THURSDAY] = StrId::STR_THURSDAY;
-    meetingDayValues[CrossPointSettings::MEETING_DAY_FRIDAY] = StrId::STR_FRIDAY;
-    meetingDayValues[CrossPointSettings::MEETING_DAY_SATURDAY] = StrId::STR_SATURDAY;
-    meetingDayValues[CrossPointSettings::MEETING_DAY_SUNDAY] = StrId::STR_SUNDAY;
+    for (size_t i = 0; i < 7; ++i) meetingDayValues[CrossPointSettings::MEETING_DAY_MONDAY + i] = WEEKDAY_NAME_IDS[i];
 
     std::vector<StrId> statusBarClockValues(CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT);
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;

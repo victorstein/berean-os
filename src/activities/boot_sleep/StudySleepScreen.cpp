@@ -32,6 +32,7 @@
 #include "StudyStore/TagPalette.h"
 #include "StudyStore/Unit.h"
 #include "fontIds.h"
+#include "util/WeekdayNames.h"
 
 namespace study_sleep_screen {
 namespace {
@@ -190,8 +191,11 @@ bool formatDate(char* out, const size_t outSize) {
   clock.month = date.month;
   clock.day = date.day;
   clock.timeValid = clock.dateValid && halClock.getTime(clock.hour, clock.minute);
-  return study_sleep::formatDateLine(clock, SETTINGS.clockUtcOffsetQ, tr(STR_WEEKDAYS), tr(STR_MONTHS_SHORT), out,
-                                     outSize);
+  const char* const weekdayNames[7] = {I18N.get(WEEKDAY_NAME_IDS[0]), I18N.get(WEEKDAY_NAME_IDS[1]),
+                                       I18N.get(WEEKDAY_NAME_IDS[2]), I18N.get(WEEKDAY_NAME_IDS[3]),
+                                       I18N.get(WEEKDAY_NAME_IDS[4]), I18N.get(WEEKDAY_NAME_IDS[5]),
+                                       I18N.get(WEEKDAY_NAME_IDS[6])};
+  return study_sleep::formatDateLine(clock, SETTINGS.clockUtcOffsetQ, weekdayNames, tr(STR_MONTHS_SHORT), out, outSize);
 }
 
 std::string tagName(const uint16_t rawTag) {

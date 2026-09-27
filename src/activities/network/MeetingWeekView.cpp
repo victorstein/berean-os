@@ -3,6 +3,7 @@
 #include <Catalog/CatalogLabel.h>
 
 #include <cstdio>
+#include <cstring>
 
 namespace {
 
@@ -31,6 +32,19 @@ bool copyWordAt(const std::string_view words, const int index, char* out, const 
   const std::string_view word = catalog::wordAt(words, index);
   if (word.empty()) return false;
   return catalog::copyOut(word, out, outSize);
+}
+
+bool copyInitial(const char* word, char* out, const size_t outSize) {
+  if (out == nullptr || outSize == 0) return false;
+  out[0] = '\0';
+  if (word == nullptr || word[0] == '\0') return false;
+
+  const auto lead = static_cast<unsigned char>(word[0]);
+  const size_t length = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3 : 4;
+  if (strnlen(word, length) < length || length + 1 > outSize) return false;
+  memcpy(out, word, length);
+  out[length] = '\0';
+  return true;
 }
 
 bool formatWeekRange(const CivilDate& monday, const char* sameMonthFormat, const char* twoMonthFormat,

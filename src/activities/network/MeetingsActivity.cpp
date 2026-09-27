@@ -17,6 +17,7 @@
 #include "network/MeetingWeekTable.h"
 #include "util/BookCacheUtils.h"
 #include "util/CoverThumb.h"
+#include "util/WeekdayNames.h"
 
 namespace fui = freeink::ui;
 
@@ -196,7 +197,7 @@ void MeetingsActivity::buildWeekHeader(const IsoWeek* currentWeek, const Meeting
   out.anyMeetingDay =
       std::any_of(out.strip.begin(), out.strip.end(), [](const WeekStripCell& cell) { return cell.meeting; });
   for (size_t i = 0; i < out.strip.size(); ++i) {
-    copyWordAt(tr(STR_WEEKDAYS_NARROW), static_cast<int>(i), out.letters[i], sizeof(out.letters[i]));
+    copyInitial(I18N.get(WEEKDAY_NAME_IDS[i]), out.letters[i], sizeof(out.letters[i]));
   }
   out.shown = true;
 }
