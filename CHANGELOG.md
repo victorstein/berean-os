@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/victorstein/berean-os/compare/v1.16.11...v1.17.0) (2026-09-27)
+
+
+### Features
+
+* show transient outcome messages as a bottom toast ([#153](https://github.com/victorstein/berean-os/issues/153)) ([66d14f1](https://github.com/victorstein/berean-os/commit/66d14f1f8f92944ebe8ba883e5776390bb4d5444)), closes [#116](https://github.com/victorstein/berean-os/issues/116)
+
 ## [1.16.11](https://github.com/victorstein/berean-os/compare/v1.16.10...v1.16.11) (2026-09-27)
 
 
