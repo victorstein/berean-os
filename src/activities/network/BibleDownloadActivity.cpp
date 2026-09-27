@@ -61,7 +61,7 @@ void BibleDownloadActivity::onEnter() {
   currentFilename.clear();
 
   const char* language = SETTINGS.publicationLanguage == CrossPointSettings::PUB_LANG_ENGLISH ? tr(STR_LANG_ENGLISH)
-                                                                                               : tr(STR_LANG_SPANISH);
+                                                                                              : tr(STR_LANG_SPANISH);
   snprintf(promptMessage, sizeof(promptMessage), tr(STR_BIBLE_DOWNLOAD_PROMPT), language, NWT_APPROX_MEGABYTES);
 
   resetUi();
