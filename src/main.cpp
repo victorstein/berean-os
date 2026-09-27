@@ -36,6 +36,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/boot_sleep/MigrationScreen.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
+#include "boot/BootDecisions.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
@@ -135,19 +136,6 @@ unsigned long t2 = 0;
 // Definitions for SilentRestart.h. RTC_NOINIT survives ESP.restart() but not power loss.
 RTC_NOINIT_ATTR uint32_t silentRebootMagic;
 RTC_NOINIT_ATTR uint32_t silentRebootTarget;
-constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
-constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
-constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
-
-// How the device is coming back to life, resolved once at boot. Both resume
-// flows suppress the splash and leave the panel holding its pre-boot frame; a
-// plain boot shows the splash. See setup() for the resolution.
-enum class BootResume : uint8_t {
-  Splash,          // cold boot, flash, panic, or plain reboot
-  Silent,          // heap-defrag ESP.restart() (RTC flag; lost on power loss)
-  SplashlessWake,  // wake from deep sleep with the splash suppressed by the SD flag
-};
-
 // Latched true once enterDeepSleep() commits to sleeping, before it tears down
 // the current activity. WiFi activities call silentRestart() in onExit() to
 // clear heap fragmentation on the way out, but deep sleep is a full chip reset
@@ -337,11 +325,19 @@ void setupDisplayAndFonts(bool seamless = false) {
   LOG_DBG("MAIN", "Fonts setup");
 }
 
-void setup() {
-  BoardConfig::holdPowerRails();
+// Values one boot stage hands to a later one. Lives on setup()'s stack.
+struct BootContext {
+  bool rebootedFromPanic = false;
+  bool isSilentReboot = false;
+  uint32_t snapshotTarget = SILENT_REBOOT_TARGET_HOME;
+  HalGPIO::WakeupReason wakeupReason = HalGPIO::WakeupReason::Other;
+  bool recoveryFirmwareMode = false;
+  BootResume resume = BootResume::Splash;
+  bool allowFastInitialReaderRefresh = false;
+  bool needsWakeRefresh = false;
+};
 
-  t1 = millis();
-
+static void beginSerialLog() {
 #ifdef ENABLE_SERIAL_LOG
   // Earliest possible Serial setup. The 250 ms stall before begin() lets the
   // USB Serial/JTAG peripheral finish power-on and lets the host complete USB
@@ -354,32 +350,34 @@ void setup() {
   logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
 #endif
 #endif
+}
 
+static void readRebootMarkers(BootContext& boot) {
   HalSystem::begin();
   // checkPanic() clears the watchdog capture marker after a successful SD
   // dump, so retain the boot classification for the later activity route.
-  const bool rebootedFromPanic = HalSystem::isRebootFromPanic();
+  boot.rebootedFromPanic = HalSystem::isRebootFromPanic();
 
   // Read-and-clear so a panic later in setup() doesn't loop into silent reboot.
-  // Bound the target range too — RTC_NOINIT memory is uninitialized on cold boot.
-  const bool isSilentReboot = (silentRebootMagic == SILENT_REBOOT_MAGIC);
-  const uint32_t snapshotTarget =
-      (isSilentReboot && silentRebootTarget <= SILENT_REBOOT_TARGET_READER) ? silentRebootTarget : 0;
+  const SilentReboot silentReboot = decodeSilentReboot(silentRebootMagic, silentRebootTarget);
+  boot.isSilentReboot = silentReboot.silent;
+  boot.snapshotTarget = silentReboot.target;
   silentRebootMagic = 0;
   silentRebootTarget = 0;
+}
 
+static void beginInputAndPower(BootContext& boot) {
   gpio.begin();
   powerManager.begin();
   halTiltSensor.begin();
   halClock.begin();
 
-  const auto wakeupReason = gpio.getWakeupReason();
+  boot.wakeupReason = gpio.getWakeupReason();
 
   // Latch the recovery chord before SD and settings I/O. X4 Pro uses a plain
   // digital button with 5 ms debounce; other Xteink inputs retain their legacy
   // settling window. BTN_DOWN avoids the X4 Pro's GPIO0 boot-strap pin.
-  bool recoveryFirmwareMode = false;
-  if (wakeupReason == HalGPIO::WakeupReason::PowerButton) {
+  if (boot.wakeupReason == HalGPIO::WakeupReason::PowerButton) {
     const unsigned long settleMs = BoardConfig::isX4Pro() ? X4PRO_RECOVERY_SETTLE_MS : DEFAULT_RECOVERY_SETTLE_MS;
     const unsigned long settleStart = millis();
     while (millis() - settleStart < settleMs) {
@@ -389,7 +387,7 @@ void setup() {
 
     const uint8_t recoveryButton = BoardConfig::isX4Pro() ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
     if (gpio.isPressed(recoveryButton)) {
-      recoveryFirmwareMode = true;
+      boot.recoveryFirmwareMode = true;
       LOG_INF("MAIN", "Recovery firmware mode (%s + POWER held at boot)", BoardConfig::isX4Pro() ? "DOWN" : "UP");
     }
   }
@@ -399,16 +397,21 @@ void setup() {
 #else
   LOG_INF("MAIN", "Device: %s", BoardConfig::ACTIVE.name);
 #endif
+}
 
-  // SD Card Initialization
+// False when the card is unusable: the SD error screen is up and boot must stop.
+static bool mountStorage(const BootContext& boot) {
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
     LOG_ERR("MAIN", "SD card initialization failed");
-    setupDisplayAndFonts(isSilentReboot);
+    setupDisplayAndFonts(boot.isSilentReboot);
     activityManager.goToFullScreenMessage(tr(STR_SD_CARD_ERROR), EpdFontFamily::BOLD);
-    return;
+    return false;
   }
+  return true;
+}
 
+static void loadPersistedState(const BootContext& boot) {
   HalSystem::checkPanic();
 
   SETTINGS.loadFromFile();
@@ -425,10 +428,13 @@ void setup() {
   // Brightness and warmth are always restored. A normal wake starts with the
   // light off unless Restore Light on Wake is enabled; silent maintenance
   // reboots preserve the live state so they do not unexpectedly go dark.
-  const bool restoreLightOn = SETTINGS.frontlightOn != 0 && (SETTINGS.frontlightRestoreOnWake != 0 || isSilentReboot);
+  const bool restoreLightOn =
+      SETTINGS.frontlightOn != 0 && (SETTINGS.frontlightRestoreOnWake != 0 || boot.isSilentReboot);
   Frontlight.begin(SETTINGS.frontlightBrightness, SETTINGS.frontlightWarmth, restoreLightOn);
+}
 
-  switch (wakeupReason) {
+static void confirmWakeReason(const BootContext& boot) {
+  switch (boot.wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
       LOG_DBG("MAIN", "Verifying power button press duration");
       if (!gpio.verifyPowerButtonWakeup(SETTINGS.getPowerButtonDuration(),
@@ -454,70 +460,67 @@ void setup() {
     default:
       break;
   }
+}
 
-  // First serial output only here to avoid timing inconsistencies for power button press duration verification
-  LOG_DBG("MAIN", "Starting bereanOS version " BEREAN_VERSION);
-
+static void beginDisplay(BootContext& boot) {
   // Resolve the single boot-presentation decision. Skipping the splash also
   // skips the panel-clearing pass and the X3 initial-full-sync arming (see
   // HalDisplay::begin), so the first paint is FAST_REFRESH (~500ms) over the
   // retained frame and input dispatches against a visible UI.
-  // Only a verified deep-sleep wake may use the one-shot persisted flag.
-  // Otherwise a stale flag could suppress the splash on a cold boot.
-  const bool isSleepWake = wakeupReason == HalGPIO::WakeupReason::PowerButton;
-  const BootResume resume = isSilentReboot                             ? BootResume::Silent
-                            : isSleepWake && !APP_STATE.showBootScreen ? BootResume::SplashlessWake
-                                                                       : BootResume::Splash;
-  bool allowFastInitialReaderRefresh = false;
-  bool needsWakeRefresh = false;
+  const bool isSleepWake = boot.wakeupReason == HalGPIO::WakeupReason::PowerButton;
+  boot.resume = resolveBootResume(boot.isSilentReboot, isSleepWake, APP_STATE.showBootScreen);
 
-  setupDisplayAndFonts(resume != BootResume::Splash);
+  setupDisplayAndFonts(boot.resume != BootResume::Splash);
+}
 
-  // Study-data migration, AFTER the display is up: indexing a large chapter
-  // draws the indexing popup and borrows the framebuffer, both of which need a
-  // begun renderer. It reads through the legacy store and writes beside it --
-  // /.crosspoint/highlights/ is never renamed or deleted, so an OTA rollback to
-  // a pre-Phase-1 build still finds the data.
-  if (MigrationRunner::pending()) {
-    LOG_INF("MAIN", "Migrating study data...");
+// Study-data migration, AFTER the display is up: indexing a large chapter
+// draws the indexing popup and borrows the framebuffer, both of which need a
+// begun renderer. It reads through the legacy store and writes beside it --
+// /.crosspoint/highlights/ is never renamed or deleted, so an OTA rollback to
+// a pre-Phase-1 build still finds the data.
+static void runPendingMigration() {
+  if (!MigrationRunner::pending()) return;
 
-    // The first migration indexes every document the user has marked and builds
-    // the Bible's spine-to-book map. That is real work, and without a screen the
-    // panel stays white for the whole of it -- which reads as a dead device.
-    static uint16_t migrationStep = 0;
-    static unsigned long lastMigrationPaintMs = 0;
-    migrationStep = 0;
-    lastMigrationPaintMs = millis();
-    migration_screen::draw(renderer, tr(STR_MIGRATING), migrationStep);
+  LOG_INF("MAIN", "Migrating study data...");
 
-    MigrationProgress migrationProgress;
-    migrationProgress.ctx = &renderer;
-    migrationProgress.label = tr(STR_MIGRATING);
-    // Throttled by TIME, not by step count. The migration ticks ~70 times and a
-    // panel refresh is 1-2 s, so painting every tick would take longer than the
-    // work it reports -- the opposite of the point. The interval is above one
-    // refresh so paints never queue up behind each other.
-    migrationProgress.onStep = [](void* ctx, const char* label) {
-      constexpr unsigned long MIGRATION_PAINT_INTERVAL_MS = 2500;
-      const unsigned long now = millis();
-      if (now - lastMigrationPaintMs < MIGRATION_PAINT_INTERVAL_MS) return;
-      lastMigrationPaintMs = now;
-      migration_screen::draw(*static_cast<const GfxRenderer*>(ctx), label, ++migrationStep);
-    };
+  // The first migration indexes every document the user has marked and builds
+  // the Bible's spine-to-book map. That is real work, and without a screen the
+  // panel stays white for the whole of it -- which reads as a dead device.
+  static uint16_t migrationStep = 0;
+  static unsigned long lastMigrationPaintMs = 0;
+  migrationStep = 0;
+  lastMigrationPaintMs = millis();
+  migration_screen::draw(renderer, tr(STR_MIGRATING), migrationStep);
 
-    MigrationRunner::Summary migration;
-    if (!MigrationRunner::runIfPending(migration, renderer, migrationProgress)) {
-      LOG_ERR("MAIN", "Migration incomplete; legacy store untouched");
-    }
-    LOG_INF("MAIN", "read=%u written=%u verse=%u para=%u docoff=%u mismatch=%u pending=%u dropped=%u tags=%u",
-            migration.highlightsRead, migration.passagesWritten, migration.addressedVerse, migration.addressedParagraph,
-            migration.addressedDocumentOffset, migration.referenceMismatches, migration.pendingUpgrade,
-            migration.dropped, migration.tagsAdopted);
+  MigrationProgress migrationProgress;
+  migrationProgress.ctx = &renderer;
+  migrationProgress.label = tr(STR_MIGRATING);
+  // Throttled by TIME, not by step count. The migration ticks ~70 times and a
+  // panel refresh is 1-2 s, so painting every tick would take longer than the
+  // work it reports -- the opposite of the point. The interval is above one
+  // refresh so paints never queue up behind each other.
+  migrationProgress.onStep = [](void* ctx, const char* label) {
+    constexpr unsigned long MIGRATION_PAINT_INTERVAL_MS = 2500;
+    const unsigned long now = millis();
+    if (now - lastMigrationPaintMs < MIGRATION_PAINT_INTERVAL_MS) return;
+    lastMigrationPaintMs = now;
+    migration_screen::draw(*static_cast<const GfxRenderer*>(ctx), label, ++migrationStep);
+  };
+
+  MigrationRunner::Summary migration;
+  if (!MigrationRunner::runIfPending(migration, renderer, migrationProgress)) {
+    LOG_ERR("MAIN", "Migration incomplete; legacy store untouched");
   }
+  LOG_INF("MAIN", "read=%u written=%u verse=%u para=%u docoff=%u mismatch=%u pending=%u dropped=%u tags=%u",
+          migration.highlightsRead, migration.passagesWritten, migration.addressedVerse, migration.addressedParagraph,
+          migration.addressedDocumentOffset, migration.referenceMismatches, migration.pendingUpgrade, migration.dropped,
+          migration.tagsAdopted);
+}
 
-  switch (resume) {
+static void presentBoot(BootContext& boot) {
+  switch (boot.resume) {
     case BootResume::Silent:
-      // Splash skipped: the routing block below picks the target activity; the
+      // Splash skipped: routeFirstActivity() picks the target activity; the
       // panel keeps showing the pre-reboot popup until that first paint lands.
       break;
     case BootResume::SplashlessWake:
@@ -538,69 +541,102 @@ void setup() {
         renderer.drawImage(LoadingIcon, 0, pageHeight - LOADINGICON_HEIGHT, LOADINGICON_WIDTH, LOADINGICON_HEIGHT);
         if (useDifferentialRefresh) {
           renderer.displayGrayscaleBase(HalDisplay::FAST_REFRESH);
-          allowFastInitialReaderRefresh = true;
+          boot.allowFastInitialReaderRefresh = true;
         } else {
           renderer.displayBuffer(HalDisplay::HALF_REFRESH);
         }
       } else {
         // The first Home/Reader paint is followed by an explicit clean refresh
         // because the panel still physically shows the sleep image.
-        needsWakeRefresh = true;
+        boot.needsWakeRefresh = true;
       }
       break;
     case BootResume::Splash:
       activityManager.goToBoot();
       break;
   }
+}
 
+static void routeFirstActivity(const BootContext& boot) {
   // Output polarity is resolved per render by ActivityManager (night mode
   // inverts only the reading surfaces), so nothing to restore here.
 
-  if (recoveryFirmwareMode) {
-    // Skip normal home/reader routing: jump straight into the SD firmware picker.
-    activityManager.replaceActivity(
-        std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true));
-  } else if (rebootedFromPanic) {
-    // If we rebooted from a panic, go to crash report screen to show the panic info
-    activityManager.goToCrashReport();
-  } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
-             !APP_STATE.openEpubPath.empty()) {
-    activityManager.goToReader(APP_STATE.openEpubPath);
-  } else if (resume == BootResume::Silent) {
-    // target == home (or reader with no open book): land on home — don't fall
-    // through to the sleep-wake "resume reader" logic, which fires on stale
-    // openEpubPath + lastSleepFromReader from a prior session.
-    activityManager.goHome();
-  } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
-             mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
-    // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
-    // crashed (indicated by readerActivityLoadCount > 0)
-    activityManager.goHome(needsWakeRefresh);
-  } else {
-    // Clear app state to avoid getting into a boot loop if the epub doesn't load
-    const auto path = APP_STATE.openEpubPath;
-    APP_STATE.openEpubPath = "";
-    APP_STATE.readerActivityLoadCount++;
-    APP_STATE.saveToFileAtomic();
-    activityManager.goToReader(path, allowFastInitialReaderRefresh);
-  }
+  // Read eagerly: chooseBootRoute() needs every input, and the read is const.
+  const bool backHeld = mappedInputManager.isPressed(MappedInputManager::Button::Back);
+  const BootRoute route = chooseBootRoute(
+      {boot.recoveryFirmwareMode, boot.rebootedFromPanic, boot.resume, boot.snapshotTarget,
+       APP_STATE.openEpubPath.empty(), APP_STATE.lastSleepFromReader, backHeld, APP_STATE.readerActivityLoadCount > 0});
 
-  if (resume == BootResume::Silent) {
-    // Block until the first paint physically completes. refreshDisplay()
-    // waits on the panel BUSY pin so when this returns the user can see the
-    // new activity. Without the wait, an edge captured by gpio.update()
-    // during boot dispatches against an invisible Home and the default
-    // selectorIndex=0 opens the most-recent book.
-    activityManager.requestUpdateAndWait();
-    // Absorb any button held at this point into currentState as a non-edge:
-    // two gpio.update() calls separated by > InputManager's 5ms debounce
-    // transition the held bit through lastDebounceTime into currentState
-    // without setting pressedEvents, so the first loop()'s own gpio.update()
-    // sees state == currentState and emits nothing.
-    gpio.update();
-    delay(10);
-    gpio.update();
+  switch (route) {
+    case BootRoute::RecoveryFirmware:
+      activityManager.replaceActivity(
+          std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true));
+      break;
+    case BootRoute::CrashReport:
+      activityManager.goToCrashReport();
+      break;
+    case BootRoute::SilentReader:
+      activityManager.goToReader(APP_STATE.openEpubPath);
+      break;
+    case BootRoute::SilentHome:
+      activityManager.goHome();
+      break;
+    case BootRoute::Home:
+      activityManager.goHome(boot.needsWakeRefresh);
+      break;
+    case BootRoute::ResumeReader: {
+      // Clear app state to avoid getting into a boot loop if the epub doesn't load
+      const auto path = APP_STATE.openEpubPath;
+      APP_STATE.openEpubPath = "";
+      APP_STATE.readerActivityLoadCount++;
+      APP_STATE.saveToFileAtomic();
+      activityManager.goToReader(path, boot.allowFastInitialReaderRefresh);
+      break;
+    }
   }
+}
+
+static void settleSilentResume(const BootContext& boot) {
+  if (boot.resume != BootResume::Silent) return;
+
+  // Block until the first paint physically completes. refreshDisplay()
+  // waits on the panel BUSY pin so when this returns the user can see the
+  // new activity. Without the wait, an edge captured by gpio.update()
+  // during boot dispatches against an invisible Home and the default
+  // selectorIndex=0 opens the most-recent book.
+  activityManager.requestUpdateAndWait();
+  // Absorb any button held at this point into currentState as a non-edge:
+  // two gpio.update() calls separated by > InputManager's 5ms debounce
+  // transition the held bit through lastDebounceTime into currentState
+  // without setting pressedEvents, so the first loop()'s own gpio.update()
+  // sees state == currentState and emits nothing.
+  gpio.update();
+  delay(10);
+  gpio.update();
+}
+
+void setup() {
+  BoardConfig::holdPowerRails();
+
+  t1 = millis();
+
+  beginSerialLog();
+
+  BootContext boot;
+  readRebootMarkers(boot);
+  beginInputAndPower(boot);
+  if (!mountStorage(boot)) return;
+  loadPersistedState(boot);
+  confirmWakeReason(boot);
+
+  // First serial output only here to avoid timing inconsistencies for power button press duration verification
+  LOG_DBG("MAIN", "Starting bereanOS version " BEREAN_VERSION);
+
+  beginDisplay(boot);
+  runPendingMigration();
+  presentBoot(boot);
+  routeFirstActivity(boot);
+  settleSilentResume(boot);
 
   allowSleepAt = millis() + 2000;
 }
