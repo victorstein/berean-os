@@ -17,8 +17,7 @@ constexpr int INSET_LEFT = 3;
 constexpr int WORST_STATUS_BAR = 26;
 
 ToastLayout::Bounds x4ProBounds(const int statusBarHeight) {
-  return ToastLayout::bounds(SCREEN_W, SCREEN_H, INSET_TOP, INSET_RIGHT, INSET_BOTTOM, INSET_LEFT,
-                             statusBarHeight);
+  return ToastLayout::bounds(SCREEN_W, SCREEN_H, INSET_TOP, INSET_RIGHT, INSET_BOTTOM, INSET_LEFT, statusBarHeight);
 }
 }  // namespace
 

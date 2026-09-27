@@ -540,8 +540,8 @@ void BaseTheme::drawToast(const GfxRenderer& renderer, const char* message) cons
   props.padding = fui::Insets{static_cast<int16_t>(pad.top), static_cast<int16_t>(pad.right),
                               static_cast<int16_t>(pad.bottom), static_cast<int16_t>(pad.left)};
 
-  const fui::Rect bounds{static_cast<int16_t>(area.x), static_cast<int16_t>(area.y),
-                         static_cast<int16_t>(area.width), static_cast<int16_t>(area.height)};
+  const fui::Rect bounds{static_cast<int16_t>(area.x), static_cast<int16_t>(area.y), static_cast<int16_t>(area.width),
+                         static_cast<int16_t>(area.height)};
   fui::toast(ui.frame, bounds, props);
   renderer.displayBuffer();
 }
