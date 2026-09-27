@@ -56,12 +56,14 @@ class PersistableStoreBase {
   // instead of instantiating serializeJson/deserializeJson in their own TU —
   // that per-TU duplication is exactly what this class exists to prevent.
 
-  // Serializes doc and writes it to path (ensures /.crosspoint exists). Logs on failure.
+  // Serializes doc and writes it to path, creating path's parent directory. Logs on failure.
   static bool writeDocToFile(const char* path, const JsonDocument& doc);
 
-  // Crash-safe variant of writeDocToFile: serializes to `<path>.tmp`, closes it,
-  // then renames it over `path`. An interrupted write damages only the temp file
-  // instead of tearing the real one. Same discipline as ProgressFile::writeAtomic.
+  // Crash-safe variant of writeDocToFile: streams the serialized bytes into
+  // `<path>.tmp` through a small fixed buffer, closes it, then renames it over
+  // `path`. An interrupted or short write damages only the temp file instead of
+  // tearing the real one; `path` is replaced only when every byte reached the
+  // card and the close succeeded. Creates path's parent directory.
   // Prefer this for any file whose loss matters (annotations, user data).
   static bool writeDocToFileAtomic(const char* path, const JsonDocument& doc);
 
@@ -89,7 +91,7 @@ class PersistableStoreBase {
   static DocReadStatus readDocFromFileAdopting(const char* path, JsonDocument& doc);
 
   // Reads one file into doc. A store whose file can outgrow
-  // SDCardManager::readFile's 50,000-byte cap passes a streaming reader.
+  // SDCardManager::readFile's 50,000-byte cap passes readDocFromFileStreamed.
   using DocReader = DocReadStatus (*)(const char* path, JsonDocument& doc);
 
   // Hands a parsed document to its store. False rejects it -- a future format
