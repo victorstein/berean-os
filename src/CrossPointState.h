@@ -26,12 +26,18 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   uint16_t recentOverlaySleepImages[SLEEP_RECENT_COUNT] = {};
   uint8_t recentOverlaySleepPos = 0;
   uint8_t recentOverlaySleepFill = 0;
+  // study_sleep::passageKey values of the passages the study sleep screen
+  // showed last. Keys, not indices: the passage store has no stable order.
+  uint32_t recentStudySleep[SLEEP_RECENT_COUNT] = {};
+  uint8_t recentStudySleepPos = 0;
+  uint8_t recentStudySleepFill = 0;
   uint8_t readerActivityLoadCount = 0;
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
 
-  // Fixed key set: 12 keys, two 16-element uint16_t arrays, eight scalars, and
-  // two SD path strings assumed <= 255 B each. ~1,190 B worst case.
+  // Fixed key set: 15 keys, two 16-element uint16_t arrays, one 16-element
+  // uint32_t array, ten scalars, and two SD path strings assumed <= 255 B each.
+  // ~1,440 B worst case.
   static constexpr size_t SAVE_BUDGET = 2048;
   static constexpr int FORMAT_VERSION = 1;
 
@@ -44,6 +50,7 @@ class CrossPointState : public PersistableStore<CrossPointState> {
 
   void pushRecentSleep(uint16_t idx);
   void pushRecentOverlaySleep(uint16_t idx);
+  void pushRecentStudySleep(uint32_t key);
 };
 
 #define APP_STATE CrossPointState::getInstance()

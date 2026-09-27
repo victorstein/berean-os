@@ -43,6 +43,12 @@ void CrossPointState::pushRecentOverlaySleep(uint16_t idx) {
   pushRecentIndex(recentOverlaySleepImages, recentOverlaySleepPos, recentOverlaySleepFill, idx);
 }
 
+void CrossPointState::pushRecentStudySleep(const uint32_t key) {
+  recentStudySleep[recentStudySleepPos] = key;
+  recentStudySleepPos = (recentStudySleepPos + 1) % SLEEP_RECENT_COUNT;
+  if (recentStudySleepFill < SLEEP_RECENT_COUNT) recentStudySleepFill++;
+}
+
 void CrossPointState::toJson(JsonDocument& doc) const {
   doc["v"] = FORMAT_VERSION;
   doc["openEpubPath"] = openEpubPath;
@@ -55,6 +61,10 @@ void CrossPointState::toJson(JsonDocument& doc) const {
   for (int i = 0; i < SLEEP_RECENT_COUNT; i++) recentOverlayArr.add(recentOverlaySleepImages[i]);
   doc["recentOverlaySleepPos"] = recentOverlaySleepPos;
   doc["recentOverlaySleepFill"] = recentOverlaySleepFill;
+  JsonArray recentStudyArr = doc["recentStudySleep"].to<JsonArray>();
+  for (int i = 0; i < SLEEP_RECENT_COUNT; i++) recentStudyArr.add(recentStudySleep[i]);
+  doc["recentStudySleepPos"] = recentStudySleepPos;
+  doc["recentStudySleepFill"] = recentStudySleepFill;
   doc["readerActivityLoadCount"] = readerActivityLoadCount;
   doc["lastSleepFromReader"] = lastSleepFromReader;
   doc["showBootScreen"] = showBootScreen;
@@ -94,6 +104,19 @@ bool CrossPointState::fromJson(JsonVariantConst doc) {
   }
   recentOverlaySleepFill = doc["recentOverlaySleepFill"] | static_cast<uint8_t>(0);
   recentOverlaySleepFill = static_cast<uint8_t>(std::min(static_cast<int>(recentOverlaySleepFill), actualOverlayCount));
+
+  memset(recentStudySleep, 0, sizeof(recentStudySleep));
+  JsonArrayConst recentStudyArr = doc["recentStudySleep"];
+  const int actualStudyCount = recentStudyArr.isNull() ? 0
+                                                       : std::min(static_cast<int>(recentStudyArr.size()),
+                                                                  static_cast<int>(SLEEP_RECENT_COUNT));
+  for (int i = 0; i < actualStudyCount; i++) recentStudySleep[i] = recentStudyArr[i] | static_cast<uint32_t>(0);
+  recentStudySleepPos = doc["recentStudySleepPos"] | static_cast<uint8_t>(0);
+  if (recentStudySleepPos >= SLEEP_RECENT_COUNT) {
+    recentStudySleepPos = actualStudyCount > 0 ? recentStudySleepPos % SLEEP_RECENT_COUNT : 0;
+  }
+  recentStudySleepFill = doc["recentStudySleepFill"] | static_cast<uint8_t>(0);
+  recentStudySleepFill = static_cast<uint8_t>(std::min(static_cast<int>(recentStudySleepFill), actualStudyCount));
 
   if (recentSleepFill == 0 && !doc["lastSleepImage"].isNull()) {
     const uint8_t legacy = doc["lastSleepImage"] | static_cast<uint8_t>(UINT8_MAX);
