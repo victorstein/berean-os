@@ -110,6 +110,28 @@ TEST_F(HalStorageFake, WrittenHandleBytesLandOnTheCard) {
   EXPECT_EQ(storage_fake::fileBytes("/d/f"), "hi!");
 }
 
+TEST_F(HalStorageFake, AWriteLimitAcceptsBytesUpToItThenReturnsShort) {
+  ASSERT_TRUE(Storage.mkdir("/d"));
+  storage_fake::failWritesAfter("/d/f", 3);
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", "/d/f", file));
+  const uint8_t bytes[] = {'a', 'b'};
+  EXPECT_EQ(file.write(bytes, 2), 2u);
+  EXPECT_EQ(file.write(bytes, 2), 1u);
+  EXPECT_EQ(file.write(static_cast<uint8_t>('!')), 0u);
+  EXPECT_EQ(storage_fake::fileBytes("/d/f"), "aba");
+}
+
+TEST_F(HalStorageFake, ClearFailuresDropsAWriteLimit) {
+  ASSERT_TRUE(Storage.mkdir("/d"));
+  storage_fake::failWritesAfter("/d/f", 0);
+  storage_fake::clearFailures();
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForWrite("TEST", "/d/f", file));
+  const uint8_t bytes[] = {'a', 'b'};
+  EXPECT_EQ(file.write(bytes, 2), 2u);
+}
+
 TEST_F(HalStorageFake, ResetEmptiesTheCardAndClearsHooks) {
   storage_fake::putFile("/d/f", "x");
   storage_fake::failReadsOf("/d/f");

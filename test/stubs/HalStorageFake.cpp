@@ -30,6 +30,7 @@ struct FakeCard {
   std::set<std::string> failRead;
   std::set<std::string> failRename;
   std::set<std::string> failWrite;
+  std::map<std::string, size_t> writeLimit;
 };
 
 FakeCard& card() {
@@ -64,6 +65,7 @@ void clearFailures() {
   card().failRead.clear();
   card().failRename.clear();
   card().failWrite.clear();
+  card().writeLimit.clear();
 }
 
 void putFile(const std::string& path, std::string bytes) {
@@ -82,6 +84,7 @@ bool isDir(const std::string& path) { return isDirectoryPath(path); }
 void failReadsOf(const std::string& path) { card().failRead.insert(path); }
 void failRenamesFrom(const std::string& path) { card().failRename.insert(path); }
 void failWritesTo(const std::string& path) { card().failWrite.insert(path); }
+void failWritesAfter(const std::string& path, const size_t bytes) { card().writeLimit[path] = bytes; }
 
 }  // namespace storage_fake
 
@@ -225,6 +228,10 @@ size_t HalFile::write(const uint8_t* buf, size_t count) {
   if (!impl || !impl->writable) return 0;
   std::string* bytes = impl->bytes();
   if (!bytes) return 0;
+  const auto limit = card().writeLimit.find(impl->path);
+  if (limit != card().writeLimit.end()) {
+    count = std::min(count, impl->pos >= limit->second ? 0 : limit->second - impl->pos);
+  }
   if (bytes->size() < impl->pos + count) bytes->resize(impl->pos + count);
   std::memcpy(bytes->data() + impl->pos, buf, count);
   impl->pos += count;

@@ -7,6 +7,7 @@
 // every fixture's SetUp(). Failure hooks are sticky until clearFailures() or
 // reset().
 
+#include <cstddef>
 #include <optional>
 #include <string>
 
@@ -35,5 +36,9 @@ void failRenamesFrom(const std::string& path);
 // SDCardManager::writeFile does when the open fails after its remove.
 // openFileForWrite fails.
 void failWritesTo(const std::string& path);
+
+// HalFile::write on this path accepts bytes until the file holds `bytes`, then
+// returns short -- a card that fills mid-write. writeFile is unaffected.
+void failWritesAfter(const std::string& path, size_t bytes);
 
 }  // namespace storage_fake
