@@ -21,6 +21,13 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR branch makes its previous run moot. Runs on main are never
+# cancelled: each one is the only check on a merged tree, and the one that
+# saves the package cache everything else restores.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # release-please's own PR carries main's already-checked content plus four
 # version files, and it is opened by github-actions[bot] -- whose PRs GitHub
 # will not start workflow jobs for. The run is created anyway, finds no jobs to
@@ -63,33 +70,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-          enable-cache: false
-
-      - name: Install PlatformIO Core
-        run: |
-          uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
-          # platform-espressif32's builder/main.py imports these unconditionally; its own
-          # penv bootstrap (builder/penv_setup.py) is supposed to install them automatically
-          # but isn't picking them up reliably in this runner image, so pin them explicitly.
-          uv pip install --system -U "littlefs-python>=0.16.0" "fatfs-ng>=0.1.14" "pyyaml>=6.0.2" \
-            "rich-click>=1.8.6" "zopfli>=0.2.2" "intelhex>=2.3.0" "rich>=14.0.0" "urllib3<2" \
-            "cryptography>=45.0.3" "certifi>=2025.8.3" "ecdsa>=0.19.1" "bitstring>=4.3.1" \
-            "reedsolo>=1.5.3,<1.8" "esp-idf-size>=2.0.0" "esp-coredump>=1.14.0"
-
-      - name: Cache PlatformIO packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.platformio
-          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
-          restore-keys: pio-${{ runner.os }}-
+      - uses: ./.github/actions/setup-platformio
 
       - name: Run cppcheck
         run: pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
@@ -112,33 +93,9 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-platformio
         with:
-          python-version: '3.13'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-          enable-cache: false
-
-      - name: Install PlatformIO Core
-        run: |
-          uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
-          # platform-espressif32's builder/main.py imports these unconditionally; its own
-          # penv bootstrap (builder/penv_setup.py) is supposed to install them automatically
-          # but isn't picking them up reliably in this runner image, so pin them explicitly.
-          uv pip install --system -U "littlefs-python>=0.16.0" "fatfs-ng>=0.1.14" "pyyaml>=6.0.2" \
-            "rich-click>=1.8.6" "zopfli>=0.2.2" "intelhex>=2.3.0" "rich>=14.0.0" "urllib3<2" \
-            "cryptography>=45.0.3" "certifi>=2025.8.3" "ecdsa>=0.19.1" "bitstring>=4.3.1" \
-            "reedsolo>=1.5.3,<1.8" "esp-idf-size>=2.0.0" "esp-coredump>=1.14.0"
-
-      - name: Cache PlatformIO packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.platformio
-          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
-          restore-keys: pio-${{ runner.os }}-
+          save-cache: 'true'
 
       - name: Build ${{ matrix.env }} firmware
         run: |
