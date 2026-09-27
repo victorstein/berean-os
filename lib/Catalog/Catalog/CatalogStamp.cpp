@@ -1,46 +1,13 @@
 #include "Catalog/CatalogStamp.h"
 
+#include "Catalog/CatalogLabel.h"
+
 #include <cstdio>
 
 namespace catalog {
 namespace {
 
 constexpr size_t ISO_DATE_LENGTH = 10;  // YYYY-MM-DD
-
-bool digitsToInt(const std::string_view text, int& out) {
-  if (text.empty()) return false;
-  out = 0;
-  for (const char c : text) {
-    if (c < '0' || c > '9') return false;
-    out = out * 10 + (c - '0');
-  }
-  return true;
-}
-
-// The nth space-separated word of `list`, empty when there are fewer.
-std::string_view wordAt(const std::string_view list, const int index) {
-  size_t start = 0;
-  int seen = 0;
-  while (start < list.size()) {
-    while (start < list.size() && list[start] == ' ') ++start;
-    const size_t space = list.find(' ', start);
-    const size_t stop = space == std::string_view::npos ? list.size() : space;
-    if (stop > start) {
-      if (seen == index) return list.substr(start, stop - start);
-      ++seen;
-    }
-    start = stop + 1;
-  }
-  return {};
-}
-
-bool copyOut(const std::string_view text, char* out, const size_t outSize) {
-  if (text.size() + 1 > outSize) return false;
-  // string_view is not null-terminated; the precision form copies exactly the
-  // view's bytes and terminates.
-  snprintf(out, outSize, "%.*s", static_cast<int>(text.size()), text.data());
-  return true;
-}
 
 }  // namespace
 
