@@ -21,7 +21,7 @@ void FontRoutes::registerRoutes(WebServer& server) {
 }
 
 void FontRoutes::handleFontsPage(WebServer& server) const {
-  webroutes::sendHtmlContent(&server, FontsPageHtml, sizeof(FontsPageHtml));
+  webroutes::sendHtmlContent(server, FontsPageHtml, sizeof(FontsPageHtml));
   LOG_DBG("WEB", "Served fonts page");
 }
 

@@ -5,14 +5,14 @@
 namespace {
 // Every input set to the value that leads to ResumeReader; each test flips what it is about.
 BootRouteInputs resumeReaderInputs() {
-  return {/*recoveryFirmwareMode=*/false,
-          /*rebootedFromPanic=*/false,
-          /*resume=*/BootResume::Splash,
-          /*snapshotTarget=*/SILENT_REBOOT_TARGET_HOME,
-          /*openBookEmpty=*/false,
-          /*lastSleepFromReader=*/true,
-          /*backHeld=*/false,
-          /*readerCrashedLastTime=*/false};
+  return {.recoveryFirmwareMode = false,
+          .rebootedFromPanic = false,
+          .resume = BootResume::Splash,
+          .snapshotTarget = SILENT_REBOOT_TARGET_HOME,
+          .openBookEmpty = false,
+          .lastSleepFromReader = true,
+          .backHeld = false,
+          .readerCrashedLastTime = false};
 }
 }  // namespace
 

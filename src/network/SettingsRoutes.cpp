@@ -18,7 +18,7 @@ void SettingsRoutes::registerRoutes(WebServer& server) {
 }
 
 void SettingsRoutes::handleSettingsPage(WebServer& server) const {
-  webroutes::sendHtmlContent(&server, SettingsPageHtml, sizeof(SettingsPageHtml));
+  webroutes::sendHtmlContent(server, SettingsPageHtml, sizeof(SettingsPageHtml));
   LOG_DBG("WEB", "Served settings page");
 }
 

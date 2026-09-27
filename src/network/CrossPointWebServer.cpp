@@ -294,7 +294,7 @@ CrossPointWebServer::WsUploadStatus CrossPointWebServer::getWsUploadStatus() con
 }
 
 void CrossPointWebServer::handleRoot() const {
-  webroutes::sendHtmlContent(server.get(), HomePageHtml, sizeof(HomePageHtml));
+  webroutes::sendHtmlContent(*server, HomePageHtml, sizeof(HomePageHtml));
   LOG_DBG("WEB", "Served root page");
 }
 

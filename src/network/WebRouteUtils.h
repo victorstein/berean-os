@@ -7,6 +7,6 @@ namespace webroutes {
 
 bool isProtectedWebPath(const String& path);
 
-void sendHtmlContent(WebServer* server, const char* data, size_t len);
+void sendHtmlContent(WebServer& server, const char* data, size_t len);
 
 }  // namespace webroutes

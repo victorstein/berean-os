@@ -563,9 +563,14 @@ static void routeFirstActivity(const BootContext& boot) {
 
   // Read eagerly: chooseBootRoute() needs every input, and the read is const.
   const bool backHeld = mappedInputManager.isPressed(MappedInputManager::Button::Back);
-  const BootRoute route = chooseBootRoute(
-      {boot.recoveryFirmwareMode, boot.rebootedFromPanic, boot.resume, boot.snapshotTarget,
-       APP_STATE.openEpubPath.empty(), APP_STATE.lastSleepFromReader, backHeld, APP_STATE.readerActivityLoadCount > 0});
+  const BootRoute route = chooseBootRoute({.recoveryFirmwareMode = boot.recoveryFirmwareMode,
+                                           .rebootedFromPanic = boot.rebootedFromPanic,
+                                           .resume = boot.resume,
+                                           .snapshotTarget = boot.snapshotTarget,
+                                           .openBookEmpty = APP_STATE.openEpubPath.empty(),
+                                           .lastSleepFromReader = APP_STATE.lastSleepFromReader,
+                                           .backHeld = backHeld,
+                                           .readerCrashedLastTime = APP_STATE.readerActivityLoadCount > 0});
 
   switch (route) {
     case BootRoute::RecoveryFirmware:

@@ -103,7 +103,7 @@ void FileRoutes::scanFiles(const char* path, const std::function<void(FileInfo)>
 bool FileRoutes::isEpubFile(const String& filename) const { return FsHelpers::hasEpubExtension(filename); }
 
 void FileRoutes::handleFileList(WebServer& server) const {
-  webroutes::sendHtmlContent(&server, FilesPageHtml, sizeof(FilesPageHtml));
+  webroutes::sendHtmlContent(server, FilesPageHtml, sizeof(FilesPageHtml));
 }
 
 void FileRoutes::handleFileListData(WebServer& server) const {
