@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.4](https://github.com/victorstein/berean-os/compare/v1.19.3...v1.19.4) (2026-09-27)
+
+
+### Bug Fixes
+
+* reach subfolder books, one weekday source, local meetings week ([#180](https://github.com/victorstein/berean-os/issues/180)) ([a281a75](https://github.com/victorstein/berean-os/commit/a281a75ba34c7261280d2705a4a49bc50c70c65f)), closes [#178](https://github.com/victorstein/berean-os/issues/178)
+
 ## [1.19.3](https://github.com/victorstein/berean-os/compare/v1.19.2...v1.19.3) (2026-09-27)
 
 
