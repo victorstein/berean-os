@@ -90,3 +90,22 @@ TEST(LauncherBible, NamesEachLookupForTheLog) {
   EXPECT_STREQ(bibleLookupName(BibleLookup::CardScan), "card scan");
   EXPECT_STREQ(bibleLookupName(BibleLookup::Recents), "recents");
 }
+
+// The pre-#104 guess, verbatim: it only runs when nothing better exists.
+
+TEST(LauncherBible, RecentsGuessAcceptsAnNwtPathOrAnNwtTitleInEitherLanguage) {
+  EXPECT_TRUE(looksLikeBibleInRecents("/x/nwt_S.epub", ""));
+  EXPECT_TRUE(looksLikeBibleInRecents("/nwt/Biblia.epub", "Biblia"));
+  EXPECT_TRUE(looksLikeBibleInRecents("/Libros/Biblia.epub", "La Biblia. Traducción del Nuevo Mundo"));
+  EXPECT_TRUE(looksLikeBibleInRecents("/Books/Bible.epub", "New World Translation of the Holy Scriptures"));
+}
+
+TEST(LauncherBible, RecentsGuessRejectsABibleThatSaysNeither) {
+  EXPECT_FALSE(looksLikeBibleInRecents("/Libros/Biblia.epub", "Biblia"));
+  EXPECT_FALSE(looksLikeBibleInRecents("", ""));
+}
+
+TEST(LauncherBible, RecentsGuessIsCaseSensitiveAsBefore) {
+  EXPECT_FALSE(looksLikeBibleInRecents("/Books/Bible.epub", "new world"));
+  EXPECT_FALSE(looksLikeBibleInRecents("/NWT.epub", ""));
+}
