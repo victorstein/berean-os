@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.10](https://github.com/victorstein/berean-os/compare/v1.16.9...v1.16.10) (2026-09-27)
+
+
+### Refactor
+
+* strip the EPUB optimiser and jszip from the file page ([#144](https://github.com/victorstein/berean-os/issues/144)) ([b6aadb7](https://github.com/victorstein/berean-os/commit/b6aadb765c6c96ba52badd028c29749f40896045)), closes [#105](https://github.com/victorstein/berean-os/issues/105)
+
 ## [1.16.9](https://github.com/victorstein/berean-os/compare/v1.16.8...v1.16.9) (2026-09-27)
 
 
