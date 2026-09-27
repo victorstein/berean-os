@@ -200,3 +200,79 @@ TEST(StudySleepScan, StartsAtTheRandomFileAndWraps) {
   EXPECT_EQ(visitOrder(1, 0), (std::vector<uint32_t>{0}));
   EXPECT_TRUE(visitOrder(0, 0).empty());
 }
+
+namespace {
+
+constexpr const char* EN_WEEKDAYS = "Sunday Monday Tuesday Wednesday Thursday Friday Saturday";
+constexpr const char* EN_MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec";
+constexpr const char* ES_WEEKDAYS = "domingo lunes martes miércoles jueves viernes sábado";
+constexpr const char* ES_MONTHS = "ene feb mar abr may jun jul ago sep oct nov dic";
+constexpr uint8_t UTC = 48;
+
+study_sleep::ClockReading at(const uint16_t year, const uint8_t month, const uint8_t day, const uint8_t hour,
+                             const uint8_t minute) {
+  study_sleep::ClockReading clock;
+  clock.dateValid = true;
+  clock.year = year;
+  clock.month = month;
+  clock.day = day;
+  clock.timeValid = true;
+  clock.hour = hour;
+  clock.minute = minute;
+  return clock;
+}
+
+std::string line(const study_sleep::ClockReading& clock, const uint8_t offsetQ,
+                 const char* weekdays = EN_WEEKDAYS, const char* months = EN_MONTHS) {
+  char out[48];
+  return study_sleep::formatDateLine(clock, offsetQ, weekdays, months, out, sizeof(out)) ? std::string(out)
+                                                                                         : std::string("<none>");
+}
+
+}  // namespace
+
+TEST(StudySleepDate, TheEpochWasAThursday) {
+  EXPECT_EQ(study_sleep::daysFromCivil(1970, 1, 1), 0);
+  EXPECT_EQ(study_sleep::weekdayFromDays(0), 4);
+}
+
+TEST(StudySleepDate, FormatsTheDayInUtc) { EXPECT_EQ(line(at(2026, 9, 27, 10, 0), UTC), "Sunday 27 Sep"); }
+
+TEST(StudySleepDate, FormatsInSpanish) {
+  EXPECT_EQ(line(at(2026, 9, 27, 10, 0), UTC, ES_WEEKDAYS, ES_MONTHS), "domingo 27 sep");
+}
+
+TEST(StudySleepDate, AnEasternOffsetCrossesIntoTheNextYear) {
+  EXPECT_EQ(line(at(2026, 12, 31, 23, 0), 104), "Friday 1 Jan");
+}
+
+TEST(StudySleepDate, AWesternOffsetFallsBackToALeapDay) {
+  EXPECT_EQ(line(at(2028, 3, 1, 5, 0), 0), "Tuesday 29 Feb");
+}
+
+TEST(StudySleepDate, ACorruptOffsetIsClampedToUtcPlusFourteen) {
+  EXPECT_EQ(line(at(2026, 9, 27, 12, 0), 200), "Monday 28 Sep");
+}
+
+TEST(StudySleepDate, AClockNeverSetGivesNoLine) {
+  study_sleep::ClockReading unset;
+  EXPECT_EQ(line(unset, UTC), "<none>");
+  auto noTime = at(2026, 9, 27, 10, 0);
+  noTime.timeValid = false;
+  EXPECT_EQ(line(noTime, UTC), "<none>");
+}
+
+TEST(StudySleepDate, GarbageFromTheClockGivesNoLine) {
+  EXPECT_EQ(line(at(2026, 13, 1, 10, 0), UTC), "<none>");
+  EXPECT_EQ(line(at(2026, 9, 0, 10, 0), UTC), "<none>");
+}
+
+TEST(StudySleepDate, AMissingNameGivesNoLine) {
+  EXPECT_EQ(line(at(2026, 9, 27, 10, 0), UTC, "", EN_MONTHS), "<none>");
+  EXPECT_EQ(line(at(2026, 9, 27, 10, 0), UTC, EN_WEEKDAYS, "Jan"), "<none>");
+}
+
+TEST(StudySleepDate, ABufferTooSmallGivesNoLine) {
+  char out[8];
+  EXPECT_FALSE(study_sleep::formatDateLine(at(2026, 9, 27, 10, 0), UTC, EN_WEEKDAYS, EN_MONTHS, out, sizeof(out)));
+}
