@@ -10,7 +10,6 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
-#include "SilentRestart.h"
 #include "activities/PostedMessage.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
@@ -18,6 +17,7 @@
 
 void ClockSyncActivity::onEnter() {
   Activity::onEnter();
+  wifiSession.emplace();
   state = SYNCING;
   syncedTime[0] = '\0';
 
@@ -26,19 +26,10 @@ void ClockSyncActivity::onEnter() {
     return;
   }
 
-  shouldTearDownWifiOnExit = true;
   launchWifiSelection();
 }
 
-void ClockSyncActivity::onExit() {
-  Activity::onExit();
-
-  if (shouldTearDownWifiOnExit && WiFi.getMode() != WIFI_MODE_NULL) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestart();
-  }
-}
+void ClockSyncActivity::onExit() { Activity::onExit(); }
 
 void ClockSyncActivity::launchWifiSelection() {
   LOG_INF("CLK", "Manual sync requested without WiFi, launching WiFi selection");
