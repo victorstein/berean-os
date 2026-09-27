@@ -127,12 +127,14 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     family.name = fObj["name"] | "";
     family.description = fObj["description"] | "";
 
-    for (JsonVariant s : fObj["styles"].as<JsonArray>()) {
+    const JsonArray styleList = fObj["styles"].as<JsonArray>();
+    for (JsonVariant s : styleList) {
       family.styles.push_back(s.as<std::string>());
     }
 
     family.totalSize = 0;
-    for (JsonObject fileObj : fObj["files"].as<JsonArray>()) {
+    const JsonArray fileList = fObj["files"].as<JsonArray>();
+    for (JsonObject fileObj : fileList) {
       ManifestFile file;
       file.name = fileObj["name"] | "";
       file.size = fileObj["size"] | 0;
@@ -635,7 +637,6 @@ void FontDownloadActivity::render(RenderLock&&) {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_FONT_BROWSER));
 
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-  const auto contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const auto centerY = (pageHeight - lineHeight) / 2;
 
   if (state_ == LOADING_MANIFEST) {
