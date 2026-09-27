@@ -219,6 +219,9 @@ class BaseTheme {
   virtual bool tabIndexFromPoint(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs, int x, int y,
                                  int& index) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
+  // A bottom-anchored, wrapping notice for an outcome the user need not act
+  // on. drawPopup stays for blocking and progress states.
+  virtual void drawToast(const GfxRenderer& renderer, const char* message) const;
   virtual void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
                                int selectedIndex) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
