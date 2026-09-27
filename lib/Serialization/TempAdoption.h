@@ -25,9 +25,8 @@ enum class TempAdoptionAction : uint8_t {
   PromoteTempAndUseIt,  // .tmp is the only surviving copy; rescue it now
   // .tmp exists but is unusable, and is left on the card. Removing it buys
   // nothing -- the next save truncates it, since writeDocToFileAtomic opens it
-  // with O_TRUNC -- and a transient SD read
-  // failure is indistinguishable from an empty file, so deleting here could
-  // destroy the only surviving copy.
+  // with O_TRUNC -- and a transient SD read failure is indistinguishable from
+  // an empty file, so deleting here could destroy the only surviving copy.
   KeepTempReportEmpty,
   ReportFailed,  // primary bytes exist but could not be read/parsed
 };

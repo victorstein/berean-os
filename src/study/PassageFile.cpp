@@ -19,7 +19,7 @@ std::string path(const std::string& pubKey) { return std::string(sdpaths::PASSAG
 LoadResult load(const std::string& pubKey, study::PassageDoc& doc) {
   const std::string primaryPath = path(pubKey);
   return PersistableStoreBase::loadAdopting(
-      primaryPath.c_str(), PersistableStoreBase::readDocFromFileStreamed,
+      primaryPath.c_str(), &PersistableStoreBase::readDocFromFileStreamed,
       [](void* target, JsonVariantConst json) { return static_cast<study::PassageDoc*>(target)->fromJson(json); },
       &doc);
 }
