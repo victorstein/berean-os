@@ -136,6 +136,12 @@ void PublicationsActivity::buildScreen(UiScreen& screen) {
   searchItem.actionValue = SEARCH_ROW;
   rowItems_[SEARCH_ROW] = searchItem;
 
+  fui::ListItem browseItem{};
+  browseItem.label = tr(STR_BROWSE_CARD);
+  browseItem.subtitle = tr(STR_BROWSE_CARD_HINT);
+  browseItem.actionValue = BROWSE_ROW;
+  rowItems_[BROWSE_ROW] = browseItem;
+
   fui::ListItem headerItem{};
   headerItem.label = tr(STR_ON_THIS_DEVICE);
   headerItem.isHeader = true;
@@ -172,6 +178,12 @@ void PublicationsActivity::buildScreen(UiScreen& screen) {
 void PublicationsActivity::activateIndex(const int index) {
   if (index == SEARCH_ROW) {
     openSearch();
+    return;
+  }
+  if (index == BROWSE_ROW) {
+    // Replaces the stack, as the Bible download screen's file choice does: Back
+    // from the card root goes to the launcher.
+    activityManager.goToFileBrowser();
     return;
   }
   const int entry = entryIndexForRow(index);

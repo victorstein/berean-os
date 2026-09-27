@@ -18,6 +18,9 @@
 //
 // The library is the noun and searching the catalog is a verb inside it, rather
 // than a search screen that lists your books when the query happens to be empty.
+//
+// A book outside the download folder and the card root is not listed; the
+// Browse row opens the file browser for those.
 class PublicationsActivity final : public UiListActivity {
  public:
   explicit PublicationsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
@@ -44,11 +47,13 @@ class PublicationsActivity final : public UiListActivity {
     uint16_t thumbWidth = 0;
   };
 
-  // Search row, a section header, then one row per publication. The header is
-  // never selected or activated, but it occupies a row index like any other.
+  // Search and Browse rows, a section header, then one row per publication. The
+  // header is never selected or activated, but it occupies a row index like any
+  // other.
   static constexpr int SEARCH_ROW = 0;
-  static constexpr int HEADER_ROW = 1;
-  static constexpr int FIRST_BOOK_ROW = 2;
+  static constexpr int BROWSE_ROW = 1;
+  static constexpr int HEADER_ROW = 2;
+  static constexpr int FIRST_BOOK_ROW = 3;
 
   int listCount() const override { return FIRST_BOOK_ROW + static_cast<int>(entries_.size()); }
   void buildScreen(UiScreen& screen) override;
@@ -58,7 +63,7 @@ class PublicationsActivity final : public UiListActivity {
   void render(RenderLock&&) override;
   const char* headerTitle() const override;
 
-  // Row index -> entries_ index, or -1 for the search and header rows. Every
+  // Row index -> entries_ index, or -1 for the action and header rows. Every
   // conversion goes through this: the rows and the publications stopped being
   // the same numbering the moment a header was inserted between them.
   int entryIndexForRow(int row) const;

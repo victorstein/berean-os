@@ -278,9 +278,10 @@ Details are in [docs/webserver.md](./docs/webserver.md); the raw endpoints are i
 
 ## 12. Browsing files
 
-The file browser walks the SD card. It opens from **Choose a file** in the Bible download offer,
-which the **Bible** tile shows when no Bible has been found on the card. The current path is shown at
-the top, directories appear in brackets, and file extensions are shown.
+The file browser walks the SD card. It opens from **Browse the card** in **Publications**, which
+reaches books outside the download folder and the card root, and from **Choose a file** in the Bible
+download offer, which the **Bible** tile shows when no Bible has been found on the card. The current
+path is shown at the top, directories appear in brackets, and file extensions are shown.
 
 - **Left** / **Right** move the selection.
 - Tap a row to open a folder or a book. A `.bmp` opens in the image viewer.
