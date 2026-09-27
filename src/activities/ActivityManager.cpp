@@ -82,7 +82,7 @@ void ActivityManager::loop() {
       return;
     }
 
-    if (currentActivity->name != "FrontlightPanel" && mappedInput.wasLightPanelGesture()) {
+    if (!currentActivity->isFrontlightPanel() && mappedInput.wasLightPanelGesture()) {
       pushActivity(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput));
       return;
     }

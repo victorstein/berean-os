@@ -559,8 +559,13 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
   int phyX = 0;
   int phyY = 0;
 
-  // Note: this call should be inlined for better performance
-  rotateCoordinates(orientation, x, y, &phyX, &phyY, panelWidth, panelHeight);
+  // Portrait is the orientation every non-reader screen and the default reader use; keep it off the switch.
+  if (orientation == Portrait) {
+    phyX = y;
+    phyY = panelHeight - 1 - x;
+  } else {
+    rotateCoordinates(orientation, x, y, &phyX, &phyY, panelWidth, panelHeight);
+  }
 
   // Bounds checking against runtime panel dimensions
   if (phyX < 0 || phyX >= panelWidth || phyY < 0 || phyY >= panelHeight) {
