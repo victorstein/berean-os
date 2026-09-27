@@ -115,7 +115,6 @@ bool appendLedger(const std::string& name, const uint16_t passages) {
     return false;
   }
 
-  Storage.mkdir(sdpaths::BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(MigrationRunner::LEDGER_PATH, doc);
 }
 
@@ -170,7 +169,6 @@ void writeReport(const MigrationRunner::Summary& summary, const std::vector<File
     for (const auto& d : f.drops) drops.add(d);
   }
 
-  Storage.mkdir(sdpaths::BEREAN_DIR);
   if (!PersistableStoreBase::writeDocToFileAtomic(MigrationRunner::REPORT_PATH, doc)) {
     LOG_ERR(MODULE, "Could not write the migration report");
   }

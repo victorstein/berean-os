@@ -1,7 +1,6 @@
 #include "HighlightFile.h"
 
 #include <ArduinoJson.h>
-#include <HalStorage.h>
 #include <Logging.h>
 #include <PathFlatten.h>
 #include <PersistableStore.h>
@@ -37,7 +36,6 @@ SaveResult save(const std::string& bookPath, const HighlightDoc& doc) {
     return SaveResult::TooLarge;
   }
 
-  Storage.mkdir(highlightsDir().c_str());
   const std::string path = highlightPath(bookPath);
   return PersistableStoreBase::writeDocToFileAtomic(path.c_str(), json) ? SaveResult::Ok : SaveResult::WriteFailed;
 }
