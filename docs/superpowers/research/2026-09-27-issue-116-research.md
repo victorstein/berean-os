@@ -62,8 +62,11 @@ only hits are comments and the reader's `BookmarkToast` enum
 It measures one line in `UI_12_FONT_ID` (bold when `metrics.popupTextBold`).
 It fills a frame of `popupFrameThickness` and then an inner box: a plain
 rectangle for Classic, or rounded (`popupCornerRadius`, 6 on Lyra,
-`LyraTheme.h:53`). It draws the text (`popupTextInverted`: white-on-black on
-Classic, `BaseTheme.h:170`; black-on-white on Lyra, `LyraTheme.h:55`) and
+`LyraTheme.h:53`). It draws the text with `popupTextInverted` as `drawText`'s
+`black` argument (`BaseTheme.cpp:494`). That gives black text on a
+black-framed white box on Classic (`true`, `BaseTheme.h:170`), and white text
+on a white-rimmed black box on Lyra (`false`, `LyraTheme.h:55`). This was
+corrected after spec review 0. It then
 calls `renderer.displayBuffer()` (FAST). It returns the box `Rect`, which
 `fillPopupProgress` (`:499-522`) reuses for progress bars. The toast wrapper
 must not change that contract for the progress callers.
