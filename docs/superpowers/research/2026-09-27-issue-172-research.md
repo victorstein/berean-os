@@ -69,7 +69,7 @@ builds a `FunctionRequestHandler` per call; handlers are deleted by `~WebServer`
 | wifi | `GET/POST /api/wifi` `:174-175`, `POST /api/wifi/delete` `:176` | `:1311-1452` | `:342-385` |
 | WebSocket | port 81 | `:1455-1645` | `:387-429` |
 
-Code registers 20 `on()` routes; the docs list the same 20 plus WebSocket, WebDAV and UDP. No
+Code registers 21 `on()` routes (`grep -c "server->on("` → `21`); the docs list the same 21 plus WebSocket, WebDAV and UDP. No
 discrepancy found. The issue scopes only the three bold groups.
 
 ### 3c. What each group reads besides `server`
