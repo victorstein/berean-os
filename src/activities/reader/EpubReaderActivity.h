@@ -10,6 +10,7 @@
 #include <optional>
 #include <vector>
 
+#include "AutoPageTurn.h"
 #include "EpubReaderMenuActivity.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
@@ -29,7 +30,6 @@ class EpubReaderActivity final : public ReaderActivity {
   std::optional<uint32_t> currentPageVisibleOffset;
   std::optional<uint32_t> pendingOffsetJump;
   unsigned long lastPageTurnTime = 0UL;
-  unsigned long pageTurnDuration = 0UL;
   int8_t pendingManualTurn = 0;
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
@@ -37,11 +37,11 @@ class EpubReaderActivity final : public ReaderActivity {
   uint8_t pageLoadRetryCount = 0;
   static constexpr uint8_t MAX_PAGE_LOAD_RETRIES = 3;
   bool skipNextButtonCheck = false;
-  bool automaticPageTurnActive = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
   ReaderBookmarks bookmarks;
+  AutoPageTurn autoTurn;
   bool recentsEntryRemoved = false;
   bool pendingReadFolderMove = false;
 

@@ -18,7 +18,6 @@
 #include <algorithm>
 #include <cassert>
 #include <functional>
-#include <iterator>
 #include <limits>
 #include <utility>
 
@@ -52,7 +51,6 @@
 #include "util/ScreenshotUtil.h"
 
 namespace {
-constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
 
 int clampPercent(int percent) {
   if (percent < 0) {
@@ -457,11 +455,11 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  if (automaticPageTurnActive) {
+  if (autoTurn.active()) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
         mappedInput.wasReleased(MappedInputManager::Button::Back) ||
         ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
-      automaticPageTurnActive = false;
+      autoTurn.stop();
       requestUpdate();
       return;
     }
@@ -476,7 +474,7 @@ void EpubReaderActivity::loop() {
       return;
     }
 
-    if ((millis() - lastPageTurnTime) >= pageTurnDuration) {
+    if (autoTurn.due(millis(), lastPageTurnTime)) {
       pageTurn(true);
       requestUpdate();
       return;
@@ -877,14 +875,10 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
 }
 
 void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption) {
-  if (selectedPageTurnOption == 0 || selectedPageTurnOption >= std::size(PAGE_TURN_RATES)) {
-    automaticPageTurnActive = false;
+  if (!autoTurn.start(selectedPageTurnOption)) {
     return;
   }
-
   lastPageTurnTime = millis();
-  pageTurnDuration = (1UL * 60 * 1000) / PAGE_TURN_RATES[selectedPageTurnOption];
-  automaticPageTurnActive = true;
 
   const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
   if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
@@ -994,7 +988,7 @@ void EpubReaderActivity::renderBook() {
   const auto showBuildError = [this]() {
     renderer.clearScreen();
     GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
-    automaticPageTurnActive = false;
+    autoTurn.stop();
   };
 
   if (currentSpineIndex < 0) currentSpineIndex = 0;
@@ -1013,8 +1007,7 @@ void EpubReaderActivity::renderBook() {
 
   const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
 
-  if (automaticPageTurnActive &&
-      (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
+  if (autoTurn.active() && (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
     orientedMarginBottom +=
         std::max(SETTINGS.screenMargin,
                  static_cast<uint8_t>(statusBarHeight + UITheme::getInstance().getMetrics().statusBarVerticalMargin));
@@ -1219,7 +1212,7 @@ void EpubReaderActivity::renderBook() {
     renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_EMPTY_CHAPTER), true, EpdFontFamily::BOLD);
     renderStatusBar();
     renderer.displayBuffer();
-    automaticPageTurnActive = false;
+    autoTurn.stop();
     return;
   }
 
@@ -1228,7 +1221,7 @@ void EpubReaderActivity::renderBook() {
     renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_OUT_OF_BOUNDS), true, EpdFontFamily::BOLD);
     renderStatusBar();
     renderer.displayBuffer();
-    automaticPageTurnActive = false;
+    autoTurn.stop();
     return;
   }
 
@@ -1238,7 +1231,7 @@ void EpubReaderActivity::renderBook() {
     auto p = section->loadPage(section->currentPage);
     if (!p) {
       LOG_ERR("ERS", "Failed to load page from SD - clearing section cache");
-      automaticPageTurnActive = false;
+      autoTurn.stop();
       const bool giveUp = ++pageLoadRetryCount > MAX_PAGE_LOAD_RETRIES;
       section->abandonBuild();
       section->clearCache();
@@ -1284,7 +1277,7 @@ void EpubReaderActivity::renderBook() {
   }
 }
 
-void EpubReaderActivity::onEndOfBookRendered() { automaticPageTurnActive = false; }
+void EpubReaderActivity::onEndOfBookRendered() { autoTurn.stop(); }
 
 bool EpubReaderActivity::applyDeferredReposition() {
   if ((!cachedVisibleTextOffset.has_value() && cachedChapterTotalPageCount == 0) || !section || section->isBuilding()) {
@@ -1620,8 +1613,8 @@ void EpubReaderActivity::renderStatusBar() const {
   int textYOffset = 0;
   const auto sb = SETTINGS.statusBarSpec();
 
-  if (automaticPageTurnActive) {
-    title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
+  if (autoTurn.active()) {
+    title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(autoTurn.pagesPerMinute());
     const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
     if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
       textYOffset += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
