@@ -12,6 +12,12 @@
 // runs it on the host.
 namespace study_sleep {
 
+// PassageDoc::MAX_SNIPPET_BYTES / MAX_REFERENCE_BYTES plus a terminator.
+// StudySleepScreen.cpp static_asserts the match; including PassageDoc.h here
+// would pull ArduinoJson into the host test.
+inline constexpr size_t SNIPPET_CAPACITY = 121;
+inline constexpr size_t REFERENCE_CAPACITY = 49;
+
 inline constexpr uint32_t FNV_OFFSET_BASIS = 0x811c9dc5u;
 inline constexpr uint32_t FNV_PRIME = 0x01000193u;
 
@@ -67,5 +73,66 @@ inline std::optional<uint8_t> ageOf(const RingView& ring, const uint32_t key) {
   }
   return std::nullopt;
 }
+
+// Returns a value in [0, bound); bound is never 0.
+using RandomFn = uint32_t (*)(void* ctx, uint32_t bound);
+
+struct Candidate {
+  char snippet[SNIPPET_CAPACITY] = {};
+  char reference[REFERENCE_CAPACITY] = {};
+  uint16_t tag = 0;
+  uint32_t key = 0;
+  uint8_t age = 0;
+};
+
+// One pass over every passage. Passages not shown recently are reservoir-sampled:
+// the k-th replaces the pick with probability 1/k. Recent ones count only when
+// nothing else exists, and then the least recently shown wins, the first seen on
+// a tie.
+class Sampler {
+ public:
+  Sampler(const RandomFn random, void* const randomCtx) : random_(random), randomCtx_(randomCtx) {}
+
+  void offer(const std::string_view snippet, const std::string_view reference, const uint16_t tag,
+             const uint32_t key, const std::optional<uint8_t> age) {
+    if (!age) {
+      ++freshSeen_;
+      if (random_(randomCtx_, freshSeen_) == 0) fill(fresh_, snippet, reference, tag, key, 0);
+      return;
+    }
+    if (!hasStale_ || *age > stale_.age) {
+      fill(stale_, snippet, reference, tag, key, *age);
+      hasStale_ = true;
+    }
+  }
+
+  const Candidate* result() const {
+    if (freshSeen_ > 0) return &fresh_;
+    return hasStale_ ? &stale_ : nullptr;
+  }
+
+ private:
+  static void copyInto(char* out, const size_t capacity, const std::string_view text) {
+    const size_t length = text.size() < capacity - 1 ? text.size() : capacity - 1;
+    memcpy(out, text.data(), length);
+    out[length] = '\0';
+  }
+
+  static void fill(Candidate& slot, const std::string_view snippet, const std::string_view reference,
+                   const uint16_t tag, const uint32_t key, const uint8_t age) {
+    copyInto(slot.snippet, sizeof(slot.snippet), snippet);
+    copyInto(slot.reference, sizeof(slot.reference), reference);
+    slot.tag = tag;
+    slot.key = key;
+    slot.age = age;
+  }
+
+  RandomFn random_;
+  void* randomCtx_;
+  Candidate fresh_;
+  Candidate stale_;
+  uint32_t freshSeen_ = 0;
+  bool hasStale_ = false;
+};
 
 }  // namespace study_sleep

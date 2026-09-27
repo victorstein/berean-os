@@ -91,3 +91,91 @@ TEST(StudySleepRing, AKeyHeldTwiceReportsItsNewestShowing) {
   keys[2] = 9;
   EXPECT_EQ(study_sleep::ageOf(view(keys, 3, 3), 5u), std::optional<uint8_t>(1));
 }
+
+namespace {
+
+struct ScriptedRandom {
+  std::vector<uint32_t> values;
+  size_t next = 0;
+  std::vector<uint32_t> bounds;
+};
+
+uint32_t scripted(void* ctx, const uint32_t bound) {
+  auto* script = static_cast<ScriptedRandom*>(ctx);
+  script->bounds.push_back(bound);
+  const uint32_t value = script->next < script->values.size() ? script->values[script->next++] : 0;
+  return value % bound;
+}
+
+std::string pickFrom(ScriptedRandom& script, const std::vector<std::pair<std::string, std::optional<uint8_t>>>& offers) {
+  study_sleep::Sampler sampler(&scripted, &script);
+  uint32_t key = 1;
+  for (const auto& [snippet, age] : offers) sampler.offer(snippet, "", 0, key++, age);
+  const auto* chosen = sampler.result();
+  return chosen ? std::string(chosen->snippet) : std::string("<none>");
+}
+
+}  // namespace
+
+TEST(StudySleepSampler, ReplacesThePickWithProbabilityOneInK) {
+  const std::vector<std::pair<std::string, std::optional<uint8_t>>> four = {
+      {"A", std::nullopt}, {"B", std::nullopt}, {"C", std::nullopt}, {"D", std::nullopt}};
+  ScriptedRandom keepFirst{{0, 1, 1, 1}, 0, {}};
+  EXPECT_EQ(pickFrom(keepFirst, four), "A");
+  EXPECT_EQ(keepFirst.bounds, (std::vector<uint32_t>{1, 2, 3, 4}));
+  ScriptedRandom takeSecond{{0, 0, 1, 1}, 0, {}};
+  EXPECT_EQ(pickFrom(takeSecond, four), "B");
+  ScriptedRandom takeThird{{0, 1, 0, 1}, 0, {}};
+  EXPECT_EQ(pickFrom(takeThird, four), "C");
+  ScriptedRandom takeLast{{0, 1, 1, 0}, 0, {}};
+  EXPECT_EQ(pickFrom(takeLast, four), "D");
+}
+
+TEST(StudySleepSampler, NeverPicksARecentPassageWhileAnotherExists) {
+  for (uint32_t roll = 0; roll < 4; ++roll) {
+    ScriptedRandom script{{roll, roll, roll}, 0, {}};
+    EXPECT_EQ(pickFrom(script, {{"shown", 0}, {"fresh", std::nullopt}}), "fresh");
+  }
+}
+
+TEST(StudySleepSampler, ShowsTheOnlyPassageAgain) {
+  ScriptedRandom script;
+  EXPECT_EQ(pickFrom(script, {{"only", 0}}), "only");
+}
+
+TEST(StudySleepSampler, WhenAllAreRecentTheLeastRecentlyShownWins) {
+  ScriptedRandom script;
+  EXPECT_EQ(pickFrom(script, {{"newest", 0}, {"oldest", 3}, {"middle", 1}}), "oldest");
+  ScriptedRandom reversed;
+  EXPECT_EQ(pickFrom(reversed, {{"middle", 1}, {"oldest", 3}, {"newest", 0}}), "oldest");
+}
+
+TEST(StudySleepSampler, AnEqualAgeTieKeepsTheFirstSeen) {
+  ScriptedRandom script;
+  EXPECT_EQ(pickFrom(script, {{"first", 2}, {"second", 2}}), "first");
+}
+
+TEST(StudySleepSampler, NothingOfferedPicksNothing) {
+  ScriptedRandom script;
+  EXPECT_EQ(pickFrom(script, {}), "<none>");
+}
+
+TEST(StudySleepSampler, KeepsTheWinnersFields) {
+  ScriptedRandom script;
+  study_sleep::Sampler sampler(&scripted, &script);
+  sampler.offer("In the beginning", "Genesis 1:1", 7, 0xABCDu, std::nullopt);
+  const auto* chosen = sampler.result();
+  ASSERT_NE(chosen, nullptr);
+  EXPECT_STREQ(chosen->snippet, "In the beginning");
+  EXPECT_STREQ(chosen->reference, "Genesis 1:1");
+  EXPECT_EQ(chosen->tag, 7);
+  EXPECT_EQ(chosen->key, 0xABCDu);
+}
+
+TEST(StudySleepSampler, TruncatesAnOverlongSnippetToItsCapacity) {
+  ScriptedRandom script;
+  study_sleep::Sampler sampler(&scripted, &script);
+  const std::string longSnippet(study_sleep::SNIPPET_CAPACITY + 20, 'x');
+  sampler.offer(longSnippet, "", 0, 1, std::nullopt);
+  EXPECT_EQ(std::string(sampler.result()->snippet).size(), study_sleep::SNIPPET_CAPACITY - 1);
+}
