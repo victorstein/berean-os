@@ -84,7 +84,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     }
   }
 
-  // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
+  // Front button remap — stored outside SettingsList; this board has no on-device editor for it.
   doc["frontButtonBack"] = frontButtonBack;
   doc["frontButtonConfirm"] = frontButtonConfirm;
   doc["frontButtonLeft"] = frontButtonLeft;
@@ -185,7 +185,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     sleepTimeoutMinutes = sleepTimeoutEnumToMinutes(legacyValue);
     needsResave = true;
   }
-  // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
+  // Front button remap — stored outside SettingsList; this board has no on-device editor for it.
   frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
   frontButtonConfirm =
       clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);

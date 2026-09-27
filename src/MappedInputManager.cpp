@@ -387,8 +387,7 @@ MappedInputManager::Labels MappedInputManager::mapFrontLabels(const char* back, 
 // two arms are unreachable there.
 //
 // So a future "press any front button" flow works here, but a flow needing four
-// distinct buttons does not. ButtonRemapActivity is the latter and refuses up
-// front (ButtonRemapActivity::onEnter).
+// distinct buttons does not.
 int MappedInputManager::getPressedFrontButton() const {
   if (gpio.wasPressed(HalGPIO::BTN_BACK)) {
     return HalGPIO::BTN_BACK;

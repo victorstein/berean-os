@@ -13,7 +13,6 @@ enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING };
 
 enum class SettingAction {
   None,
-  RemapFrontButtons,
   CustomiseStatusBar,
   Network,
   FileTransfer,
