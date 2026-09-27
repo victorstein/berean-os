@@ -976,7 +976,7 @@ void WifiSelectionActivity::render(RenderLock&&) {
       break;
     case WifiSelectionState::PASSWORD_ENTRY:
     case WifiSelectionState::HIDDEN_SSID_ENTRY:
-      // Transitioning to/from a keyboard subactivity - nothing to draw
+      // Unreachable: render() returns early for the keyboard-entry states.
       break;
     case WifiSelectionState::CONNECTING:
       renderConnecting(&screen, &metrics);
