@@ -177,3 +177,49 @@ TEST(MeetingUrls, FilenameComesFromTheLastPathSegment) {
   EXPECT_EQ(filenameFromUrl("https://example.com/"), "");
   EXPECT_EQ(filenameFromUrl(""), "");
 }
+
+namespace {
+
+CivilDate civil(const uint16_t year, const uint8_t month, const uint8_t day) {
+  CivilDate date;
+  date.year = year;
+  date.month = month;
+  date.day = day;
+  return date;
+}
+
+IsoWeek isoWeek(const uint16_t year, const uint8_t number) {
+  IsoWeek week;
+  week.year = year;
+  week.week = number;
+  return week;
+}
+
+void expectDate(const CivilDate& actual, const int year, const int month, const int day) {
+  EXPECT_EQ(actual.year, year);
+  EXPECT_EQ(actual.month, month);
+  EXPECT_EQ(actual.day, day);
+}
+
+}  // namespace
+
+TEST(CivilCalendar, IsoWeekdayRunsMondayToSunday) {
+  EXPECT_EQ(isoWeekday(civil(2026, 9, 28)), 1);
+  EXPECT_EQ(isoWeekday(civil(2026, 9, 27)), 7);
+  EXPECT_EQ(isoWeekday(civil(1970, 1, 1)), 4);
+}
+
+TEST(CivilCalendar, IsoWeekdayRejectsImpossibleDates) {
+  EXPECT_EQ(isoWeekday(civil(2026, 2, 30)), 0);
+  EXPECT_EQ(isoWeekday(civil(2026, 13, 1)), 0);
+  EXPECT_EQ(isoWeekday(CivilDate{}), 0);
+}
+
+TEST(CivilCalendar, AddDaysCrossesMonthYearAndLeapDay) {
+  expectDate(addDays(civil(2026, 9, 29), 5), 2026, 10, 4);
+  expectDate(addDays(civil(2026, 12, 29), 5), 2027, 1, 3);
+  expectDate(addDays(civil(2028, 2, 28), 1), 2028, 2, 29);
+  expectDate(addDays(civil(2027, 1, 1), -1), 2026, 12, 31);
+}
+
+TEST(CivilCalendar, AddDaysGivesAnEmptyDateForAnImpossibleOne) { expectDate(addDays(civil(2026, 2, 30), 1), 0, 0, 0); }

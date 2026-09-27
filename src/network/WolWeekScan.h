@@ -27,6 +27,19 @@ uint8_t monthNumberFromName(const char* name, size_t len);
 // gmtime_r so strftime's %G/%V see the tm_wday/tm_yday they read.
 bool isoWeekFromUtcDate(uint16_t year, uint8_t month, uint8_t day, IsoWeek& out);
 
+struct CivilDate {
+  uint16_t year = 0;
+  uint8_t month = 0;
+  uint8_t day = 0;
+};
+
+// ISO weekday, 1 = Monday .. 7 = Sunday. 0 for a date that does not exist.
+uint8_t isoWeekday(const CivilDate& date);
+
+// The date `days` after (negative: before) `date`. An empty CivilDate when `date`
+// does not exist.
+CivilDate addDays(const CivilDate& date, int days);
+
 std::string meetingsPageUrl(const IsoWeek& week);
 
 // GETPUBMEDIALINKS for any publication symbol. A null or empty `issue` omits the
