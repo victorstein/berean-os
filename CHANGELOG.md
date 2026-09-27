@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.4](https://github.com/victorstein/berean-os/compare/v1.17.3...v1.17.4) (2026-09-27)
+
+
+### Bug Fixes
+
+* list only publications with an EPUB in Buscar and name each issue by date ([#163](https://github.com/victorstein/berean-os/issues/163)) ([0a88a61](https://github.com/victorstein/berean-os/commit/0a88a6161e8cd771d0f1e77f388559e593ad9948)), closes [#157](https://github.com/victorstein/berean-os/issues/157)
+
 ## [1.17.3](https://github.com/victorstein/berean-os/compare/v1.17.2...v1.17.3) (2026-09-27)
 
 
