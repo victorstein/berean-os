@@ -10,6 +10,7 @@ add_executable(PersistableStoreTest
 target_include_directories(PersistableStoreTest PRIVATE
   ${REPO_ROOT}/test/stubs
   ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/Memory
 )
 
 target_link_libraries(PersistableStoreTest PRIVATE

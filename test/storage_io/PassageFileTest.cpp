@@ -67,6 +67,20 @@ TEST_F(PassageFileIo, SaveThenLoadRoundTripsThePassages) {
   EXPECT_EQ(loaded.passages()[0].reference, "Salmos 119:145");
 }
 
+TEST_F(PassageFileIo, SaveThenLoadRoundTripsAFilePastTheReadCap) {
+  const study::PassageDoc saved = pastTheReadCap();
+  const std::string bytes = serialised(saved);
+  ASSERT_GT(bytes.size(), 50000u) << "the fixture must exceed the readFile cap to prove anything";
+
+  ASSERT_EQ(PassageFile::save(PUB_KEY, saved), PassageFile::SaveResult::Ok);
+  EXPECT_EQ(storage_fake::fileBytes(PATH), bytes);
+  EXPECT_FALSE(Storage.exists(TMP_PATH.c_str()));
+
+  study::PassageDoc loaded;
+  ASSERT_EQ(PassageFile::load(PUB_KEY, loaded), PassageFile::LoadResult::Loaded);
+  EXPECT_EQ(loaded.passages().size(), saved.passages().size());
+}
+
 TEST_F(PassageFileIo, LoadOnAnEmptyCardIsEmpty) {
   study::PassageDoc doc;
   EXPECT_EQ(PassageFile::load(PUB_KEY, doc), PassageFile::LoadResult::Empty);

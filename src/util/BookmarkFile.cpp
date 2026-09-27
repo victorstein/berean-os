@@ -61,7 +61,6 @@ SaveResult save(const std::string& bookPath, const std::vector<BookmarkEntry>& b
     return SaveResult::TooLarge;
   }
 
-  // writeDocToFileAtomic ensures /.crosspoint; the bookmarks subdirectory is ours.
   Storage.mkdir(BookmarkUtil::getBookmarksDir().c_str());
   return PersistableStoreBase::writeDocToFileAtomic(path.c_str(), json) ? SaveResult::Ok : SaveResult::WriteFailed;
 }

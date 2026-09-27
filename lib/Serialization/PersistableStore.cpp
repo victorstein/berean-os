@@ -1,16 +1,96 @@
 #include "PersistableStore.h"
 
+#include <BufferedFile.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
-#include <SdPaths.h>
 
 #include <cstring>
 #include <limits>
 #include <string>
 
+namespace {
+
+// One SdFat sector. Under the 4 KB PSRAM routing threshold, so internal SRAM.
+constexpr size_t WRITE_BUFFER_BYTES = 512;
+
+// ArduinoJson reader over HalFile, so a file larger than
+// SDCardManager::readFile's 50,000-byte cap still parses in full.
+class HalFileReader {
+ public:
+  explicit HalFileReader(HalFile& file) : file_(file) {}
+
+  int read() { return file_.read(); }
+
+  size_t readBytes(char* buffer, const size_t length) {
+    const int got = file_.read(buffer, length);
+    return got < 0 ? 0 : static_cast<size_t>(got);
+  }
+
+ private:
+  HalFile& file_;
+};
+
+// ArduinoJson writer over a BufferedFileWriter. ArduinoJson writes strings one
+// character at a time, and every HalFile::write takes storageMutex, hence the
+// buffer. Reports every byte as taken: a short write surfaces through
+// BufferedFileWriter::flush() instead.
+class JsonFileWriter {
+ public:
+  explicit JsonFileWriter(serialization::BufferedFileWriter& out) : out_(out) {}
+
+  size_t write(const uint8_t c) {
+    out_.write(&c, 1);
+    return 1;
+  }
+
+  size_t write(const uint8_t* buffer, const size_t length) {
+    out_.write(buffer, length);
+    return length;
+  }
+
+ private:
+  serialization::BufferedFileWriter& out_;
+};
+
+void ensureParentDirectory(const char* path) {
+  const char* slash = strrchr(path, '/');
+  if (slash == nullptr || slash == path) return;
+  // Fails harmlessly when the directory already exists; a real failure
+  // surfaces as the open that follows failing.
+  Storage.mkdir(std::string(path, static_cast<size_t>(slash - path)).c_str());
+}
+
+// The buffer is flushed and freed before this returns, so it never flushes
+// into a closed file.
+bool serializeInto(HalFile& file, const JsonDocument& doc) {
+  serialization::BufferedFileWriter buffered(file, WRITE_BUFFER_BYTES);
+  JsonFileWriter sink(buffered);
+  serializeJson(doc, sink);
+  return buffered.flush();
+}
+
+bool writeDocStreamed(const char* path, const JsonDocument& doc) {
+  HalFile file;
+  if (!Storage.openFileForWrite("PERSIST", path, file)) {
+    LOG_ERR("PERSIST", "Failed to open %s for write", path);
+    return false;
+  }
+  const bool written = serializeInto(file, doc);
+  // Closed here, not at scope exit: the caller renames this path next, and
+  // close() reports the final sync.
+  const bool closed = file.close();
+  if (!written || !closed) {
+    LOG_ERR("PERSIST", "Failed to write %s (%s)", path, written ? "close failed" : "short write");
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
+
 bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& doc) {
-  Storage.mkdir(sdpaths::CROSSPOINT_DIR);
+  ensureParentDirectory(path);
   String json;
   serializeJson(doc, json);
   if (!Storage.writeFile(path, json)) {
@@ -21,17 +101,13 @@ bool PersistableStoreBase::writeDocToFile(const char* path, const JsonDocument& 
 }
 
 bool PersistableStoreBase::writeDocToFileAtomic(const char* path, const JsonDocument& doc) {
-  Storage.mkdir(sdpaths::CROSSPOINT_DIR);
+  ensureParentDirectory(path);
   const std::string finalPath = path;
   const std::string tmpPath = finalPath + ".tmp";
 
-  String json;
-  serializeJson(doc, json);
-
-  if (!Storage.writeFile(tmpPath.c_str(), json)) {
-    LOG_ERR("PERSIST", "Failed to write temp file %s", tmpPath.c_str());
-    return false;
-  }
+  // A failed write leaves the destination alone and the partial .tmp on the
+  // card; the adopting read handles that .tmp and the next save truncates it.
+  if (!writeDocStreamed(tmpPath.c_str(), doc)) return false;
 
   // SdFat's rename does not overwrite an existing destination, so drop the old
   // file first. The brief window where neither exists reads as "no data yet",
@@ -54,6 +130,28 @@ DocReadStatus PersistableStoreBase::readDocFromFileChecked(const char* path, Jso
     return classifyDocRead(true, true, false);
   }
   const auto error = deserializeJson(doc, json);
+  if (error) {
+    LOG_ERR("PERSIST", "JSON parse error in %s: %s", path, error.c_str());
+    return classifyDocRead(true, false, true);
+  }
+  return classifyDocRead(true, false, false);
+}
+
+DocReadStatus PersistableStoreBase::readDocFromFileStreamed(const char* path, JsonDocument& doc) {
+  if (!Storage.exists(path)) return classifyDocRead(false, false, false);
+
+  HalFile file;
+  if (!Storage.openFileForRead("PERSIST", path, file)) {
+    LOG_ERR("PERSIST", "Failed to open %s", path);
+    return classifyDocRead(true, true, false);
+  }
+  if (file.size() == 0) {
+    LOG_ERR("PERSIST", "%s is empty", path);
+    return classifyDocRead(true, true, false);
+  }
+
+  HalFileReader reader(file);
+  const auto error = deserializeJson(doc, reader);
   if (error) {
     LOG_ERR("PERSIST", "JSON parse error in %s: %s", path, error.c_str());
     return classifyDocRead(true, false, true);

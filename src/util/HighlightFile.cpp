@@ -37,8 +37,6 @@ SaveResult save(const std::string& bookPath, const HighlightDoc& doc) {
     return SaveResult::TooLarge;
   }
 
-  // writeDocToFileAtomic only ensures /.crosspoint; the highlights
-  // subdirectory is ours, same as BookmarkFile.cpp does for bookmarks.
   Storage.mkdir(highlightsDir().c_str());
   const std::string path = highlightPath(bookPath);
   return PersistableStoreBase::writeDocToFileAtomic(path.c_str(), json) ? SaveResult::Ok : SaveResult::WriteFailed;

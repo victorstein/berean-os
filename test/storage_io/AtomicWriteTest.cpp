@@ -7,6 +7,8 @@
 #include <PersistableStore.h>
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include "HalStorageFake.h"
 
 namespace {
@@ -51,6 +53,45 @@ TEST_F(AtomicWrite, AFailedTempWriteLeavesThePrimaryUntouched) {
   storage_fake::failWritesTo(TMP_PATH);
   EXPECT_FALSE(PersistableStoreBase::writeDocToFileAtomic(PATH, docWithValue(2)));
   EXPECT_EQ(storage_fake::fileBytes(PATH), R"({"v":1})");
+}
+
+TEST_F(AtomicWrite, CreatesTheTargetsOwnParentAndNotCrosspoint) {
+  ASSERT_TRUE(PersistableStoreBase::writeDocToFileAtomic("/.berean/x/store.json", docWithValue(1)));
+  EXPECT_EQ(storage_fake::fileBytes("/.berean/x/store.json"), R"({"v":1})");
+  EXPECT_FALSE(storage_fake::isDir("/.crosspoint"));
+}
+
+TEST_F(AtomicWrite, TheNonAtomicWriteCreatesTheTargetsOwnParentAndNotCrosspoint) {
+  ASSERT_TRUE(PersistableStoreBase::writeDocToFile("/.berean/x/store.json", docWithValue(1)));
+  EXPECT_EQ(storage_fake::fileBytes("/.berean/x/store.json"), R"({"v":1})");
+  EXPECT_FALSE(storage_fake::isDir("/.crosspoint"));
+}
+
+TEST_F(AtomicWrite, AShortTempWriteLeavesThePrimaryUntouchedAndTheTempBehind) {
+  storage_fake::putFile(PATH, R"({"v":1})");
+  storage_fake::failWritesAfter(TMP_PATH, 3);
+  EXPECT_FALSE(PersistableStoreBase::writeDocToFileAtomic(PATH, docWithValue(2)));
+  EXPECT_EQ(storage_fake::fileBytes(PATH), R"({"v":1})");
+  EXPECT_EQ(storage_fake::fileBytes(TMP_PATH), R"({"v)");
+}
+
+TEST_F(AtomicWrite, AShortWritePastTheBufferIsCaughtToo) {
+  JsonDocument doc;
+  doc["s"] = std::string(4000, 'x');
+  storage_fake::failWritesAfter(TMP_PATH, 1500);
+  EXPECT_FALSE(PersistableStoreBase::writeDocToFileAtomic(PATH, doc));
+  EXPECT_FALSE(Storage.exists(PATH));
+}
+
+TEST_F(AtomicWrite, ADocumentPastTheReadCapIsStreamedWholeAndReadBackWhole) {
+  JsonDocument doc;
+  doc["s"] = std::string(60000, 'x');
+  ASSERT_TRUE(PersistableStoreBase::writeDocToFileAtomic(PATH, doc));
+  EXPECT_EQ(storage_fake::fileBytes(PATH)->size(), 60008u);
+
+  JsonDocument read;
+  ASSERT_EQ(PersistableStoreBase::readDocFromFileStreamed(PATH, read), DocReadStatus::Ok);
+  EXPECT_EQ(read["s"].as<std::string>().size(), 60000u);
 }
 
 TEST_F(AtomicWrite, AFailedRenameLeavesOnlyTheTempWhichTheNextReadAdopts) {

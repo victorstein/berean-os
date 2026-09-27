@@ -31,6 +31,7 @@ add_executable(StorageIoTest
 target_include_directories(StorageIoTest PRIVATE
   ${REPO_ROOT}/test/stubs
   ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/Memory
   ${REPO_ROOT}/lib/StudyStore
   ${REPO_ROOT}/lib/Utf8
   ${REPO_ROOT}/src/study
