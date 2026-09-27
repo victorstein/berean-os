@@ -1,6 +1,5 @@
 #include "MeetingsActivity.h"
 
-#include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
 
@@ -17,6 +16,8 @@
 #include "network/MeetingWeekTable.h"
 #include "util/BookCacheUtils.h"
 #include "util/CoverThumb.h"
+#include "util/LocalDate.h"
+#include "util/WeekdayNames.h"
 
 namespace fui = freeink::ui;
 
@@ -103,8 +104,9 @@ void MeetingsActivity::computeLayout() {
 }
 
 void MeetingsActivity::refresh() {
-  HalClock::Date today{};
-  const bool haveDate = halClock.getDate(today);
+  CivilDate today;
+  bool todayIsLocal = false;
+  const bool haveDate = readLocalDate(today, todayIsLocal);
   IsoWeek week;
   const bool haveWeek = haveDate && isoWeekFromUtcDate(today.year, today.month, today.day, week);
 
@@ -128,16 +130,11 @@ void MeetingsActivity::refresh() {
     entry = table.newest();
   }
 
-  CivilDate utcToday;
-  utcToday.year = today.year;
-  utcToday.month = today.month;
-  utcToday.day = today.day;
-
   // All the SD work -- cover thumbnails, possibly book.bin -- happens before the
   // lock. A render queued while the download was on screen can run meanwhile,
   // and it must only ever see a whole old screen or a whole new one.
   WeekHeader header;
-  buildWeekHeader(haveWeek ? &week : nullptr, entry, haveDate ? &utcToday : nullptr, header);
+  buildWeekHeader(haveWeek ? &week : nullptr, entry, haveDate && todayIsLocal ? &today : nullptr, header);
   std::array<Card, 2> cards{};
   const int cardCount = buildCards(entry, cards);
 
@@ -154,7 +151,7 @@ void MeetingsActivity::refresh() {
 }
 
 void MeetingsActivity::buildWeekHeader(const IsoWeek* currentWeek, const MeetingWeekEntry* entry,
-                                       const CivilDate* utcToday, WeekHeader& out) const {
+                                       const CivilDate* localToday, WeekHeader& out) const {
   out = WeekHeader{};
 
   // The header dates the week whose publications are on the cards: a stale
@@ -182,21 +179,13 @@ void MeetingsActivity::buildWeekHeader(const IsoWeek* currentWeek, const Meeting
             static_cast<unsigned>(shown.week));
   }
 
-  // Only today is local. The week stays the UTC ISO week the launcher, the
-  // downloader and the prefetch use, so the cards always match what they fetch.
-  CivilDate localToday;
-  bool haveLocalToday = false;
-  uint8_t hour = 0;
-  uint8_t minute = 0;
-  if (utcToday != nullptr && halClock.getTime(hour, minute)) {
-    haveLocalToday = localDateFromUtc(*utcToday, hour, minute, SETTINGS.clockUtcOffsetQ, localToday);
-  }
-  out.strip = buildWeekStrip(monday, haveLocalToday ? &localToday : nullptr, SETTINGS.midweekMeetingDay,
-                             SETTINGS.weekendMeetingDay);
+  // Null when the clock's time could not be read: a UTC date would mark the
+  // wrong day for part of every day, so no day is marked instead.
+  out.strip = buildWeekStrip(monday, localToday, SETTINGS.midweekMeetingDay, SETTINGS.weekendMeetingDay);
   out.anyMeetingDay =
       std::any_of(out.strip.begin(), out.strip.end(), [](const WeekStripCell& cell) { return cell.meeting; });
   for (size_t i = 0; i < out.strip.size(); ++i) {
-    copyWordAt(tr(STR_WEEKDAYS_NARROW), static_cast<int>(i), out.letters[i], sizeof(out.letters[i]));
+    copyInitial(I18N.get(WEEKDAY_NAME_IDS[i]), out.letters[i], sizeof(out.letters[i]));
   }
   out.shown = true;
 }

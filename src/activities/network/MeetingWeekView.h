@@ -35,3 +35,8 @@ bool formatWeekRange(const CivilDate& monday, const char* sameMonthFormat, const
 // a view into the list cannot go to %s or a text draw. False, leaving `out`
 // empty, when there is no such word or it does not fit.
 bool copyWordAt(std::string_view words, int index, char* out, size_t outSize);
+
+// The first character (UTF-8 code point) of `word`, copied out and terminated:
+// the one-letter weekday heading derived from the day's name. False, leaving
+// `out` empty, when the word is null or empty or the character does not fit.
+bool copyInitial(const char* word, char* out, size_t outSize);

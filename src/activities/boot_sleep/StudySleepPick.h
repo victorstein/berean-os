@@ -9,6 +9,8 @@
 #include <optional>
 #include <string_view>
 
+#include "util/CivilDate.h"
+
 // The pure half of the study sleep screen: which passage to show and how to word
 // the date. Free of Arduino, the HAL and ArduinoJson so test/study_sleep_pick
 // runs it on the host.
@@ -144,41 +146,6 @@ inline bool inSweep(const uint8_t sweep, const uint32_t index, const uint32_t st
   return sweep == 0 ? index >= start : index < start;
 }
 
-struct CivilDate {
-  int32_t year;
-  uint8_t month;
-  uint8_t day;
-};
-
-// Howard Hinnant's days_from_civil, as src/network/WolWeekScan.cpp uses; that
-// copy is file-local to the network surface.
-inline int64_t daysFromCivil(int32_t year, const unsigned month, const unsigned day) {
-  year -= month <= 2 ? 1 : 0;
-  const int64_t era = (year >= 0 ? year : year - 399) / 400;
-  const auto yoe = static_cast<unsigned>(year - era * 400);
-  const unsigned doy = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1;
-  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-  return era * 146097 + static_cast<int64_t>(doe) - 719468;
-}
-
-inline CivilDate civilFromDays(int64_t days) {
-  days += 719468;
-  const int64_t era = (days >= 0 ? days : days - 146096) / 146097;
-  const auto doe = static_cast<unsigned>(days - era * 146097);
-  const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-  const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-  const unsigned mp = (5 * doy + 2) / 153;
-  const unsigned day = doy - (153 * mp + 2) / 5 + 1;
-  const unsigned month = mp < 10 ? mp + 3 : mp - 9;
-  const int64_t year = static_cast<int64_t>(yoe) + era * 400 + (month <= 2 ? 1 : 0);
-  return {static_cast<int32_t>(year), static_cast<uint8_t>(month), static_cast<uint8_t>(day)};
-}
-
-// 0 = Sunday, the order of the weekday word list and Rtc::DateTime::weekday.
-inline uint8_t weekdayFromDays(const int64_t days) {
-  return static_cast<uint8_t>(days >= -4 ? (days + 4) % 7 : (days + 5) % 7 + 6);
-}
-
 struct ClockReading {
   bool dateValid = false;  // HalClock::getDate succeeded, so the RTC has been set
   uint16_t year = 0;
@@ -191,21 +158,21 @@ struct ClockReading {
 
 // The RTC keeps UTC and HalClock::getDate reports only the UTC date, so the
 // viewer's day comes from shifting it by the local time of day.
+// weekdayNames is Monday first, as isoWeekday() counts.
 inline bool formatDateLine(const ClockReading& clock, uint8_t utcOffsetQuarterHoursBiased,
-                           const std::string_view weekdays, const std::string_view monthsShort, char* out,
+                           const char* const (&weekdayNames)[7], const std::string_view monthsShort, char* out,
                            const size_t outSize) {
   if (!clock.dateValid || !clock.timeValid || out == nullptr || outSize == 0) return false;
-  if (clock.month < 1 || clock.month > 12 || clock.day < 1 || clock.day > 31 || clock.hour > 23 || clock.minute > 59) {
-    return false;
-  }
-  if (utcOffsetQuarterHoursBiased > 104) utcOffsetQuarterHoursBiased = 104;
 
-  const int localMinutes = clock.hour * 60 + clock.minute + (static_cast<int>(utcOffsetQuarterHoursBiased) - 48) * 15;
-  const int dayShift = localMinutes < 0 ? -1 : (localMinutes >= 1440 ? 1 : 0);
-  const int64_t days = daysFromCivil(clock.year, clock.month, clock.day) + dayShift;
-  const CivilDate local = civilFromDays(days);
+  CivilDate utc;
+  utc.year = clock.year;
+  utc.month = clock.month;
+  utc.day = clock.day;
+  CivilDate local;
+  if (!localDateFromUtc(utc, clock.hour, clock.minute, utcOffsetQuarterHoursBiased, local)) return false;
 
-  const std::string_view weekday = catalog::wordAt(weekdays, weekdayFromDays(days));
+  const char* const name = weekdayNames[isoWeekday(local) - 1];
+  const std::string_view weekday = name != nullptr ? std::string_view(name) : std::string_view();
   const std::string_view month = catalog::wordAt(monthsShort, local.month - 1);
   if (weekday.empty() || month.empty()) return false;
 

@@ -12,6 +12,26 @@ name: Catalog Index
 #   catalog-<lang>.v2.txt{,.gz}  v2, with the flag; what current firmware reads
 #   catalog-<lang>.probes.tsv    the probe cache that lets each entry be asked
 #                                about once, not once a week
+#
+# Retiring v1. Firmware from v1.17.4 (published 2026-09-27) fetches only v2;
+# v1 exists for devices still on v1.17.3 or older. Stop publishing it once BOTH
+# hold: it is on or after 2026-12-28, and no supported device is still on
+# v1.17.3 or older (Settings shows the version). Download counts cannot tell:
+# every asset is re-uploaded with --clobber each week, which resets its count.
+# Steps:
+#   1. Here: drop --out-v1/--previous-v1 from both builder calls, the
+#      previous-$lang.txt fetch, and "catalog-$lang.txt" from publish()'s
+#      indexes, leaving the v2 files there outside hold.
+#   2. Delete the assets, one per call:
+#        for a in catalog-S.txt catalog-S.txt.gz catalog-E.txt catalog-E.txt.gz; do
+#          gh release delete-asset catalog "$a" --yes --repo victorstein/berean-os
+#        done
+#   3. scripts/build_catalog_index.py: remove --out-v1/--previous-v1, the
+#      legacy render_index(..., LEGACY_FORMAT_VERSION, ...) and its write,
+#      LEGACY_FORMAT_VERSION, and the v1 wording in the module and render_index
+#      docstrings; drop their tests in scripts/tests/test_build_catalog_index.py.
+#   4. docs/file-formats.md and the comment in CatalogIndexStore::assetUrl().
+#      The device still accepts a v1 file, so no firmware change is needed.
 
 on:
   schedule:

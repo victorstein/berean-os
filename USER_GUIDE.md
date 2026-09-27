@@ -228,7 +228,8 @@ the same list from the Power button, and jumps straight there when there is only
 **Settings -> System -> File transfer -> Meeting publications** downloads the current week's *Watchtower* study
 edition and *Life and Ministry Meeting Workbook* as EPUBs onto the SD card.
 
-The device reads its clock, works out the ISO week, fetches that week's meetings page, reads the
+The device reads its clock, works out the ISO week from the local date (the clock's UTC offset setting
+applies), fetches that week's meetings page, reads the
 issue numbers out of the publication links, resolves the download URLs, and writes the files. Either
 publication may be missing for a given week, which is a normal outcome and not an error.
 
@@ -277,9 +278,10 @@ Details are in [docs/webserver.md](./docs/webserver.md); the raw endpoints are i
 
 ## 12. Browsing files
 
-The file browser walks the SD card. It opens from **Choose a file** in the Bible download offer,
-which the **Bible** tile shows when no Bible has been found on the card. The current path is shown at
-the top, directories appear in brackets, and file extensions are shown.
+The file browser walks the SD card. It opens from **Browse the card** in **Publications**, which
+reaches books outside the download folder and the card root, and from **Choose a file** in the Bible
+download offer, which the **Bible** tile shows when no Bible has been found on the card. The current
+path is shown at the top, directories appear in brackets, and file extensions are shown.
 
 - **Left** / **Right** move the selection.
 - Tap a row to open a folder or a book. A `.bmp` opens in the image viewer.

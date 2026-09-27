@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+#include "util/CivilDate.h"
+
 // Week -> issue resolution for the weekly meeting publications, as published on
 // wol.jw.org. Pure: no Arduino, no I/O, so the host suite exercises it directly.
 
@@ -23,31 +25,13 @@ struct IsoWeek {
 // 1-12 for a lowercase English month name, 0 for anything else.
 uint8_t monthNumberFromName(const char* name, size_t len);
 
-// ISO-8601 week-based year and week number for a UTC calendar date. Goes through
+// ISO-8601 week-based year and week number for a calendar date. Goes through
 // gmtime_r so strftime's %G/%V see the tm_wday/tm_yday they read.
 bool isoWeekFromUtcDate(uint16_t year, uint8_t month, uint8_t day, IsoWeek& out);
-
-struct CivilDate {
-  uint16_t year = 0;
-  uint8_t month = 0;
-  uint8_t day = 0;
-};
-
-// ISO weekday, 1 = Monday .. 7 = Sunday. 0 for a date that does not exist.
-uint8_t isoWeekday(const CivilDate& date);
-
-// The date `days` after (negative: before) `date`. An empty CivilDate when `date`
-// does not exist.
-CivilDate addDays(const CivilDate& date, int days);
 
 // Monday of an ISO week. False for a week its year does not have: {2025, 53} is
 // refused rather than dated as the Monday of 2026/W01.
 bool mondayOfIsoWeek(const IsoWeek& week, CivilDate& out);
-
-// The local calendar date for a UTC date and time, given the clock setting's
-// quarter-hour offset biased by 48 (48 = UTC+0, 0 = UTC-12, 104 = UTC+14).
-bool localDateFromUtc(const CivilDate& utc, uint8_t hour, uint8_t minute, uint8_t offsetQuarterHoursBiased,
-                      CivilDate& out);
 
 std::string meetingsPageUrl(const IsoWeek& week);
 

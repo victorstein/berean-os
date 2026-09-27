@@ -124,3 +124,22 @@ TEST(CopyWordAt, FailsPastTheEndOrWhenTooSmall) {
   EXPECT_FALSE(copyWordAt(ES_MONTHS, 8, out, sizeof(out)));
   EXPECT_STREQ(out, "");
 }
+
+TEST(CopyInitial, CopiesTheFirstCodePoint) {
+  char out[8];
+  ASSERT_TRUE(copyInitial("Monday", out, sizeof(out)));
+  EXPECT_STREQ(out, "M");
+  ASSERT_TRUE(copyInitial("Ávila", out, sizeof(out)));
+  EXPECT_STREQ(out, "Á");
+}
+
+TEST(CopyInitial, FailsEmptyWhenThereIsNothingToCopyOrNoRoom) {
+  char out[8] = "x";
+  EXPECT_FALSE(copyInitial("", out, sizeof(out)));
+  EXPECT_STREQ(out, "");
+  EXPECT_FALSE(copyInitial(nullptr, out, sizeof(out)));
+  EXPECT_STREQ(out, "");
+  char tiny[2] = "x";
+  EXPECT_FALSE(copyInitial("Ávila", tiny, sizeof(tiny)));
+  EXPECT_STREQ(tiny, "");
+}

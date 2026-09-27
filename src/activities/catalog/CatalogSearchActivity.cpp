@@ -26,14 +26,13 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/CatalogIndexStore.h"
+#include "util/PublicationLanguage.h"
 
 namespace fui = freeink::ui;
 
 namespace {
 
 constexpr const char* MODULE = "BUSCAR";
-constexpr int DOWNLOAD_PROGRESS_STEP_PERCENT = 5;
-constexpr unsigned long DOWNLOAD_PROGRESS_MIN_UPDATE_MS = 5000;
 constexpr size_t MAX_QUERY_LENGTH = 48;
 
 // A query that is one whitespace-free token can be a publication symbol, which
@@ -54,13 +53,6 @@ std::string describeHit(const std::string& symbol, const std::string& year, cons
     return date;
   }
   return year.empty() ? symbol : year;
-}
-
-// The list's language is the publication-language setting, which can differ
-// from the UI language the dates are written in.
-const char* publicationLanguageName() {
-  return SETTINGS.publicationLanguage == CrossPointSettings::PUB_LANG_ENGLISH ? tr(STR_LANG_ENGLISH)
-                                                                              : tr(STR_LANG_SPANISH);
 }
 
 }  // namespace
@@ -134,8 +126,7 @@ void CatalogSearchActivity::runCatalogAction() {
   statusMessage = tr(STR_CATALOG_DOWNLOADING);
   downloadProgress = 0;
   downloadTotal = 0;
-  lastRenderedPercent = -1;
-  lastProgressUpdateMs = 0;
+  progressThrottle.reset();
   cancelDownload = false;
   requestUpdateAndWait();
 
@@ -385,8 +376,7 @@ void CatalogSearchActivity::downloadBySymbol(const std::string& symbol, const st
   currentFilename = symbol;
   downloadProgress = 0;
   downloadTotal = 0;
-  lastRenderedPercent = -1;
-  lastProgressUpdateMs = 0;
+  progressThrottle.reset();
   cancelDownload = false;
   goHomeAfterCancel = false;
   requestUpdateAndWait();
@@ -458,15 +448,7 @@ void CatalogSearchActivity::onIndexProgress(void* ctx, const size_t downloaded, 
 void CatalogSearchActivity::throttledProgressRepaint(const size_t downloaded, const size_t total) {
   downloadProgress = downloaded;
   downloadTotal = total;
-
-  const int percent = total > 0 ? static_cast<int>(static_cast<uint64_t>(downloaded) * 100 / total) : 0;
-  const unsigned long now = millis();
-  if (percent >= 100 || lastRenderedPercent < 0 || percent >= lastRenderedPercent + DOWNLOAD_PROGRESS_STEP_PERCENT ||
-      now - lastProgressUpdateMs >= DOWNLOAD_PROGRESS_MIN_UPDATE_MS) {
-    lastRenderedPercent = percent;
-    lastProgressUpdateMs = now;
-    requestUpdate(true);
-  }
+  if (progressThrottle.shouldRepaint(downloaded, total, static_cast<uint32_t>(millis()))) requestUpdate(true);
 }
 
 void CatalogSearchActivity::fail(const char* message) {
@@ -550,7 +532,8 @@ void CatalogSearchActivity::render(RenderLock&&) {
 
   renderer.clearScreen();
   char header[64];
-  snprintf(header, sizeof(header), tr(STR_SEARCH_HEADER), publicationLanguageName());
+  snprintf(header, sizeof(header), tr(STR_SEARCH_HEADER),
+           I18N.get(publicationLanguageNameId(SETTINGS.publicationLanguage)));
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, header);
 
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
