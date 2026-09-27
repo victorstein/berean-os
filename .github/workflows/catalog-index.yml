@@ -6,6 +6,12 @@ name: Catalog Index
 # require a 5.6 MB OTA and an app0/app1 flash cycle, and it must not ride on the
 # releases/latest semantics that already produced an rc-versus-release ordering
 # problem here. It goes to its own fixed tag instead, on its own schedule.
+#
+# Three files per language share that tag:
+#   catalog-<lang>.txt{,.gz}     v1, for firmware that predates the EPUB flag
+#   catalog-<lang>.v2.txt{,.gz}  v2, with the flag; what current firmware reads
+#   catalog-<lang>.probes.tsv    the probe cache that lets each entry be asked
+#                                about once, not once a week
 
 on:
   schedule:
@@ -24,6 +30,8 @@ concurrency:
 jobs:
   build-index:
     runs-on: ubuntu-latest
+    # Two languages at the 1,500 s probing budget each, plus the catalog download.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
 
@@ -31,23 +39,65 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Fetch the previous index
-        continue-on-error: true
+      - name: Fetch the previous index and probe cache
+        id: previous
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # What exists is read from the release listing, never inferred from a
+          # failed download. A transient failure taken for "never published"
+          # would wipe the probe cache, or stop probing for good.
+          #   probe  normal run
+          #   seed   v2 published, cache missing: rebuild the cache from v2's flags
+          #   hold   something listed could not be fetched, or the listing failed:
+          #          no probing, and no v2 or cache published for that language
+          base="https://github.com/${{ github.repository }}/releases/download/catalog"
+          listing_ok=1
+          assets="$(gh release view catalog --repo "${{ github.repository }}" --json assets -q '.assets[].name')" \
+            || listing_ok=0
+          listed() { printf '%s\n' "$assets" | grep -qxF "$1"; }
           for lang in S E; do
-            curl -sfL -o "previous-$lang.txt" \
-              "https://github.com/${{ github.repository }}/releases/download/catalog/catalog-$lang.txt" || true
+            # curl -f can leave a partial file behind; a truncated file must not be
+            # read as last week's data.
+            curl -sfL -o "previous-$lang.txt" "$base/catalog-$lang.txt" || rm -f "previous-$lang.txt"
+            mode=probe
+            if [ "$listing_ok" != 1 ]; then
+              mode=hold
+            else
+              if listed "catalog-$lang.v2.txt" && ! curl -sfL -o "previous-$lang.v2.txt" "$base/catalog-$lang.v2.txt"; then
+                rm -f "previous-$lang.v2.txt"
+                mode=hold
+              fi
+              if listed "catalog-$lang.probes.tsv" \
+                  && ! curl -sfL -o "previous-$lang.probes.tsv" "$base/catalog-$lang.probes.tsv"; then
+                rm -f "previous-$lang.probes.tsv"
+                mode=hold
+              fi
+              if [ "$mode" = probe ] && listed "catalog-$lang.v2.txt" && ! listed "catalog-$lang.probes.tsv"; then
+                mode=seed
+              fi
+            fi
+            echo "mode_$lang=$mode" >> "$GITHUB_OUTPUT"
+            echo "catalog-$lang: $mode"
           done
 
       - name: Build the Spanish index
         id: spanish
         run: |
           set +e
+          args=(--language-id 1 --language-code S
+                --out catalog-S.v2.txt --previous previous-S.v2.txt
+                --out-v1 catalog-S.txt --previous-v1 previous-S.txt
+                --probes-out catalog-S.probes.tsv
+                --throttle-marker "$GITHUB_OUTPUT")
+          case "${{ steps.previous.outputs.mode_S }}" in
+            hold) args+=(--no-probe) ;;
+            seed) args+=(--seed-from-v2 previous-S.v2.txt) ;;
+          esac
+          [ -f previous-S.probes.tsv ] && args+=(--probes-in previous-S.probes.tsv)
           # No --db: this step downloads and inflates catalog.db, which the
           # English step then reuses.
-          python3 scripts/build_catalog_index.py \
-            --language-id 1 --language-code S \
-            --out catalog-S.txt --previous previous-S.txt
+          python3 scripts/build_catalog_index.py "${args[@]}"
           echo "status=$?" >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
@@ -55,20 +105,35 @@ jobs:
         id: english
         run: |
           set +e
+          args=(--language-id 0 --language-code E --db catalog.db
+                --out catalog-E.v2.txt --previous previous-E.v2.txt
+                --out-v1 catalog-E.txt --previous-v1 previous-E.txt
+                --probes-out catalog-E.probes.tsv)
+          case "${{ steps.previous.outputs.mode_E }}" in
+            hold) args+=(--no-probe) ;;
+            seed) args+=(--seed-from-v2 previous-E.v2.txt) ;;
+          esac
+          # A 429 or 5xx while probing Spanish ends probing for the whole run. It
+          # is added on top of the mode, never instead of it: dropping the seed
+          # would publish a v2 with every flag emptied.
+          if [ "${{ steps.spanish.outputs.throttled }}" = 1 ]; then
+            args+=(--no-probe)
+          fi
+          [ -f previous-E.probes.tsv ] && args+=(--probes-in previous-E.probes.tsv)
           # Reuses the catalog.db the Spanish step already inflated, so the
           # 57.6 MB transfer happens once per run rather than once per language.
-          python3 scripts/build_catalog_index.py \
-            --language-id 0 --language-code E \
-            --db catalog.db --out catalog-E.txt --previous previous-E.txt
+          python3 scripts/build_catalog_index.py "${args[@]}"
           echo "status=$?" >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
       - name: Publish
-        # Exit 3 from the builder means the records were byte-identical to the
-        # published index, so there is nothing to republish. Any other non-zero
-        # is a real failure and must not silently leave the old index in place
-        # looking fresh.
-        if: steps.spanish.outputs.status == '0' || steps.english.outputs.status == '0'
+        # Exit 3 means neither index's records changed, but the probe cache may
+        # still have (a re-probed negative changes only its date), so 3 publishes
+        # too. Any other non-zero is a real failure and must not silently leave
+        # the old index in place looking fresh.
+        if: >-
+          steps.spanish.outputs.status == '0' || steps.spanish.outputs.status == '3' ||
+          steps.english.outputs.status == '0' || steps.english.outputs.status == '3'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -76,22 +141,37 @@ jobs:
             || gh release create catalog \
                  --repo "${{ github.repository }}" \
                  --title "Publication catalog index" \
-                 --notes "Slim per-language index built from JW Library's published catalog. Symbols, issue codes, years and titles only. Rebuilt weekly; replaced in place, so the download URL is stable." \
+                 --notes "Slim per-language index built from JW Library's published catalog. Symbols, issue codes, years, titles and an EPUB-availability flag only. Rebuilt weekly; replaced in place, so the download URL is stable." \
                  --latest=false
-          # The device fetches the .gz: 18 KB over the wire against 217 KB, and
-          # it already carries a deflate decoder. The plain .txt stays published
-          # because the next run diffs against it, and because a device whose
-          # inflate fails can still read it.
-          for f in catalog-S.txt catalog-E.txt; do
-            [ -f "$f" ] || continue
-            # -n omits the timestamp and original name, so an unchanged index
-            # compresses to the same bytes every week.
-            gzip -9 -n -c "$f" > "$f.gz"
-            gh release upload catalog "$f" "$f.gz" --repo "${{ github.repository }}" --clobber
-          done
+          publish() {
+            local lang="$1" status="$2" mode="$3"
+            case "$status" in 0|3) ;; *) return 0 ;; esac
+            local indexes=("catalog-$lang.txt")
+            [ "$mode" != hold ] && indexes+=("catalog-$lang.v2.txt")
+            # The device fetches the .gz: ~20 KB over the wire against ~245 KB,
+            # and it already carries a deflate decoder. The plain .txt stays
+            # published because the next run diffs against it, and because a
+            # device whose inflate fails can still read it. An index the builder
+            # did not rewrite this run does not exist here and is skipped.
+            for f in "${indexes[@]}"; do
+              [ -f "$f" ] || continue
+              # -n omits the timestamp and original name, so an unchanged index
+              # compresses to the same bytes every week.
+              gzip -9 -n -c "$f" > "$f.gz"
+              gh release upload catalog "$f" "$f.gz" --repo "${{ github.repository }}" --clobber
+            done
+            if [ "$mode" != hold ] && [ -f "catalog-$lang.probes.tsv" ]; then
+              gh release upload catalog "catalog-$lang.probes.tsv" --repo "${{ github.repository }}" --clobber
+            fi
+          }
+          publish S "${{ steps.spanish.outputs.status }}" "${{ steps.previous.outputs.mode_S }}"
+          publish E "${{ steps.english.outputs.status }}" "${{ steps.previous.outputs.mode_E }}"
 
       - name: Fail loudly on a real error
-        if: steps.spanish.outputs.status != '0' && steps.spanish.outputs.status != '3'
+        if: >-
+          (steps.spanish.outputs.status != '0' && steps.spanish.outputs.status != '3') ||
+          (steps.english.outputs.status != '0' && steps.english.outputs.status != '3')
         run: |
-          echo "Spanish index build failed with ${{ steps.spanish.outputs.status }}"
+          echo "Spanish index build exited ${{ steps.spanish.outputs.status }}"
+          echo "English index build exited ${{ steps.english.outputs.status }}"
           exit 1
