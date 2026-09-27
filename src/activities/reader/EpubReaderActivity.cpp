@@ -382,7 +382,7 @@ void EpubReaderActivity::loop() {
       if (nextPage < static_cast<int>(section->pageCount)) {
         if (const auto p = section->loadPage(nextPage)) {
           if (auto* fcm = renderer.getFontCacheManager()) {
-            const auto t0 = millis();
+            [[maybe_unused]] const auto t0 = millis();
             auto scope = fcm->createPrewarmScope();
             p->render(renderer, SETTINGS.getReaderFontId(), 0, 0);
             scope.endScanAndPrewarm();
@@ -1252,7 +1252,7 @@ void EpubReaderActivity::renderBook() {
     currentPageVisibleOffset = p->visibleTextOffset;
     currentPageFootnotes = std::move(p->footnotes);
 
-    const auto start = millis();
+    [[maybe_unused]] const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     LOG_DBG("ERS", "Rendered page in %lums", millis() - start);
     lastRenderCompleteMs = millis();
@@ -1335,7 +1335,7 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {
-  const auto t0 = millis();
+  [[maybe_unused]] const auto t0 = millis();
   const int fontId = SETTINGS.getReaderFontId();
 
   struct PxcSlotGuard {
@@ -1350,7 +1350,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // its own SD pass after the scope ends.
   renderStatusBar();
   scope.endScanAndPrewarm();
-  const auto tPrewarm = millis();
+  [[maybe_unused]] const auto tPrewarm = millis();
 
   const bool pageHasImages = page->hasImages();
   const bool pageHasImagesNeedingDecode = pageHasImages && page->hasImagesNeedingDecode();
@@ -1419,7 +1419,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     renderer.invertRect(rect.x, rect.y, rect.w, rect.h);
   }
   renderStatusBar();
-  const auto tBwRender = millis();
+  [[maybe_unused]] const auto tBwRender = millis();
 
   if (pageHasImages) {
     // Image pages use one base refresh before the grayscale pass. FAST leaves
@@ -1434,7 +1434,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   } else {
     ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
   }
-  const auto tDisplay = millis();
+  [[maybe_unused]] const auto tDisplay = millis();
 
   if (tiledGrayscale) {
     constexpr int STRIP_ROWS = 80;
@@ -1465,10 +1465,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     if (lsbPlaneBuf) {
       renderPlaneToBuffer(true, lsbPlaneBuf.get());
       if (msbPlaneBuf) renderPlaneToBuffer(false, msbPlaneBuf.get());
-      const auto tGrayRender = millis();
+      [[maybe_unused]] const auto tGrayRender = millis();
 
       renderer.waitRefreshComplete();
-      const auto tWait = millis();
+      [[maybe_unused]] const auto tWait = millis();
 
       renderer.writeGrayscalePlaneStrip(true, lsbPlaneBuf.get(), 0, gh);
       if (msbPlaneBuf) {
@@ -1477,14 +1477,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         renderPlaneToBuffer(false, lsbPlaneBuf.get());
         renderer.writeGrayscalePlaneStrip(false, lsbPlaneBuf.get(), 0, gh);
       }
-      const auto tGrayWrite = millis();
+      [[maybe_unused]] const auto tGrayWrite = millis();
 
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.displayGrayBuffer();
-      const auto tGrayDisplay = millis();
+      [[maybe_unused]] const auto tGrayDisplay = millis();
 
       renderer.cleanupGrayscaleWithFrameBuffer();
-      const auto tEnd = millis();
+      [[maybe_unused]] const auto tEnd = millis();
 
       LOG_DBG("ERS",
               "Page render (tiled async): prewarm=%lums bw_render=%lums display=%lums gray_render=%lums "
@@ -1515,7 +1515,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
           renderer.endStripTarget();
           renderer.writeGrayscalePlaneStrip(true, scratch.get(), y, rows);
         }
-        const auto tGrayLsb = millis();
+        [[maybe_unused]] const auto tGrayLsb = millis();
 
         renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
         for (int y = 0; y < gh; y += STRIP_ROWS) {
@@ -1526,16 +1526,16 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
           renderer.endStripTarget();
           renderer.writeGrayscalePlaneStrip(false, scratch.get(), y, rows);
         }
-        const auto tGrayMsb = millis();
+        [[maybe_unused]] const auto tGrayMsb = millis();
 
         renderer.setRenderMode(GfxRenderer::BW);
         renderer.displayGrayBuffer();
-        const auto tGrayDisplay = millis();
+        [[maybe_unused]] const auto tGrayDisplay = millis();
 
         renderer.cleanupGrayscaleWithFrameBuffer();
-        const auto tCleanup = millis();
+        [[maybe_unused]] const auto tCleanup = millis();
 
-        const auto tEnd = millis();
+        [[maybe_unused]] const auto tEnd = millis();
         LOG_DBG("ERS",
                 "Page render (tiled): prewarm=%lums bw_render=%lums display=%lums gray_lsb=%lums "
                 "gray_msb=%lums gray_display=%lums cleanup=%lums total=%lums",
@@ -1549,34 +1549,34 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         LOG_ERR("ERS", "Failed to store BW buffer for grayscale render; skipping grayscale this page");
         return;
       }
-      const auto tBwStore = millis();
+      [[maybe_unused]] const auto tBwStore = millis();
 
       renderer.clearScreen(0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
       renderGrayscalePass();
       renderer.copyGrayscaleLsbBuffers();
-      const auto tGrayLsb = millis();
+      [[maybe_unused]] const auto tGrayLsb = millis();
 
       renderer.clearScreen(0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
       renderGrayscalePass();
       renderer.copyGrayscaleMsbBuffers();
-      const auto tGrayMsb = millis();
+      [[maybe_unused]] const auto tGrayMsb = millis();
 
       renderer.displayGrayBuffer();
-      const auto tGrayDisplay = millis();
+      [[maybe_unused]] const auto tGrayDisplay = millis();
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.restoreBwBuffer();
-      const auto tBwRestore = millis();
+      [[maybe_unused]] const auto tBwRestore = millis();
 
-      const auto tEnd = millis();
+      [[maybe_unused]] const auto tEnd = millis();
       LOG_DBG("ERS",
               "Page render: prewarm=%lums bw_render=%lums display=%lums bw_store=%lums "
               "gray_lsb=%lums gray_msb=%lums gray_display=%lums bw_restore=%lums total=%lums",
               tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tBwStore - tDisplay, tGrayLsb - tBwStore,
               tGrayMsb - tGrayLsb, tGrayDisplay - tGrayMsb, tBwRestore - tGrayDisplay, tEnd - t0);
     } else {
-      const auto tEnd = millis();
+      [[maybe_unused]] const auto tEnd = millis();
       LOG_DBG("ERS", "Page render: prewarm=%lums bw_render=%lums display=%lums total=%lums", tPrewarm - t0,
               tBwRender - tPrewarm, tDisplay - tBwRender, tEnd - t0);
     }

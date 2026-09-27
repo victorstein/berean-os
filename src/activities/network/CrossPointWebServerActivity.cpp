@@ -130,7 +130,7 @@ void CrossPointWebServerActivity::onExit() {
 }
 
 void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
-  const char* modeName = "Join Network";
+  [[maybe_unused]] const char* modeName = "Join Network";
   if (mode == NetworkMode::MEETING_PUBLICATIONS) {
     modeName = "Meeting Publications";
   } else if (mode == NetworkMode::CREATE_HOTSPOT) {

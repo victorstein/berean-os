@@ -67,9 +67,9 @@ bool resolve(const IsoWeek& week, const Hooks& hooks, ResolvedWeek& out) {
       },
       NETWORK_TIMEOUT_MS);
 
-  const unsigned long elapsedMs = millis() - startedMs;
-  const unsigned year = week.year;
-  const unsigned number = week.week;
+  [[maybe_unused]] const unsigned long elapsedMs = millis() - startedMs;
+  [[maybe_unused]] const unsigned year = week.year;
+  [[maybe_unused]] const unsigned number = week.week;
   if (skipped || timedOut) {
     LOG_INF(MODULE, "Week %u/%02u %s after %lu ms, %zu bytes; cache left as it was", year, number,
             skipped ? "skipped" : "timed out", elapsedMs, bytes);
