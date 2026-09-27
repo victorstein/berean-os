@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -108,4 +109,70 @@ TEST(LauncherBible, RecentsGuessRejectsABibleThatSaysNeither) {
 TEST(LauncherBible, RecentsGuessIsCaseSensitiveAsBefore) {
   EXPECT_FALSE(looksLikeBibleInRecents("/Books/Bible.epub", "new world"));
   EXPECT_FALSE(looksLikeBibleInRecents("/NWT.epub", ""));
+}
+
+// Registration runs on every open of a Bible, so it must write at most once
+// per path and never relabel an entry some other writer made.
+
+namespace {
+
+struct FakeRegistry {
+  std::vector<std::string> entries;
+  int recordCalls = 0;
+  bool refuse = false;
+
+  BibleRegistration open(const bool isBible, const std::string& path) {
+    return registerBibleIfUnknown(
+        isBible, path,
+        [this](const std::string& p) { return std::find(entries.begin(), entries.end(), p) != entries.end(); },
+        [this](const std::string& p) {
+          ++recordCalls;
+          if (refuse) return false;
+          entries.push_back(p);
+          return true;
+        });
+  }
+};
+
+}  // namespace
+
+TEST(LauncherBible, ANonBibleNeverTouchesTheRegistry) {
+  FakeRegistry registry;
+  int lookups = 0;
+  const auto result = registerBibleIfUnknown(
+      false, "/Libros/Novela.epub",
+      [&lookups](const std::string&) {
+        ++lookups;
+        return false;
+      },
+      [&registry](const std::string&) {
+        ++registry.recordCalls;
+        return true;
+      });
+  EXPECT_EQ(result, BibleRegistration::NotBible);
+  EXPECT_EQ(lookups, 0);
+  EXPECT_EQ(registry.recordCalls, 0);
+}
+
+TEST(LauncherBible, AnUnknownBibleIsRecordedOnceAcrossOpens) {
+  FakeRegistry registry;
+  EXPECT_EQ(registry.open(true, "/Libros/Biblia.epub"), BibleRegistration::Recorded);
+  EXPECT_EQ(registry.open(true, "/Libros/Biblia.epub"), BibleRegistration::AlreadyKnown);
+  EXPECT_EQ(registry.recordCalls, 1);
+  EXPECT_EQ(registry.entries, std::vector<std::string>{"/Libros/Biblia.epub"});
+}
+
+TEST(LauncherBible, AnyExistingEntryWinsWhateverItsSymbol) {
+  FakeRegistry registry;
+  registry.entries.push_back("/nwtsty_S.epub");
+  EXPECT_EQ(registry.open(true, "/nwtsty_S.epub"), BibleRegistration::AlreadyKnown);
+  EXPECT_EQ(registry.recordCalls, 0);
+}
+
+TEST(LauncherBible, ARefusedWriteIsReportedAndNotRetried) {
+  FakeRegistry registry;
+  registry.refuse = true;
+  EXPECT_EQ(registry.open(true, "/Libros/Biblia.epub"), BibleRegistration::Refused);
+  EXPECT_EQ(registry.recordCalls, 1);
+  EXPECT_TRUE(registry.entries.empty());
 }

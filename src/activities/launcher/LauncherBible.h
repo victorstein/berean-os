@@ -79,3 +79,17 @@ constexpr bool looksLikeBibleInRecents(const std::string_view path, const std::s
   return path.find("nwt") != std::string_view::npos || title.find("Nuevo Mundo") != std::string_view::npos ||
          title.find("New World") != std::string_view::npos;
 }
+
+enum class BibleRegistration : uint8_t { NotBible, AlreadyKnown, Recorded, Refused };
+
+// Records `path` as the Bible unless the registry already holds ANY entry for
+// it: record() overwrites, and a Buscar download of another NWT edition must
+// keep its own symbol. Never logs -- this header stays host-buildable, so the
+// caller logs from the result.
+template <typename IsRegistered, typename RecordAsBible>
+BibleRegistration registerBibleIfUnknown(const bool isBible, const std::string& path, IsRegistered&& isRegistered,
+                                         RecordAsBible&& recordAsBible) {
+  if (!isBible) return BibleRegistration::NotBible;
+  if (isRegistered(path)) return BibleRegistration::AlreadyKnown;
+  return recordAsBible(path) ? BibleRegistration::Recorded : BibleRegistration::Refused;
+}
