@@ -210,8 +210,9 @@ orchestrator to apply.
    `getMode() != WIFI_MODE_NULL` (what the teardown guards use). They differ in the web-server nested
    case above.
 2. **MeetingDownload's behaviour change.** Adopting "restore the entry state" makes MeetingDownload
-   stop tearing down a connection it found already up. That case is unreachable from today's launch
-   sites except through the web server's STA-not-connected path, but it is still a change to list.
+   stop tearing down a connection it found already up. (Corrected, spec review 1: that case is
+   reachable through Settings → Wi-Fi networks, which leaves the link up; the web server's
+   STA-not-connected path enters MeetingDownload unconnected and is not an instance of it.)
 3. **Keep `silentRestart()` or call `WiFi.mode(WIFI_OFF)` directly.** On the X4 Pro they do the same
    thing plus/minus the SNTP stop; keeping `silentRestart()` preserves the deep-sleep short-circuit and
    the SNTP stop in one place.
