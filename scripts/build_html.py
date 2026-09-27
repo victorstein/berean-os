@@ -53,7 +53,7 @@ for root, _, files in os.walk(SRC_DIR):
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            # Only minify HTML files; JS files are typically pre-minified (e.g., jszip.min.js)
+            # Only minify HTML files; JS files are expected to arrive pre-minified
             if file.endswith(".html"):
                 processed = minify_html(content)
             else:

@@ -27,7 +27,6 @@
 #include "html/FontsPageHtml.generated.h"
 #include "html/HomePageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
-#include "html/js/jszip_minJs.generated.h"
 #include "study/MigrationRunner.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
@@ -139,7 +138,6 @@ void CrossPointWebServer::begin() {
   LOG_DBG("WEB", "Setting up routes...");
   server->on("/", HTTP_GET, [this] { handleRoot(); });
   server->on("/files", HTTP_GET, [this] { handleFileList(); });
-  server->on("/js/jszip.min.js", HTTP_GET, [this] { handleJszip(); });
 
   server->on("/api/status", HTTP_GET, [this] { handleStatus(); });
   server->on("/api/files", HTTP_GET, [this] { handleFileListData(); });
@@ -362,12 +360,6 @@ static void sendHtmlContent(WebServer* server, const char* data, size_t len) {
 void CrossPointWebServer::handleRoot() const {
   sendHtmlContent(server.get(), HomePageHtml, sizeof(HomePageHtml));
   LOG_DBG("WEB", "Served root page");
-}
-
-void CrossPointWebServer::handleJszip() const {
-  server->sendHeader("Content-Encoding", "gzip");
-  server->send_P(200, "application/javascript", jszip_minJs, jszip_minJsCompressedSize);
-  LOG_DBG("WEB", "Served jszip.min.js");
 }
 
 void CrossPointWebServer::handleNotFound() const {
