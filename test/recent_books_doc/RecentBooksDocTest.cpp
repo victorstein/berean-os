@@ -1,7 +1,7 @@
 // Host coverage for /.crosspoint/recent.json's format rules. RecentBooksDoc is
 // deliberately free of <Arduino.h> so this is possible; its storage shell,
 // RecentBooksStore.cpp, is not (it reaches Arduino.h through PersistableStore.h,
-// and also includes Epub.h and HalStorage.h) and is device-verified only.
+// and also includes HalStorage.h) and is device-verified only.
 
 #include <ArduinoJson.h>
 #include <SaveBudget.h>
@@ -14,12 +14,11 @@
 
 namespace {
 
-RecentBook makeBook(const char* path, const char* title, const char* author, const char* cover) {
+RecentBook makeBook(const char* path, const char* title, const char* author) {
   RecentBook b;
   b.path = path;
   b.title = title;
   b.author = author;
-  b.coverBmpPath = cover;
   return b;
 }
 
@@ -30,7 +29,7 @@ RecentBook makeBook(const char* path, const char* title, const char* author, con
 // renamed key or a new field moves this and must be a deliberate act.
 TEST(RecentBooksDocBudget, DocumentOverheadMatchesTheMeasuredConstants) {
   std::vector<RecentBook> books;
-  for (size_t i = 0; i < RecentBooksDoc::MAX_RECENT_BOOKS; ++i) books.push_back(makeBook("", "", "", ""));
+  for (size_t i = 0; i < RecentBooksDoc::MAX_RECENT_BOOKS; ++i) books.push_back(makeBook("", "", ""));
 
   JsonDocument doc;
   RecentBooksDoc::toJson(books, doc);
@@ -39,7 +38,7 @@ TEST(RecentBooksDocBudget, DocumentOverheadMatchesTheMeasuredConstants) {
                           RecentBooksDoc::MAX_RECENT_BOOKS * RecentBooksDoc::ENTRY_OVERHEAD_BYTES;
   EXPECT_EQ(measureJson(doc), expected) << "ten empty entries measured " << measureJson(doc)
                                         << "; DOC_WRAPPER_BYTES/ENTRY_OVERHEAD_BYTES no longer describe the shape";
-  EXPECT_EQ(expected, 547u);
+  EXPECT_EQ(expected, 367u);
 }
 
 // The whole point of issue #40's second half: the budget is now a real figure,
@@ -47,13 +46,13 @@ TEST(RecentBooksDocBudget, DocumentOverheadMatchesTheMeasuredConstants) {
 TEST(RecentBooksDocBudget, IsTighterThanTheDefaultAndClearOfTheReadCap) {
   EXPECT_LT(RecentBooksDoc::SAVE_BUDGET, persist::DEFAULT_SAVE_BUDGET);
   EXPECT_LT(persist::DEFAULT_SAVE_BUDGET, persist::SD_READ_TRUNCATION_CAP);
-  EXPECT_EQ(RecentBooksDoc::SAVE_BUDGET, 11427u) << "derived from the field caps; recompute, do not tidy";
+  EXPECT_EQ(RecentBooksDoc::SAVE_BUDGET, 9967u) << "derived from the field caps; recompute, do not tidy";
 }
 
 TEST(RecentBooksDoc, RoundTripsEveryField) {
   std::vector<RecentBook> in{
-      makeBook("/books/w_S_202601.epub", "La Atalaya", "Watch Tower", "/.crosspoint/epub_1/thumb_[HEIGHT].bmp"),
-      makeBook("/books/mwb_S_202601.epub", "Guía de actividades", "", ""),
+      makeBook("/books/w_S_202601.epub", "La Atalaya", "Watch Tower"),
+      makeBook("/books/mwb_S_202601.epub", "Guía de actividades", ""),
   };
 
   JsonDocument doc;
@@ -67,7 +66,6 @@ TEST(RecentBooksDoc, RoundTripsEveryField) {
   EXPECT_EQ(out[0].path, in[0].path);
   EXPECT_EQ(out[0].title, in[0].title);
   EXPECT_EQ(out[0].author, in[0].author);
-  EXPECT_EQ(out[0].coverBmpPath, in[0].coverBmpPath);
   EXPECT_EQ(out[1].path, in[1].path);
   EXPECT_EQ(out[1].author, "");
   EXPECT_FALSE(needsResave) << "nothing needed shortening, so nothing should be rewritten";
@@ -77,7 +75,7 @@ TEST(RecentBooksDoc, RoundTripsEveryField) {
 // more than the cap is read up to the cap, not rejected.
 TEST(RecentBooksDoc, FromJsonCapsTheEntryCount) {
   std::vector<RecentBook> in;
-  for (int i = 0; i < 25; ++i) in.push_back(makeBook("/books/b.epub", "t", "a", "c"));
+  for (int i = 0; i < 25; ++i) in.push_back(makeBook("/books/b.epub", "t", "a"));
 
   JsonDocument doc;
   RecentBooksDoc::toJson(in, doc);
@@ -94,7 +92,7 @@ TEST(RecentBooksDoc, FromJsonToleratesAMissingBooksKey) {
   JsonDocument doc;
   doc["something_else"] = 1;
 
-  std::vector<RecentBook> out{makeBook("/stale", "stale", "", "")};
+  std::vector<RecentBook> out{makeBook("/stale", "stale", "")};
   bool needsResave = true;
   EXPECT_TRUE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave));
   EXPECT_TRUE(out.empty()) << "fromJson must clear the target first";
@@ -108,7 +106,7 @@ TEST(RecentBooksDocNormalise, CapsTitleOnACodepointBoundary) {
   std::string wide;
   for (int i = 0; i < 60; ++i) wide += "\xe4\xb8\x96";  // U+4E16
 
-  RecentBook book = makeBook("/books/b.epub", wide.c_str(), "", "");
+  RecentBook book = makeBook("/books/b.epub", wide.c_str(), "");
   EXPECT_TRUE(RecentBooksDoc::normalise(book));
   EXPECT_LE(book.title.size(), RecentBooksDoc::MAX_TITLE_BYTES);
   EXPECT_EQ(book.title.size() % 3, 0u) << "cut on a codepoint boundary, not a byte one";
@@ -119,7 +117,7 @@ TEST(RecentBooksDocNormalise, CapsAuthorOnACodepointBoundary) {
   std::string wide;
   for (int i = 0; i < 60; ++i) wide += "\xe4\xb8\x96";
 
-  RecentBook book = makeBook("/books/b.epub", "", wide.c_str(), "");
+  RecentBook book = makeBook("/books/b.epub", "", wide.c_str());
   EXPECT_TRUE(RecentBooksDoc::normalise(book));
   EXPECT_LE(book.author.size(), RecentBooksDoc::MAX_AUTHOR_BYTES);
   EXPECT_EQ(book.author.size() % 3, 0u);
@@ -127,23 +125,21 @@ TEST(RecentBooksDocNormalise, CapsAuthorOnACodepointBoundary) {
 
 // path is the store's key. Truncating it would make pruneMissing() delete the
 // entry on the next boot, so "bound the strings" must never be extended to it.
-TEST(RecentBooksDocNormalise, NeverTouchesPathOrCoverBmpPath) {
+TEST(RecentBooksDocNormalise, NeverTouchesPath) {
   const std::string longPath = "/" + std::string(599, 'p');
-  const std::string longCover = "/" + std::string(599, 'c');
 
-  RecentBook book = makeBook(longPath.c_str(), "t", "a", longCover.c_str());
+  RecentBook book = makeBook(longPath.c_str(), "t", "a");
   RecentBooksDoc::normalise(book);
   EXPECT_EQ(book.path, longPath);
-  EXPECT_EQ(book.coverBmpPath, longCover);
 }
 
 // The return value is what gates the load-side resave: rewriting the file every
 // time nothing changed would be wrong.
 TEST(RecentBooksDocNormalise, ReportsWhetherItChangedAnything) {
-  RecentBook shortBook = makeBook("/books/b.epub", "La Atalaya", "Watch Tower", "/c.bmp");
+  RecentBook shortBook = makeBook("/books/b.epub", "La Atalaya", "Watch Tower");
   EXPECT_FALSE(RecentBooksDoc::normalise(shortBook));
 
-  RecentBook longBook = makeBook("/books/b.epub", std::string(400, 'x').c_str(), "a", "/c.bmp");
+  RecentBook longBook = makeBook("/books/b.epub", std::string(400, 'x').c_str(), "a");
   EXPECT_TRUE(RecentBooksDoc::normalise(longBook));
   EXPECT_EQ(longBook.title.size(), RecentBooksDoc::MAX_TITLE_BYTES);
 }
@@ -161,7 +157,7 @@ TEST(RecentBooksDocNormalise, LeavesRealPublicationStringsUnchanged) {
       "¿Qué nos enseña realmente la Biblia?",                                    // 39
   };
   for (const char* title : titles) {
-    RecentBook book = makeBook("/books/b.epub", title, "", "");
+    RecentBook book = makeBook("/books/b.epub", title, "");
     EXPECT_FALSE(RecentBooksDoc::normalise(book)) << "a real title must survive untouched: " << title;
     EXPECT_EQ(book.title, title);
   }
@@ -172,7 +168,7 @@ TEST(RecentBooksDocNormalise, LeavesRealPublicationStringsUnchanged) {
       "Asociación de los Testigos de Jehová",                  // 38
   };
   for (const char* author : authors) {
-    RecentBook book = makeBook("/books/b.epub", "", author, "");
+    RecentBook book = makeBook("/books/b.epub", "", author);
     EXPECT_FALSE(RecentBooksDoc::normalise(book)) << "a real author must survive untouched: " << author;
     EXPECT_EQ(book.author, author);
   }
@@ -190,7 +186,7 @@ TEST(RecentBooksDocNormalise, KeepsTheBibleHeuristicsMarkers) {
       "New World Translation of the Holy Scriptures (2013 Revision)",
   };
   for (const char* title : titles) {
-    RecentBook book = makeBook("/books/nwt.epub", title, "", "");
+    RecentBook book = makeBook("/books/nwt.epub", title, "");
     RecentBooksDoc::normalise(book);
     const bool matches =
         book.title.find("Nuevo Mundo") != std::string::npos || book.title.find("New World") != std::string::npos;
@@ -200,7 +196,7 @@ TEST(RecentBooksDocNormalise, KeepsTheBibleHeuristicsMarkers) {
   // The double-space title is changed by the collapse alone, with no truncation.
   // That is the change which causes the second resave, so pin that normalise()
   // reports it — CapsTitleOnACodepointBoundary only covers the length-driven one.
-  RecentBook collapsed = makeBook("/books/nwt.epub", titles[1], "", "");
+  RecentBook collapsed = makeBook("/books/nwt.epub", titles[1], "");
   EXPECT_TRUE(RecentBooksDoc::normalise(collapsed)) << "a whitespace-only change must still be reported";
 }
 
@@ -217,7 +213,7 @@ TEST(RecentBooksDocNormalise, ConvergesWithinTwoPasses) {
   std::string spaced;
   while (spaced.size() < 400) spaced += "ab ";
 
-  RecentBook book = makeBook("/books/b.epub", spaced.c_str(), spaced.c_str(), "");
+  RecentBook book = makeBook("/books/b.epub", spaced.c_str(), spaced.c_str());
   EXPECT_TRUE(RecentBooksDoc::normalise(book));
   RecentBooksDoc::normalise(book);  // absorbs the trailing-space trim, if the cut left one
   EXPECT_FALSE(RecentBooksDoc::normalise(book))
@@ -261,9 +257,32 @@ TEST(RecentBooksDocNormalise, ErasesEmbeddedNuls) {
   EXPECT_EQ(book.title.find('\0'), std::string::npos);
 }
 
+// Nothing has displayed coverBmpPath since UITheme::getCoverThumbPath went (#146),
+// so it is no longer written. The version stays 1; docs/file-formats.md says why.
+TEST(RecentBooksDoc, AFileStillCarryingACoverPathLoadsAndDropsItOnTheNextSave) {
+  JsonDocument doc;
+  doc["v"] = 1;
+  JsonObject obj = doc["books"].to<JsonArray>().add<JsonObject>();
+  obj["path"] = "/books/a.epub";
+  obj["title"] = "A";
+  obj["author"] = "";
+  obj["coverBmpPath"] = "/.crosspoint/epub_1/thumb_[HEIGHT].bmp";
+
+  std::vector<RecentBook> out;
+  bool needsResave = true;
+  ASSERT_TRUE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave));
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(out[0].path, "/books/a.epub");
+  EXPECT_FALSE(needsResave) << "the inert key alone must not force a boot-time write";
+
+  JsonDocument resaved;
+  RecentBooksDoc::toJson(out, resaved);
+  EXPECT_TRUE(resaved["books"][0]["coverBmpPath"].isNull());
+}
+
 TEST(RecentBooksDocVersion, ToJsonStampsTheCurrentVersion) {
   JsonDocument doc;
-  RecentBooksDoc::toJson({makeBook("/books/a.epub", "A", "", "")}, doc);
+  RecentBooksDoc::toJson({makeBook("/books/a.epub", "A", "")}, doc);
   EXPECT_EQ(doc["v"] | 0, RecentBooksDoc::FORMAT_VERSION);
 }
 
@@ -335,7 +354,7 @@ TEST(RecentBooksDocVersion, ARefusedDocumentLeavesTheListUntouched) {
   JsonObject obj = doc["books"].to<JsonArray>().add<JsonObject>();
   obj["path"] = "/books/from-a-newer-build.epub";
 
-  std::vector<RecentBook> out{makeBook("/books/kept.epub", "Kept", "", "")};
+  std::vector<RecentBook> out{makeBook("/books/kept.epub", "Kept", "")};
   bool needsResave = false;
   ASSERT_FALSE(RecentBooksDoc::fromJson(doc.as<JsonVariantConst>(), out, needsResave));
   ASSERT_EQ(out.size(), 1u) << "the refusal must come before books.clear()";
@@ -350,8 +369,7 @@ TEST(RecentBooksDocBudget, AWorstCaseDocumentFitsTheDerivedBudget) {
   for (size_t i = 0; i < RecentBooksDoc::MAX_RECENT_BOOKS; ++i) {
     books.push_back(makeBook(std::string(RecentBooksDoc::PATH_BUDGET_ALLOWANCE, 'p').c_str(),
                              std::string(RecentBooksDoc::MAX_TITLE_BYTES, '"').c_str(),
-                             std::string(RecentBooksDoc::MAX_AUTHOR_BYTES, '\\').c_str(),
-                             std::string(RecentBooksDoc::COVER_PATH_BUDGET_ALLOWANCE, 'c').c_str()));
+                             std::string(RecentBooksDoc::MAX_AUTHOR_BYTES, '\\').c_str()));
   }
 
   JsonDocument doc;
@@ -372,8 +390,7 @@ TEST(RecentBooksDocBudget, ARealisticStoreUsesAFractionOfTheBudget) {
   for (size_t i = 0; i < RecentBooksDoc::MAX_RECENT_BOOKS; ++i) {
     books.push_back(makeBook("/Publicaciones/Atalaya/Edicion de estudio/2026/w_S_202601.epub",
                              "Traducción del Nuevo Mundo de las Santas Escrituras (revisión de 2019)",
-                             "Watchtower Bible and Tract Society of New York, Inc.",
-                             "/.crosspoint/epub_12345678901234567890/thumb_[HEIGHT].bmp"));
+                             "Watchtower Bible and Tract Society of New York, Inc."));
   }
 
   JsonDocument doc;

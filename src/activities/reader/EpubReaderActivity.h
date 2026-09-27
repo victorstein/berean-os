@@ -164,7 +164,6 @@ class EpubReaderActivity final : public ReaderActivity {
   bool loadBook() override;
   std::string getBookTitle() const override { return epub ? epub->getTitle() : ""; }
   std::string getBookAuthor() const override { return epub ? epub->getAuthor() : ""; }
-  std::string getBookThumbBmpPath() const override { return epub ? epub->getThumbBmpPath() : ""; }
   void renderBook() override;
   void onEndOfBookRendered() override;
 

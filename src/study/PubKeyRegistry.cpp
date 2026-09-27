@@ -6,7 +6,6 @@
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SaveBudget.h>
-#include <SdPaths.h>
 
 namespace {
 
@@ -43,7 +42,6 @@ bool record(const std::string& bookPath, const study::RegisteredPub& pub) {
     return false;
   }
 
-  Storage.mkdir(sdpaths::BEREAN_DIR);
   return PersistableStoreBase::writeDocToFileAtomic(PATH, doc);
 }
 

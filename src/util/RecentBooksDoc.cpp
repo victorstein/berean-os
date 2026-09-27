@@ -48,7 +48,6 @@ void toJson(const std::vector<RecentBook>& books, JsonDocument& doc) {
     obj["path"] = book.path;
     obj["title"] = book.title;
     obj["author"] = book.author;
-    obj["coverBmpPath"] = book.coverBmpPath;
   }
 }
 
@@ -70,7 +69,6 @@ bool fromJson(const JsonVariantConst doc, std::vector<RecentBook>& books, bool& 
     book.path = obj["path"] | "";
     book.title = obj["title"] | "";
     book.author = obj["author"] | "";
-    book.coverBmpPath = obj["coverBmpPath"] | "";
     if (normalise(book)) needsResave = true;
     books.push_back(std::move(book));
   }

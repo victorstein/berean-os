@@ -174,50 +174,6 @@ bool MappedInputManager::isScreenTouchHeld(int& x, int& y) const {
 
 bool MappedInputManager::wasScreenTouchReleased() const { return gpio.wasTouchReleased(); }
 
-bool MappedInputManager::wasTapInRect(const int x, const int y, const int width, const int height) const {
-  int tx = 0;
-  int ty = 0;
-  return wasScreenTapped(tx, ty) && tx >= x && tx < x + width && ty >= y && ty < y + height;
-}
-
-MappedInputManager::RowTouch MappedInputManager::rowTouch(int& row, const int top, const int rowStep,
-                                                          const int rowCount, const int xStart, const int xEnd,
-                                                          const int rowHeight) const {
-  if (rowStep <= 0 || rowCount <= 0) return RowTouch::None;
-  const auto hit = [&](const int x, const int y) {
-    if (x < xStart || x >= xEnd || y < top) return false;
-    const int r = (y - top) / rowStep;
-    if (r >= rowCount) return false;
-    if (rowHeight > 0 && (y - top) % rowStep >= rowHeight) return false;
-    row = r;
-    return true;
-  };
-  int x = 0;
-  int y = 0;
-  if (wasScreenTouchDown(x, y) && hit(x, y)) return RowTouch::Down;
-  if (wasScreenTapped(x, y) && hit(x, y)) return RowTouch::Tap;
-  return RowTouch::None;
-}
-
-MappedInputManager::RowTouch MappedInputManager::colTouch(int& col, const int left, const int colStep,
-                                                          const int colCount, const int yStart, const int yEnd,
-                                                          const int colWidth) const {
-  if (colStep <= 0 || colCount <= 0) return RowTouch::None;
-  const auto hit = [&](const int x, const int y) {
-    if (y < yStart || y >= yEnd || x < left) return false;
-    const int c = (x - left) / colStep;
-    if (c >= colCount) return false;
-    if (colWidth > 0 && (x - left) % colStep >= colWidth) return false;
-    col = c;
-    return true;
-  };
-  int x = 0;
-  int y = 0;
-  if (wasScreenTouchDown(x, y) && hit(x, y)) return RowTouch::Down;
-  if (wasScreenTapped(x, y) && hit(x, y)) return RowTouch::Tap;
-  return RowTouch::None;
-}
-
 bool MappedInputManager::decodeSwipe(int& sx, int& sy, int& ex, int& ey) const {
   float nxs = 0.0f;
   float nys = 0.0f;
@@ -373,33 +329,4 @@ MappedInputManager::Labels MappedInputManager::mapFrontLabels(const char* back, 
 
   return {labelForHardware(HalGPIO::BTN_BACK), labelForHardware(HalGPIO::BTN_CONFIRM),
           labelForHardware(HalGPIO::BTN_LEFT), labelForHardware(HalGPIO::BTN_RIGHT)};
-}
-
-// The raw front-button scan for the remap flow. Deliberately unmapped: the
-// remap activity needs physical presses, not logical roles.
-//
-// WHICH ARMS CAN FIRE IS A BOARD QUESTION, and on this one two of the four
-// cannot. The X4 Pro leaves back/confirm/left/right all PIN_UNASSIGNED
-// (BoardConfig.h:1396), and InputManager gates a digital read on pin >= 0
-// (InputManager.cpp:246,257-258). BTN_BACK and BTN_CONFIRM still return,
-// because HalGPIO synthesises them from an 850 ms nav-key hold
-// (HalGPIO.cpp:186-205); nothing synthesises BTN_LEFT or BTN_RIGHT, so those
-// two arms are unreachable there.
-//
-// So a future "press any front button" flow works here, but a flow needing four
-// distinct buttons does not.
-int MappedInputManager::getPressedFrontButton() const {
-  if (gpio.wasPressed(HalGPIO::BTN_BACK)) {
-    return HalGPIO::BTN_BACK;
-  }
-  if (gpio.wasPressed(HalGPIO::BTN_CONFIRM)) {
-    return HalGPIO::BTN_CONFIRM;
-  }
-  if (gpio.wasPressed(HalGPIO::BTN_LEFT)) {
-    return HalGPIO::BTN_LEFT;
-  }
-  if (gpio.wasPressed(HalGPIO::BTN_RIGHT)) {
-    return HalGPIO::BTN_RIGHT;
-  }
-  return -1;
 }

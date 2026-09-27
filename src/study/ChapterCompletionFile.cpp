@@ -1,7 +1,6 @@
 #include "ChapterCompletionFile.h"
 
 #include <ArduinoJson.h>
-#include <HalStorage.h>
 #include <Logging.h>
 #include <PersistableStore.h>
 #include <SdPaths.h>
@@ -33,7 +32,6 @@ SaveResult save(const std::string& pubKey, const study::ChapterCompletion& recor
     return SaveResult::TooLarge;
   }
 
-  Storage.mkdir(sdpaths::COMPLETION_DIR);
   const std::string target = path(pubKey);
   return PersistableStoreBase::writeDocToFileAtomic(target.c_str(), json) ? SaveResult::Ok : SaveResult::WriteFailed;
 }

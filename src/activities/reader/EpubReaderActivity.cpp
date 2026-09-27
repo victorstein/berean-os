@@ -147,7 +147,7 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
     }
   }
 
-  RECENT_BOOKS.updatePath(srcPath, dstPath, oldCachePath, newCachePath);
+  RECENT_BOOKS.updatePath(srcPath, dstPath);
   if (APP_STATE.openEpubPath == srcPath) {
     APP_STATE.openEpubPath = dstPath;
     APP_STATE.saveToFileAtomic();
@@ -449,7 +449,7 @@ void EpubReaderActivity::loop() {
     if (atEndOfBook && !recentsEntryRemoved) {
       recentsEntryRemoved = RECENT_BOOKS.removeByPath(epub->getPath());
     } else if (!atEndOfBook && recentsEntryRemoved) {
-      RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getThumbBmpPath());
+      RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor());
       recentsEntryRemoved = false;
     }
   }
