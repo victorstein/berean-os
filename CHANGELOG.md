@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.2](https://github.com/victorstein/berean-os/compare/v1.17.1...v1.17.2) (2026-09-27)
+
+
+### Performance
+
+* buffer the streamed JSON reader and clear batch 2 leftovers ([#159](https://github.com/victorstein/berean-os/issues/159)) ([3ba9c2d](https://github.com/victorstein/berean-os/commit/3ba9c2d87a85d45044e3e7d0dd610be461c73d6a)), closes [#152](https://github.com/victorstein/berean-os/issues/152)
+
 ## [1.17.1](https://github.com/victorstein/berean-os/compare/v1.17.0...v1.17.1) (2026-09-27)
 
 
