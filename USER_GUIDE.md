@@ -35,8 +35,8 @@ Physically there are three buttons and one capacitive key:
 | **Home** | a capacitive key below the screen, read by the touch controller |
 | **Reset** | a recessed pinhole |
 
-There is **no Back button and no Confirm button.** Back is a gesture; Confirm is a tap, the Home
-key, or the Power button when you configure it that way.
+There is **no Back button and no Confirm button.** Back is a gesture or a held **Left**; Confirm is
+a tap, a held **Right**, the Home key, or the Power button when you configure it that way.
 
 ## 2. Controls
 
@@ -44,8 +44,9 @@ key, or the Power button when you configure it that way.
 |---|---|
 | Tap | activates whatever you touched |
 | Left / Right | previous / next in a list; previous / next page while reading |
-| Long-press Left / Right | scroll a full page in a list; skip a chapter while reading (configurable) |
-| Swipe right from the left edge | **Back** |
+| Hold **Left** just under a second, then release | **Back** |
+| Hold **Right** just under a second, then release | **Confirm** |
+| Swipe right from the left edge | **Back** (on the reading surface, only to return from a link; see below) |
 | Swipe down from the top edge | opens the frontlight panel |
 | Swipe up from the bottom edge | Home, on devices without a Home key |
 | **Home**, short press | the launcher; inside some screens it confirms instead (see below) |
@@ -53,8 +54,12 @@ key, or the Power button when you configure it that way.
 | **Power**, short press | configurable: ignore, sleep, page turn, refresh, footnotes, or Confirm |
 | **Power**, long press | power off |
 
-The left-edge Back swipe routes through GPIO-independent code and is checked before anything else in
-every screen, so it always gets you out.
+Left and Right act when you release them, not when you press them: a quick press moves or turns a
+page, and a press held for just under a second becomes Back or Confirm instead.
+
+The left-edge Back swipe works in every screen except the reading surface. There it only returns
+you from a followed link (see [5. Reading](#5-reading)), so that in swipe page-turn mode a right
+swipe can turn back a page.
 
 **Home is context-dependent.** Normally it takes you to the launcher. Two screens repurpose it
 because they have no other way to confirm: passage selection uses a Home tap to set each end of the
@@ -132,15 +137,13 @@ already on the card.
 |---|---|
 | Next page | tap the right third, or press **Right** |
 | Previous page | tap the left third, or press **Left** |
-| Next / previous chapter | hold **Right** / **Left** briefly, then release |
-| Reader menu | tap the centre third |
-| Back out of the book | swipe right from the left edge |
+| Reader menu | tap the centre third, or hold **Right** and release |
+| Start a passage selection | long-press a word outside the centre third (section 8) |
+| Leave the book | **Home**, hold **Left** and release, or **Reader menu -> Go home** |
 
-Long-press chapter skip can be turned off, or swapped for page scrolling, in
-**Settings -> Controls -> Long-press behaviour**.
-
-**Cross-references.** Following a link inside a publication remembers where you came from. Pressing
-Back returns to that position rather than leaving the book. The return stack holds three positions.
+**Cross-references.** Following a link inside a publication remembers where you came from. Back —
+the left-edge swipe or a held **Left** — returns to that position rather than leaving the book. The
+return stack holds three positions.
 
 **Auto page turn** advances pages on a timer; enable it from the reader menu.
 
@@ -149,15 +152,15 @@ Back returns to that position rather than leaving the book. The return stack hol
 Tap the centre third of the page. The menu lists, depending on the publication:
 
 - **Select chapter** — the table of contents, or the Bible drill-down (section 7)
+- **Search verses** — in a Bible only
 - **Footnotes** — the footnotes on the current page
-- **Bookmarks** — jump to or delete a saved position
+- **Bookmarks** — jump to or delete a saved position, once there is one
 - **Highlights** — browse what you have marked in this publication
 - **Toggle bookmark** — drop or remove a bookmark at the current page
 - **Highlight passage** — start a passage selection (section 8)
 - **Text settings** — font, size, spacing, margins, with a live preview
 - **Night mode** — invert the page
 - **Frontlight** — the light panel
-- **Orientation** — rotate without leaving the book
 - **Auto turn** — pages per minute
 - **Go to %** — jump by percentage
 - **Take screenshot** — writes a BMP to `screenshots/`
@@ -182,13 +185,14 @@ While you are in a Bible, the status bar shows the chapter number alongside the 
 
 ## 8. Highlights and tags
 
-A **highlight** marks a passage. A **tag** is a label you attach to it. Tags currently live inside
-each publication's highlight file; global tags that span publications arrive in Phase 1.
+A **highlight** marks a passage. A **tag** is a label you attach to it. Tags are global: a tag you
+create in one publication is offered in every other.
 
 ### Marking a passage
 
 1. Open the reader menu and choose **Highlight passage**. (Or set **Long-press Menu** to
-   **Highlight** and hold the Home key.)
+   **Highlight** and hold the Home key, or long-press a word outside the centre third to start the
+   selection there.)
 2. Tap the first word of the passage, or move the cursor with **Left** / **Right** and tap **Home**
    to confirm it.
 3. Do the same for the last word.
@@ -205,7 +209,9 @@ Swiping Back at any point cancels the whole selection, including from the final 
 text. Activating a row jumps to it. The filter row at the top narrows the list to a single tag.
 
 Long-pressing a row offers to delete the highlight, or to change its tags. Long-pressing a tag in
-the filter list deletes that tag from the publication's palette.
+the filter list retires it: it stops being offered in the tag picker, and it is removed from this
+publication's highlights. A highlight left with no tag shows as **Unlabeled**; no highlight is
+deleted.
 
 ## 9. Bookmarks and footnotes
 
@@ -275,7 +281,7 @@ The file browser walks the SD card. It opens from **Choose a file** in the Bible
 which the **Bible** tile shows when no Bible has been found on the card. The current path is shown at
 the top, directories appear in brackets, and file extensions are shown.
 
-- **Left** / **Right** move the selection; hold either to move a full page.
+- **Left** / **Right** move the selection.
 - Tap a row to open a folder or a book. A `.bmp` opens in the image viewer.
 - Long-press a row to delete it, after a confirmation. Renaming and moving are web-interface
   operations, not device ones.
