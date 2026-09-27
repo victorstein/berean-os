@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.16.9](https://github.com/victorstein/berean-os/compare/v1.16.8...v1.16.9) (2026-09-27)
+
+
+### Bug Fixes
+
+* format-check LOG_* calls and fix mismatched specifiers ([#106](https://github.com/victorstein/berean-os/issues/106)) ([08d98a9](https://github.com/victorstein/berean-os/commit/08d98a9f0d906a43045dedc0c96bce7985974933))
+* resolve the launcher Bible via the pubkey registry ([#104](https://github.com/victorstein/berean-os/issues/104)) ([08d98a9](https://github.com/victorstein/berean-os/commit/08d98a9f0d906a43045dedc0c96bce7985974933))
+
+
+### Performance
+
+* remove per-tick allocations from list navigation ([#107](https://github.com/victorstein/berean-os/issues/107)) ([08d98a9](https://github.com/victorstein/berean-os/commit/08d98a9f0d906a43045dedc0c96bce7985974933))
+
+
+### Refactor
+
+* hide settings for hardware this device lacks ([#103](https://github.com/victorstein/berean-os/issues/103)) ([08d98a9](https://github.com/victorstein/berean-os/commit/08d98a9f0d906a43045dedc0c96bce7985974933))
+
 ## [1.16.8](https://github.com/victorstein/berean-os/compare/v1.16.7...v1.16.8) (2026-09-26)
 
 
