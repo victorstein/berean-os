@@ -214,7 +214,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LONG_PRESS_BUTTON_BEHAVIOR_COUNT
   };
 
-  // UI Theme
+  // UI Theme. LYRA_3_COVERS and ROUNDEDRAFF are retired but keep their numbers so
+  // an older settings.json is never misread; they load as LYRA (SettingsList
+  // offers only CLASSIC and LYRA, and the enum clamp falls back to the default).
   enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3 };
 
   // Image rendering in EPUB reader
