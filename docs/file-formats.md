@@ -466,12 +466,20 @@ Owned by `src/util/RecentBooksDoc.{h,cpp}` (format, host-tested) and
   no file (`lib/Serialization/FormatVersion.h`).
 
 ```json
-{"v":1,"books":[{"path":"/books/w_S_202601.epub","title":"La Atalaya","author":"","coverBmpPath":""}]}
+{"v":1,"books":[{"path":"/books/w_S_202601.epub","title":"La Atalaya","author":""}]}
 ```
 
 At most 10 books. `title` and `author` are capped at 128 and 96 bytes on a codepoint
-boundary; `path` is never shortened. The save budget, 11,427 bytes, is derived from those
+boundary; `path` is never shortened. The save budget, 9,967 bytes, is derived from those
 caps (`RecentBooksDoc::worstCaseBytes()`).
+
+Files written before #152 also carry `"coverBmpPath"`. It is ignored on load and dropped by the
+next save. Removing it did not move the version, because no build loses or misreads anything: this
+build ignores the key, and an older build reads the missing key as `""`, which is what it already
+stored for a book with no thumbnail. A bump would only make a rolled-back build refuse the file and
+refuse every recents save. The rule is the one `PassageDoc` follows
+(`lib/StudyStore/StudyStore/PassageDoc.h:20-24`): bump only when an older build would lose or
+misread data.
 
 ## `/.berean/search/bible.idx`
 
