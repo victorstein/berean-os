@@ -181,23 +181,16 @@ void CatalogSearchActivity::runSearch() {
   const auto& store = CatalogIndexStore::getInstance();
   if (!store.held()) return;
 
-  const std::string_view index = store.view();
   hits.reserve(MAX_RESULTS);
-
-  size_t cursor = catalog::recordsBegin(index);
-  catalog::Entry entry;
-  while (catalog::nextEntry(index, cursor, entry)) {
-    if (!catalog::matches(entry, query)) continue;
-    if (hits.size() >= MAX_RESULTS) {
-      resultsTruncated = true;
-      break;
-    }
-    hits.push_back(
-        Hit{std::string(entry.symbol), std::string(entry.issue), std::string(entry.title), std::string(entry.year)});
-  }
+  catalog::search(store.view(), query, MAX_RESULTS, resultsTruncated, &CatalogSearchActivity::collectHit, this);
 
   LOG_INF(MODULE, "'%s' matched %u row(s)%s", query.c_str(), static_cast<unsigned>(hits.size()),
           resultsTruncated ? " (truncated)" : "");
+}
+
+void CatalogSearchActivity::collectHit(void* ctx, const catalog::Entry& entry) {
+  static_cast<CatalogSearchActivity*>(ctx)->hits.push_back(
+      Hit{std::string(entry.symbol), std::string(entry.issue), std::string(entry.title), std::string(entry.year)});
 }
 
 bool CatalogSearchActivity::hasSymbolRow() const { return looksLikeSymbol(query); }

@@ -16,9 +16,9 @@ std::string_view lineAt(const std::string_view buffer, size_t& cursor) {
   return line;
 }
 
-// Splits `line` into at most `count` fields. Returns how many were found; the
-// last field absorbs nothing, so a title containing a tab would be truncated
-// rather than shifting every later field.
+// Splits `line` into at most `count` fields. The last field takes the rest of
+// the line, tabs included, so a title containing a tab stays whole rather than
+// shifting every later field.
 size_t split(const std::string_view line, std::string_view* fields, const size_t count) {
   size_t found = 0;
   size_t start = 0;
@@ -50,6 +50,14 @@ bool containsFold(const std::string_view haystack, const std::string_view needle
   return false;
 }
 
+EpubAvailability parseEpub(const std::string_view field) {
+  if (field == "1") return EpubAvailability::Available;
+  if (field == "0") return EpubAvailability::Unavailable;
+  return EpubAvailability::Unknown;
+}
+
+bool readable(const int version) { return version >= OLDEST_READABLE_VERSION && version <= FORMAT_VERSION; }
+
 }  // namespace
 
 Header parseHeader(const std::string_view index) {
@@ -80,19 +88,28 @@ size_t recordsBegin(const std::string_view index) {
   return cursor;
 }
 
-bool nextEntry(const std::string_view index, size_t& cursor, Entry& out) {
+bool nextEntry(const std::string_view index, const int version, size_t& cursor, Entry& out) {
+  if (!readable(version)) return false;
+  const size_t fieldCount = version == OLDEST_READABLE_VERSION ? 5 : 6;
+
   while (cursor < index.size()) {
     const std::string_view line = lineAt(index, cursor);
     if (line.empty()) continue;
 
-    std::string_view fields[5];
-    if (split(line, fields, 5) < 5) continue;  // malformed row: skip, do not stop
+    std::string_view fields[6];
+    if (split(line, fields, fieldCount) < fieldCount) continue;  // malformed row: skip, do not stop
 
     out.symbol = fields[0];
     out.issue = fields[1];
     out.year = fields[2];
     out.type = fields[3];
-    out.title = fields[4];
+    if (fieldCount == 5) {
+      out.epub = EpubAvailability::Unknown;
+      out.title = fields[4];
+    } else {
+      out.epub = parseEpub(fields[4]);
+      out.title = fields[5];
+    }
     return true;
   }
   return false;
@@ -117,6 +134,30 @@ bool matches(const Entry& entry, const std::string_view query) {
     start = space + 1;
   }
   return sawTerm;
+}
+
+bool listable(const Entry& entry) { return entry.epub != EpubAvailability::Unavailable; }
+
+size_t search(const std::string_view index, const std::string_view query, const size_t maxResults, bool& truncated,
+              const SearchVisitor visit, void* ctx) {
+  truncated = false;
+  const Header header = parseHeader(index);
+  if (!readable(header.version)) return 0;
+
+  size_t cursor = recordsBegin(index);
+  size_t visited = 0;
+  Entry entry;
+  while (nextEntry(index, header.version, cursor, entry)) {
+    // Hidden rows are dropped before the cap, so they never take a result slot.
+    if (!listable(entry) || !matches(entry, query)) continue;
+    if (visited >= maxResults) {
+      truncated = true;
+      break;
+    }
+    visit(ctx, entry);
+    ++visited;
+  }
+  return visited;
 }
 
 }  // namespace catalog

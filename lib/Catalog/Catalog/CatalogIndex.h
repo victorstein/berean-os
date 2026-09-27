@@ -23,11 +23,17 @@
 // linear walk per keystroke.
 namespace catalog {
 
-// "sym\tissue\tyear\ttype\ttitle\n", one per line. Tab-separated because a
-// publication title may contain almost anything else -- commas, quotes,
-// parentheses and colons all occur in real titles.
+// v1: "sym\tissue\tyear\ttype\ttitle\n". v2 adds the EPUB flag before the title:
+// "sym\tissue\tyear\ttype\tepub\ttitle\n". Tab-separated because a publication
+// title may contain almost anything else -- commas, quotes, parentheses and
+// colons all occur in real titles -- and the title stays last so a stray tab
+// can only ever land inside it.
 inline constexpr char FIELD_SEP = '\t';
 inline constexpr char RECORD_SEP = '\n';
+
+// Whether jw.org publishes an EPUB for the entry. Unknown covers a v1 index,
+// which predates the flag, and a v2 row the builder has not probed yet.
+enum class EpubAvailability : uint8_t { Unknown, Available, Unavailable };
 
 struct Entry {
   std::string_view symbol;
@@ -35,6 +41,7 @@ struct Entry {
   std::string_view year;
   std::string_view type;
   std::string_view title;
+  EpubAvailability epub = EpubAvailability::Unknown;
 };
 
 // Header line: "berean-catalog\t<version>\t<language>\t<manifestId>\t<builtOn>"
@@ -47,7 +54,10 @@ struct Header {
   bool valid() const { return version > 0 && !language.empty(); }
 };
 
-inline constexpr int FORMAT_VERSION = 1;
+// The newest layout this build reads, and the oldest it still accepts: a v1
+// index held on the card keeps working after an update until a fetch replaces it.
+inline constexpr int FORMAT_VERSION = 2;
+inline constexpr int OLDEST_READABLE_VERSION = 1;
 
 // Parses the header off the front of an inflated index. The view must outlive
 // every Entry and the Header -- nothing here copies.
@@ -57,14 +67,28 @@ Header parseHeader(std::string_view index);
 // index.size() when there is no header.
 size_t recordsBegin(std::string_view index);
 
-// Parses one record. Returns false at the end of the buffer or on a malformed
-// line; `cursor` advances past the line either way, so a single bad row does
-// not strand the scan.
-bool nextEntry(std::string_view index, size_t& cursor, Entry& out);
+// Parses one record in the layout `version` names. Returns false at the end of
+// the buffer, and for a version this build does not read; a malformed line is
+// skipped and `cursor` advances past it, so a single bad row does not strand the
+// scan.
+bool nextEntry(std::string_view index, int version, size_t& cursor, Entry& out);
 
 // True when every space-separated term in `query` appears in the entry's symbol
 // or title, case-insensitively for ASCII. Multi-term so "atalaya 2026" narrows
 // the way a user expects, rather than requiring a contiguous match.
 bool matches(const Entry& entry, std::string_view query);
+
+// False for an entry the index says has no EPUB. The device cannot open it, so
+// it is never listed.
+bool listable(const Entry& entry);
+
+using SearchVisitor = void (*)(void* ctx, const Entry& entry);
+
+// Visits, in index order, up to `maxResults` listable entries matching `query`,
+// and sets `truncated` when more matched. The version is read from `index`'s own
+// header on every call, because the buffer is replaced when an update is
+// installed while Buscar is open. Returns how many were visited.
+size_t search(std::string_view index, std::string_view query, size_t maxResults, bool& truncated,
+              SearchVisitor visit, void* ctx);
 
 }  // namespace catalog

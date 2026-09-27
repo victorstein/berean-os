@@ -17,16 +17,18 @@ Stamp stampOf(const Header& header) {
   stamp.language.assign(header.language);
   stamp.manifestId.assign(header.manifestId);
   stamp.builtOn.assign(header.builtOn);
+  stamp.version = header.version;
   return stamp;
 }
 
 bool sameRelease(const Stamp& held, const Stamp& remote) {
   return held.valid() && remote.valid() && held.language == remote.language && held.manifestId == remote.manifestId &&
-         held.builtOn == remote.builtOn;
+         held.builtOn == remote.builtOn && held.version == remote.version;
 }
 
 bool indexAcceptable(const Header& header, const std::string_view expectedLanguage) {
-  return header.valid() && header.version == FORMAT_VERSION && header.language == expectedLanguage;
+  return header.valid() && header.version >= OLDEST_READABLE_VERSION && header.version <= FORMAT_VERSION &&
+         header.language == expectedLanguage;
 }
 
 bool formatIndexDate(const std::string_view isoDate, const std::string_view monthsShort, char* out,
