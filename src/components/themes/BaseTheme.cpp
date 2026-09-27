@@ -13,6 +13,7 @@
 #include <string>
 
 #include "I18n.h"
+#include "components/ToastLayout.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -494,6 +495,55 @@ Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message) cons
   renderer.drawText(UI_12_FONT_ID, textX, textY, message, metrics.popupTextInverted, popupFontFamily);
   renderer.displayBuffer();
   return Rect{x, y, w, h};
+}
+
+void BaseTheme::drawToast(const GfxRenderer& renderer, const char* message) const {
+  if (message == nullptr || message[0] == '\0') return;
+
+  namespace fui = freeink::ui;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const auto spec = uiScaleSpec();
+  fui::GfxRendererFrame<1> ui(renderer, spec.smallFontId, spec.bodyFontId, spec.titleFontId);
+
+  int insetTop, insetRight, insetBottom, insetLeft;
+  renderer.getOrientedViewableTRBL(&insetTop, &insetRight, &insetBottom, &insetLeft);
+  const ToastLayout::Bounds area =
+      ToastLayout::bounds(renderer.getScreenWidth(), renderer.getScreenHeight(), insetTop, insetRight, insetBottom,
+                          insetLeft, UITheme::getInstance().getStatusBarHeight());
+  const ToastLayout::Padding pad =
+      ToastLayout::padding(metrics.popupMarginX, metrics.popupMarginY, metrics.popupFrameThickness);
+
+  // popupTextInverted is drawPopup's drawText `black` argument: true is black
+  // text on a black-framed white box (Classic), false is white text on a
+  // white-rimmed black box (Lyra). The border takes the ink colour because
+  // fui::popup strokes inside the panel, which reproduces both frames.
+  const fui::Color ink = metrics.popupTextInverted ? fui::Color::Black : fui::Color::White;
+  const fui::Color paper = metrics.popupTextInverted ? fui::Color::White : fui::Color::Black;
+
+  fui::ToastProps props;
+  props.message = message;
+  props.anchor = fui::ToastAnchor::Bottom;
+  props.text.font = fui::GfxRendererTarget::FONT_BODY;
+  props.text.bold = metrics.popupTextBold;
+  props.text.color = ink;
+  props.text.maxLines = ToastLayout::MAX_LINES;
+  props.styles = fui::defaultPopupStyles();
+  props.styles.normal.background = fui::Paint::solid(paper);
+  props.styles.normal.foreground = fui::Paint::solid(ink);
+  props.styles.normal.border = fui::Paint::solid(ink);
+  props.styles.normal.borderWidth = static_cast<uint8_t>(metrics.popupFrameThickness);
+  props.styles.normal.radius = static_cast<uint8_t>(metrics.popupCornerRadius);
+  props.styles.selected = props.styles.normal;
+  props.styles.focused = props.styles.normal;
+  props.styles.active = props.styles.normal;
+  props.styles.disabled = props.styles.normal;
+  props.padding = fui::Insets{static_cast<int16_t>(pad.top), static_cast<int16_t>(pad.right),
+                              static_cast<int16_t>(pad.bottom), static_cast<int16_t>(pad.left)};
+
+  const fui::Rect bounds{static_cast<int16_t>(area.x), static_cast<int16_t>(area.y), static_cast<int16_t>(area.width),
+                         static_cast<int16_t>(area.height)};
+  fui::toast(ui.frame, bounds, props);
+  renderer.displayBuffer();
 }
 
 void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const {

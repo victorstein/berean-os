@@ -1,5 +1,5 @@
 // Host coverage for the queue and timing rules behind PostedMessage. The
-// wrapper adds only a mutex, millis() and GUI.drawPopup.
+// wrapper adds only a mutex, millis() and GUI.drawToast.
 
 #include <gtest/gtest.h>
 
