@@ -27,6 +27,7 @@
 #include "activities/catalog/PublicationsActivity.h"
 #include "activities/launcher/LauncherBible.h"
 #include "activities/launcher/LauncherRefresh.h"
+#include "activities/network/BibleDownloadActivity.h"
 #include "activities/network/MeetingsActivity.h"
 #include "components/UITheme.h"
 #include "components/icons/book.h"
@@ -105,16 +106,28 @@ void LauncherActivity::resolveTargets() {
     resumeTitle = utf8SafeSummary(recents[0].title, 48);
   }
 
-  // Resolved the way the meeting tile below is, and for the same reasons: the
-  // registry knows every Buscar download, the card scan finds a copy that
-  // arrived under the CDN's own name, and recents is not consulted at all -- a
-  // Bible downloaded and never opened is not in it, and a title match there
-  // also caught any other book with "New World" in its name.
+  // The registry knows every Buscar download and every Bible the reader has
+  // opened; the card scan finds a copy that arrived under the CDN's own name.
+  // Recents runs last because its title match also catches a non-Bible titled
+  // "New World", and it covers a Bible that was opened without ever being
+  // registered.
   biblePath.clear();
   bibleSubtitle = tr(STR_BIBLE_SUBTITLE_NONE);
-  auto foundBible = PubKeyRegistry::findBySymbol({BIBLE_SYMBOL});
-  if (!foundBible) foundBible = findBibleOnCard();
-  LOG_INF(MODULE, "Bible: %s", foundBible ? foundBible->c_str() : "(none found)");
+  BibleLookup foundBy = BibleLookup::Registry;
+  auto foundBible = resolveBible([&](const BibleLookup step) -> std::optional<std::string> {
+    foundBy = step;
+    switch (step) {
+      case BibleLookup::Registry:
+        return PubKeyRegistry::findBySymbol({BIBLE_SYMBOL});
+      case BibleLookup::CardScan:
+        return findBibleOnCard();
+      case BibleLookup::Recents:
+        return findBibleInRecents(recents);
+    }
+    return std::nullopt;
+  });
+  LOG_INF(MODULE, "Bible: %s (%s)", foundBible ? foundBible->c_str() : "(none found)",
+          foundBible ? bibleLookupName(foundBy) : "-");
   if (foundBible) {
     biblePath = std::move(*foundBible);
     bibleSubtitle = bibleTitleFor(biblePath, recents);
@@ -186,6 +199,17 @@ std::optional<std::string> LauncherActivity::findBibleOnCard() {
                                   [](const std::string& path) { return isCdnNamedCopyOf(path, BIBLE_SYMBOL); });
   if (bible == books.end()) return std::nullopt;
   return *bible;
+}
+
+// recent.json can still list a deleted file; the existence check keeps that
+// from putting a Bible on the tile that opens nothing.
+std::optional<std::string> LauncherActivity::findBibleInRecents(const std::vector<RecentBook>& recents) {
+  for (const RecentBook& book : recents) {
+    if (!looksLikeBibleInRecents(book.path, book.title)) continue;
+    if (!Storage.exists(book.path.c_str())) continue;
+    return book.path;
+  }
+  return std::nullopt;
 }
 
 // Never opens the EPUB for this: its title lives in book.bin, and loading that
@@ -545,13 +569,22 @@ void LauncherActivity::activate(const Tile tile) {
 }
 
 void LauncherActivity::openBible() {
-  if (biblePath.empty()) {
-    // No Bible on the card yet. The file browser is the honest destination --
-    // phase 3's catalog will replace it.
-    activityManager.goToFileBrowser();
+  if (!biblePath.empty()) {
+    activityManager.goToReader(biblePath);
     return;
   }
-  activityManager.goToReader(biblePath);
+  auto download = makeUniqueNoThrow<BibleDownloadActivity>(renderer, mappedInput);
+  if (!download) {
+    LOG_ERR(MODULE, "OOM: Bible download activity");
+    return;
+  }
+  // Back to the launcher rather than into the Bible: the tile then shows what
+  // arrived, and a first open's indexing popup does not follow straight on
+  // from a screen the user just watched download.
+  startActivityForResult(std::move(download), [this](const ActivityResult&) {
+    resolveTargets();
+    requestUpdate();
+  });
 }
 
 void LauncherActivity::openMeetings() {
