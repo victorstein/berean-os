@@ -119,12 +119,16 @@ namespace {
 struct FakeRegistry {
   std::vector<std::string> entries;
   int recordCalls = 0;
+  int lookupCalls = 0;
   bool refuse = false;
 
   BibleRegistration open(const bool isBible, const std::string& path) {
     return registerBibleIfUnknown(
         isBible, path,
-        [this](const std::string& p) { return std::find(entries.begin(), entries.end(), p) != entries.end(); },
+        [this](const std::string& p) {
+          ++lookupCalls;
+          return std::find(entries.begin(), entries.end(), p) != entries.end();
+        },
         [this](const std::string& p) {
           ++recordCalls;
           if (refuse) return false;
@@ -138,19 +142,8 @@ struct FakeRegistry {
 
 TEST(LauncherBible, ANonBibleNeverTouchesTheRegistry) {
   FakeRegistry registry;
-  int lookups = 0;
-  const auto result = registerBibleIfUnknown(
-      false, "/Libros/Novela.epub",
-      [&lookups](const std::string&) {
-        ++lookups;
-        return false;
-      },
-      [&registry](const std::string&) {
-        ++registry.recordCalls;
-        return true;
-      });
-  EXPECT_EQ(result, BibleRegistration::NotBible);
-  EXPECT_EQ(lookups, 0);
+  EXPECT_EQ(registry.open(false, "/Libros/Novela.epub"), BibleRegistration::NotBible);
+  EXPECT_EQ(registry.lookupCalls, 0);
   EXPECT_EQ(registry.recordCalls, 0);
 }
 
@@ -169,10 +162,14 @@ TEST(LauncherBible, AnyExistingEntryWinsWhateverItsSymbol) {
   EXPECT_EQ(registry.recordCalls, 0);
 }
 
-TEST(LauncherBible, ARefusedWriteIsReportedAndNotRetried) {
+TEST(LauncherBible, ARefusedWriteIsReportedAndLeavesNoEntry) {
   FakeRegistry registry;
   registry.refuse = true;
   EXPECT_EQ(registry.open(true, "/Libros/Biblia.epub"), BibleRegistration::Refused);
   EXPECT_EQ(registry.recordCalls, 1);
   EXPECT_TRUE(registry.entries.empty());
+
+  // A refused write leaves the path unregistered, so the next open retries.
+  EXPECT_EQ(registry.open(true, "/Libros/Biblia.epub"), BibleRegistration::Refused);
+  EXPECT_EQ(registry.recordCalls, 2);
 }
