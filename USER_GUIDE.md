@@ -399,24 +399,46 @@ firmware in place.
 
 ## 17. Where your data lives
 
-Everything is on the SD card, under `.crosspoint/`:
+Everything is on the SD card, in two hidden directories.
+
+`.crosspoint/` holds settings, reading positions and caches:
 
 | | |
 |---|---|
 | `epub_<hash>/progress.bin` | reading position for one publication |
 | `epub_<hash>/sections/*.bin` | cached page layout |
 | `epub_<hash>/book.bin` | title, author, spine, table of contents |
-| `highlights/` | highlights and their tags |
+| `bookmarks/` | bookmarks, one file per publication |
 | `settings.json`, `state.json`, `recent.json` | settings, session state, recent list |
+| `wifi.json` | saved Wi-Fi networks |
 
-The directory keeps its inherited name so that upgrading to bereanOS does not orphan a card full of
-cached books and reading positions. Phase 1 migrates it.
+`.berean/` holds your study data:
 
-The hash is derived from the file path, so **moving or renaming a publication loses its reading
-position and its highlights.** Copy them back, or move files through the web interface, which re-keys
-the cache.
+| | |
+|---|---|
+| `passages/` | highlights and the tags on them, one file per publication |
+| `tags.json` | your tags, shared by every publication |
+| `completion/` | which Bible chapters you have read |
+| `pubkeys.json` | which publication each downloaded file is, and which file is your Bible |
+| `meeting-weeks.json` | the meeting publications for each week looked up |
+| `search/` | the Bible search index |
+| `units/` | per-publication indexes of verses and paragraphs |
 
-Deleting `.crosspoint/` clears everything, including highlights. Back it up before you do.
+The search index and the unit indexes can be rebuilt: search offers to prepare its index again, and
+a unit index is built again when its publication is opened.
+
+The `.crosspoint/` hash is derived from the file path, so **moving or renaming a publication loses
+its reading position, its bookmarks and its cached layout**, including through the web interface.
+Highlights are kept by publication instead of by file. The Bible's follow it wherever it is. A
+publication downloaded on the device finds its highlights again once it is downloaded again; one you
+copied onto the card yourself finds them only at its original path.
+
+**Older highlights.** Highlights made before this study store existed live in
+`.crosspoint/highlights/`. On boot the device copies any it has not copied yet into `.berean/`,
+showing **Preparing your study data** while it works. The originals are left where they are.
+
+Deleting `.crosspoint/` clears settings, reading positions, bookmarks and caches; deleting `.berean/`
+clears your highlights, tags and Bible reading progress. Back them up before you do.
 
 ## 18. Troubleshooting
 
