@@ -23,6 +23,7 @@
 #include <esp_sntp.h>
 #endif
 
+#include <cinttypes>
 #include <cstring>
 
 #include "CrossPointSettings.h"
@@ -616,8 +617,10 @@ void loop() {
   renderer.setFadingFix(SETTINGS.fadingFix);
 
   if (Serial && millis() - lastMemPrint >= 10000) {
-    LOG_INF("MEM", "Free: %d bytes, Total: %d bytes, Min Free: %d bytes, MaxAlloc: %d bytes", ESP.getFreeHeap(),
-            ESP.getHeapSize(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+    LOG_INF("MEM",
+            "Free: %" PRIu32 " bytes, Total: %" PRIu32 " bytes, Min Free: %" PRIu32 " bytes, MaxAlloc: %" PRIu32
+            " bytes",
+            ESP.getFreeHeap(), ESP.getHeapSize(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
     lastMemPrint = millis();
   }
 
@@ -631,7 +634,7 @@ void loop() {
       cmd.trim();
       if (cmd == "SCREENSHOT") {
         const uint32_t bufferSize = display.getBufferSize();
-        logSerial.printf("SCREENSHOT_START:%d\n", bufferSize);
+        logSerial.printf("SCREENSHOT_START:%" PRIu32 "\n", bufferSize);
         uint8_t* buf = display.getFrameBuffer();
         logSerial.write(buf, bufferSize);
         logSerial.printf("SCREENSHOT_END\n");

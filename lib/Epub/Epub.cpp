@@ -9,6 +9,8 @@
 #include <Utf8.h>
 #include <ZipFile.h>
 
+#include <cinttypes>
+
 #include "Epub/BibleNavScanner.h"
 #include "Epub/parsers/ContainerParser.h"
 #include "Epub/parsers/ContentOpfParser.h"
@@ -301,7 +303,7 @@ void Epub::parseCssFiles() const {
     // Check heap before parsing - CSS parsing allocates heavily
     const uint32_t freeHeap = ESP.getFreeHeap();
     if (freeHeap < MIN_HEAP_FOR_CSS_PARSING) {
-      LOG_ERR("EBP", "Insufficient heap for CSS parsing (%u bytes free, need %zu), skipping: %s", freeHeap,
+      LOG_ERR("EBP", "Insufficient heap for CSS parsing (%" PRIu32 " bytes free, need %zu), skipping: %s", freeHeap,
               MIN_HEAP_FOR_CSS_PARSING, cssPath.c_str());
       continue;
     }

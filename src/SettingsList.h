@@ -329,8 +329,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
                           {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
                           "imageRendering", StrId::STR_CAT_READER),
-        // Night mode = inverted output polarity on the reading surfaces only
-        // (EPUB/TXT/XTC; ActivityManager resolves the polarity per render).
+        // Night mode = inverted output polarity on the reading surface only
+        // (ActivityManager resolves the polarity per render).
         // Reader category, since it does not affect the rest of the UI.
         SettingInfo::Toggle(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted, "screenInverted",
                             StrId::STR_CAT_READER),
@@ -344,8 +344,10 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
             "touchReaderControls", StrId::STR_CAT_CONTROLS),
         SettingInfo::Toggle(StrId::STR_TAP_FOR_READER_MENU, &CrossPointSettings::tapForReaderMenu, "tapForReaderMenu",
                             StrId::STR_CAT_CONTROLS),
+#if BEREAN_CAP_ROTATION
         SettingInfo::Toggle(StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION, &CrossPointSettings::frontButtonFollowOrientation,
                             "frontButtonFollowOrientation", StrId::STR_CAT_CONTROLS),
+#endif
 // Gated off entirely on this board: nothing can deliver a page turn held past
 // SKIP_HOLD_MS, so the entry offered a chapter skip no input could reach. The
 // StrId names stay in source text on purpose -- gen_i18n.py scans raw text, so
@@ -376,8 +378,6 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
 #endif
         SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
-        SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
-                            "backShortToFileBrowser", StrId::STR_CAT_CONTROLS),
 
         SettingInfo::Enum(StrId::STR_PUBLICATION_LANGUAGE, &CrossPointSettings::publicationLanguage,
                           std::move(publicationLanguageValues), "publicationLanguage", StrId::STR_CAT_SYSTEM),
@@ -389,12 +389,6 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
             StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeoutMinutes,
             {CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1},
             "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM),
-        SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
-                            StrId::STR_CAT_SYSTEM),
-        SettingInfo::Toggle(StrId::STR_REMOVE_READ_FROM_RECENTS, &CrossPointSettings::removeReadBooksFromRecents,
-                            "removeReadBooksFromRecents", StrId::STR_CAT_SYSTEM),
-        SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
-                            "moveFinishedToReadFolder", StrId::STR_CAT_SYSTEM),
 
         // Publication download folder: persisted + web-exposed, but category-less
         // so it is hidden from the on-device Settings screen.
@@ -426,9 +420,6 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                           StrId::STR_CUSTOMISE_STATUS_BAR),
         SettingInfo::Toggle(StrId::STR_BATTERY, &CrossPointSettings::statusBarBattery, "statusBarBattery",
                             StrId::STR_CUSTOMISE_STATUS_BAR),
-        SettingInfo::Enum(StrId::STR_XTC_STATUS_BAR, &CrossPointSettings::xtcStatusBarMode,
-                          {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP}, "xtcStatusBarMode",
-                          StrId::STR_CUSTOMISE_STATUS_BAR),
         // Clock entries (web settings only; device UI uses ClockOffsetActivity for the offset).
         // Range 0..104 = quarter-hour steps from UTC-12:00 to UTC+14:00, biased by 48.
         SettingInfo::Enum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, std::move(statusBarClockValues),
@@ -476,8 +467,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
     v.erase(std::remove_if(v.begin(), v.end(),
                            [](const SettingInfo& s) {
                              return s.nameId == StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION ||
-                                    s.nameId == StrId::STR_SUNLIGHT_FADING_FIX ||
-                                    s.nameId == StrId::STR_BACK_SHORT_TO_FILE_BROWSER;
+                                    s.nameId == StrId::STR_SUNLIGHT_FADING_FIX;
                            }),
             v.end());
   }

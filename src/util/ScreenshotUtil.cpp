@@ -7,6 +7,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
+#include <cinttypes>
 #include <cstring>
 #include <string>
 
@@ -147,7 +148,7 @@ bool ScreenshotUtil::saveFramebufferAsBmp(const char* filename, const uint8_t* f
   // Max row size for 528px height (X3) after rotation = 68 bytes; use fixed buffer to avoid VLA
   constexpr size_t kMaxRowSize = 68;
   if (rowSizePadded > kMaxRowSize) {
-    LOG_ERR("SCR", "Row size %u exceeds buffer capacity", rowSizePadded);
+    LOG_ERR("SCR", "Row size %" PRIu32 " exceeds buffer capacity", rowSizePadded);
     // Explicitly close() file before calling Storage.remove()
     file.close();
     Storage.remove(filename);

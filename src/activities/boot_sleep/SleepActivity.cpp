@@ -14,6 +14,7 @@
 #include <SdPaths.h>
 
 #include <algorithm>
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -171,7 +172,7 @@ bool parseOverlayBmpHeader(HalFile& file, OverlayBmpInfo& info, const bool logEr
   info.width = static_cast<int32_t>(readLE32(file));
   const auto rawHeight = static_cast<int32_t>(readLE32(file));
   if (rawHeight == std::numeric_limits<int32_t>::min()) {
-    if (logErrors) LOG_ERR("SLP", "Bad transparent overlay dimensions: %dx%d", info.width, rawHeight);
+    if (logErrors) LOG_ERR("SLP", "Bad transparent overlay dimensions: %dx%" PRId32, info.width, rawHeight);
     return false;
   }
   info.topDown = rawHeight < 0;
@@ -478,9 +479,9 @@ bool drawSleepPopupPreservingFrame(GfxRenderer& renderer) {
 
 void releaseSdFontCachesForDecode(const GfxRenderer& renderer) {
   if (auto* fcm = renderer.getFontCacheManager()) {
-    LOG_DBG("SLP", "Free heap before SD font cache release: %d bytes", ESP.getFreeHeap());
+    LOG_DBG("SLP", "Free heap before SD font cache release: %" PRIu32 " bytes", ESP.getFreeHeap());
     fcm->releaseSdFontCaches();
-    LOG_DBG("SLP", "Free heap before sleep image decode: %d bytes", ESP.getFreeHeap());
+    LOG_DBG("SLP", "Free heap before sleep image decode: %" PRIu32 " bytes", ESP.getFreeHeap());
   }
 }
 

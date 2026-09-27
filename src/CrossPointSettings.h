@@ -89,12 +89,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     STATUS_BAR_PROGRESS_BAR_THICKNESS_COUNT
   };
   enum STATUS_BAR_TITLE { BOOK_TITLE = 0, CHAPTER_TITLE = 1, HIDE_TITLE = 2, STATUS_BAR_TITLE_COUNT };
-  enum XTC_STATUS_BAR_MODE {
-    XTC_STATUS_BAR_HIDE = 0,
-    XTC_STATUS_BAR_BOTTOM = 1,
-    XTC_STATUS_BAR_TOP = 2,
-    XTC_STATUS_BAR_MODE_COUNT
-  };
 
   enum STATUS_BAR_CLOCK_MODE {
     STATUS_BAR_CLOCK_HIDE = 0,
@@ -258,7 +252,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t statusBarProgressBarThickness = PROGRESS_BAR_NORMAL;
   uint8_t statusBarTitle = CHAPTER_TITLE;
   uint8_t statusBarBattery = 1;
-  uint8_t xtcStatusBarMode = XTC_STATUS_BAR_HIDE;
   // Clock display in status bar (X3 only, requires DS3231 RTC)
   uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;
   // Clock UTC offset in quarter-hour steps, biased by 48 so it fits in uint8_t.
@@ -330,6 +323,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t focusReadingEnabled = 0;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
+  // The next four have no settings row, so they are neither persisted nor
+  // changeable and always hold these defaults; the code that reads them stays.
   // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
   uint8_t showHiddenFiles = 0;
   // Remove a book from the Recent Books list when its End-of-Book screen is reached (0 = off, 1 = on)
@@ -405,7 +400,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     uint8_t clockUtcOffsetQ = 48;             // 48 = UTC+0
     uint8_t progressBarMode = HIDE_PROGRESS;  // STATUS_BAR_PROGRESS_BAR
     uint8_t progressBarHeightPx = 0;          // (thickness+1)*2; 0 when the bar is hidden
-    uint8_t xtcMode = XTC_STATUS_BAR_HIDE;    // XTC_STATUS_BAR_MODE
 
     bool showsProgressBar() const { return progressBarMode != HIDE_PROGRESS; }
     bool showsTitle() const { return titleMode != HIDE_TITLE; }

@@ -25,6 +25,7 @@
 #include "StudyStore/PubKey.h"
 #include "activities/PostedMessage.h"
 #include "activities/catalog/PublicationsActivity.h"
+#include "activities/launcher/LauncherBible.h"
 #include "activities/launcher/LauncherRefresh.h"
 #include "activities/network/MeetingsActivity.h"
 #include "components/UITheme.h"
@@ -37,9 +38,9 @@
 #include "network/MeetingFilename.h"
 #include "network/MeetingLibrary.h"
 #include "network/MeetingWeekCache.h"
-#include "study/BookPathIndex.h"
 #include "study/ChapterCompletionFile.h"
 #include "study/PubKeyRegistry.h"
+#include "util/CardBooks.h"
 
 namespace {
 
@@ -104,26 +105,21 @@ void LauncherActivity::resolveTargets() {
     resumeTitle = utf8SafeSummary(recents[0].title, 48);
   }
 
-  // The Bible tile opens whatever Bible is on the card. BookPathIndex already
-  // walks it for the migration, so this reuses that rather than inventing a
-  // second notion of "where the books are".
+  // Resolved the way the meeting tile below is, and for the same reasons: the
+  // registry knows every Buscar download, the card scan finds a copy that
+  // arrived under the CDN's own name, and recents is not consulted at all -- a
+  // Bible downloaded and never opened is not in it, and a title match there
+  // also caught any other book with "New World" in its name.
   biblePath.clear();
   bibleSubtitle = tr(STR_BIBLE_SUBTITLE_NONE);
-
-  // Matched on the symbol in the filename first, then the title in either
-  // language, because a sideloaded copy may carry neither the CDN's name nor a
-  // registry entry. Phase 3's catalog download will register a pubkey and make
-  // this a lookup rather than a guess.
-  const auto looksLikeABible = [](const RecentBook& book) {
-    return book.path.find("nwt") != std::string::npos || book.title.find("Nuevo Mundo") != std::string::npos ||
-           book.title.find("New World") != std::string::npos;
-  };
-  const auto found = std::find_if(recents.begin(), recents.end(), looksLikeABible);
-  if (found != recents.end()) {
-    biblePath = found->path;
-    bibleSubtitle = utf8SafeSummary(found->title, 40);
+  auto foundBible = PubKeyRegistry::findBySymbol({BIBLE_SYMBOL});
+  if (!foundBible) foundBible = findBibleOnCard();
+  LOG_INF(MODULE, "Bible: %s", foundBible ? foundBible->c_str() : "(none found)");
+  if (foundBible) {
+    biblePath = std::move(*foundBible);
+    bibleSubtitle = bibleTitleFor(biblePath, recents);
     applyChaptersReadSubtitle();
-    bibleCoverPath = coverThumbFor(found->path, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
+    bibleCoverPath = coverThumbFor(biblePath, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
     // The sleep screen paints this too, and it runs while the device is shutting
     // down -- far too late to search for the Bible or open it.
     if (APP_STATE.bibleCoverPath != bibleCoverPath) {
@@ -179,6 +175,29 @@ std::optional<std::string> LauncherActivity::thisWeeksMeetingPublication() {
     if (!path.empty()) return path;
   }
   return std::nullopt;
+}
+
+// A Bible the registry does not know is one that did not come through Buscar,
+// and the only name it can be recognised by is the CDN's. When several
+// languages are on the card the download folder's copy wins, then the root's.
+std::optional<std::string> LauncherActivity::findBibleOnCard() {
+  const std::vector<std::string> books = CardBooks::list();
+  const auto bible = std::find_if(books.begin(), books.end(),
+                                  [](const std::string& path) { return isCdnNamedCopyOf(path, BIBLE_SYMBOL); });
+  if (bible == books.end()) return std::nullopt;
+  return *bible;
+}
+
+// Never opens the EPUB for this: its title lives in book.bin, and loading that
+// reads the whole spine table -- nearly four thousand entries for the NWT.
+// Buscar names the file after the publication, so the filename is the title;
+// only a CDN name like "nwt_S" is not worth showing.
+std::string LauncherActivity::bibleTitleFor(const std::string& path, const std::vector<RecentBook>& recents) {
+  const auto opened =
+      std::find_if(recents.begin(), recents.end(), [&](const RecentBook& book) { return book.path == path; });
+  if (opened != recents.end() && !opened->title.empty()) return utf8SafeSummary(opened->title, 40);
+  if (isCdnNamedCopyOf(path, BIBLE_SYMBOL)) return {};
+  return utf8SafeSummary(CardBooks::displayStem(path), 40);
 }
 
 // Publications downloaded before PubKeyRegistry existed carry no symbol entry,

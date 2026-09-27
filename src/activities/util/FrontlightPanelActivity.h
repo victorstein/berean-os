@@ -48,4 +48,5 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   void loop() override;
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
+  bool isFrontlightPanel() const override { return true; }
 };

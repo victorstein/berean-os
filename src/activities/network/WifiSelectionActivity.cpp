@@ -8,6 +8,7 @@
 #include <esp_mac.h>
 
 #include <algorithm>
+#include <cinttypes>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -174,18 +175,18 @@ void WifiSelectionActivity::onEnter() {
 void WifiSelectionActivity::onExit() {
   Activity::onExit();
 
-  LOG_DBG("WIFI", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WIFI", "Free heap at onExit start: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Stop any ongoing WiFi scan
   LOG_DBG("WIFI", "Deleting WiFi scan...");
   WiFi.scanDelete();
-  LOG_DBG("WIFI", "Free heap after scanDelete: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WIFI", "Free heap after scanDelete: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Note: We do NOT disconnect WiFi here - the parent activity
   // (CrossPointWebServerActivity) manages WiFi connection state. We just clean
   // up the scan and task.
 
-  LOG_DBG("WIFI", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WIFI", "Free heap at onExit end: %" PRIu32 " bytes", ESP.getFreeHeap());
 }
 
 void WifiSelectionActivity::reportCredentialSaveFailure() { PostedMessage::post(tr(STR_WIFI_SAVE_FAILED)); }
@@ -552,7 +553,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
 #if defined(ENABLE_SERIAL_LOG) && LOG_LEVEL >= 2
     uint8_t connectedBssid[6] = {};
     WiFi.BSSID(connectedBssid);
-    LOG_DBG("WIFI", "Connected BSSID: %02x:%02x:%02x:%02x:%02x:%02x, channel: %d, RSSI: %d dBm",
+    LOG_DBG("WIFI", "Connected BSSID: %02x:%02x:%02x:%02x:%02x:%02x, channel: %" PRId32 ", RSSI: %d dBm",
             static_cast<unsigned>(connectedBssid[0]), static_cast<unsigned>(connectedBssid[1]),
             static_cast<unsigned>(connectedBssid[2]), static_cast<unsigned>(connectedBssid[3]),
             static_cast<unsigned>(connectedBssid[4]), static_cast<unsigned>(connectedBssid[5]), WiFi.channel(),

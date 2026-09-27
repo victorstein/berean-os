@@ -8,6 +8,7 @@
 #include <Memory.h>
 #include <WiFi.h>
 
+#include <cinttypes>
 #include <cstddef>
 
 #include "MappedInputManager.h"
@@ -65,7 +66,7 @@ int barsForRssi(int rssi, int currentBars) {
 void CrossPointWebServerActivity::onEnter() {
   Activity::onEnter();
 
-  LOG_DBG("WEBACT", "Free heap at onEnter: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEBACT", "Free heap at onEnter: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Heap-critical transition: WiFi (~45KB) plus the web server have to fit in
   // what's left of the ~380KB parts. SD-font caches retained for the CJK UI
@@ -74,7 +75,7 @@ void CrossPointWebServerActivity::onEnter() {
   // when the heap comes up short (observed on X3 with a Korean SD font).
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->releaseSdFontCaches();
-    LOG_DBG("WEBACT", "Free heap after SD font cache release: %d bytes", ESP.getFreeHeap());
+    LOG_DBG("WEBACT", "Free heap after SD font cache release: %" PRIu32 " bytes", ESP.getFreeHeap());
   }
 
   // Reset state
@@ -108,7 +109,7 @@ void CrossPointWebServerActivity::launchModeSelection() {
 void CrossPointWebServerActivity::onExit() {
   Activity::onExit();
 
-  LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEBACT", "Free heap at onExit start: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   state = WebServerActivityState::SHUTTING_DOWN;
   stopDnsServer();
@@ -125,7 +126,7 @@ void CrossPointWebServerActivity::onExit() {
     silentRestart();
   }
 
-  LOG_DBG("WEBACT", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEBACT", "Free heap at onExit end: %" PRIu32 " bytes", ESP.getFreeHeap());
 }
 
 void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
@@ -192,7 +193,7 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
 
 void CrossPointWebServerActivity::startAccessPoint() {
   LOG_DBG("WEBACT", "Starting Access Point mode...");
-  LOG_DBG("WEBACT", "Free heap before AP start: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEBACT", "Free heap before AP start: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Configure and start the AP
   WiFi.mode(WIFI_AP);
@@ -242,7 +243,7 @@ void CrossPointWebServerActivity::startAccessPoint() {
     LOG_DBG("WEBACT", "DNS server started for captive portal");
   }
 
-  LOG_DBG("WEBACT", "Free heap after AP start: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEBACT", "Free heap after AP start: %" PRIu32 " bytes", ESP.getFreeHeap());
 
   // Start the web server
   startWebServer();
@@ -254,11 +255,11 @@ void CrossPointWebServerActivity::startWebServer() {
   // Repeat the release right before the allocation: the WiFi selection screen
   // rendered since onEnter(), and a CJK SSID repopulates the SD-font caches.
   if (auto* fcm = renderer.getFontCacheManager()) {
-    LOG_DBG("WEBACT", "Free heap before SD font cache release: %d bytes", ESP.getFreeHeap());
+    LOG_DBG("WEBACT", "Free heap before SD font cache release: %" PRIu32 " bytes", ESP.getFreeHeap());
     fcm->releaseSdFontCaches();
   }
 
-  LOG_DBG("WEBACT", "Free heap before server alloc: %d bytes", ESP.getFreeHeap());
+  LOG_DBG("WEBACT", "Free heap before server alloc: %" PRIu32 " bytes", ESP.getFreeHeap());
   webServer = makeUniqueNoThrow<CrossPointWebServer>();
   if (!webServer) {
     LOG_ERR("WEBACT", "OOM: CrossPointWebServer");
