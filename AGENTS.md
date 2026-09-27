@@ -13,7 +13,7 @@ no full-text search beyond Bible verses.
 ## The device
 
 One board, one target: **ESP32-S3, dual core, 8 MB PSRAM, 16 MB flash**
-(`platformio.ini:162,167` — `esp32-s3-devkitc1-n16r8` plus `-DBOARD_HAS_PSRAM`). Multi-board support is out of scope. Any rule you
+(`platformio.ini:166,171` — `esp32-s3-devkitc1-n16r8` plus `-DBOARD_HAS_PSRAM`). Multi-board support is out of scope. Any rule you
 remember that starts "on the C3" or "380 KB is the hard ceiling" was written for a
 different device and does not apply here.
 
@@ -54,7 +54,7 @@ capacitive Home":
 - **Right** nav button — GPIO7
 - **Power** — GPIO3
 - **Home** — a capacitive key bit on the GT911 (`0x814E & 0x10`), **not a GPIO**,
-  reached through `BoardConfig::hasHomeKey()` → `HalGPIO.cpp:166`
+  reached through `BoardConfig::hasHomeKey()` → `HalGPIO.cpp:247`
 - GT911 capacitive touchscreen
 
 **There is no Back button and no Confirm button.** Anything that assumes four
@@ -63,12 +63,12 @@ not have.
 
 In the reader, touch is the primary control: the screen is three vertical tap
 zones — outer thirds page, centre third opens the menu
-(`src/activities/reader/ReaderUtils.h:129`, `isTouchMenuTap`).
+(`src/activities/reader/ReaderUtils.h:140`, `isTouchMenuTap`).
 
 `MappedInputManager` cannot simply be deleted — it is in the `Activity` base-class
 constructor (`src/activities/Activity.h:22,28-29`), spans 418 references across 121
 files, and *implements* this device's Back via a left-edge swipe
-(`src/MappedInputManager.cpp:266,301`). It may only be removed in the same change
+(`src/MappedInputManager.cpp:222,257`). It may only be removed in the same change
 that lands its replacement.
 
 ---
@@ -669,7 +669,7 @@ The constants are the source of truth; `docs/file-formats.md` documents the layo
 and lags behind them.
 
 - `BOOK_CACHE_VERSION` — `lib/Epub/Epub/BookMetadataCache.cpp:14`
-- `SECTION_FILE_VERSION` — `lib/Epub/Epub/Section.cpp:48`
+- `SECTION_FILE_VERSION` — `lib/Epub/Epub/Section.cpp:50`
 
 **Increment the version *before* changing a binary structure.** A mismatch
 invalidates and regenerates the cache; a changed structure under an unchanged
@@ -845,7 +845,7 @@ Consequences worth holding onto:
   `.release-please-manifest.json`, `version.txt` or
   `.github/workflows/release-please.yml`. They are pushed by stein-infra's tofu.
 - **`release-publish.yml` is gated on the repository name**
-  (`release-publish.yml:106`). If that guard names the wrong repo, the release is
+  (`release-publish.yml:102`). If that guard names the wrong repo, the release is
   cut with no firmware asset, the workflow goes green, and OTA finds a release whose
   asset does not exist.
 

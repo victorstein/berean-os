@@ -96,9 +96,11 @@ raise the timeout, while one is running.
 The launcher is the device's home. Under the **bereanOS** header it shows four tiles:
 
 - **Bible** — opens your Bible and shows how many chapters you have read. If no Bible has been found
-  on the card, it opens the file browser instead (see [12. Browsing files](#12-browsing-files)).
-- **Meetings** — the week's two meeting publications; opens what is on the card and downloads what
-  is not.
+  on the card, the tile reads **Not on the card · tap to download**, and tapping it offers to
+  download the New World Translation in your **Publication language** (see
+  [Finding the Bible](#finding-the-bible)).
+- **Meetings** — the week's meeting publications (see
+  [10. Meeting publications](#10-meeting-publications)).
 - **Publications** — every publication on the card, with a search of the jw.org catalog to download
   more.
 - **Settings**
@@ -106,6 +108,23 @@ The launcher is the device's home. Under the **bereanOS** header it shows four t
 When there is a book to go back to, a **Continue Reading** tile resumes it.
 
 Tap a tile to open it, or move the selection with **Left** / **Right** and confirm.
+
+### Finding the Bible
+
+The launcher looks for the Bible in three places, in order:
+
+1. A Bible downloaded on the device, or one you have opened before.
+2. A file named the way jw.org names it, such as `nwt_S.epub` or `nwt_E.epub`, in the download
+   folder or at the root of the card.
+3. Your recent books.
+
+A Bible you copied onto the card yourself is remembered the first time you open it, so after that
+the tile finds it whatever it is called and wherever it is.
+
+With no Bible found, tapping the tile asks **Download the Bible?** and gives its approximate size.
+**Download** connects to Wi-Fi and fetches it, then returns you to the launcher; **Choose a file**
+opens the file browser (see [12. Browsing files](#12-browsing-files)) so you can open a Bible that is
+already on the card.
 
 ## 5. Reading
 
@@ -207,8 +226,17 @@ The device reads its clock, works out the ISO week, fetches that week's meetings
 issue numbers out of the publication links, resolves the download URLs, and writes the files. Either
 publication may be missing for a given week, which is a normal outcome and not an error.
 
-The **Meetings** tile on the launcher lists the same two publications, opening what is on the card
-and downloading what is not.
+The **Meetings** tile on the launcher opens the week view:
+
+- A header with the week's dates, such as *Week of 21–27 September*.
+- A strip of the seven days, Monday first. Today is shown inverted, and a dot marks each day set in
+  **Settings -> System -> Midweek meeting day** and **Weekend meeting day**.
+- One card per publication, with its cover, title and issue, and a progress bar once you have
+  started reading it. Tap a card to open the publication, or to download it when it is not on the
+  card yet. The Memorial week has only a *Watchtower*, so it shows one card.
+- **Download again**, which re-checks the week and fetches both publications.
+
+When the week is not known yet, the screen looks it up once on opening.
 
 Files already on the card with a matching checksum are not downloaded again. Where they land is set
 by the download folder, which is editable from the web settings page; blank means the card root.
@@ -243,17 +271,16 @@ Details are in [docs/webserver.md](./docs/webserver.md); the raw endpoints are i
 
 ## 12. Browsing files
 
-The file browser walks the SD card. It opens from the **Bible** tile on the launcher when no Bible has
-been found on the card. The current path is shown at the top, directories appear
-in brackets, and file extensions are shown.
+The file browser walks the SD card. It opens from **Choose a file** in the Bible download offer,
+which the **Bible** tile shows when no Bible has been found on the card. The current path is shown at
+the top, directories appear in brackets, and file extensions are shown.
 
 - **Left** / **Right** move the selection; hold either to move a full page.
 - Tap a row to open a folder or a book. A `.bmp` opens in the image viewer.
 - Long-press a row to delete it, after a confirmation. Renaming and moving are web-interface
   operations, not device ones.
 
-Hidden files and folders — anything starting with `.` — are shown only when
-**Settings -> System -> Show hidden files** is on.
+Hidden files and folders — anything starting with `.` — are not shown.
 
 ## 13. Settings
 
@@ -261,8 +288,8 @@ The **Settings** tile on the launcher, four tabs.
 
 ### Display
 
-- **Sleep screen** — Dark, Light, Custom, Cover, Cover + Custom, Quick resume, Transparent, or None.
-  See section 14.
+- **Sleep screen** — Dark, Light, Custom, Cover, Cover + Custom, Quick resume, Transparent, None, or
+  Study. See section 14.
 - **Sleep screen cover mode** — Fit or Crop, when a cover is shown.
 - **Sleep screen cover filter** — None (grayscale), Contrast, or Inverted.
 - **Quick resume on timeout** — use the quick-resume sleep screen when the device sleeps on its own.
@@ -270,23 +297,21 @@ The **Settings** tile on the launcher, four tabs.
 - **Refresh frequency** — how often the panel does a full refresh while reading, to clear ghosting:
   every 1, 5, 10, 15 or 30 pages.
 - **UI theme** — Classic or Lyra. Tap to switch between them.
-- **Sunlight fading fix** — a software workaround for panels that fade in direct sunlight.
 - **Restore light on wake** — bring the frontlight back at the brightness it had before sleep.
 
 ### Reader
 
-- **Text settings** — font family, size, line spacing, margins and alignment, with a live preview.
+- **Text settings** — with a live preview:
+  - **Font family** — Noto Serif, Noto Sans, or any family installed on the card.
+  - **Font size**, **line spacing**, **screen margin**, **paragraph alignment**.
+  - **Embedded style** — honour the publication's own HTML and CSS.
+  - **Focus reading** — bold the first part of each word.
+  - **Hyphenation**.
+  - **Extra paragraph spacing** — space between paragraphs instead of a first-line indent.
+  - **Text anti-aliasing** — smoother edges, slightly slower page turns.
 - **Manage fonts** — browse and download SD-card font families over Wi-Fi.
-- **Font family** — Noto Serif, Noto Sans, or any family installed on the card.
-- **Font size**, **line spacing**, **screen margin**, **paragraph alignment**.
-- **Embedded style** — honour the publication's own HTML and CSS.
-- **Focus reading** — bold the first part of each word.
-- **Hyphenation**.
-- **Extra paragraph spacing** — space between paragraphs instead of a first-line indent.
-- **Text anti-aliasing** — smoother edges, slightly slower page turns.
 - **Images** — display, show a placeholder, or suppress.
 - **Night mode** — invert the reading surface.
-- **Orientation** — Portrait, Landscape CW, Inverted, or Landscape CCW.
 - **Customise status bar** — what the reading status bar shows: chapter page count, book percentage,
   progress bar style and thickness, title, battery, and the clock. On a device with a real-time clock
   this is also where the clock format, the UTC offset, and **Sync now** live.
@@ -296,21 +321,22 @@ The **Settings** tile on the launcher, four tabs.
 - **Side button layout** — Prev/Next, Next/Prev, or disabled while reading.
 - **Touch reader controls** — Off, Tap, Swipe, or Inverted tap.
 - **Tap for reader menu** — whether a centre-third tap opens the menu.
-- **Buttons follow orientation** — swap Left and Right when the screen is rotated.
-- **Long-press behaviour** — what holding a page button does: nothing, chapter skip, or orientation.
 - **Long-press Menu** — what holding the Home key does while reading: Bookmark, Reader menu,
   Highlight, or Disabled.
 - **Short power button click** — Ignore, Sleep, Page turn, Refresh, Footnotes, or Confirm.
-- **Quick return from footnotes** — a short Power press acts as Back while in a footnote.
-- **Back to file browser** — a short Back from a book returns to the file browser instead of Home.
+- **Quick return from footnotes** — a short Power press acts as Back while in a footnote. Shown only
+  when **Short power button click** is set to **Footnotes**.
 
 ### System
 
+- **Publication language** — Spanish or English; the language the Bible, the meeting publications
+  and the catalog are downloaded in.
+- **Look up meetings when WiFi connects** — on by default.
+- **Midweek meeting day** and **Weekend meeting day** — the days the meetings week view marks.
+  **Not set** by default.
 - **Time to sleep** — inactivity before the device sleeps.
-- **Show hidden files**.
-- **Remove read books from recents**.
-- **Move finished books to a Read folder**.
 - **Wi-Fi networks** — saved networks.
+- **File transfer** — see section 11.
 - **Clear reading cache** — drop the SD cache and force a re-index.
 - **Check for updates** — over-the-air firmware update.
 - **SD firmware update** — flash a `firmware.bin` from the card.
@@ -328,6 +354,10 @@ The **Settings** tile on the launcher, four tabs.
 | **Quick resume** | the last page read, so waking returns to it without reloading the book |
 | **Transparent** | an overlay drawn over whatever is on screen |
 | **None** | blank |
+| **Study** | one of your marked passages, with the date when the clock is set, its reference, its first tag, and your Bible reading progress |
+
+**Study** picks a different passage each time the device sleeps, favouring ones it has not shown
+recently. With no marked passages it falls back to the default screen.
 
 **Custom images:** create a `.sleep` directory at the root of the card and put any number of `.bmp`
 files in it — one is picked at random each time. A single `sleep.bmp` at the root takes priority.
