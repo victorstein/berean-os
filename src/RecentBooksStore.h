@@ -21,7 +21,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
  public:
   // Derived from RecentBooksDoc's field caps rather than the shared default:
   // title and author are bounded on the way in and on the way back off the card,
-  // path and coverBmpPath carry explicit allowances, and the entry count is
+  // path carries an explicit allowance, and the entry count is
   // capped -- so the worst case is a real figure. See worstCaseBytes().
   static constexpr size_t SAVE_BUDGET = RecentBooksDoc::SAVE_BUDGET;
 
@@ -31,8 +31,7 @@ class RecentBooksStore : public PersistableStore<RecentBooksStore> {
 
   // Add a book to the recent list (moves to front if already exists).
   // title and author are normalised to RecentBooksDoc's caps before storing.
-  void addBook(const std::string& path, const std::string& title, const std::string& author,
-               const std::string& coverBmpPath);
+  void addBook(const std::string& path, const std::string& title, const std::string& author);
 
   // Remove the entry whose path matches (used when a book is removed from recents or finished/read).
   // Returns true if an entry was found and removed (no-op + false otherwise).

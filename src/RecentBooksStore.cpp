@@ -24,8 +24,7 @@ bool RecentBooksStore::fromJson(const JsonVariantConst doc) {
   return true;
 }
 
-void RecentBooksStore::addBook(const std::string& path, const std::string& title, const std::string& author,
-                               const std::string& coverBmpPath) {
+void RecentBooksStore::addBook(const std::string& path, const std::string& title, const std::string& author) {
   // Drop stale entries first so a new add can't evict a valid book in their stead.
   pruneMissing();
 
@@ -37,7 +36,7 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
   }
 
   // Add to front, bounded: title and author arrive straight from EPUB metadata.
-  RecentBook book{path, title, author, coverBmpPath};
+  RecentBook book{path, title, author};
   RecentBooksDoc::normalise(book);
   recentBooks.insert(recentBooks.begin(), std::move(book));
 
