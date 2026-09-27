@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.19.2](https://github.com/victorstein/berean-os/compare/v1.19.1...v1.19.2) (2026-09-27)
+
+
+### Refactor
+
+* split web-server route groups and setup() init stages ([#174](https://github.com/victorstein/berean-os/issues/174)) ([be41881](https://github.com/victorstein/berean-os/commit/be41881e0c9fa9a704b39bfad4ceb0ca8e7c0808)), closes [#172](https://github.com/victorstein/berean-os/issues/172)
+
+## [1.19.1](https://github.com/victorstein/berean-os/compare/v1.19.0...v1.19.1) (2026-09-27)
+
+
+### Refactor
+
+* move reader bookmarks and auto page turn out of EpubReaderActivity ([#171](https://github.com/victorstein/berean-os/issues/171)) ([7c08067](https://github.com/victorstein/berean-os/commit/7c0806717610f7cc3812c3f38d940c2a8a24dbb3)), closes [#110](https://github.com/victorstein/berean-os/issues/110)
+
 ## [1.19.0](https://github.com/victorstein/berean-os/compare/v1.18.0...v1.19.0) (2026-09-27)
 
 
