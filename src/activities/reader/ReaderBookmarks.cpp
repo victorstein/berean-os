@@ -122,10 +122,10 @@ void ReaderBookmarks::toggle(const std::shared_ptr<Epub>& epub, Section& section
     entry.computedSpineIndex = spineIndex;
     entry.computedChapterPageCount = pageCount;
     entry.computedChapterProgress = currentPage;
-    const std::optional<uint32_t> offset = visibleOffset.has_value() ? visibleOffset
-                                           : (currentPage >= 0 && currentPage < section.pageCount)
-                                               ? section.getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage))
-                                               : std::nullopt;
+    std::optional<uint32_t> offset = visibleOffset;
+    if (!offset.has_value() && currentPage >= 0 && currentPage < section.pageCount) {
+      offset = section.getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage));
+    }
     if (offset.has_value()) {
       entry.visibleTextOffset = *offset;
       entry.hasVisibleTextOffset = true;

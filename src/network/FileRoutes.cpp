@@ -367,7 +367,7 @@ void FileRoutes::handleUpload(WebServer& server, UploadState& state) const {
       // Log progress every 100KB
       if (state.size - lastLoggedSize >= 102400) {
         const unsigned long elapsed = millis() - uploadStartTime;
-        const float kbps = (elapsed > 0) ? (state.size / 1024.0) / (elapsed / 1000.0) : 0;
+        [[maybe_unused]] const float kbps = (elapsed > 0) ? (state.size / 1024.0) / (elapsed / 1000.0) : 0;
         LOG_DBG("WEB", "[UPLOAD] %d bytes (%.1f KB), %.1f KB/s, %d writes", state.size, state.size / 1024.0, kbps,
                 writeCount);
         lastLoggedSize = state.size;
@@ -384,8 +384,8 @@ void FileRoutes::handleUpload(WebServer& server, UploadState& state) const {
       if (state.error.isEmpty()) {
         state.success = true;
         const unsigned long elapsed = millis() - uploadStartTime;
-        const float avgKbps = (elapsed > 0) ? (state.size / 1024.0) / (elapsed / 1000.0) : 0;
-        const float writePercent = (elapsed > 0) ? (totalWriteTime * 100.0 / elapsed) : 0;
+        [[maybe_unused]] const float avgKbps = (elapsed > 0) ? (state.size / 1024.0) / (elapsed / 1000.0) : 0;
+        [[maybe_unused]] const float writePercent = (elapsed > 0) ? (totalWriteTime * 100.0 / elapsed) : 0;
         LOG_DBG("WEB", "[UPLOAD] Complete: %s (%d bytes in %lu ms, avg %.1f KB/s)", state.fileName.c_str(), state.size,
                 elapsed, avgKbps);
         LOG_DBG("WEB", "[UPLOAD] Diagnostics: %d writes, total write time: %lu ms (%.1f%%)", writeCount, totalWriteTime,
