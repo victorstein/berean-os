@@ -377,6 +377,7 @@ STR_CHECKSUM_MISMATCH: "La suma de verificación no coincide; se descartó la de
 STR_ALREADY_DOWNLOADED: "Ya está en la tarjeta"
 STR_RENAMED_EXISTING: "Se renombró una copia anterior"
 STR_PUBLICATION_UNAVAILABLE: "No está publicada en este idioma"
+STR_NO_EPUB_EDITION: "No hay edición EPUB de esta publicación"
 
 STR_MONTHS_SHORT: "ene feb mar abr may jun jul ago sep oct nov dic"
 STR_CATALOG: "Catálogo"

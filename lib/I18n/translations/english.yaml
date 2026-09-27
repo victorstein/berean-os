@@ -435,6 +435,7 @@ STR_CHECKSUM_MISMATCH: "Checksum mismatch, download discarded"
 STR_ALREADY_DOWNLOADED: "Already on the card"
 STR_RENAMED_EXISTING: "Renamed an earlier copy"
 STR_PUBLICATION_UNAVAILABLE: "Not published in this language"
+STR_NO_EPUB_EDITION: "No EPUB edition is available for this publication"
 
 STR_MONTHS_SHORT: "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec"
 STR_CATALOG: "Catalog"

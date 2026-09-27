@@ -148,14 +148,29 @@ Result download(const Request& request, const Hooks& hooks, std::string& outPath
     return Result::OutOfMemory;
   }
 
-  const std::string mediaUrl = pubMediaUrlForSymbol(request.symbol, request.issue, request.language);
-  const bool fetched = HttpDownloader::fetchUrl(mediaUrl, [&media](const uint8_t* data, const size_t len) {
+  const HttpDownloader::DataCallback feedMedia = [&media](const uint8_t* data, const size_t len) {
     media->feed(reinterpret_cast<const char*>(data), len);
     return true;
-  });
+  };
+  bool fetched =
+      HttpDownloader::fetchUrl(pubMediaUrlForSymbol(request.symbol, request.issue, request.language), feedMedia);
   if (!fetched || !media->found()) {
-    LOG_ERR(MODULE, "No EPUB link for %s issue '%s' (%s)", request.symbol, request.issue, request.language);
-    return Result::NoMediaLink;
+    // With the EPUB filter, "no EPUB edition" and "not in this language" are the
+    // same 404, and a non-200 body never reaches the parser. Without the filter,
+    // the first is a 200 listing the language in other formats; the second stays
+    // a 404. Asked only on failure, because the unfiltered answer is ~36 KB for a
+    // current Watchtower.
+    media->reset();
+    fetched = HttpDownloader::fetchUrl(
+        pubMediaUrlForSymbol(request.symbol, request.issue, request.language, /*epubOnly=*/false), feedMedia);
+    if (fetched && !media->found() && media->languagePresent()) {
+      LOG_ERR(MODULE, "No EPUB edition of %s issue '%s' (%s)", request.symbol, request.issue, request.language);
+      return Result::NoEpubEdition;
+    }
+    if (!fetched || !media->found()) {
+      LOG_ERR(MODULE, "No EPUB link for %s issue '%s' (%s)", request.symbol, request.issue, request.language);
+      return Result::NoMediaLink;
+    }
   }
 
   // No issue means a book or brochure, which is named after itself; an issue
@@ -247,6 +262,8 @@ const char* failureMessage(const Result result) {
   switch (result) {
     case Result::NoMediaLink:
       return tr(STR_PUBLICATION_UNAVAILABLE);
+    case Result::NoEpubEdition:
+      return tr(STR_NO_EPUB_EDITION);
     case Result::ChecksumMismatch:
       return tr(STR_CHECKSUM_MISMATCH);
     case Result::DownloadFailed:
