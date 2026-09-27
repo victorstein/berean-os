@@ -135,4 +135,11 @@ class Sampler {
   bool hasStale_ = false;
 };
 
+// The scan starts at a random file and wraps: sweep 0 covers [start, count),
+// sweep 1 covers [0, start). A scan the byte budget ends early therefore covers
+// a random window, not the same leading files on every sleep.
+inline bool inSweep(const uint8_t sweep, const uint32_t index, const uint32_t start) {
+  return sweep == 0 ? index >= start : index < start;
+}
+
 }  // namespace study_sleep

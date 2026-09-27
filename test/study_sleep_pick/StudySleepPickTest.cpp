@@ -179,3 +179,24 @@ TEST(StudySleepSampler, TruncatesAnOverlongSnippetToItsCapacity) {
   sampler.offer(longSnippet, "", 0, 1, std::nullopt);
   EXPECT_EQ(std::string(sampler.result()->snippet).size(), study_sleep::SNIPPET_CAPACITY - 1);
 }
+
+namespace {
+
+std::vector<uint32_t> visitOrder(const uint32_t count, const uint32_t start) {
+  std::vector<uint32_t> order;
+  for (uint8_t sweep = 0; sweep < 2; ++sweep) {
+    for (uint32_t index = 0; index < count; ++index) {
+      if (study_sleep::inSweep(sweep, index, start)) order.push_back(index);
+    }
+  }
+  return order;
+}
+
+}  // namespace
+
+TEST(StudySleepScan, StartsAtTheRandomFileAndWraps) {
+  EXPECT_EQ(visitOrder(5, 3), (std::vector<uint32_t>{3, 4, 0, 1, 2}));
+  EXPECT_EQ(visitOrder(5, 0), (std::vector<uint32_t>{0, 1, 2, 3, 4}));
+  EXPECT_EQ(visitOrder(1, 0), (std::vector<uint32_t>{0}));
+  EXPECT_TRUE(visitOrder(0, 0).empty());
+}
