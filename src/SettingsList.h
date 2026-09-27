@@ -239,6 +239,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
     sleepScreenValues[CrossPointSettings::BLANK] = StrId::STR_NONE_OPT;
     sleepScreenValues[CrossPointSettings::QUICK_RESUME] = StrId::STR_QUICK_RESUME;
     sleepScreenValues[CrossPointSettings::TRANSPARENT_CUSTOM] = StrId::STR_TRANSPARENT;
+    sleepScreenValues[CrossPointSettings::STUDY] = StrId::STR_STUDY_SLEEP;
 
     // Assigned by enum value, like the others: these persist as ordinals, so a
     // reordered menu must not silently change which language is downloaded.
