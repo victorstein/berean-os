@@ -1299,7 +1299,7 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (showBookmarkMessage) {
-    GUI.drawPopup(renderer, bookmarkToastString(bookmarkToast));
+    GUI.drawToast(renderer, bookmarkToastString(bookmarkToast));
   }
 }
 

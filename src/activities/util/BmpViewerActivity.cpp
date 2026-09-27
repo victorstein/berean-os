@@ -227,9 +227,9 @@ void BmpViewerActivity::doSetSleepCover() {
     if (!transparentMode) SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
     // Drawn now, like the popups beside it: the delay below holds the screen, and
     // this viewer's own redraw does not show posted messages.
-    GUI.drawPopup(renderer, SETTINGS.saveToFileAtomic() ? tr(STR_DONE) : tr(STR_SETTINGS_SAVE_FAILED));
+    GUI.drawToast(renderer, SETTINGS.saveToFileAtomic() ? tr(STR_DONE) : tr(STR_SETTINGS_SAVE_FAILED));
   } else {
-    GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
+    GUI.drawToast(renderer, tr(STR_FAILED_LOWER));
   }
 
   delay(1000);

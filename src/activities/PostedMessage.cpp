@@ -31,7 +31,7 @@ void drawNext(const GfxRenderer& renderer) {
     std::lock_guard<std::mutex> lock(queueMutex);
     message = queue.next(millis());
   }
-  if (message != nullptr) GUI.drawPopup(renderer, message);
+  if (message != nullptr) GUI.drawToast(renderer, message);
 }
 
 }  // namespace PostedMessage
