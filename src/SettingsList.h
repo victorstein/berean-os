@@ -247,6 +247,16 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
     publicationLanguageValues[CrossPointSettings::PUB_LANG_SPANISH] = StrId::STR_LANG_SPANISH;
     publicationLanguageValues[CrossPointSettings::PUB_LANG_ENGLISH] = StrId::STR_LANG_ENGLISH;
 
+    std::vector<StrId> meetingDayValues(CrossPointSettings::MEETING_DAY_COUNT);
+    meetingDayValues[CrossPointSettings::MEETING_DAY_NOT_SET] = StrId::STR_NOT_SET;
+    meetingDayValues[CrossPointSettings::MEETING_DAY_MONDAY] = StrId::STR_MONDAY;
+    meetingDayValues[CrossPointSettings::MEETING_DAY_TUESDAY] = StrId::STR_TUESDAY;
+    meetingDayValues[CrossPointSettings::MEETING_DAY_WEDNESDAY] = StrId::STR_WEDNESDAY;
+    meetingDayValues[CrossPointSettings::MEETING_DAY_THURSDAY] = StrId::STR_THURSDAY;
+    meetingDayValues[CrossPointSettings::MEETING_DAY_FRIDAY] = StrId::STR_FRIDAY;
+    meetingDayValues[CrossPointSettings::MEETING_DAY_SATURDAY] = StrId::STR_SATURDAY;
+    meetingDayValues[CrossPointSettings::MEETING_DAY_SUNDAY] = StrId::STR_SUNDAY;
+
     std::vector<StrId> statusBarClockValues(CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT);
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_RIGHT] = StrId::STR_DIR_RIGHT;
@@ -382,6 +392,12 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                           std::move(publicationLanguageValues), "publicationLanguage", StrId::STR_CAT_SYSTEM),
         SettingInfo::Toggle(StrId::STR_MEETING_PREFETCH, &CrossPointSettings::meetingPrefetch, "meetingPrefetch",
                             StrId::STR_CAT_SYSTEM),
+        // The first entry copies the labels and the second takes them: a braced
+        // list is evaluated left to right.
+        SettingInfo::Enum(StrId::STR_MIDWEEK_MEETING_DAY, &CrossPointSettings::midweekMeetingDay, meetingDayValues,
+                          "midweekMeetingDay", StrId::STR_CAT_SYSTEM),
+        SettingInfo::Enum(StrId::STR_WEEKEND_MEETING_DAY, &CrossPointSettings::weekendMeetingDay,
+                          std::move(meetingDayValues), "weekendMeetingDay", StrId::STR_CAT_SYSTEM),
 
         // --- System ---
         SettingInfo::Value(

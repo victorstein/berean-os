@@ -68,6 +68,19 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // jw.org's langwritten codes, which are not ISO codes: S is Spanish, E is
   // English. Persisted by ordinal, so append rather than reorder.
   enum PUBLICATION_LANGUAGE { PUB_LANG_SPANISH = 0, PUB_LANG_ENGLISH = 1, PUBLICATION_LANGUAGE_COUNT };
+  // A meeting's day as its ISO weekday, so it compares directly with a date's;
+  // 0 is "not set". Persisted by ordinal, so append rather than reorder.
+  enum MEETING_DAY {
+    MEETING_DAY_NOT_SET = 0,
+    MEETING_DAY_MONDAY = 1,
+    MEETING_DAY_TUESDAY = 2,
+    MEETING_DAY_WEDNESDAY = 3,
+    MEETING_DAY_THURSDAY = 4,
+    MEETING_DAY_FRIDAY = 5,
+    MEETING_DAY_SATURDAY = 6,
+    MEETING_DAY_SUNDAY = 7,
+    MEETING_DAY_COUNT
+  };
   // The language publications are DOWNLOADED in, which is independent of the
   // interface language: reading in Spanish with an English UI is a normal setup.
   static const char* langWritten(uint8_t language) { return language == PUB_LANG_ENGLISH ? "E" : "S"; }
@@ -339,6 +352,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t publicationLanguage = PUB_LANG_SPANISH;
   // Resolve the current or next meeting week whenever WiFi connects (0 = off, 1 = on).
   uint8_t meetingPrefetch = 1;
+  // The days the meetings screen dots on its week strip (MEETING_DAY).
+  uint8_t midweekMeetingDay = MEETING_DAY_NOT_SET;
+  uint8_t weekendMeetingDay = MEETING_DAY_NOT_SET;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
   // Tilt-based page turning (X3 only — requires QMI8658 IMU)

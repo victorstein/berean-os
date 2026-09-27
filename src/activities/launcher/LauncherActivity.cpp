@@ -42,6 +42,7 @@
 #include "study/ChapterCompletionFile.h"
 #include "study/PubKeyRegistry.h"
 #include "util/CardBooks.h"
+#include "util/CoverThumb.h"
 
 namespace {
 
@@ -132,7 +133,8 @@ void LauncherActivity::resolveTargets() {
     biblePath = std::move(*foundBible);
     bibleSubtitle = bibleTitleFor(biblePath, recents);
     applyChaptersReadSubtitle();
-    bibleCoverPath = coverThumbFor(biblePath, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
+    bibleCoverPath =
+        CoverThumb::pathFor(biblePath, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
     // The sleep screen paints this too, and it runs while the device is shutting
     // down -- far too late to search for the Bible or open it.
     if (APP_STATE.bibleCoverPath != bibleCoverPath) {
@@ -157,7 +159,7 @@ void LauncherActivity::resolveTargets() {
   LOG_INF(MODULE, "Meeting publication: %s", meetingPath ? meetingPath->c_str() : "(none found)");
   if (meetingPath) {
     meetingsCoverPath =
-        coverThumbFor(*meetingPath, coverFillHeight(rects[static_cast<size_t>(Tile::Meetings)]), generatedAny);
+        CoverThumb::pathFor(*meetingPath, coverFillHeight(rects[static_cast<size_t>(Tile::Meetings)]), generatedAny);
     const auto opened =
         std::find_if(recents.begin(), recents.end(), [&](const RecentBook& book) { return book.path == *meetingPath; });
     if (opened != recents.end()) meetingsSubtitle = utf8SafeSummary(opened->title, 30);
@@ -258,36 +260,6 @@ std::optional<std::string> LauncherActivity::findMeetingPublicationOnCard() {
   return bestPath;
 }
 
-// The thumbnail is requested at exactly the height it will be drawn at, and is
-// never resampled afterwards. generateThumbBmp emits a DITHERED 1-bit image,
-// and drawBitmap1Bit rescales by point-sampling -- picking every Nth pixel out
-// of a pattern whose whole meaning is the local density of its pixels, which
-// turns a cover into uniform static. Matching the sizes is the only way to
-// render one honestly on a 1-bit panel.
-//
-// Keyed on the book path rather than a recents entry: Epub derives its cache
-// path from the path alone, so this works for a publication that has been
-// downloaded but never opened.
-std::string LauncherActivity::coverThumbFor(const std::string& bookPath, const int height, bool& generatedAny) {
-  if (bookPath.empty() || height <= 0 || !FsHelpers::hasEpubExtension(bookPath)) return {};
-
-  Epub epub(bookPath, sdpaths::CROSSPOINT_DIR);
-  const std::string path = epub.getThumbBmpPath(height);
-  if (Storage.exists(path.c_str())) return path;
-
-  generatedAny = true;
-  // buildIfMissing, not the cached-only load the old home screen could rely on:
-  // that one only ever saw books that had been opened, and this one has to cope
-  // with a publication downloaded and never read, whose metadata cache does not
-  // exist yet. Without it generateThumbBmp fails with "cache not loaded".
-  epub.load(true, true);
-  if (!epub.generateThumbBmp(height)) {
-    LOG_DBG(MODULE, "No cover thumbnail for %s", bookPath.c_str());
-    return {};
-  }
-  return Storage.exists(path.c_str()) ? path : std::string{};
-}
-
 // The art band of a stacked tile: what is left once the label has its room.
 int LauncherActivity::tileArtHeight(const TileRect& rect, const bool hasSubtitle) const {
   return rect.h - tileTextHeight(SMALL_FONT_ID, hasSubtitle) - 3 * TILE_PADDING;
@@ -354,31 +326,11 @@ void LauncherActivity::computeLayout() {
   rects[static_cast<size_t>(Tile::Resume)] = {left, resumeTop, width, resumeHeight};
 }
 
-int LauncherActivity::drawCoverNative(const std::string& coverPath, const int x, const int y, const int boxWidth,
-                                      const int boxHeight) const {
-  if (coverPath.empty()) return 0;
-  HalFile file;
-  if (!Storage.openFileForRead(MODULE, coverPath, file)) return 0;
-
-  Bitmap bitmap(file);
-  if (bitmap.parseHeaders() != BmpReaderError::Ok) return 0;
-  const int width = bitmap.getWidth();
-  const int height = bitmap.getHeight();
-  // Refuse rather than rescale: see coverThumbFor. A cover that does not fit is
-  // a layout change that outran its cached thumbnail, and the icon is the
-  // honest fallback until the new size is generated.
-  if (width <= 0 || height <= 0 || width > boxWidth || height > boxHeight) return 0;
-
-  const int drawX = x + (boxWidth - width) / 2;
-  const int drawY = y + (boxHeight - height) / 2;
-  renderer.drawBitmap(bitmap, drawX, drawY, width, height);
-  renderer.drawRoundedRect(drawX, drawY, width, height, 1, TILE_RADIUS / 2, true);
-  return width;
-}
-
 void LauncherActivity::drawTileArt(const int x, const int y, const int w, const int h, const std::string& coverPath,
                                    const uint8_t* icon) const {
-  if (drawCoverNative(coverPath, x + TILE_PADDING, y, w - 2 * TILE_PADDING, h) > 0) return;
+  if (CoverThumb::drawNative(renderer, coverPath, x + TILE_PADDING, y, w - 2 * TILE_PADDING, h, TILE_RADIUS / 2) > 0) {
+    return;
+  }
   if (icon == nullptr) return;
   renderer.drawIcon(icon, x + (w - TILE_ICON_SIZE) / 2, y + (h - TILE_ICON_SIZE) / 2, TILE_ICON_SIZE);
 }

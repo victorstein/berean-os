@@ -119,3 +119,20 @@ TEST(MeetingWeekTable, ClearEmptiesIt) {
   EXPECT_TRUE(table.entries().empty());
   EXPECT_EQ(table.newest(), nullptr);
 }
+
+TEST(IsoWeekFromKey, RoundTripsMeetingWeekKey) {
+  for (const IsoWeek w : {week(2026, 1), week(2026, 39), week(2026, 53)}) {
+    IsoWeek parsed;
+    ASSERT_TRUE(isoWeekFromKey(meetingWeekKey(w), parsed)) << meetingWeekKey(w);
+    EXPECT_EQ(parsed.year, w.year);
+    EXPECT_EQ(parsed.week, w.week);
+  }
+}
+
+TEST(IsoWeekFromKey, RejectsWhatMeetingWeekKeyWouldNotProduce) {
+  IsoWeek parsed;
+  // "2025-53" is well formed, but 2025 has no week 53.
+  for (const char* key : {"", "2026-5", "2026-54", "2026-00", "x026-38", "2025-53", "2026-038", "2026_38"}) {
+    EXPECT_FALSE(isoWeekFromKey(key, parsed)) << key;
+  }
+}

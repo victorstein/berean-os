@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 // Clears the reading cache for a book file if its extension is recognised
@@ -14,3 +15,8 @@ bool isBookCacheDirectoryName(const char* name);
 // it -- and the hash means two spellings of one path, "/x" and "//x", key two
 // different caches.
 std::string bookCachePath(const std::string& path);
+
+// How far through a book the reader is, 0..100, from its metadata cache and saved
+// position, without opening the EPUB. Empty when the metadata cache does not load
+// or the saved chapter is past the book's end; 0 when there is no saved position.
+std::optional<int> readBookProgressPercent(const std::string& bookPath);

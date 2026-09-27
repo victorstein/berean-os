@@ -28,6 +28,32 @@ int64_t daysFromCivil(int y, unsigned m, unsigned d) {
   return era * 146097 + static_cast<int64_t>(doe) - 719468;
 }
 
+// Inverse of daysFromCivil (Hinnant's civil_from_days).
+CivilDate civilFromDays(int64_t z) {
+  z += 719468;
+  const int64_t era = (z >= 0 ? z : z - 146096) / 146097;
+  const auto doe = static_cast<unsigned>(z - era * 146097);
+  const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  const int64_t year = static_cast<int64_t>(yoe) + era * 400;
+  const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  const unsigned mp = (5 * doy + 2) / 153;
+  const unsigned day = doy - (153 * mp + 2) / 5 + 1;
+  const unsigned month = mp < 10 ? mp + 3 : mp - 9;
+  CivilDate out;
+  out.year = static_cast<uint16_t>(year + (month <= 2 ? 1 : 0));
+  out.month = static_cast<uint8_t>(month);
+  out.day = static_cast<uint8_t>(day);
+  return out;
+}
+
+// A round trip through the day count rejects February 30th and the like, which a
+// range check alone lets through.
+bool isValidCivilDate(const CivilDate& date) {
+  if (date.month < 1 || date.month > 12 || date.day < 1 || date.day > 31) return false;
+  const CivilDate roundTrip = civilFromDays(daysFromCivil(date.year, date.month, date.day));
+  return roundTrip.year == date.year && roundTrip.month == date.month && roundTrip.day == date.day;
+}
+
 }  // namespace
 
 uint8_t monthNumberFromName(const char* name, const size_t len) {
@@ -57,6 +83,47 @@ bool isoWeekFromUtcDate(const uint16_t year, const uint8_t month, const uint8_t 
                                    (formatted[2] - '0') * 10 + (formatted[3] - '0'));
   out.week = static_cast<uint8_t>((formatted[4] - '0') * 10 + (formatted[5] - '0'));
   return out.week >= 1 && out.week <= 53;
+}
+
+uint8_t isoWeekday(const CivilDate& date) {
+  if (!isValidCivilDate(date)) return 0;
+  const int64_t days = daysFromCivil(date.year, date.month, date.day);
+  // 1970-01-01, day 0, was a Thursday: ISO weekday 4.
+  const int64_t sinceMonday = ((days + 3) % 7 + 7) % 7;
+  return static_cast<uint8_t>(sinceMonday + 1);
+}
+
+CivilDate addDays(const CivilDate& date, const int days) {
+  if (!isValidCivilDate(date)) return {};
+  return civilFromDays(daysFromCivil(date.year, date.month, date.day) + days);
+}
+
+bool mondayOfIsoWeek(const IsoWeek& week, CivilDate& out) {
+  if (week.week < 1 || week.week > 53) return false;
+  CivilDate january4;
+  january4.year = week.year;
+  january4.month = 1;
+  january4.day = 4;
+  // ISO week 1 is the week that holds January 4th.
+  const CivilDate firstMonday = addDays(january4, 1 - static_cast<int>(isoWeekday(january4)));
+  const CivilDate candidate = addDays(firstMonday, 7 * (week.week - 1));
+  // Validated by round trip: a week 53 the year does not have lands in next year's week 1.
+  IsoWeek back;
+  if (!isoWeekFromUtcDate(candidate.year, candidate.month, candidate.day, back)) return false;
+  if (back.year != week.year || back.week != week.week) return false;
+  out = candidate;
+  return true;
+}
+
+bool localDateFromUtc(const CivilDate& utc, const uint8_t hour, const uint8_t minute, uint8_t offsetQuarterHoursBiased,
+                      CivilDate& out) {
+  if (hour > 23 || minute > 59 || !isValidCivilDate(utc)) return false;
+  // Same clamp as HalClock::formatTime, so a corrupted setting stays inside UTC-12..UTC+14.
+  if (offsetQuarterHoursBiased > 104) offsetQuarterHoursBiased = 104;
+  const int localMinutes = hour * 60 + minute + (static_cast<int>(offsetQuarterHoursBiased) - 48) * 15;
+  const int dayShift = localMinutes < 0 ? -1 : (localMinutes >= 24 * 60 ? 1 : 0);
+  out = addDays(utc, dayShift);
+  return true;
 }
 
 std::string meetingsPageUrl(const IsoWeek& week) {

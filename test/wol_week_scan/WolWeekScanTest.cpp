@@ -177,3 +177,117 @@ TEST(MeetingUrls, FilenameComesFromTheLastPathSegment) {
   EXPECT_EQ(filenameFromUrl("https://example.com/"), "");
   EXPECT_EQ(filenameFromUrl(""), "");
 }
+
+namespace {
+
+CivilDate civil(const uint16_t year, const uint8_t month, const uint8_t day) {
+  CivilDate date;
+  date.year = year;
+  date.month = month;
+  date.day = day;
+  return date;
+}
+
+IsoWeek isoWeek(const uint16_t year, const uint8_t number) {
+  IsoWeek week;
+  week.year = year;
+  week.week = number;
+  return week;
+}
+
+void expectDate(const CivilDate& actual, const int year, const int month, const int day) {
+  EXPECT_EQ(actual.year, year);
+  EXPECT_EQ(actual.month, month);
+  EXPECT_EQ(actual.day, day);
+}
+
+}  // namespace
+
+TEST(CivilCalendar, IsoWeekdayRunsMondayToSunday) {
+  EXPECT_EQ(isoWeekday(civil(2026, 9, 28)), 1);
+  EXPECT_EQ(isoWeekday(civil(2026, 9, 27)), 7);
+  EXPECT_EQ(isoWeekday(civil(1970, 1, 1)), 4);
+}
+
+TEST(CivilCalendar, IsoWeekdayRejectsImpossibleDates) {
+  EXPECT_EQ(isoWeekday(civil(2026, 2, 30)), 0);
+  EXPECT_EQ(isoWeekday(civil(2026, 13, 1)), 0);
+  EXPECT_EQ(isoWeekday(CivilDate{}), 0);
+}
+
+TEST(CivilCalendar, AddDaysCrossesMonthYearAndLeapDay) {
+  expectDate(addDays(civil(2026, 9, 29), 5), 2026, 10, 4);
+  expectDate(addDays(civil(2026, 12, 29), 5), 2027, 1, 3);
+  expectDate(addDays(civil(2028, 2, 28), 1), 2028, 2, 29);
+  expectDate(addDays(civil(2027, 1, 1), -1), 2026, 12, 31);
+}
+
+TEST(CivilCalendar, AddDaysGivesAnEmptyDateForAnImpossibleOne) { expectDate(addDays(civil(2026, 2, 30), 1), 0, 0, 0); }
+
+TEST(IsoWeekMonday, DatesKnownWeeks) {
+  CivilDate monday;
+  ASSERT_TRUE(mondayOfIsoWeek(isoWeek(2026, 39), monday));
+  expectDate(monday, 2026, 9, 21);
+  // Week 1 of 2026 starts in the previous calendar year.
+  ASSERT_TRUE(mondayOfIsoWeek(isoWeek(2026, 1), monday));
+  expectDate(monday, 2025, 12, 29);
+  ASSERT_TRUE(mondayOfIsoWeek(isoWeek(2026, 53), monday));
+  expectDate(monday, 2026, 12, 28);
+}
+
+TEST(IsoWeekMonday, RoundTripsEveryWeekOf2025To2027) {
+  for (uint16_t year = 2025; year <= 2027; ++year) {
+    for (uint8_t number = 1; number <= 53; ++number) {
+      CivilDate monday;
+      if (!mondayOfIsoWeek(isoWeek(year, number), monday)) {
+        // Only a year without a week 53 may refuse, and only that week.
+        EXPECT_EQ(number, 53) << year;
+        continue;
+      }
+      EXPECT_EQ(isoWeekday(monday), 1);
+      IsoWeek back;
+      ASSERT_TRUE(isoWeekFromUtcDate(monday.year, monday.month, monday.day, back));
+      EXPECT_EQ(back.year, year);
+      EXPECT_EQ(back.week, number);
+    }
+  }
+}
+
+TEST(IsoWeekMonday, RefusesAWeekTheYearDoesNotHave) {
+  CivilDate monday;
+  EXPECT_FALSE(mondayOfIsoWeek(isoWeek(2025, 53), monday));
+  EXPECT_FALSE(mondayOfIsoWeek(isoWeek(2026, 0), monday));
+  EXPECT_FALSE(mondayOfIsoWeek(isoWeek(2026, 54), monday));
+}
+
+TEST(LocalDate, ShiftsByTheClockOffset) {
+  constexpr uint8_t UTC_MINUS_6 = 48 - 24;
+  constexpr uint8_t UTC_PLUS_14 = 104;
+  constexpr uint8_t NEPAL_PLUS_5_45 = 48 + 23;
+  CivilDate local;
+
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 27), 23, 30, UTC_MINUS_6, local));
+  expectDate(local, 2026, 9, 27);
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 28), 2, 0, UTC_MINUS_6, local));
+  expectDate(local, 2026, 9, 27);
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 27), 11, 0, UTC_PLUS_14, local));
+  expectDate(local, 2026, 9, 28);
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 27), 18, 15, NEPAL_PLUS_5_45, local));
+  expectDate(local, 2026, 9, 28);
+  ASSERT_TRUE(localDateFromUtc(civil(2027, 1, 1), 1, 0, UTC_MINUS_6, local));
+  expectDate(local, 2026, 12, 31);
+}
+
+TEST(LocalDate, ClampsAnOffsetPastUtcPlus14) {
+  CivilDate local;
+  // Unclamped, 200 would be +38 h and move the date; clamped to +14 h it does not.
+  ASSERT_TRUE(localDateFromUtc(civil(2026, 9, 27), 9, 0, 200, local));
+  expectDate(local, 2026, 9, 27);
+}
+
+TEST(LocalDate, RejectsAnImpossibleTimeOrDate) {
+  CivilDate local;
+  EXPECT_FALSE(localDateFromUtc(civil(2026, 9, 27), 24, 0, 48, local));
+  EXPECT_FALSE(localDateFromUtc(civil(2026, 9, 27), 12, 60, 48, local));
+  EXPECT_FALSE(localDateFromUtc(civil(2026, 2, 30), 12, 0, 48, local));
+}

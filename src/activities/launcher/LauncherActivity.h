@@ -60,12 +60,8 @@ class LauncherActivity final : public Activity {
                      const uint8_t* icon, bool selected, float focusBand) const;
   bool drawCoverFilling(const std::string& coverPath, const TileRect& rect, int visibleHeight, float focusBand) const;
   void drawCenteredIn(int x, int w, int top, const char* title, const char* subtitle) const;
-  // Draws the cover at its stored size, or returns 0 without drawing. Never
-  // rescales: the thumbnails are dithered 1-bit and resampling destroys them.
-  int drawCoverNative(const std::string& coverPath, int x, int y, int boxWidth, int boxHeight) const;
   int tileArtHeight(const TileRect& rect, bool hasSubtitle) const;
   static int coverFillHeight(const TileRect& tile);
-  static std::string coverThumbFor(const std::string& bookPath, int height, bool& generatedAny);
   // Finds a meeting publication the registry does not know about, for downloads
   // that predate it. Keyed on the downloader's own filename convention.
   // This week's publication, from the cache the meetings screen fills.

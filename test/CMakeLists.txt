@@ -81,6 +81,8 @@ add_subdirectory(wifi_session)
 
 add_subdirectory(wol_week_scan)
 add_subdirectory(meeting_week_table)
+add_subdirectory(meeting_week_view)
+add_subdirectory(book_progress)
 
 add_subdirectory(month_name_map)
 

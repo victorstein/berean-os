@@ -24,6 +24,10 @@ struct MeetingWeekEntry {
 // the string without parsing it back into numbers.
 std::string meetingWeekKey(const IsoWeek& week);
 
+// "2026-38" -> {2026, 38}. False for anything meetingWeekKey would not produce,
+// including a week 53 in a year that has only 52.
+bool isoWeekFromKey(const std::string& key, IsoWeek& out);
+
 class MeetingWeekTable {
  public:
   // A quarter of a year. Enough to answer "what was last week?" across a device
