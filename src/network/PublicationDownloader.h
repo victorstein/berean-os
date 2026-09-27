@@ -19,7 +19,8 @@ enum class Result {
   Ok,
   AlreadyOnCard,
   Cancelled,
-  NoMediaLink,  // the API published no EPUB for this symbol, issue and language
+  NoMediaLink,    // the API does not list this symbol, issue and language, or could not be reached
+  NoEpubEdition,  // the API lists the publication in this language, in formats other than EPUB
   DownloadFailed,
   ChecksumMismatch,
   OutOfMemory,

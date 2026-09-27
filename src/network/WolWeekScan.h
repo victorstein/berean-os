@@ -32,7 +32,10 @@ std::string meetingsPageUrl(const IsoWeek& week);
 // GETPUBMEDIALINKS for any publication symbol. A null or empty `issue` omits the
 // issue parameter entirely: the API answers a non-periodical ("lff") only when
 // the parameter is absent, and answers it with an empty issue as not found.
-std::string pubMediaUrlForSymbol(const char* symbol, const char* issue, const char* languageKey);
+// `epubOnly` = false drops the fileformat filter, so the answer lists every
+// format; for a current Watchtower that is ~36 KB against ~1 KB, because of the
+// per-article audio.
+std::string pubMediaUrlForSymbol(const char* symbol, const char* issue, const char* languageKey, bool epubOnly = true);
 
 std::string pubMediaUrl(MeetingPub pub, const char* issue, const char* languageKey);
 

@@ -150,6 +150,19 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build/test --output-on-failure -j
 
+  script-tests:
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Run script tests
+        run: python -m unittest discover -s scripts/tests -v
+
   # This job is used as the PR required actions check, allows for changes to other steps in the future without breaking
   # PR requirements.
   test-status:
@@ -159,6 +172,7 @@ jobs:
       - clang-format
       - cppcheck
       - unit-tests
+      - script-tests
     if: always()
     runs-on: ubuntu-latest
     steps:

@@ -18,6 +18,7 @@ struct Stamp {
   std::string language;
   std::string manifestId;
   std::string builtOn;  // ISO date, as the CI job wrote it
+  int version = 0;      // index layout; v1 and v2 of one build share the date and manifest id
 
   bool valid() const { return !language.empty() && !builtOn.empty(); }
 };
@@ -30,9 +31,10 @@ Stamp stampOf(const Header& header);
 // newer file -- so the build date is what moves when a rebuild republishes.
 bool sameRelease(const Stamp& held, const Stamp& remote);
 
-// Whether this build may read an index. The version must match exactly, so a
-// future build's index is refused rather than reinterpreted, and the language
-// must be the one asked for so a mis-named asset cannot masquerade.
+// Whether this build may read an index. The version must be one this build
+// parses (OLDEST_READABLE_VERSION..FORMAT_VERSION), so a future build's index is
+// refused rather than reinterpreted, and the language must be the one asked for
+// so a mis-named asset cannot masquerade.
 bool indexAcceptable(const Header& header, std::string_view expectedLanguage);
 
 // "2026-09-12" -> "12 sep 2026", taking the twelve abbreviations from one

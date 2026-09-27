@@ -9,6 +9,10 @@
 #include "activities/UiListActivity.h"
 #include "network/WifiSession.h"
 
+namespace catalog {
+struct Entry;
+}
+
 // Buscar: search the publication catalog and download what you pick.
 //
 // The index is held in PSRAM only while this screen is open (see
@@ -61,6 +65,7 @@ class CatalogSearchActivity final : public UiListActivity {
 
   void rebuildRowItems();
   void runSearch();
+  static void collectHit(void* ctx, const catalog::Entry& entry);
 
   // Row layout: the query row, the catalog row, then an optional
   // download-this-symbol row, then the hits.

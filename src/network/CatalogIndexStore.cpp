@@ -55,8 +55,11 @@ std::string CatalogIndexStore::indexPath() {
 std::string CatalogIndexStore::stagedPath() { return indexPath() + ".part"; }
 
 std::string CatalogIndexStore::assetUrl() {
+  // v2 lives beside v1 rather than replacing it: firmware that predates the EPUB
+  // flag fetches catalog-<lang>.txt.gz and refuses any other version, so v1 has
+  // to stay at that name for it.
   return std::string("https://github.com/" OTA_RELEASE_REPO "/releases/download/catalog/catalog-") + language() +
-         ".txt.gz";
+         ".v2.txt.gz";
 }
 
 std::string_view CatalogIndexStore::view() const {

@@ -9,6 +9,7 @@
 #include "network/PublicationDownloader.h"
 #include <Arduino.h>
 #include <Catalog/CatalogIndex.h>
+#include <Catalog/CatalogLabel.h>
 #include <Catalog/CatalogStamp.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
@@ -18,6 +19,7 @@
 
 #include <cstdio>
 
+#include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
@@ -42,13 +44,23 @@ bool looksLikeSymbol(const std::string& text) {
   return text.find(' ') == std::string::npos;
 }
 
-// The identifying line under a result's title: what the user would have to type
-// to reach the same publication without the index.
+// A periodical is named by its issue date and a book by its year: what a reader
+// recognises, rather than the symbol and codes the API is addressed by.
 std::string describeHit(const std::string& symbol, const std::string& year, const std::string& issue) {
-  std::string out = symbol;
-  if (!year.empty()) out += "  " + year;
-  if (!issue.empty()) out += "  " + issue;
-  return out;
+  if (!issue.empty()) {
+    char date[48] = "";
+    catalog::formatIssueDate(issue, tr(STR_MONTHS_LONG), tr(STR_ISSUE_DATE_DAY), tr(STR_ISSUE_DATE_MONTH), date,
+                             sizeof(date));
+    return date;
+  }
+  return year.empty() ? symbol : year;
+}
+
+// The list's language is the publication-language setting, which can differ
+// from the UI language the dates are written in.
+const char* publicationLanguageName() {
+  return SETTINGS.publicationLanguage == CrossPointSettings::PUB_LANG_ENGLISH ? tr(STR_LANG_ENGLISH)
+                                                                              : tr(STR_LANG_SPANISH);
 }
 
 }  // namespace
@@ -181,23 +193,17 @@ void CatalogSearchActivity::runSearch() {
   const auto& store = CatalogIndexStore::getInstance();
   if (!store.held()) return;
 
-  const std::string_view index = store.view();
   hits.reserve(MAX_RESULTS);
-
-  size_t cursor = catalog::recordsBegin(index);
-  catalog::Entry entry;
-  while (catalog::nextEntry(index, cursor, entry)) {
-    if (!catalog::matches(entry, query)) continue;
-    if (hits.size() >= MAX_RESULTS) {
-      resultsTruncated = true;
-      break;
-    }
-    hits.push_back(
-        Hit{std::string(entry.symbol), std::string(entry.issue), std::string(entry.title), std::string(entry.year)});
-  }
+  catalog::search(store.view(), query, MAX_RESULTS, resultsTruncated, &CatalogSearchActivity::collectHit, this);
 
   LOG_INF(MODULE, "'%s' matched %u row(s)%s", query.c_str(), static_cast<unsigned>(hits.size()),
           resultsTruncated ? " (truncated)" : "");
+}
+
+void CatalogSearchActivity::collectHit(void* ctx, const catalog::Entry& entry) {
+  static_cast<CatalogSearchActivity*>(ctx)->hits.push_back(
+      Hit{std::string(entry.symbol), std::string(entry.issue),
+          std::string(catalog::displayTitle(entry.title, entry.year, !entry.issue.empty())), std::string(entry.year)});
 }
 
 bool CatalogSearchActivity::hasSymbolRow() const { return looksLikeSymbol(query); }
@@ -543,7 +549,9 @@ void CatalogSearchActivity::render(RenderLock&&) {
   const auto pageHeight = renderer.getScreenHeight();
 
   renderer.clearScreen();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_SEARCH));
+  char header[64];
+  snprintf(header, sizeof(header), tr(STR_SEARCH_HEADER), publicationLanguageName());
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, header);
 
   const auto lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   const auto centerY = (pageHeight - lineHeight) / 2;

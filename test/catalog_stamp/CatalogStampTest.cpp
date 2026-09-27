@@ -64,8 +64,29 @@ TEST(CatalogAcceptance, TheMatchingVersionAndLanguageIsAccepted) {
 }
 
 TEST(CatalogAcceptance, AFutureVersionIsRefusedRatherThanReinterpreted) {
-  const std::string future = "berean-catalog\t2\tS\tid\t2026-09-12\nw\t\t2026\tx\ty\n";
+  const std::string future =
+      "berean-catalog\t" + std::to_string(catalog::FORMAT_VERSION + 1) + "\tS\tid\t2026-09-12\nw\t\t2026\tx\ty\n";
   EXPECT_FALSE(catalog::indexAcceptable(catalog::parseHeader(future), "S"));
+}
+
+TEST(CatalogAcceptance, BothReadableVersionsAreAccepted) {
+  EXPECT_TRUE(catalog::indexAcceptable(catalog::parseHeader(kIndex), "S"))
+      << "a v1 index held on the card keeps working after an update";
+  EXPECT_TRUE(catalog::indexAcceptable(catalog::parseHeader("berean-catalog\t2\tS\tid\t2026-10-05\n"), "S"));
+}
+
+TEST(CatalogStamp, CopiesTheFormatVersion) { EXPECT_EQ(catalog::stampOf(catalog::parseHeader(kIndex)).version, 1); }
+
+TEST(CatalogStaleness, AnotherFormatVersionIsANewRelease) {
+  // One builder run writes v1 and v2 with the same manifest id and date; a
+  // device holding the v1 must still install the v2.
+  auto held = stamp("S", "id-1", "2026-09-12");
+  held.version = 1;
+  auto remote = held;
+  remote.version = 2;
+  EXPECT_FALSE(catalog::sameRelease(held, remote));
+  remote.version = 1;
+  EXPECT_TRUE(catalog::sameRelease(held, remote));
 }
 
 TEST(CatalogAcceptance, AnAssetForAnotherLanguageIsRefused) {

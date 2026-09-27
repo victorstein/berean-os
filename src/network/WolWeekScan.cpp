@@ -68,17 +68,17 @@ std::string meetingsPageUrl(const IsoWeek& week) {
   return buf;
 }
 
-std::string pubMediaUrlForSymbol(const char* symbol, const char* issue, const char* languageKey) {
+std::string pubMediaUrlForSymbol(const char* symbol, const char* issue, const char* languageKey, const bool epubOnly) {
+  const char* formatFilter = epubOnly ? "&fileformat=EPUB" : "";
   char buf[200];
   if (issue == nullptr || issue[0] == '\0') {
     snprintf(buf, sizeof(buf),
-             "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=%s&langwritten=%s&fileformat=EPUB",
-             symbol, languageKey);
+             "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=%s&langwritten=%s%s", symbol,
+             languageKey, formatFilter);
   } else {
     snprintf(buf, sizeof(buf),
-             "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=%s&langwritten=%s&fileformat=EPUB&"
-             "issue=%s",
-             symbol, languageKey, issue);
+             "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=%s&langwritten=%s%s&issue=%s",
+             symbol, languageKey, formatFilter, issue);
   }
   return buf;
 }

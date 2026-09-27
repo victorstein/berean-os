@@ -171,3 +171,46 @@ TEST(PubMediaJson, ResetClearsPriorResults) {
   EXPECT_STREQ(parser.checksum(), "");
   EXPECT_STREQ(parser.pubName(), "");
 }
+
+// With fileformat=EPUB this entry is a bare 404. Asked without the filter it
+// lists the language with a JWPUB only, which is what tells "no EPUB edition"
+// apart from "not published in this language".
+TEST(PubMediaJson, ReportsTheLanguageWhenItHasNoEpub) {
+  const std::string body = loadFixture("pubmedia_km_198001_S.json");
+  for (const size_t chunk : kChunkSizes) {
+    PubMediaJsonParser parser("S");
+    feedInChunks(parser, body, chunk);
+    EXPECT_FALSE(parser.found()) << "a JWPUB url must not be taken for the EPUB; chunk size " << chunk;
+    EXPECT_TRUE(parser.languagePresent()) << "chunk size " << chunk;
+    EXPECT_STREQ(parser.pubName(), "Nuestro Ministerio del Reino") << "chunk size " << chunk;
+  }
+}
+
+TEST(PubMediaJson, ReportsTheLanguageAlongsideAnEpub) {
+  const std::string body = loadFixture("pubmedia_w_202607_S.json");
+  PubMediaJsonParser parser("S");
+  parser.feed(body.data(), body.size());
+  EXPECT_TRUE(parser.found());
+  EXPECT_TRUE(parser.languagePresent());
+}
+
+// The response also carries a root-level "languages" object keyed by the same
+// code; only files.<lang> means the publication exists in that language.
+TEST(PubMediaJson, TheLanguagesBlockIsNotTheFilesBlock) {
+  const std::string body = R"({
+    "languages": {"S": {"name": "español"}},
+    "files": {"E": {"EPUB": [{"file": {"url": "https://cdn/w_E.epub"}, "filesize": 9}]}}
+  })";
+  PubMediaJsonParser parser("S");
+  parser.feed(body.data(), body.size());
+  EXPECT_FALSE(parser.languagePresent());
+}
+
+TEST(PubMediaJson, ResetClearsLanguagePresence) {
+  const std::string body = loadFixture("pubmedia_km_198001_S.json");
+  PubMediaJsonParser parser("S");
+  parser.feed(body.data(), body.size());
+  ASSERT_TRUE(parser.languagePresent());
+  parser.reset();
+  EXPECT_FALSE(parser.languagePresent());
+}
