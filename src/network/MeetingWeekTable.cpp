@@ -10,6 +10,29 @@ std::string meetingWeekKey(const IsoWeek& week) {
   return buf;
 }
 
+bool isoWeekFromKey(const std::string& key, IsoWeek& out) {
+  if (key.size() != 7 || key[4] != '-') return false;
+  unsigned year = 0;
+  unsigned number = 0;
+  for (size_t i = 0; i < key.size(); ++i) {
+    if (i == 4) continue;
+    const char c = key[i];
+    if (c < '0' || c > '9') return false;
+    if (i < 4) {
+      year = year * 10 + static_cast<unsigned>(c - '0');
+    } else {
+      number = number * 10 + static_cast<unsigned>(c - '0');
+    }
+  }
+  IsoWeek candidate;
+  candidate.year = static_cast<uint16_t>(year);
+  candidate.week = static_cast<uint8_t>(number);
+  CivilDate monday;
+  if (!mondayOfIsoWeek(candidate, monday)) return false;
+  out = candidate;
+  return true;
+}
+
 void MeetingWeekTable::set(const std::string& key, std::string watchtower, std::string workbook) {
   if (key.empty()) return;
 
