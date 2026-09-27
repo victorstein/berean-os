@@ -10,10 +10,11 @@
 #include <optional>
 #include <vector>
 
-#include "BookmarkEntry.h"
+#include "AutoPageTurn.h"
 #include "EpubReaderMenuActivity.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
+#include "ReaderBookmarks.h"
 #include "ReturnStack.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -29,7 +30,6 @@ class EpubReaderActivity final : public ReaderActivity {
   std::optional<uint32_t> currentPageVisibleOffset;
   std::optional<uint32_t> pendingOffsetJump;
   unsigned long lastPageTurnTime = 0UL;
-  unsigned long pageTurnDuration = 0UL;
   int8_t pendingManualTurn = 0;
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
@@ -37,25 +37,12 @@ class EpubReaderActivity final : public ReaderActivity {
   uint8_t pageLoadRetryCount = 0;
   static constexpr uint8_t MAX_PAGE_LOAD_RETRIES = 3;
   bool skipNextButtonCheck = false;
-  bool automaticPageTurnActive = false;
-  bool showBookmarkMessage = false;
-  bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
-  // Which message the bookmark popup shows. addBookmark() is the only writer.
-  enum class BookmarkToast : uint8_t { Added, Removed, TooLarge, SaveFailed, LoadDisabled };
-  BookmarkToast bookmarkToast = BookmarkToast::Added;
-  // Latched when a bookmark file failed to READ: the bytes may still hold the
-  // user's data, so nothing may be written over them for as long as this book
-  // is open. Never cleared. Unlike StudyStore::saveDisabled_, which is a
-  // singleton's and survives closePublication, this activity is constructed per
-  // book open -- which is right, because a bookmark file is per book and one
-  // book's unreadable file must not silence another's.
-  bool bookmarksSaveDisabled = false;
-  std::vector<BookmarkEntry> cachedBookmarks;
+  ReaderBookmarks bookmarks;
+  AutoPageTurn autoTurn;
   bool recentsEntryRemoved = false;
-  unsigned long bookmarkMessageTime = 0UL;
   bool pendingReadFolderMove = false;
 
   // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
@@ -128,10 +115,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void openHighlightPassageAt(int touchX, int touchY);
   void openHighlights();
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
-  void loadCachedBookmarks();
   void addBookmark();
-  static const char* bookmarkToastString(BookmarkToast toast);
-  void updateBookmarkFlag();
 
   // What a navigation does to the return stack. Clear is the default so a new
   // navigation feature cannot strand Back on a position the user has left.
