@@ -107,9 +107,9 @@ bool CrossPointState::fromJson(JsonVariantConst doc) {
 
   memset(recentStudySleep, 0, sizeof(recentStudySleep));
   JsonArrayConst recentStudyArr = doc["recentStudySleep"];
-  const int actualStudyCount = recentStudyArr.isNull() ? 0
-                                                       : std::min(static_cast<int>(recentStudyArr.size()),
-                                                                  static_cast<int>(SLEEP_RECENT_COUNT));
+  const int actualStudyCount =
+      recentStudyArr.isNull() ? 0
+                              : std::min(static_cast<int>(recentStudyArr.size()), static_cast<int>(SLEEP_RECENT_COUNT));
   for (int i = 0; i < actualStudyCount; i++) recentStudySleep[i] = recentStudyArr[i] | static_cast<uint32_t>(0);
   recentStudySleepPos = doc["recentStudySleepPos"] | static_cast<uint8_t>(0);
   if (recentStudySleepPos >= SLEEP_RECENT_COUNT) {

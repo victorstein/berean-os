@@ -117,7 +117,7 @@ void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_s
 
 // False when the byte budget stops the scan.
 bool offerFile(const char* path, const size_t bytes, const std::string_view pubKey, study_sleep::Sampler& sampler,
-              const study_sleep::RingView& ring, ScanTotals& totals) {
+               const study_sleep::RingView& ring, ScanTotals& totals) {
   if (bytes > MAX_FILE_BYTES) {
     LOG_ERR(MODULE, "Skipping %s: %u bytes exceeds the %u-byte cap", path, static_cast<unsigned>(bytes),
             static_cast<unsigned>(MAX_FILE_BYTES));
@@ -138,8 +138,7 @@ bool offerFile(const char* path, const size_t bytes, const std::string_view pubK
     return true;
   }
   const int version = doc["v"] | 0;
-  if (!persist::isKnownFormatVersion(version, study::PassageDoc::FORMAT_VERSION) ||
-      !doc["p"].is<JsonArrayConst>()) {
+  if (!persist::isKnownFormatVersion(version, study::PassageDoc::FORMAT_VERSION) || !doc["p"].is<JsonArrayConst>()) {
     LOG_ERR(MODULE, "Skipping %s: unknown passage format v%d", path, version);
     return true;
   }
@@ -157,7 +156,8 @@ bool pickPassage(study_sleep::Sampler& sampler, ScanBuffers& buffers, ScanTotals
   }
   totals.entries = count;
   if (count == 0) return false;
-  if (count == MAX_ENTRIES) LOG_INF(MODULE, "Passage scan stopped counting at %u files", static_cast<unsigned>(MAX_ENTRIES));
+  if (count == MAX_ENTRIES)
+    LOG_INF(MODULE, "Passage scan stopped counting at %u files", static_cast<unsigned>(MAX_ENTRIES));
 
   const study_sleep::RingView ring{APP_STATE.recentStudySleep, CrossPointState::SLEEP_RECENT_COUNT,
                                    APP_STATE.recentStudySleepPos, APP_STATE.recentStudySleepFill};
@@ -233,8 +233,8 @@ int progressHeight(const GfxRenderer& renderer) {
   return STRIP_MAX_BAR + STRIP_CAPTION_GAP + renderer.getLineHeight(SMALL_FONT_ID);
 }
 
-void drawProgress(const GfxRenderer& renderer, const study::ChapterCompletion& record, const int left,
-                  const int width, const int top) {
+void drawProgress(const GfxRenderer& renderer, const study::ChapterCompletion& record, const int left, const int width,
+                  const int top) {
   const int slot = width / study::BIBLE_BOOK_COUNT;
   const int barWidth = std::max(1, slot - STRIP_BAR_GAP);
   const int stripLeft = left + (width - slot * study::BIBLE_BOOK_COUNT) / 2;

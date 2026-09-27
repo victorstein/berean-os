@@ -95,8 +95,8 @@ class Sampler {
  public:
   Sampler(const RandomFn random, void* const randomCtx) : random_(random), randomCtx_(randomCtx) {}
 
-  void offer(const std::string_view snippet, const std::string_view reference, const uint16_t tag,
-             const uint32_t key, const std::optional<uint8_t> age) {
+  void offer(const std::string_view snippet, const std::string_view reference, const uint16_t tag, const uint32_t key,
+             const std::optional<uint8_t> age) {
     if (!age) {
       ++freshSeen_;
       if (random_(randomCtx_, freshSeen_) == 0) fill(fresh_, snippet, reference, tag, key, 0);
@@ -195,8 +195,7 @@ inline bool formatDateLine(const ClockReading& clock, uint8_t utcOffsetQuarterHo
                            const std::string_view weekdays, const std::string_view monthsShort, char* out,
                            const size_t outSize) {
   if (!clock.dateValid || !clock.timeValid || out == nullptr || outSize == 0) return false;
-  if (clock.month < 1 || clock.month > 12 || clock.day < 1 || clock.day > 31 || clock.hour > 23 ||
-      clock.minute > 59) {
+  if (clock.month < 1 || clock.month > 12 || clock.day < 1 || clock.day > 31 || clock.hour > 23 || clock.minute > 59) {
     return false;
   }
   if (utcOffsetQuarterHoursBiased > 104) utcOffsetQuarterHoursBiased = 104;

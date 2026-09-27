@@ -14,9 +14,7 @@ TEST(StudySleepKey, MatchesTheFnv1a32ReferenceVectors) {
   EXPECT_EQ(study_sleep::fnv1a32(study_sleep::FNV_OFFSET_BASIS, "a"), 0xe40c292cu);
 }
 
-TEST(StudySleepKey, SeparatesPublicationFromUnit) {
-  EXPECT_NE(passageKey("ab", "c", "c"), passageKey("a", "bc", "c"));
-}
+TEST(StudySleepKey, SeparatesPublicationFromUnit) { EXPECT_NE(passageKey("ab", "c", "c"), passageKey("a", "bc", "c")); }
 
 TEST(StudySleepKey, PassagesSharingAStartButNotAnEndDiffer) {
   EXPECT_NE(passageKey("bible", "v:43:3:16", "v:43:3:16"), passageKey("bible", "v:43:3:16", "v:43:3:17"));
@@ -107,7 +105,8 @@ uint32_t scripted(void* ctx, const uint32_t bound) {
   return value % bound;
 }
 
-std::string pickFrom(ScriptedRandom& script, const std::vector<std::pair<std::string, std::optional<uint8_t>>>& offers) {
+std::string pickFrom(ScriptedRandom& script,
+                     const std::vector<std::pair<std::string, std::optional<uint8_t>>>& offers) {
   study_sleep::Sampler sampler(&scripted, &script);
   uint32_t key = 1;
   for (const auto& [snippet, age] : offers) sampler.offer(snippet, "", 0, key++, age);
@@ -222,8 +221,8 @@ study_sleep::ClockReading at(const uint16_t year, const uint8_t month, const uin
   return clock;
 }
 
-std::string line(const study_sleep::ClockReading& clock, const uint8_t offsetQ,
-                 const char* weekdays = EN_WEEKDAYS, const char* months = EN_MONTHS) {
+std::string line(const study_sleep::ClockReading& clock, const uint8_t offsetQ, const char* weekdays = EN_WEEKDAYS,
+                 const char* months = EN_MONTHS) {
   char out[48];
   return study_sleep::formatDateLine(clock, offsetQ, weekdays, months, out, sizeof(out)) ? std::string(out)
                                                                                          : std::string("<none>");
@@ -246,9 +245,7 @@ TEST(StudySleepDate, AnEasternOffsetCrossesIntoTheNextYear) {
   EXPECT_EQ(line(at(2026, 12, 31, 23, 0), 104), "Friday 1 Jan");
 }
 
-TEST(StudySleepDate, AWesternOffsetFallsBackToALeapDay) {
-  EXPECT_EQ(line(at(2028, 3, 1, 5, 0), 0), "Tuesday 29 Feb");
-}
+TEST(StudySleepDate, AWesternOffsetFallsBackToALeapDay) { EXPECT_EQ(line(at(2028, 3, 1, 5, 0), 0), "Tuesday 29 Feb"); }
 
 TEST(StudySleepDate, ACorruptOffsetIsClampedToUtcPlusFourteen) {
   EXPECT_EQ(line(at(2026, 9, 27, 12, 0), 200), "Monday 28 Sep");
