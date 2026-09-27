@@ -9,15 +9,10 @@
 #include <string>
 #include <vector>
 
+#include "FileRoutes.h"
+#include "FontRoutes.h"
+#include "SettingsRoutes.h"
 #include "WifiCredentialStore.h"
-
-// Structure to hold file information
-struct FileInfo {
-  String name;
-  size_t size;
-  bool isEpub;
-  bool isDirectory;
-};
 
 class CrossPointWebServer {
  public:
@@ -30,25 +25,6 @@ class CrossPointWebServer {
     size_t lastCompleteSize = 0;
     unsigned long lastCompleteAt = 0;
   };
-
-  // Used by POST upload handler
-  struct UploadState {
-    HalFile file;
-    String fileName;
-    String path = "/";
-    size_t size = 0;
-    bool success = false;
-    String error = "";
-
-    // Upload write buffer - batches small writes into larger SD card operations
-    // 4KB is a good balance: large enough to reduce syscall overhead, small enough
-    // to keep individual write times short and avoid watchdog issues
-    static constexpr size_t UPLOAD_BUFFER_SIZE = 4096;  // 4KB buffer
-    std::vector<uint8_t> buffer;
-    size_t bufferPos = 0;
-
-    UploadState() { buffer.resize(UPLOAD_BUFFER_SIZE); }
-  } upload;
 
   CrossPointWebServer();
   ~CrossPointWebServer();
@@ -79,58 +55,20 @@ class CrossPointWebServer {
   uint16_t wsPort = 81;  // WebSocket port
   NetworkUDP udp;
   bool udpActive = false;
+  FileRoutes fileRoutes{running};
+  SettingsRoutes settingsRoutes;
+  FontRoutes fontRoutes;
 
   // WebSocket upload state
   void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
   static void wsEventCallback(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
   void abortWsUpload(const char* tag);
 
-  // File scanning
-  void scanFiles(const char* path, const std::function<void(FileInfo)>& callback) const;
-  String formatFileSize(size_t bytes) const;
-  bool isEpubFile(const String& filename) const;
-
   // Request handlers
   void handleRoot() const;
   void handleNotFound() const;
   void handleStatus() const;
-  void handleFileList() const;
-  void handleFileListData() const;
-  void handleDownload() const;
   void handleMigrationReport() const;
-  void handleUpload(UploadState& state) const;
-  void handleUploadPost(UploadState& state) const;
-  void handleCreateFolder() const;
-  void handleRename() const;
-  void handleMove() const;
-  void handleDelete() const;
-
-  // Settings handlers
-  void handleSettingsPage() const;
-  void handleGetSettings() const;
-  void handlePostSettings();
-
-  // Font management handlers
-  void handleFontsPage() const;
-  void handleFontList() const;
-  void handleFontUpload();
-  void handleFontUploadData();
-  void handleFontDelete();
-
-  // Font upload state
-  struct FontUploadState {
-    HalFile file;
-    std::string familyName;
-    std::string filePath;
-    bool valid = false;
-    bool magicChecked = false;
-    size_t bytesWritten = 0;
-    static constexpr size_t BUFFER_SIZE = 4096;
-    std::vector<uint8_t> buffer;
-    size_t bufferPos = 0;
-
-    FontUploadState() { buffer.resize(BUFFER_SIZE); }
-  } fontUpload;
 
   // Wi-Fi credential handlers
   void handleGetWifiNetworks() const;
