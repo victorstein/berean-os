@@ -223,3 +223,39 @@ TEST(CivilCalendar, AddDaysCrossesMonthYearAndLeapDay) {
 }
 
 TEST(CivilCalendar, AddDaysGivesAnEmptyDateForAnImpossibleOne) { expectDate(addDays(civil(2026, 2, 30), 1), 0, 0, 0); }
+
+TEST(IsoWeekMonday, DatesKnownWeeks) {
+  CivilDate monday;
+  ASSERT_TRUE(mondayOfIsoWeek(isoWeek(2026, 39), monday));
+  expectDate(monday, 2026, 9, 21);
+  // Week 1 of 2026 starts in the previous calendar year.
+  ASSERT_TRUE(mondayOfIsoWeek(isoWeek(2026, 1), monday));
+  expectDate(monday, 2025, 12, 29);
+  ASSERT_TRUE(mondayOfIsoWeek(isoWeek(2026, 53), monday));
+  expectDate(monday, 2026, 12, 28);
+}
+
+TEST(IsoWeekMonday, RoundTripsEveryWeekOf2025To2027) {
+  for (uint16_t year = 2025; year <= 2027; ++year) {
+    for (uint8_t number = 1; number <= 53; ++number) {
+      CivilDate monday;
+      if (!mondayOfIsoWeek(isoWeek(year, number), monday)) {
+        // Only a year without a week 53 may refuse, and only that week.
+        EXPECT_EQ(number, 53) << year;
+        continue;
+      }
+      EXPECT_EQ(isoWeekday(monday), 1);
+      IsoWeek back;
+      ASSERT_TRUE(isoWeekFromUtcDate(monday.year, monday.month, monday.day, back));
+      EXPECT_EQ(back.year, year);
+      EXPECT_EQ(back.week, number);
+    }
+  }
+}
+
+TEST(IsoWeekMonday, RefusesAWeekTheYearDoesNotHave) {
+  CivilDate monday;
+  EXPECT_FALSE(mondayOfIsoWeek(isoWeek(2025, 53), monday));
+  EXPECT_FALSE(mondayOfIsoWeek(isoWeek(2026, 0), monday));
+  EXPECT_FALSE(mondayOfIsoWeek(isoWeek(2026, 54), monday));
+}

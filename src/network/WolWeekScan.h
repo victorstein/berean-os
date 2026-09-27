@@ -40,6 +40,10 @@ uint8_t isoWeekday(const CivilDate& date);
 // does not exist.
 CivilDate addDays(const CivilDate& date, int days);
 
+// Monday of an ISO week. False for a week its year does not have: {2025, 53} is
+// refused rather than dated as the Monday of 2026/W01.
+bool mondayOfIsoWeek(const IsoWeek& week, CivilDate& out);
+
 std::string meetingsPageUrl(const IsoWeek& week);
 
 // GETPUBMEDIALINKS for any publication symbol. A null or empty `issue` omits the

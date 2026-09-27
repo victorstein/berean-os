@@ -98,6 +98,23 @@ CivilDate addDays(const CivilDate& date, const int days) {
   return civilFromDays(daysFromCivil(date.year, date.month, date.day) + days);
 }
 
+bool mondayOfIsoWeek(const IsoWeek& week, CivilDate& out) {
+  if (week.week < 1 || week.week > 53) return false;
+  CivilDate january4;
+  january4.year = week.year;
+  january4.month = 1;
+  january4.day = 4;
+  // ISO week 1 is the week that holds January 4th.
+  const CivilDate firstMonday = addDays(january4, 1 - static_cast<int>(isoWeekday(january4)));
+  const CivilDate candidate = addDays(firstMonday, 7 * (week.week - 1));
+  // Validated by round trip: a week 53 the year does not have lands in next year's week 1.
+  IsoWeek back;
+  if (!isoWeekFromUtcDate(candidate.year, candidate.month, candidate.day, back)) return false;
+  if (back.year != week.year || back.week != week.week) return false;
+  out = candidate;
+  return true;
+}
+
 std::string meetingsPageUrl(const IsoWeek& week) {
   // The English page keeps the scanner on ASCII month names and needs no
   // per-language rsconf table; the week -> issue mapping is language-independent.
