@@ -416,7 +416,10 @@ are upgraded in memory and resaved. Save budget: 4,096 bytes.
 
 Owned by `src/CrossPointState.{h,cpp}`. Runtime state: `openEpubPath`,
 `bibleCoverPath`, the sleep-image history (`recentSleepImages` and
-`recentOverlaySleepImages`, 16 entries each, with their `…Pos` and `…Fill` cursors),
+`recentOverlaySleepImages`, 16 entries each, with their `…Pos` and `…Fill` cursors), the study
+sleep screen's history (`recentStudySleep`: 16 32-bit passage keys, FNV-1a over
+`pubkey/start-unit/end-unit`, with `recentStudySleepPos` and `recentStudySleepFill`; absent in
+files written before it and read as empty),
 `readerActivityLoadCount`, `lastSleepFromReader` and `showBootScreen`.
 
 ### Version 1
