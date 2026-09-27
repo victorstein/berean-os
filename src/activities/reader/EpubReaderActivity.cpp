@@ -23,7 +23,6 @@
 #include <utility>
 
 #include "../../util/BookmarkFile.h"
-#include "../../util/HighlightFile.h"
 #include "BibleNavigationActivity.h"
 #include "BibleSearchActivity.h"
 #include "BookmarkEntry.h"
