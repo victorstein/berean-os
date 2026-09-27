@@ -72,9 +72,9 @@ std::optional<std::string> resolveBible(TryLookup&& tryLookup) {
   return std::nullopt;
 }
 
-// The pre-#104 recents match, kept exactly as it was: the path carries "nwt" or
-// the title names the translation in Spanish or English. It can take a
-// non-Bible titled "New World", which is why it runs last.
+// The path carries "nwt", or the title names the translation in Spanish or
+// English. It can take a non-Bible titled "New World", which is why it runs
+// last.
 constexpr bool looksLikeBibleInRecents(const std::string_view path, const std::string_view title) {
   return path.find("nwt") != std::string_view::npos || title.find("Nuevo Mundo") != std::string_view::npos ||
          title.find("New World") != std::string_view::npos;

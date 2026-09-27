@@ -107,10 +107,10 @@ void LauncherActivity::resolveTargets() {
   }
 
   // The registry knows every Buscar download and every Bible the reader has
-  // opened since it began registering on open; the card scan finds a copy that
-  // arrived under the CDN's own name. Recents is last because its title match
-  // also catches any other book with "New World" in its name -- it only covers
-  // a Bible last opened before registration existed.
+  // opened; the card scan finds a copy that arrived under the CDN's own name.
+  // Recents runs last because its title match also catches a non-Bible titled
+  // "New World", and it covers a Bible that was opened without ever being
+  // registered.
   biblePath.clear();
   bibleSubtitle = tr(STR_BIBLE_SUBTITLE_NONE);
   BibleLookup foundBy = BibleLookup::Registry;
@@ -201,8 +201,8 @@ std::optional<std::string> LauncherActivity::findBibleOnCard() {
   return *bible;
 }
 
-// The existence check is what the pre-#104 version lacked: a deleted Bible
-// still in recent.json would otherwise take the tile and open nothing.
+// recent.json can still list a deleted file; the existence check keeps that
+// from putting a Bible on the tile that opens nothing.
 std::optional<std::string> LauncherActivity::findBibleInRecents(const std::vector<RecentBook>& recents) {
   for (const RecentBook& book : recents) {
     if (!looksLikeBibleInRecents(book.path, book.title)) continue;

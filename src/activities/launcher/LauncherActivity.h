@@ -73,9 +73,9 @@ class LauncherActivity final : public Activity {
   static std::optional<std::string> findMeetingPublicationOnCard();
   // A Bible that did not come through Buscar, recognised by the CDN's filename.
   static std::optional<std::string> findBibleOnCard();
-  // The pre-#104 guess over recently opened books, for a Bible opened before
-  // registration on open existed. Only asked when the registry and the card
-  // scan both miss.
+  // A guess over recently opened books, for a Bible that was opened without
+  // ever being registered. Only asked when the registry and the card scan
+  // both miss.
   static std::optional<std::string> findBibleInRecents(const std::vector<RecentBook>& recents);
   // The edition's name for the tile, from what is already in memory or in the
   // path; empty when neither says anything worth showing.
