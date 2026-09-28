@@ -122,8 +122,8 @@ class Sampler {
     out[length] = '\0';
   }
 
-  static void fill(Candidate& slot, const std::string_view text, const std::string_view reference,
-                   const uint16_t tag, const uint32_t key, const uint8_t age) {
+  static void fill(Candidate& slot, const std::string_view text, const std::string_view reference, const uint16_t tag,
+                   const uint32_t key, const uint8_t age) {
     copyInto(slot.text, sizeof(slot.text), text);
     copyInto(slot.reference, sizeof(slot.reference), reference);
     slot.tag = tag;

@@ -378,8 +378,8 @@ void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<st
   // word's START offset, so the half-open end is what the geometry expects.
   // StudyStore::addPassage preserves that convention when it resolves the
   // offsets into units; changing it here would shift every mark by one word.
-  const bool added = STUDY.addPassage(spineIndex, range.start, range.end, label.text(),
-                                      verseReference(range.start), std::move(tagIds));
+  const bool added = STUDY.addPassage(spineIndex, range.start, range.end, label.text(), verseReference(range.start),
+                                      std::move(tagIds));
   if (!added) {
     // addPassage saves synchronously and rolls back its own append on failure,
     // so the resident document never holds a phantom highlight.

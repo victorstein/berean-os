@@ -100,8 +100,7 @@ bool anyPassageHasLinks(const std::vector<TaggedPassage>& passages) {
 }
 
 bool anyPassageHasDisplayText(const std::vector<TaggedPassage>& passages) {
-  return std::any_of(passages.begin(), passages.end(),
-                     [](const TaggedPassage& p) { return !p.displayText.empty(); });
+  return std::any_of(passages.begin(), passages.end(), [](const TaggedPassage& p) { return !p.displayText.empty(); });
 }
 
 int formatVersionFor(const std::vector<TaggedPassage>& passages) {
