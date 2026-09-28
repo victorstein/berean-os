@@ -16,10 +16,10 @@
 // runs it on the host.
 namespace study_sleep {
 
-// PassageDoc::MAX_SNIPPET_BYTES / MAX_REFERENCE_BYTES plus a terminator.
+// PassageDoc::MAX_DISPLAY_TEXT_BYTES / MAX_REFERENCE_BYTES plus a terminator.
 // StudySleepScreen.cpp static_asserts the match; including PassageDoc.h here
 // would pull ArduinoJson into the host test.
-inline constexpr size_t SNIPPET_CAPACITY = 121;
+inline constexpr size_t TEXT_CAPACITY = 385;
 inline constexpr size_t REFERENCE_CAPACITY = 49;
 
 inline constexpr uint32_t FNV_OFFSET_BASIS = 0x811c9dc5u;
@@ -82,7 +82,7 @@ inline std::optional<uint8_t> ageOf(const RingView& ring, const uint32_t key) {
 using RandomFn = uint32_t (*)(void* ctx, uint32_t bound);
 
 struct Candidate {
-  char snippet[SNIPPET_CAPACITY] = {};
+  char text[TEXT_CAPACITY] = {};
   char reference[REFERENCE_CAPACITY] = {};
   uint16_t tag = 0;
   uint32_t key = 0;
@@ -97,15 +97,15 @@ class Sampler {
  public:
   Sampler(const RandomFn random, void* const randomCtx) : random_(random), randomCtx_(randomCtx) {}
 
-  void offer(const std::string_view snippet, const std::string_view reference, const uint16_t tag, const uint32_t key,
+  void offer(const std::string_view text, const std::string_view reference, const uint16_t tag, const uint32_t key,
              const std::optional<uint8_t> age) {
     if (!age) {
       ++freshSeen_;
-      if (random_(randomCtx_, freshSeen_) == 0) fill(fresh_, snippet, reference, tag, key, 0);
+      if (random_(randomCtx_, freshSeen_) == 0) fill(fresh_, text, reference, tag, key, 0);
       return;
     }
     if (!hasStale_ || *age > stale_.age) {
-      fill(stale_, snippet, reference, tag, key, *age);
+      fill(stale_, text, reference, tag, key, *age);
       hasStale_ = true;
     }
   }
@@ -122,9 +122,9 @@ class Sampler {
     out[length] = '\0';
   }
 
-  static void fill(Candidate& slot, const std::string_view snippet, const std::string_view reference,
-                   const uint16_t tag, const uint32_t key, const uint8_t age) {
-    copyInto(slot.snippet, sizeof(slot.snippet), snippet);
+  static void fill(Candidate& slot, const std::string_view text, const std::string_view reference, const uint16_t tag,
+                   const uint32_t key, const uint8_t age) {
+    copyInto(slot.text, sizeof(slot.text), text);
     copyInto(slot.reference, sizeof(slot.reference), reference);
     slot.tag = tag;
     slot.key = key;
@@ -138,6 +138,14 @@ class Sampler {
   uint32_t freshSeen_ = 0;
   bool hasStale_ = false;
 };
+
+// Whether a row's stored whole text ("w") is shown instead of its snippet.
+// Lenient on purpose, unlike PassageDoc::fromJson: a malformed "w" -- absent,
+// not a string (read as ""), or over the cap -- falls back to the snippet, so one
+// damaged row still shows something.
+inline bool wholeTextFits(const std::string_view wholeText, const size_t capacity) {
+  return !wholeText.empty() && wholeText.size() <= capacity;
+}
 
 // The scan starts at a random file and wraps: sweep 0 covers [start, count),
 // sweep 1 covers [0, start). A scan the byte budget ends early therefore covers

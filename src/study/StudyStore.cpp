@@ -284,6 +284,7 @@ bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffse
   passage.end = study::resolve(units, endOffset);
   passage.documentSpine = spineIndex;
   passage.snippet = snippet;
+  passage.displayText = snippet;
   passage.reference = reference;
   passage.tags = std::move(tags);
   passage.fingerprint = study::fingerprintOf(units_->unitText(spineIndex, passage.start));

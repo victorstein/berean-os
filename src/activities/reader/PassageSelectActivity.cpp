@@ -73,11 +73,7 @@ void PassageSelectActivity::onEnter() {
   // mode the user has to enter first.
   if (pendingAnchorX >= 0 && pendingAnchorY >= 0 && !words.empty()) {
     const int anchored = wordAt(pendingAnchorX, pendingAnchorY);
-    if (anchored >= 0) {
-      anchorIndex = anchored;
-      cursor = anchored;
-      phase = Phase::PickingEnd;
-    }
+    if (anchored >= 0) setAnchor(anchored);
   }
 
   requestUpdate();
@@ -147,6 +143,10 @@ bool PassageSelectActivity::advancePage() {
     }
     if (!next) return false;
   }
+
+  // Only once the turn is certain: a failed one must not feed this page, or the
+  // finalize that follows on it would append the same words again.
+  appendWords(anchorIndex >= 0 ? anchorIndex : 0, static_cast<int>(words.size()) - 1);
 
   {
     // The render task reads page/words/committedRects; swapping them unfenced
@@ -242,13 +242,9 @@ std::string PassageSelectActivity::verseReference(const uint32_t startOffset) co
   return toc.title.empty() ? verse : toc.title + " " + verse;
 }
 
-std::string PassageSelectActivity::selectionLabel(const int lo, const int hi) const {
+void PassageSelectActivity::appendWords(const int lo, const int hi) {
   // Same walk order as extractWords(), so `index` matches the WordBox indices
-  // the caller selected with. HighlightDoc::addHighlight runs the result
-  // through utf8SafeSummary, which collapses whitespace and truncates to 72
-  // bytes, so scanning past LABEL_SCAN_BYTES cannot change the stored label.
-  constexpr size_t LABEL_SCAN_BYTES = 128;
-  std::string label;
+  // the caller selected with.
   int index = 0;
   for (const auto& element : page->elements) {
     if (element->getTag() != TAG_PageLine) continue;
@@ -259,13 +255,9 @@ std::string PassageSelectActivity::selectionLabel(const int lo, const int hi) co
     const uint16_t wordCount = block->wordCount();
     for (uint16_t i = 0; i < wordCount; i++, index++) {
       if (index < lo) continue;
-      if (index > hi) return label;
-      if (!label.empty()) label.push_back(' ');
-      label.append(block->wordText(i), block->wordTextLen(i));
-      if (label.size() >= LABEL_SCAN_BYTES) return label;
+      if (index > hi || !label.addWord(block->wordText(i), block->wordTextLen(i))) return;
     }
   }
-  return label;
 }
 
 int PassageSelectActivity::wordAt(const int x, const int y) const {
@@ -305,12 +297,17 @@ void PassageSelectActivity::moveVertical(const int direction) {
   }
 }
 
+void PassageSelectActivity::setAnchor(const int index) {
+  anchorIndex = index;
+  anchorOffset = words[index].offset;
+  cursor = index;
+  phase = Phase::PickingEnd;
+  label.reset();
+}
+
 void PassageSelectActivity::commitAt(const int index) {
   if (phase == Phase::PickingStart) {
-    anchorIndex = index;
-    anchorOffset = words[index].offset;
-    cursor = index;
-    phase = Phase::PickingEnd;
+    setAnchor(index);
     requestUpdate();
     return;
   }
@@ -371,18 +368,18 @@ void PassageSelectActivity::startTagFlow(const int endIndex) {
 void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<study::TagId> tagIds) {
   const VisibleRange range = selectionRange(endIndex);
 
-  // Label indices are page-local. When a page turn has left the anchor's page
-  // anchorIndex is -1, which would index words[] out of bounds, so the snippet
-  // starts at the top of the page the user finished on.
+  // After a page turn `label` already holds the anchor's page onwards, so this
+  // page contributes its top through the end word.
   const int lo = (anchorIndex >= 0) ? std::min(anchorIndex, endIndex) : 0;
   const int hi = (anchorIndex >= 0) ? std::max(anchorIndex, endIndex) : endIndex;
+  appendWords(lo, hi);
 
   // `range.end` is the last word's offset + 1 -- VisibleRange::contains tests a
   // word's START offset, so the half-open end is what the geometry expects.
   // StudyStore::addPassage preserves that convention when it resolves the
   // offsets into units; changing it here would shift every mark by one word.
-  const bool added = STUDY.addPassage(spineIndex, range.start, range.end, selectionLabel(lo, hi),
-                                      verseReference(range.start), std::move(tagIds));
+  const bool added = STUDY.addPassage(spineIndex, range.start, range.end, label.text(), verseReference(range.start),
+                                      std::move(tagIds));
   if (!added) {
     // addPassage saves synchronously and rolls back its own append on failure,
     // so the resident document never holds a phantom highlight.
