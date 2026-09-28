@@ -17,11 +17,13 @@ namespace study {
 
 class PassageDoc {
  public:
-  // v2 added outgoing links ("k"). A file with no link is still written as v1,
-  // because it holds nothing a v1 build would drop; one with a link is v2, which
-  // a v1 build refuses outright instead of loading it, ignoring "k" and erasing
-  // every link on its next save.
-  static constexpr int FORMAT_VERSION = 2;
+  // v2 added outgoing links ("k"), v3 a passage's whole text ("w"). A file is
+  // written at the lowest version that holds everything in it: with neither it is
+  // v1, with links but no whole text v2. An older build refuses a newer file
+  // outright instead of loading it, ignoring the field and erasing it on its next
+  // save.
+  static constexpr int FORMAT_VERSION = 3;
+  static constexpr int LINKS_FORMAT_VERSION = 2;
   static constexpr int LINKLESS_FORMAT_VERSION = 1;
   // Not persist::DEFAULT_SAVE_BUDGET: that figure exists to stay clear of
   // SDCardManager::readFile's 50,000-byte truncation, and this document is read
@@ -30,11 +32,18 @@ class PassageDoc {
   // it is not a truncation guard.
   static constexpr size_t SAVE_BYTE_BUDGET = 200000;
   static constexpr size_t MAX_SNIPPET_BYTES = 120;
+  // About what the study sleep screen shows at 12pt under its full layout. A
+  // text this short or shorter than MAX_SNIPPET_BYTES is not stored as "w": the
+  // snippet already holds all of it.
+  //
+  // fromJson REFUSES a stored "w" longer than this, or no longer than
+  // MAX_SNIPPET_BYTES, so widening it needs a FORMAT_VERSION bump.
+  static constexpr size_t MAX_DISPLAY_TEXT_BYTES = 384;
   static constexpr size_t MAX_REFERENCE_BYTES = 48;
   static constexpr size_t MAX_TAGS_PER_PASSAGE = 8;
-  // With every field at its maximum, a passage carrying this many links still
-  // measures under 1.7 KB, so SAVE_BYTE_BUDGET holds over a hundred of them --
-  // the user's real store is 63 -- before it refuses anything.
+  // With every field at its maximum, a passage carrying this many links and a
+  // whole text still measures under 2.5 KB, so SAVE_BYTE_BUDGET holds 80 of them
+  // -- the user's real store is 63 -- before it refuses anything.
   //
   // fromJson REFUSES a file with more links than this, or a link label longer
   // than MAX_REFERENCE_BYTES. Widening either one therefore needs a
@@ -44,7 +53,8 @@ class PassageDoc {
 
   const std::vector<TaggedPassage>& passages() const { return passages_; }
 
-  // Normalises (UTF-8-safe truncation of snippet and reference, deduping and
+  // Normalises (UTF-8-safe truncation of snippet, whole text and reference --
+  // the whole text is dropped when the snippet holds all of it -- deduping and
   // capping tags, UNLABELLED for an empty list) and appends. Returns false when
   // adding it would exceed SAVE_BYTE_BUDGET.
   bool add(TaggedPassage passage);

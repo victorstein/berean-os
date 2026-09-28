@@ -35,6 +35,7 @@ struct TaggedPassage {
   std::string document;            // filename inside the archive, a hint
   uint16_t documentSpine = 0;      // spine index, a weaker hint
   std::string snippet;             // bounded passage text, for the tag list
+  std::string displayText;         // the whole text when longer than snippet, else empty
   std::string reference;           // "Salmos 119:145", display + migration cross-check
   std::vector<TagId> tags;         // global ids
   std::vector<PassageLink> links;  // outgoing only

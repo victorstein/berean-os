@@ -82,8 +82,32 @@ bool linksFromJson(const JsonVariantConst row, TaggedPassage& passage) {
   return true;
 }
 
+// Refused, not repaired, for the reason linksFromJson gives: a cut text would be
+// saved back cut. A "w" no longer than the snippet is one this build never writes.
+bool displayTextFromJson(const JsonVariantConst row, TaggedPassage& passage) {
+  const JsonVariantConst stored = row["w"];
+  if (stored.isNull()) return true;
+  if (!stored.is<const char*>()) return false;
+  const char* text = stored.as<const char*>();
+  const size_t length = strlen(text);
+  if (length <= PassageDoc::MAX_SNIPPET_BYTES || length > PassageDoc::MAX_DISPLAY_TEXT_BYTES) return false;
+  passage.displayText = text;
+  return true;
+}
+
 bool anyPassageHasLinks(const std::vector<TaggedPassage>& passages) {
   return std::any_of(passages.begin(), passages.end(), [](const TaggedPassage& p) { return !p.links.empty(); });
+}
+
+bool anyPassageHasDisplayText(const std::vector<TaggedPassage>& passages) {
+  return std::any_of(passages.begin(), passages.end(),
+                     [](const TaggedPassage& p) { return !p.displayText.empty(); });
+}
+
+int formatVersionFor(const std::vector<TaggedPassage>& passages) {
+  if (anyPassageHasDisplayText(passages)) return PassageDoc::FORMAT_VERSION;
+  if (anyPassageHasLinks(passages)) return PassageDoc::LINKS_FORMAT_VERSION;
+  return PassageDoc::LINKLESS_FORMAT_VERSION;
 }
 
 }  // namespace
@@ -94,6 +118,10 @@ bool PassageDoc::add(TaggedPassage passage) {
   // ArduinoJson will then serialise. HighlightDoc::addHighlight uses the same
   // helper for the same reason.
   passage.snippet = utf8SafeSummary(std::move(passage.snippet), MAX_SNIPPET_BYTES);
+  // Summarised before the length test, so whitespace alone can never carry a text
+  // over MAX_SNIPPET_BYTES into a "w" that fromJson would refuse.
+  passage.displayText = utf8SafeSummary(std::move(passage.displayText), MAX_DISPLAY_TEXT_BYTES);
+  if (passage.displayText.size() <= MAX_SNIPPET_BYTES) passage.displayText.clear();
   passage.reference = utf8SafeSummary(std::move(passage.reference), MAX_REFERENCE_BYTES);
   passage.tags = normaliseTags(passage.tags);
   passage.links = normaliseLinks(std::move(passage.links), passage.start, passage.documentSpine);
@@ -187,7 +215,7 @@ std::vector<size_t> PassageDoc::findByDocument(const std::string& document) cons
 }
 
 void PassageDoc::toJson(JsonDocument& doc) const {
-  doc["v"] = anyPassageHasLinks(passages_) ? FORMAT_VERSION : LINKLESS_FORMAT_VERSION;
+  doc["v"] = formatVersionFor(passages_);
   const auto rows = doc["p"].to<JsonArray>();
   for (const auto& p : passages_) {
     const auto row = rows.add<JsonObject>();
@@ -198,6 +226,7 @@ void PassageDoc::toJson(JsonDocument& doc) const {
     row["d"] = p.document;
     row["s"] = p.documentSpine;
     row["x"] = p.snippet;
+    if (!p.displayText.empty()) row["w"] = p.displayText;
     row["r"] = p.reference;
     if (p.pendingUpgrade) row["g"] = true;
     // UNLABELLED is written as the empty array, which is how every v1 build
@@ -242,7 +271,7 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
       if (id <= UINT16_MAX) p.tags.push_back(toTagId(static_cast<uint16_t>(id)));
     }
     p.tags = normaliseTags(p.tags);
-    if (!linksFromJson(v, p)) {
+    if (!linksFromJson(v, p) || !displayTextFromJson(v, p)) {
       passages_.clear();
       return false;
     }
