@@ -60,7 +60,7 @@ constexpr int MARK_TEXT_GAP = 4;
 constexpr int FOOTER_BOTTOM_GAP = 16;
 constexpr const char* OPENING_QUOTE = "\xE2\x80\x9C";
 
-static_assert(study_sleep::SNIPPET_CAPACITY == study::PassageDoc::MAX_SNIPPET_BYTES + 1);
+static_assert(study_sleep::TEXT_CAPACITY == study::PassageDoc::MAX_DISPLAY_TEXT_BYTES + 1);
 static_assert(study_sleep::REFERENCE_CAPACITY == study::PassageDoc::MAX_REFERENCE_BYTES + 1);
 
 struct ScanBuffers {
@@ -284,7 +284,7 @@ void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
   const int left = viewLeft + SIDE_MARGIN;
   const int width = pageWidth - viewLeft - viewRight - 2 * SIDE_MARGIN;
 
-  const auto snippetLines = renderer.wrappedText(NOTOSERIF_18_FONT_ID, content.passage->snippet, width,
+  const auto snippetLines = renderer.wrappedText(NOTOSERIF_18_FONT_ID, content.passage->text, width,
                                                  MAX_SNIPPET_LINES, EpdFontFamily::ITALIC);
   const int serifLine = renderer.getLineHeight(NOTOSERIF_18_FONT_ID);
   const int uiLine = renderer.getLineHeight(UI_12_FONT_ID);
