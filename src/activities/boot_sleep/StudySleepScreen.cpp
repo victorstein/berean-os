@@ -25,6 +25,7 @@
 #include "BereanMark.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "StudySleepFit.h"
 #include "StudySleepPick.h"
 #include "StudyStore/ChapterCompletion.h"
 #include "StudyStore/PassageDoc.h"
@@ -48,7 +49,6 @@ constexpr size_t MAX_NAME_BYTES = 256;
 
 constexpr int SIDE_MARGIN = 24;
 constexpr int SECTION_GAP = 18;
-constexpr int MAX_SNIPPET_LINES = 6;
 constexpr int PILL_PAD_X = 12;
 constexpr int PILL_PAD_Y = 4;
 constexpr int STRIP_MAX_BAR = 48;
@@ -59,6 +59,11 @@ constexpr int MARK_SIZE = 40;
 constexpr int MARK_TEXT_GAP = 4;
 constexpr int FOOTER_BOTTOM_GAP = 16;
 constexpr const char* OPENING_QUOTE = "\xE2\x80\x9C";
+// The reader's serif sizes, largest first: the passage is set at the first one
+// it fits.
+constexpr int PASSAGE_FONT_IDS[] = {NOTOSERIF_18_FONT_ID, NOTOSERIF_16_FONT_ID, NOTOSERIF_14_FONT_ID,
+                                    NOTOSERIF_12_FONT_ID};
+constexpr uint8_t PASSAGE_SIZE_COUNT = sizeof(PASSAGE_FONT_IDS) / sizeof(PASSAGE_FONT_IDS[0]);
 
 static_assert(study_sleep::TEXT_CAPACITY == study::PassageDoc::MAX_DISPLAY_TEXT_BYTES + 1);
 static_assert(study_sleep::REFERENCE_CAPACITY == study::PassageDoc::MAX_REFERENCE_BYTES + 1);
@@ -89,8 +94,10 @@ std::optional<std::string_view> readPassageFileName(HalFile& entry, char* name) 
   return study_sleep::pubKeyFromFileName(name);
 }
 
-// The same gates PassageDoc::fromJson applies, so a row the rest of the device
-// drops cannot surface here.
+// Drops a row PassageDoc::fromJson would drop -- an unaddressable start -- but is
+// otherwise lenient: a malformed "w" falls back to "x" and "k" is never read, so
+// one damaged row still shows something. "w" is read in place: it was
+// normalised when saved.
 void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_sleep::Sampler& sampler,
               const study_sleep::RingView& ring) {
   const char* startUnit = row["u"] | "";
@@ -99,8 +106,16 @@ void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_s
   const std::string_view endUnit =
       study_sleep::endUnitOrStart(startUnit, storedEnd, study::unitFromCompact(storedEnd).has_value());
 
-  const std::string snippet = utf8SafeSummary(row["x"] | "", study::PassageDoc::MAX_SNIPPET_BYTES);
-  if (snippet.empty()) return;
+  const std::string_view wholeText = row["w"] | "";
+  std::string snippet;
+  std::string_view text;
+  if (study_sleep::wholeTextFits(wholeText, study::PassageDoc::MAX_DISPLAY_TEXT_BYTES)) {
+    text = wholeText;
+  } else {
+    snippet = utf8SafeSummary(row["x"] | "", study::PassageDoc::MAX_SNIPPET_BYTES);
+    text = snippet;
+  }
+  if (text.empty()) return;
   const std::string reference = utf8SafeSummary(row["r"] | "", study::PassageDoc::MAX_REFERENCE_BYTES);
 
   uint16_t tag = 0;
@@ -113,7 +128,7 @@ void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_s
   }
 
   const uint32_t key = study_sleep::passageKey(pubKey, startUnit, endUnit);
-  sampler.offer(snippet, reference, tag, key, study_sleep::ageOf(ring, key));
+  sampler.offer(text, reference, tag, key, study_sleep::ageOf(ring, key));
 }
 
 // False when the byte budget stops the scan.
@@ -273,6 +288,10 @@ void drawProgress(const GfxRenderer& renderer, const study::ChapterCompletion& r
   renderer.drawCenteredText(SMALL_FONT_ID, top + STRIP_MAX_BAR + STRIP_CAPTION_GAP, caption);
 }
 
+int measurePassage(const void* ctx, const uint8_t sizeIndex, const char* text) {
+  return static_cast<const GfxRenderer*>(ctx)->getTextWidth(PASSAGE_FONT_IDS[sizeIndex], text, EpdFontFamily::ITALIC);
+}
+
 void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
   int viewTop = 0;
   int viewRight = 0;
@@ -284,8 +303,6 @@ void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
   const int left = viewLeft + SIDE_MARGIN;
   const int width = pageWidth - viewLeft - viewRight - 2 * SIDE_MARGIN;
 
-  const auto snippetLines = renderer.wrappedText(NOTOSERIF_18_FONT_ID, content.passage->text, width,
-                                                 MAX_SNIPPET_LINES, EpdFontFamily::ITALIC);
   const int serifLine = renderer.getLineHeight(NOTOSERIF_18_FONT_ID);
   const int uiLine = renderer.getLineHeight(UI_12_FONT_ID);
   const int smallLine = renderer.getLineHeight(SMALL_FONT_ID);
@@ -293,15 +310,26 @@ void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
   const bool hasTag = !content.tagName.empty();
   const int pillHeight = smallLine + 2 * PILL_PAD_Y;
 
-  int blockHeight = serifLine + static_cast<int>(snippetLines.size()) * serifLine;
-  if (content.dateLine) blockHeight += uiLine + SECTION_GAP;
-  if (hasReference) blockHeight += SECTION_GAP + uiLine;
-  if (hasTag) blockHeight += SECTION_GAP + pillHeight;
-  if (content.progress) blockHeight += SECTION_GAP * 2 + progressHeight(renderer);
+  // Everything but the passage lines, the quote mark included: these keep their
+  // sizes, and the passage gets whatever height is left.
+  int chromeHeight = serifLine;
+  if (content.dateLine) chromeHeight += uiLine + SECTION_GAP;
+  if (hasReference) chromeHeight += SECTION_GAP + uiLine;
+  if (hasTag) chromeHeight += SECTION_GAP + pillHeight;
+  if (content.progress) chromeHeight += SECTION_GAP * 2 + progressHeight(renderer);
 
   const int footerTextY = pageHeight - viewBottom - FOOTER_BOTTOM_GAP - smallLine;
   const int markY = footerTextY - MARK_SIZE - MARK_TEXT_GAP;
   const int areaBottom = markY - SECTION_GAP;
+
+  study_sleep::FitSize sizes[PASSAGE_SIZE_COUNT];
+  for (uint8_t i = 0; i < PASSAGE_SIZE_COUNT; ++i) sizes[i].lineHeight = renderer.getLineHeight(PASSAGE_FONT_IDS[i]);
+  const auto passage = study_sleep::fitPassage(content.passage->text, sizes, PASSAGE_SIZE_COUNT, width,
+                                               areaBottom - viewTop - chromeHeight, &measurePassage, &renderer);
+  const int passageFont = PASSAGE_FONT_IDS[passage.sizeIndex];
+  const int passageLine = sizes[passage.sizeIndex].lineHeight;
+
+  const int blockHeight = chromeHeight + static_cast<int>(passage.lines.size()) * passageLine;
   int y = viewTop + std::max(0, (areaBottom - viewTop - blockHeight) / 2);
 
   // The "Entering sleep" popup is still in the framebuffer.
@@ -313,9 +341,9 @@ void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
   }
   renderer.drawCenteredText(NOTOSERIF_18_FONT_ID, y, OPENING_QUOTE, true, EpdFontFamily::BOLD);
   y += serifLine;
-  for (const auto& snippetLine : snippetLines) {
-    renderer.drawCenteredText(NOTOSERIF_18_FONT_ID, y, snippetLine.c_str(), true, EpdFontFamily::ITALIC);
-    y += serifLine;
+  for (const auto& line : passage.lines) {
+    renderer.drawCenteredText(passageFont, y, line.c_str(), true, EpdFontFamily::ITALIC);
+    y += passageLine;
   }
   if (hasReference) {
     y += SECTION_GAP;
