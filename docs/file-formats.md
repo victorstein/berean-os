@@ -484,6 +484,39 @@ refuse every recents save. The rule is the one `PassageDoc` follows
 (`lib/StudyStore/StudyStore/PassageDoc.h:20-24`): bump only when an older build would lose or
 misread data.
 
+## `/.berean/passages/<pubkey>.json`
+
+One publication's tagged passages. Owned by `lib/StudyStore/StudyStore/PassageDoc.{h,cpp}` (format,
+host-tested in `test/passage_doc/`) and `src/study/PassageFile.cpp` (storage, atomic writes). Read
+through a streaming parser, never `Storage.readFile`. Save budget: 200,000 bytes.
+
+A file is written at the **lowest version that holds everything in it**, and a build refuses any
+version newer than it knows (`lib/Serialization/FormatVersion.h`), so an older build never loads a
+file only to drop a field and erase it on its next save:
+
+| `v` | Written when | Adds |
+| --- | --- | --- |
+| 1 | no passage has links or a whole text | — |
+| 2 | some passage has links, none a whole text | `"k"` |
+| 3 | some passage has a whole text | `"w"` |
+
+```json
+{"v":3,"p":[{"u":"v:48:5:4:0","e":"v:48:5:4:137","f":"134:a1b2c3d4","d":"1001061152-split5.xhtml","s":1152,
+  "x":"Ustedes, los que tratan de ser declarados justos por medio de la ley, están separados de Cristo. Se han apartado de su",
+  "w":"Ustedes, los que tratan de ser declarados justos por medio de la ley, están separados de Cristo. Se han apartado de su bondad inmerecida.",
+  "r":"Gálatas 5:4","t":[3]}]}
+```
+
+Row keys: `u` start unit, `e` end unit, `f`/`fe` start and end fingerprints, `d` document and `s`
+spine (resolution hints), `x` snippet (≤ 120 bytes, for lists), `r` reference (≤ 48 bytes), `t` tag
+ids (empty = unlabelled), `g` pending upgrade, `k` outgoing links (≤ 8, each `u`/`s`/`r`).
+
+`w` is the passage's whole text, for the Study sleep screen. It is normalised (whitespace collapsed,
+trimmed) and written only when it is longer than the snippet: **121..384 bytes**. A stored `"w"`
+outside that range, or one that is not a string, fails the whole load, which latches saving off —
+it is refused, never cut, so widening the cap needs a version bump. Passages saved before v3 have no
+`"w"` and show their snippet.
+
 ## `/.berean/search/bible.idx`
 
 The Bible verse search index. Owned by `lib/BibleSearch/BibleSearch/IndexFormat.{h,cpp}`
