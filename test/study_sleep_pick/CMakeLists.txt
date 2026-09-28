@@ -4,6 +4,7 @@
 # CatalogLabelTest does.
 add_executable(StudySleepPickTest
   StudySleepPickTest.cpp
+  StudySleepFitTest.cpp
   ${REPO_ROOT}/lib/Catalog/Catalog/CatalogLabel.cpp
 )
 
