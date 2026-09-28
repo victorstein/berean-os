@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.5](https://github.com/victorstein/berean-os/compare/v1.19.4...v1.19.5) (2026-09-28)
+
+
+### Bug Fixes
+
+* fit whole passages on the study sleep screen ([#183](https://github.com/victorstein/berean-os/issues/183)) ([945139d](https://github.com/victorstein/berean-os/commit/945139ddb2fc6f22910504e989081f9058aeb9bb)), closes [#182](https://github.com/victorstein/berean-os/issues/182)
+
 ## [1.19.4](https://github.com/victorstein/berean-os/compare/v1.19.3...v1.19.4) (2026-09-27)
 
 
