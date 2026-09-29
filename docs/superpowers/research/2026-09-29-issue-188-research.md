@@ -210,3 +210,18 @@ repair of existing records). The tier is already `heavy`, the highest, so no cha
    across all files at boot/sleep (needs a pubkey → EPUB resolver) (§5).
 6. Sub-12pt: the italic 12pt serif is the smallest serif face; below it the options are a new font or
    a non-serif, non-italic face (§2d).
+
+## Addendum (spec phase) — verified on the real Spanish NWT
+
+`nwt_S.epub` from pub-media (`GETPUBMEDIALINKS?pub=nwt&langwritten=S&fileformat=EPUB`,
+14,945,282 B), document `OEBPS/1001061152-split5.xhtml` (Gálatas 5):
+
+- Question 3 is answered **yes**: after `chapter5_verse26` comes
+  `<div class="groupFootnote"><aside epub:type="footnote">…`, so a last-verse unit's text includes
+  every footnote of the chapter. `isNonVisibleElement` does not list `aside`
+  (`lib/Epub/Epub/VisibleTextUtils.h:17-20`).
+- Verses carry footnote markers: `obstáculo<span id="footnotesource29"></span><a epub:type="noteref" href="#footnote29">*</a> del`.
+- A verse opens with `<strong><sup>4</sup></strong>` followed by U+202F (bytes `e2 80 af`); verse 1
+  opens with the chapter number, `<span class="w_ch"><strong>5</strong> </span>`.
+- The study sleep screen is called from `src/activities/boot_sleep/SleepActivity.cpp:549`, which
+  falls through to the ordinary sleep screen when `render` returns false.
