@@ -134,9 +134,11 @@ bool PassageDoc::add(TaggedPassage passage) {
     passage.snippet = utf8SafeSummary(std::string(passage.displayText.view()), MAX_SNIPPET_BYTES);
   } else {
     passage.snippet = utf8SafeSummary(std::move(passage.snippet), MAX_SNIPPET_BYTES);
-    // Summarised before the length test, so whitespace alone can never carry a
-    // text over MAX_SNIPPET_BYTES into a "w" that fromJson would refuse.
-    std::string legacy = utf8SafeSummary(std::string(passage.displayText.view()), V3_MAX_DISPLAY_TEXT_BYTES);
+    // Normalised before the length test, so whitespace alone can never carry a
+    // text over MAX_SNIPPET_BYTES into a "w" that fromJson would refuse. Over
+    // the cap is refused, as fromJson does: passage text is never cut.
+    std::string legacy = utf8SafeSummary(std::string(passage.displayText.view()), SIZE_MAX);
+    if (legacy.size() > V3_MAX_DISPLAY_TEXT_BYTES) return false;
     if (legacy.size() <= MAX_SNIPPET_BYTES) legacy.clear();
     if (!passage.displayText.assign(legacy)) return false;
   }

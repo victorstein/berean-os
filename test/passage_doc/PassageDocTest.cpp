@@ -672,17 +672,13 @@ TEST(PassageDocWholeText, RoundTrips) {
   EXPECT_EQ(back.passages()[0].displayText, wholeText(200));
 }
 
-// The cap falls between the two bytes of "ó", so a raw byte cut would split it.
-TEST(PassageDocWholeText, IsCutAtTheCapWithoutSplittingACodepoint) {
+TEST(PassageDocWholeText, ALegacyTextOverTheCapIsRefusedNotCut) {
   const std::string input = std::string(study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES - 1, 'a') + "ó fin";
   study::TaggedPassage p = samplePassage();
   p.displayText.assign(input);
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(std::move(p)));
-  const std::string stored(doc.passages()[0].displayText.view());
-  EXPECT_EQ(stored.size(), study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES - 1) << "backs off to before the \"ó\"";
-  EXPECT_EQ(input.rfind(stored, 0), 0u) << "the stored text is a prefix of the input";
-  EXPECT_NE(static_cast<unsigned char>(input[stored.size()]) & 0xC0u, 0x80u) << "the cut is on a codepoint boundary";
+  EXPECT_FALSE(doc.add(std::move(p)));
+  EXPECT_TRUE(doc.passages().empty());
 }
 
 TEST(PassageDocWholeText, WhitespaceAloneNeverMakesAWholeText) {
