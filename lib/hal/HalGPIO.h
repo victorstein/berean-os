@@ -4,6 +4,7 @@
 #include <InputManager.h>
 
 #include "Input/NavKeyGestures.h"
+#include "Input/StableLevel.h"
 
 // Display SPI pins (custom pins for XteinkX4, not hardware SPI defaults)
 #define EPD_SCLK 8   // SPI Clock
@@ -47,6 +48,7 @@ class HalGPIO {
 
   bool lastUsbConnected = false;
   bool usbStateChanged = false;
+  input::StableLevel usbPresence;
 
  public:
   enum class DeviceType : uint8_t { X4, X3 };
@@ -64,6 +66,10 @@ class HalGPIO {
 
   // True on the one tick a nav key's release resolved to this button.
   bool synthesisedEdge(uint8_t buttonIndex) const;
+
+  bool readUsbDetectPin() const;
+  // The X4 Pro reads its detect pin with a pull-down, through usbPresence.
+  bool x4ProUsbDetect() const;
 
  public:
   HalGPIO() = default;

@@ -140,6 +140,12 @@ void HalGPIO::begin() {
 #else
   _deviceType = DeviceType::X4;
 #endif
+  // The X4 Pro's VBUS sense floats for ~280 ms while VBUS rises; the pull-down
+  // resolves that window to "not connected" (#185).
+  if (x4ProUsbDetect()) {
+    pinMode(BoardConfig::ACTIVE.usbDetect, INPUT_PULLDOWN);
+    usbPresence.begin(readUsbDetectPin());
+  }
   inputMgr.begin();
 }
 
@@ -158,8 +164,14 @@ void HalGPIO::update() {
     navGestures.update(left, right, millis());
   }
 
+  if (x4ProUsbDetect()) {
+    usbPresence.update(readUsbDetectPin());
+  }
   const bool connected = isUsbConnected();
   usbStateChanged = (connected != lastUsbConnected);
+  if (usbStateChanged) {
+    LOG_DBG("GPIO", "USB %s", connected ? "connected" : "disconnected");
+  }
   lastUsbConnected = connected;
 }
 
@@ -347,11 +359,18 @@ bool HalGPIO::isUsbConnected() const {
     }
     return false;
   }
+  if (x4ProUsbDetect()) {
+    return usbPresence.stable();
+  }
   if (BoardConfig::ACTIVE.usbDetect < 0) {
     return false;
   }
-  return digitalRead(BoardConfig::ACTIVE.usbDetect) == HIGH;
+  return readUsbDetectPin();
 }
+
+bool HalGPIO::readUsbDetectPin() const { return digitalRead(BoardConfig::ACTIVE.usbDetect) == HIGH; }
+
+bool HalGPIO::x4ProUsbDetect() const { return BoardConfig::isX4Pro() && BoardConfig::ACTIVE.usbDetect >= 0; }
 
 namespace {
 
