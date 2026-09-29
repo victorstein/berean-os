@@ -866,7 +866,8 @@ TEST(PassageDocAllocators, LoadFailsWhenATextCannotBeAllocated) {
   row["x"] = "Te he llamado";
   row["w"] = std::string(200, 'a');
   study::PassageDoc doc(study::PassageDoc::Allocators{DOC_FAILING, nullptr});
-  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>())) << "a load that cannot hold the text is a failure, never empty";
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()))
+      << "a load that cannot hold the text is a failure, never empty";
   EXPECT_TRUE(doc.passages().empty());
 }
 
@@ -998,11 +999,11 @@ JsonDocument oneV4Row(const std::function<void(JsonObject)>& fill) {
 }
 
 TEST(PassageDocWholeVerse, LoadRefusesAWholeFlagWithoutText) {
-  for (const auto& fill : std::vector<std::function<void(JsonObject)>>{
-           [](JsonObject row) { row["h"] = true; }, [](JsonObject row) {
-             row["h"] = true;
-             row["w"] = "";
-           }}) {
+  for (const auto& fill : std::vector<std::function<void(JsonObject)>>{[](JsonObject row) { row["h"] = true; },
+                                                                       [](JsonObject row) {
+                                                                         row["h"] = true;
+                                                                         row["w"] = "";
+                                                                       }}) {
     study::PassageDoc doc;
     EXPECT_FALSE(doc.fromJson(oneV4Row(fill).as<JsonVariantConst>()));
     EXPECT_TRUE(doc.passages().empty());

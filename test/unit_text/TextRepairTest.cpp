@@ -132,13 +132,18 @@ TEST(TextRepair, AWrongStartSnippetIsRebuiltAndFlaggedSuspect) {
 
 TEST(TextRepair, AVerseNumberLedSnippetIsNotFlagged) {
   Source source;
-  const std::string snippet = "2\xE2\x80\xAF" "Cuatro cinco.* 3 Seis";
+  const std::string snippet =
+      "2\xE2\x80\xAF"
+      "Cuatro cinco.* 3 Seis";
   EXPECT_EQ(study::planTextRepair(snippetOnlyRow(source, snippet), inputsFor(source)).outcome,
             study::TextRepairOutcome::Rebuilt);
 }
 
 TEST(TextRepair, NoBreakSpacesInAnOldSnippetAreNotFlagged) {
-  EXPECT_TRUE(study::snippetOccursIn("Cuatro\xC2\xA0" "cinco.", "Cuatro cinco. Seis siete."));
+  EXPECT_TRUE(
+      study::snippetOccursIn("Cuatro\xC2\xA0"
+                             "cinco.",
+                             "Cuatro cinco. Seis siete."));
 }
 
 TEST(TextRepair, NormalisingCollapsesWhitespaceAndCutsNothing) {

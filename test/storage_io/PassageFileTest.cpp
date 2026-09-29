@@ -221,7 +221,8 @@ TEST_F(PassageFileIo, ASaveThatRunsOutOfMemoryIsRefusedAndWritesNothing) {
 
   json.remaining = 0;
   EXPECT_EQ(PassageFile::save(PUB_KEY, doc), PassageFile::SaveResult::WriteFailed);
-  EXPECT_EQ(storage_fake::fileBytes(PATH), before) << "an overflowed document is smaller and would overwrite the good file";
+  EXPECT_EQ(storage_fake::fileBytes(PATH), before)
+      << "an overflowed document is smaller and would overwrite the good file";
   EXPECT_FALSE(Storage.exists(TMP_PATH.c_str()));
 }
 

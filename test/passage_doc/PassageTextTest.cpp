@@ -24,8 +24,7 @@ const study::TextAllocator FAILING{failingAllocate, failingRelease};
 TEST(PassageText, IsMoveOnly) {
   EXPECT_FALSE(std::is_copy_constructible_v<study::PassageText>);
   EXPECT_FALSE(std::is_copy_assignable_v<study::PassageText>);
-  EXPECT_TRUE(std::is_nothrow_move_constructible_v<study::PassageText>)
-      << "std::vector growth must move, never copy";
+  EXPECT_TRUE(std::is_nothrow_move_constructible_v<study::PassageText>) << "std::vector growth must move, never copy";
 }
 
 TEST(PassageText, AssignsAndReadsBackWithoutACap) {

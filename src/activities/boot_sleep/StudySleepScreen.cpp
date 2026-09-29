@@ -67,9 +67,8 @@ constexpr const char* OPENING_QUOTE = "\xE2\x80\x9C";
 // Ubuntu has no italic.
 constexpr int PASSAGE_FONT_IDS[] = {NOTOSERIF_18_FONT_ID, NOTOSERIF_16_FONT_ID, NOTOSERIF_14_FONT_ID,
                                     NOTOSERIF_12_FONT_ID, UI_10_FONT_ID};
-constexpr EpdFontFamily::Style PASSAGE_FONT_STYLES[] = {EpdFontFamily::ITALIC, EpdFontFamily::ITALIC,
-                                                        EpdFontFamily::ITALIC, EpdFontFamily::ITALIC,
-                                                        EpdFontFamily::REGULAR};
+constexpr EpdFontFamily::Style PASSAGE_FONT_STYLES[] = {
+    EpdFontFamily::ITALIC, EpdFontFamily::ITALIC, EpdFontFamily::ITALIC, EpdFontFamily::ITALIC, EpdFontFamily::REGULAR};
 constexpr uint8_t SERIF_12 = 3;
 constexpr uint8_t FLOOR_SIZE = 4;
 
@@ -88,8 +87,12 @@ struct Rung {
 
 // Largest first; the first rung that holds the whole passage wins (issue #188).
 constexpr Rung RUNGS[] = {
-    {0, {true, true, true}},          {1, {true, true, true}},          {2, {true, true, true}},
-    {SERIF_12, {true, true, true}},   {SERIF_12, {true, true, false}},  {SERIF_12, {false, false, false}},
+    {0, {true, true, true}},
+    {1, {true, true, true}},
+    {2, {true, true, true}},
+    {SERIF_12, {true, true, true}},
+    {SERIF_12, {true, true, false}},
+    {SERIF_12, {false, false, false}},
     {FLOOR_SIZE, {false, false, false}},
 };
 constexpr uint8_t RUNG_COUNT = sizeof(RUNGS) / sizeof(RUNGS[0]);
@@ -191,8 +194,8 @@ int chromeHeight(const GfxRenderer& renderer, const Layout& layout, const Chrome
   return height;
 }
 
-study_sleep::FitRung fitRung(const GfxRenderer& renderer, const Layout& layout, const uint8_t rung,
-                             const bool hasDate, const bool hasReference, const bool hasTag, const bool hasProgress) {
+study_sleep::FitRung fitRung(const GfxRenderer& renderer, const Layout& layout, const uint8_t rung, const bool hasDate,
+                             const bool hasReference, const bool hasTag, const bool hasProgress) {
   const uint8_t sizeIndex = RUNGS[rung].sizeIndex;
   return {sizeIndex, renderer.getLineHeight(PASSAGE_FONT_IDS[sizeIndex]),
           layout.areaBottom - layout.viewTop -
@@ -488,8 +491,7 @@ bool render(const GfxRenderer& renderer) {
           static_cast<unsigned>(totals.entries), static_cast<unsigned>(totals.bytesParsed),
           totals.capHit ? "hit" : "not hit", static_cast<unsigned>(totals.rowsNotWhole),
           static_cast<unsigned>(totals.rowsOverPrefilter), static_cast<unsigned>(totals.rowsUnfit),
-          millis() - scanStarted, ESP.getFreeHeap(),
-          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+          millis() - scanStarted, ESP.getFreeHeap(), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
   logSleepMemory("Study pick");
   if (!picked) return false;
   const study_sleep::Candidate& passage = *sampler->result();
@@ -511,7 +513,8 @@ bool render(const GfxRenderer& renderer) {
     rungs[rung] = fitRung(renderer, layout, rung, content.dateLine != nullptr, passage.reference[0] != '\0',
                           !content.tagName.empty(), content.progress != nullptr);
   }
-  const auto fitted = study_sleep::fitPassage(passage.text, rungs, RUNG_COUNT, layout.width, &measurePassage, &renderer);
+  const auto fitted =
+      study_sleep::fitPassage(passage.text, rungs, RUNG_COUNT, layout.width, &measurePassage, &renderer);
   if (!fitted.fits) {
     // The gate measured this text at the floor rung with a reference assumed, so
     // this means the two measurements disagreed. Never draw it cut.

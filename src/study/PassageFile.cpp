@@ -21,8 +21,8 @@ LoadResult load(const std::string& pubKey, study::PassageDoc& doc) {
   // PSRAM, and a default document would copy every one of them into internal SRAM.
   return PersistableStoreBase::loadAdopting(
       primaryPath.c_str(), &PersistableStoreBase::readDocFromFileStreamed,
-      [](void* target, JsonVariantConst json) { return static_cast<study::PassageDoc*>(target)->fromJson(json); },
-      &doc, doc.jsonAllocator());
+      [](void* target, JsonVariantConst json) { return static_cast<study::PassageDoc*>(target)->fromJson(json); }, &doc,
+      doc.jsonAllocator());
 }
 
 SaveResult save(const std::string& pubKey, const study::PassageDoc& doc) {
