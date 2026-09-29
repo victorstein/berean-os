@@ -24,9 +24,13 @@
 // abbreviations from biblebooknav.xhtml, one page per testament heading; the
 // chapter and verse levels are number grids, so a high reference costs pages
 // instead of screens. Tap or Confirm a chapter to list its verses.
+//
+// It opens where the reader is: the chapter grid of the book being read, with
+// the current chapter selected (see BibleEntryPosition.h for the fallbacks).
 class BibleNavigationActivity final : public UiListActivity {
  public:
-  BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::shared_ptr<Epub>& epub);
+  BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::shared_ptr<Epub>& epub,
+                          int currentSpineIndex);
   void onEnter() override;
 
  private:
@@ -44,6 +48,8 @@ class BibleNavigationActivity final : public UiListActivity {
   static constexpr int CELL_LABEL_BYTES = 4;
 
   std::shared_ptr<Epub> epub;
+  // The reader's spine item when the navigator was opened; decides the entry level.
+  const int entrySpine;
   Level level = Level::Book;
 
   // Only the display name and the resolved spine target are kept: chapter rows
@@ -120,6 +126,9 @@ class BibleNavigationActivity final : public UiListActivity {
   bool loadBooks();
   bool loadChapters(int bookIndex);
   bool loadVerses(int spineIndex);
+  // Moves the fresh navigator to entrySpine's chapter or book, or leaves the
+  // unselected book grid when it maps to neither. Runs before the first paint.
+  void enterAtPosition();
   // Enter `next`, placing the selection on `selected` (clamped into that
   // level's rows) and its page in view.
   void enterLevel(Level next, int selected);

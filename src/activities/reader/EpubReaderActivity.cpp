@@ -726,7 +726,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       // at most once for the life of the Epub.
       std::unique_ptr<Activity> chapterList;
       if (epub && epub->getBibleBookNavSpineIndex() >= 0) {
-        chapterList = std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub);
+        chapterList = std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx);
       } else {
         chapterList = std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx);
       }

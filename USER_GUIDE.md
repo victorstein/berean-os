@@ -173,10 +173,16 @@ Back closes the menu and returns to the page.
 
 In a Bible, **Select chapter** opens a three-level drill-down instead of the flat table of contents:
 
-1. **Book** — a scrolling list of the 66 books.
+1. **Book** — a paged grid of the 66 books, by their abbreviations.
 2. **Chapter** — a paged grid of numbers. Tap one to list its verses, or confirm it to open the
    chapter.
 3. **Verse** — a paged grid. Tap a verse to open the page containing it.
+
+From a Bible chapter, **Select chapter** opens straight at that book's chapter grid with the current
+chapter selected. Back, or a swipe in from the left edge, goes up to the book grid with the current
+book selected, and Back again returns to the menu. In a one-chapter book (Obadiah, Philemon, 2 John,
+3 John, Jude) it opens at the book grid with that book selected. Anywhere else, such as the
+introduction or the appendices, it opens at the book grid as before.
 
 Number grids rather than lists, because Psalm 119 has 176 verses and a list would cost a dozen page
 turns to cross.

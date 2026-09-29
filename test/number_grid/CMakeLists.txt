@@ -27,3 +27,18 @@ target_link_libraries(BookGridLayoutTest PRIVATE
 )
 
 gtest_discover_tests(BookGridLayoutTest)
+
+add_executable(BibleEntryPositionTest
+  BibleEntryPositionTest.cpp
+)
+
+target_include_directories(BibleEntryPositionTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(BibleEntryPositionTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(BibleEntryPositionTest)
