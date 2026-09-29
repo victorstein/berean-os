@@ -37,6 +37,9 @@ struct ThemeMetrics {
   int contentSidePadding;
   int listRowHeight;
   int listWithSubtitleRowHeight;
+  // Touch height for one-line list rows; 0 keeps FreeInkUI's label-plus-
+  // subtitle rowHeight token.
+  int touchListRowHeight = 0;
   // FreeInkUI list shape, consumed by uiThemeTokens() for screens rendered
   // through FreeInkApp: the theme supplies geometry and selection style, the
   // uiScale fonts supply the sizes. Plain data by design — the eventual

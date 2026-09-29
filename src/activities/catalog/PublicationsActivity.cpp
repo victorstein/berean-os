@@ -171,7 +171,7 @@ void PublicationsActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   // Long-press deletes; the physical-button path stays in loop().
   props.inputMask = fui::InputTouch | fui::InputLongPress;
-  syncListViewport(screen, props);
+  syncListViewport(screen, props, /*hasSubtitle=*/true);
   screen.list(props);
 }
 
