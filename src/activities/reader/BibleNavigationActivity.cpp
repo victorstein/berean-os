@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "BibleEntryPosition.h"
 #include "MappedInputManager.h"
 #include "SpineHtmlStream.h"
 #include "components/UIScale.h"
@@ -30,8 +31,10 @@ bool feedVerseScanner(void* ctx, const char* chunk, const size_t length, const b
 }  // namespace
 
 BibleNavigationActivity::BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                                 const std::shared_ptr<Epub>& epub)
-    : UiListActivity("BibleNavigation", renderer, mappedInput, /*wantsTouchLongPress=*/false), epub(epub) {}
+                                                 const std::shared_ptr<Epub>& epub, const int currentSpineIndex)
+    : UiListActivity("BibleNavigation", renderer, mappedInput, /*wantsTouchLongPress=*/false),
+      epub(epub),
+      entrySpine(currentSpineIndex) {}
 
 void BibleNavigationActivity::onEnter() {
   UiListActivity::onEnter();
@@ -47,6 +50,7 @@ void BibleNavigationActivity::onEnter() {
   if (!loadBooks()) {
     LOG_ERR("BNV", "Failed to read the book list");
   }
+  enterAtPosition();
 }
 
 bool BibleNavigationActivity::loadBooks() {
@@ -148,6 +152,32 @@ bool BibleNavigationActivity::loadVerses(const int spineIndex) {
 
   verseAnchors = scanner.take();
   return !verseAnchors.empty();
+}
+
+void BibleNavigationActivity::enterAtPosition() {
+  const BibleEntry::Entry entry = BibleEntry::classify(bookTargetSpine, bookIsDirect, bookCount, entrySpine);
+  switch (entry.kind) {
+    case BibleEntry::Kind::None:
+      return;
+    case BibleEntry::Kind::SelectBook:
+      selectedBook = entry.book;
+      enterLevel(Level::Book, entry.book);
+      return;
+    case BibleEntry::Kind::LoadChapters:
+      break;
+  }
+
+  if (!loadChapters(entry.book)) {
+    LOG_ERR("BNV", "Entry: no chapter list for book %d", entry.book);
+    return;
+  }
+  const int row = BibleEntry::chapterRowFor(chapterSpine, chapterCount, entrySpine);
+  if (row < 0) {
+    LOG_DBG("BNV", "Entry: spine %d is not a chapter of book %d", entrySpine, entry.book);
+    return;
+  }
+  selectedBook = entry.book;
+  enterLevel(Level::Chapter, row);
 }
 
 int BibleNavigationActivity::listCount() const {
