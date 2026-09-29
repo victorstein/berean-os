@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <utility>
 
 #include "HalStorageFake.h"
 #include "PassageFile.h"
@@ -45,7 +46,7 @@ study::PassageDoc pastTheReadCap() {
   for (int i = 0; i < 300; ++i) {
     study::TaggedPassage p = samplePassage();
     p.snippet = std::string(study::PassageDoc::MAX_SNIPPET_BYTES - 4, 'a') + std::to_string(i);
-    EXPECT_TRUE(doc.add(p));
+    EXPECT_TRUE(doc.add(std::move(p)));
   }
   return doc;
 }

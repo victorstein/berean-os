@@ -4,7 +4,10 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <string_view>
+#include <utility>
 
 namespace study {
 namespace {
@@ -91,8 +94,7 @@ bool displayTextFromJson(const JsonVariantConst row, TaggedPassage& passage) {
   const char* text = stored.as<const char*>();
   const size_t length = strlen(text);
   if (length <= PassageDoc::MAX_SNIPPET_BYTES || length > PassageDoc::MAX_DISPLAY_TEXT_BYTES) return false;
-  passage.displayText = text;
-  return true;
+  return passage.displayText.assign(std::string_view(text, length));
 }
 
 bool anyPassageHasLinks(const std::vector<TaggedPassage>& passages) {
@@ -119,8 +121,11 @@ bool PassageDoc::add(TaggedPassage passage) {
   passage.snippet = utf8SafeSummary(std::move(passage.snippet), MAX_SNIPPET_BYTES);
   // Summarised before the length test, so whitespace alone can never carry a text
   // over MAX_SNIPPET_BYTES into a "w" that fromJson would refuse.
-  passage.displayText = utf8SafeSummary(std::move(passage.displayText), MAX_DISPLAY_TEXT_BYTES);
-  if (passage.displayText.size() <= MAX_SNIPPET_BYTES) passage.displayText.clear();
+  std::string text = utf8SafeSummary(std::string(passage.displayText.view()), MAX_DISPLAY_TEXT_BYTES);
+  if (text.size() <= MAX_SNIPPET_BYTES) text.clear();
+  PassageText homed = newText();
+  if (!homed.assign(text)) return false;
+  passage.displayText = std::move(homed);
   passage.reference = utf8SafeSummary(std::move(passage.reference), MAX_REFERENCE_BYTES);
   passage.tags = normaliseTags(passage.tags);
   passage.links = normaliseLinks(std::move(passage.links), passage.start, passage.documentSpine);
@@ -225,7 +230,7 @@ void PassageDoc::toJson(JsonDocument& doc) const {
     row["d"] = p.document;
     row["s"] = p.documentSpine;
     row["x"] = p.snippet;
-    if (!p.displayText.empty()) row["w"] = p.displayText;
+    if (!p.displayText.empty()) row["w"] = p.displayText.c_str();
     row["r"] = p.reference;
     if (p.pendingUpgrade) row["g"] = true;
     // UNLABELLED is written as the empty array, which is how every v1 build
@@ -256,6 +261,7 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
     if (!start) continue;  // unaddressable: cannot be painted or listed
 
     TaggedPassage p;
+    p.displayText = newText();
     p.start = *start;
     p.end = unitFromCompact(v["e"] | "").value_or(*start);
     p.fingerprint = fingerprintFromCompact(v["f"] | "").value_or(Fingerprint{});
@@ -285,8 +291,9 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
 }
 
 size_t PassageDoc::measureBytes() const {
-  JsonDocument doc;
+  JsonDocument doc = newJsonDocument();
   toJson(doc);
+  if (doc.overflowed()) return SIZE_MAX;
   return measureJson(doc);
 }
 

@@ -284,7 +284,7 @@ bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffse
   passage.end = study::resolve(units, endOffset);
   passage.documentSpine = spineIndex;
   passage.snippet = snippet;
-  passage.displayText = snippet;
+  if (!passage.displayText.assign(snippet)) return false;
   passage.reference = reference;
   passage.tags = std::move(tags);
   passage.fingerprint = study::fingerprintOf(units_->unitText(spineIndex, passage.start));
@@ -302,12 +302,17 @@ bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffse
 bool StudyStore::removePassage(const size_t index) {
   if (saveDisabled_ || index >= passages_.passages().size()) return false;
 
-  const study::TaggedPassage backup = passages_.passages()[index];
+  study::TaggedPassage backup;
+  backup.displayText = passages_.newText();
+  if (!study::copyPassage(passages_.passages()[index], backup)) {
+    LOG_ERR(MODULE, "OOM: backup of passage %u; not removed", static_cast<unsigned>(index));
+    return false;
+  }
   if (!passages_.remove(index)) return false;
   linkSource_.reset();
   if (save()) return true;
 
-  passages_.add(backup);
+  passages_.add(std::move(backup));
   return false;
 }
 

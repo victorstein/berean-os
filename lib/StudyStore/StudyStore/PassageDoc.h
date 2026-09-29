@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "StudyStore/PassageText.h"
 #include "StudyStore/TaggedPassage.h"
 
 // One publication's tagged passages, with all format rules and no storage
@@ -50,6 +51,21 @@ class PassageDoc {
   // FORMAT_VERSION bump, or an older build would refuse files this build wrote
   // under an unchanged version.
   static constexpr size_t MAX_LINKS_PER_PASSAGE = 8;
+
+  // Where this document's texts and JSON documents allocate. The defaults are the
+  // ordinary heap, for the host; StudyStore and MigrationRunner pass PSRAM
+  // (src/study/PsramJsonAllocator) so the whole texts stay out of internal SRAM.
+  struct Allocators {
+    TextAllocator text = defaultTextAllocator();
+    ArduinoJson::Allocator* json = nullptr;  // nullptr: ArduinoJson's default
+  };
+
+  PassageDoc() = default;
+  explicit PassageDoc(const Allocators allocators) : allocators_(allocators) {}
+
+  PassageText newText() const { return PassageText(allocators_.text); }
+  JsonDocument newJsonDocument() const { return allocators_.json ? JsonDocument(allocators_.json) : JsonDocument(); }
+  ArduinoJson::Allocator* jsonAllocator() const { return allocators_.json; }
 
   const std::vector<TaggedPassage>& passages() const { return passages_; }
 
@@ -104,9 +120,13 @@ class PassageDoc {
   // the caller must refuse to save over, never a silent truncation.
   bool fromJson(JsonVariantConst doc);
 
+  // SIZE_MAX when the measuring document ran out of memory: ArduinoJson drops
+  // what it cannot allocate, and a short measure would let an over-budget add or
+  // a cut write through.
   size_t measureBytes() const;
 
  private:
+  Allocators allocators_;
   std::vector<TaggedPassage> passages_;
 };
 

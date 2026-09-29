@@ -322,7 +322,7 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
         in.unitText = &unitTextFor;
       }
 
-      const auto planned = study::planMigration(in, flat);
+      auto planned = study::planMigration(in, flat);
       switch (planned.outcome) {
         case study::MigrationOutcome::DroppedNoTags:
           summary.dropped++;
@@ -353,7 +353,7 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
           break;
       }
 
-      if (!passages.add(*planned.passage)) {
+      if (!passages.add(std::move(*planned.passage))) {
         report.drops.push_back("store full");
         summary.dropped++;
       }
