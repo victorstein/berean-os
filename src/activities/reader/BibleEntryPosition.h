@@ -39,8 +39,7 @@ inline int bookFor(const int16_t* bookTargetSpine, const int bookCount, const in
   return best;
 }
 
-inline Entry classify(const int16_t* bookTargetSpine, const bool* bookIsDirect, const int bookCount,
-                      const int spine) {
+inline Entry classify(const int16_t* bookTargetSpine, const bool* bookIsDirect, const int bookCount, const int spine) {
   const int book = bookFor(bookTargetSpine, bookCount, spine);
   if (book < 0) return {};
   if (spine == bookTargetSpine[book]) return {Kind::SelectBook, book};
