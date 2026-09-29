@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.1](https://github.com/victorstein/berean-os/compare/v1.20.0...v1.20.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* show the X4 Pro charging bolt from the GPIO21 VBUS detect ([#190](https://github.com/victorstein/berean-os/issues/190)) ([2822662](https://github.com/victorstein/berean-os/commit/2822662d0bbb1125cbb5ea2542617cd993d90589)), closes [#185](https://github.com/victorstein/berean-os/issues/185)
+
 ## [1.20.0](https://github.com/victorstein/berean-os/compare/v1.19.5...v1.20.0) (2026-09-29)
 
 
