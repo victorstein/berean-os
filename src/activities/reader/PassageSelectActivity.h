@@ -13,7 +13,6 @@
 #include <string>
 #include <vector>
 
-#include "PassageLabel.h"
 #include "activities/Activity.h"
 #include "components/OptionPopup.h"
 
@@ -88,10 +87,6 @@ class PassageSelectActivity final : public Activity {
   void showActionChooser(int endIndex);
   void startTagFlow(int endIndex);
   void finalizeSelection(int endIndex, std::vector<study::TagId> tagIds = {});
-  // Appends words [lo, hi] of the current page to `label`. WordBox holds
-  // geometry only, so the token text is re-read from the block arena instead of
-  // kept resident for every word on the page.
-  void appendWords(int lo, int hi);
   // "Mateo 11:19" for a book with verse anchors, empty otherwise. Empty is a
   // supported outcome, not a failure: a non-Bible EPUB simply keeps the
   // passage-only label.
@@ -149,9 +144,6 @@ class PassageSelectActivity final : public Activity {
   // unique -- a synthesized table-cell prefix or image alt run emits several
   // words while the offset is frozen -- so a search would find the wrong one.
   int anchorIndex = -1;
-  // The selection's text from its first anchor. Filled as pages are left, since a
-  // page turn discards the only copy of the anchor's page.
-  passage_label::Builder label{study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES};
   // The just-committed second anchor, held only across the ChoosingAction
   // phase so the OptionPopup's callback (and the TagPickerActivity result
   // handler it may lead to) can reach finalizeSelection with it.

@@ -19,6 +19,7 @@
 
 #include "BookPathIndex.h"
 #include "PassageFile.h"
+#include "PsramJsonAllocator.h"
 #include "PubKeyRegistry.h"
 #include "StudyStore/MigrationPlanner.h"
 #include "StudyStore/PubKey.h"
@@ -274,7 +275,7 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
     const std::string pubKey = study::resolvePubKey(keyInputs);
     report.pubKey = pubKey;
 
-    study::PassageDoc passages;
+    study::PassageDoc passages{PsramJsonAllocator::passageDoc()};
     if (PassageFile::load(pubKey, passages) == PassageFile::LoadResult::Failed) {
       LOG_ERR(MODULE, "Existing passages for %s unreadable; refusing to overwrite", pubKey.c_str());
       report.drops.push_back("destination unreadable");
@@ -376,7 +377,7 @@ bool runIfPending(Summary& summary, GfxRenderer& renderer, const MigrationProgre
 
     // Counted from the store AFTER the save, never from the planner's outcomes:
     // the planner can report Resolved for a passage that add() then refuses.
-    study::PassageDoc verify;
+    study::PassageDoc verify{PsramJsonAllocator::passageDoc()};
     if (PassageFile::load(pubKey, verify) == PassageFile::LoadResult::Loaded) {
       report.written = static_cast<uint16_t>(verify.passages().size());
     }
