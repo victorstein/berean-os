@@ -65,7 +65,7 @@ constexpr int PASSAGE_FONT_IDS[] = {NOTOSERIF_18_FONT_ID, NOTOSERIF_16_FONT_ID, 
                                     NOTOSERIF_12_FONT_ID};
 constexpr uint8_t PASSAGE_SIZE_COUNT = sizeof(PASSAGE_FONT_IDS) / sizeof(PASSAGE_FONT_IDS[0]);
 
-static_assert(study_sleep::TEXT_CAPACITY == study::PassageDoc::MAX_DISPLAY_TEXT_BYTES + 1);
+static_assert(study_sleep::TEXT_CAPACITY == study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES + 1);
 static_assert(study_sleep::REFERENCE_CAPACITY == study::PassageDoc::MAX_REFERENCE_BYTES + 1);
 
 struct ScanBuffers {
@@ -109,7 +109,7 @@ void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_s
   const std::string_view wholeText = row["w"] | "";
   std::string snippet;
   std::string_view text;
-  if (study_sleep::wholeTextFits(wholeText, study::PassageDoc::MAX_DISPLAY_TEXT_BYTES)) {
+  if (study_sleep::wholeTextFits(wholeText, study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES)) {
     text = wholeText;
   } else {
     snippet = utf8SafeSummary(row["x"] | "", study::PassageDoc::MAX_SNIPPET_BYTES);

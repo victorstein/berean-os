@@ -151,7 +151,7 @@ class PassageSelectActivity final : public Activity {
   int anchorIndex = -1;
   // The selection's text from its first anchor. Filled as pages are left, since a
   // page turn discards the only copy of the anchor's page.
-  passage_label::Builder label{study::PassageDoc::MAX_DISPLAY_TEXT_BYTES};
+  passage_label::Builder label{study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES};
   // The just-committed second anchor, held only across the ChoosingAction
   // phase so the OptionPopup's callback (and the TagPickerActivity result
   // handler it may lead to) can reach finalizeSelection with it.

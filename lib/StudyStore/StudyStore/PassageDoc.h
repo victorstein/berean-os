@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "StudyStore/PassageText.h"
@@ -18,34 +19,30 @@ namespace study {
 
 class PassageDoc {
  public:
-  // v2 added outgoing links ("k"), v3 a passage's whole text ("w"). A file is
-  // written at the lowest version that holds everything in it: with neither it is
-  // v1, with links but no whole text v2. An older build refuses a newer file
-  // outright instead of loading it, ignoring the field and erasing it on its next
-  // save.
-  static constexpr int FORMAT_VERSION = 3;
+  // v2 added outgoing links ("k"), v3 a whole text capped at 384 bytes ("w"), v4
+  // whole-verse texts: "h" marks a "w" that is the passage's complete verse(s),
+  // of any length. A file is written at the lowest version that holds everything
+  // in it. An older build refuses a newer file outright instead of loading it,
+  // ignoring the field and erasing it on its next save.
+  static constexpr int FORMAT_VERSION = 4;
+  static constexpr int DISPLAY_TEXT_FORMAT_VERSION = 3;
   static constexpr int LINKS_FORMAT_VERSION = 2;
   static constexpr int LINKLESS_FORMAT_VERSION = 1;
   // Not persist::DEFAULT_SAVE_BUDGET: that figure exists to stay clear of
   // SDCardManager::readFile's 50,000-byte truncation, and this document is read
   // through a streaming parser with no such cap. The budget here bounds a single
   // write so a card-full or an absurd store is refused rather than half-written;
-  // it is not a truncation guard.
+  // it is not a truncation guard. It bounds a whole text too, as does
+  // ArduinoJson's 65,535-byte string limit: a longer one overflows the
+  // measuring document and is refused as out of memory, never cut.
   static constexpr size_t SAVE_BYTE_BUDGET = 200000;
   static constexpr size_t MAX_SNIPPET_BYTES = 120;
-  // About what the study sleep screen shows at 12pt under its full layout. A
-  // text this short or shorter than MAX_SNIPPET_BYTES is not stored as "w": the
-  // snippet already holds all of it.
-  //
-  // fromJson REFUSES a stored "w" longer than this, or no longer than
-  // MAX_SNIPPET_BYTES, so widening it needs a FORMAT_VERSION bump.
-  static constexpr size_t MAX_DISPLAY_TEXT_BYTES = 384;
+  // A legacy v3 "w": a row without "h" carries one of 121..384 bytes until the
+  // repair replaces it, and fromJson refuses any other length. A whole text has
+  // no cap -- nothing may cut a passage.
+  static constexpr size_t V3_MAX_DISPLAY_TEXT_BYTES = 384;
   static constexpr size_t MAX_REFERENCE_BYTES = 48;
   static constexpr size_t MAX_TAGS_PER_PASSAGE = 8;
-  // With every field at its maximum, a passage carrying this many links and a
-  // whole text still measures under 2.5 KB, so SAVE_BYTE_BUDGET holds 80 of them
-  // -- the user's real store is 63 -- before it refuses anything.
-  //
   // fromJson REFUSES a file with more links than this, or a link label longer
   // than MAX_REFERENCE_BYTES. Widening either one therefore needs a
   // FORMAT_VERSION bump, or an older build would refuse files this build wrote
@@ -69,13 +66,26 @@ class PassageDoc {
 
   const std::vector<TaggedPassage>& passages() const { return passages_; }
 
-  // Normalises (UTF-8-safe truncation of snippet, whole text and reference --
-  // the whole text is dropped when the snippet holds all of it -- deduping and
-  // capping tags, UNLABELLED for an empty list) and appends. Returns false when
-  // adding it would exceed SAVE_BYTE_BUDGET.
+  // Normalises (UTF-8-safe truncation of snippet and reference, deduping and
+  // capping tags, UNLABELLED for an empty list) and appends. A whole passage
+  // keeps its text uncut and takes its snippet from it; a legacy text is
+  // normalised as v3 wrote it. Returns false, appending nothing, when adding it
+  // would exceed SAVE_BYTE_BUDGET, when a whole passage has no text, or when its
+  // text cannot be allocated.
   bool add(TaggedPassage passage);
 
   bool remove(size_t index);
+
+  // Puts `passage` back at `index` exactly as given -- the undo for a repair pass
+  // whose save failed. Returns false only when `index` is out of range.
+  bool replace(size_t index, TaggedPassage passage);
+
+  enum class TextResult : uint8_t { Set, Empty, OutOfMemory, OverBudget, NoSuchPassage };
+
+  // Makes `text` passage `index`'s whole text ("h") and its summary the snippet.
+  // `text` must already be normalised (study::normaliseWholeText). Any result but
+  // Set leaves the passage exactly as it was.
+  TextResult setWholeText(size_t index, std::string_view text);
 
   // Replaces entry `index`'s tags IN PLACE. An empty list leaves the passage
   // UNLABELLED -- untagging is not deleting. Returns false only when `index` is
@@ -115,9 +125,9 @@ class PassageDoc {
   void toJson(JsonDocument& doc) const;
 
   // Parses and validates. Rejects a future format version, and any stored link
-  // it would otherwise have to drop or cut (see MAX_LINKS_PER_PASSAGE). Returns
-  // false when the parsed document exceeds the budget -- that is a load FAILURE
-  // the caller must refuse to save over, never a silent truncation.
+  // or text it would otherwise have to drop or cut. Returns false when the parsed
+  // document exceeds the budget or a text cannot be allocated -- that is a load
+  // FAILURE the caller must refuse to save over, never a silent truncation.
   bool fromJson(JsonVariantConst doc);
 
   // SIZE_MAX when the measuring document ran out of memory: ArduinoJson drops
