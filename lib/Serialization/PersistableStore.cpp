@@ -212,9 +212,10 @@ DocReadStatus PersistableStoreBase::readDocFromFileAdopting(const char* path, Js
   return adoptedReadStatus(primary, action);
 }
 
-AdoptedLoad PersistableStoreBase::loadAdopting(const char* path, const DocReader read, const DocAcceptor accept,
-                                               void* target) {
-  JsonDocument doc;
+namespace {
+
+AdoptedLoad loadAdoptingInto(JsonDocument& doc, const char* path, const PersistableStoreBase::DocReader read,
+                             const PersistableStoreBase::DocAcceptor accept, void* target) {
   DocReadStatus primary = DocReadStatus::Missing;
   const TempAdoptionAction action = readAdopting(path, read, doc, primary);
 
@@ -227,6 +228,21 @@ AdoptedLoad PersistableStoreBase::loadAdopting(const char* path, const DocReader
     if (!accepted) LOG_ERR("PERSIST", "Recovered %s but rejected its contents", path);
   }
   return adoptedLoad(action, accepted);
+}
+
+}  // namespace
+
+AdoptedLoad PersistableStoreBase::loadAdopting(const char* path, const DocReader read, const DocAcceptor accept,
+                                               void* target) {
+  JsonDocument doc;
+  return loadAdoptingInto(doc, path, read, accept, target);
+}
+
+AdoptedLoad PersistableStoreBase::loadAdopting(const char* path, const DocReader read, const DocAcceptor accept,
+                                               void* target, ArduinoJson::Allocator* allocator) {
+  if (!allocator) return loadAdopting(path, read, accept, target);
+  JsonDocument doc(allocator);
+  return loadAdoptingInto(doc, path, read, accept, target);
 }
 
 bool PersistableStoreBase::readDocFromFile(const char* path, JsonDocument& doc) {
