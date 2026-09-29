@@ -475,12 +475,11 @@ bool render(const GfxRenderer& renderer) {
   ScanTotals totals;
   const unsigned long scanStarted = millis();
   const bool picked = pickPassage(*sampler, *buffers, gate, totals);
-  LOG_DBG(MODULE,
-          "Study pick: %u files, %u bytes parsed, cap %s, %u rows not whole, %u over prefilter, %u unfit, %lu ms",
-          static_cast<unsigned>(totals.entries), static_cast<unsigned>(totals.bytesParsed),
-          totals.capHit ? "hit" : "not hit", static_cast<unsigned>(totals.rowsNotWhole),
-          static_cast<unsigned>(totals.rowsOverPrefilter), static_cast<unsigned>(totals.rowsUnfit),
-          millis() - scanStarted);
+  LOG_DBG(
+      MODULE, "Study pick: %u files, %u bytes parsed, cap %s, %u rows not whole, %u over prefilter, %u unfit, %lu ms",
+      static_cast<unsigned>(totals.entries), static_cast<unsigned>(totals.bytesParsed),
+      totals.capHit ? "hit" : "not hit", static_cast<unsigned>(totals.rowsNotWhole),
+      static_cast<unsigned>(totals.rowsOverPrefilter), static_cast<unsigned>(totals.rowsUnfit), millis() - scanStarted);
   PsramJsonAllocator::logMemory("Study pick");
   if (!picked) return false;
   const study_sleep::Candidate& passage = *sampler->result();

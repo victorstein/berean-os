@@ -1139,8 +1139,7 @@ TEST(PassageDocCopy, CopyPassageCarriesEveryField) {
   ASSERT_TRUE(from.displayText.assign("Te he llamado con todo el corazon"));
   from.reference = "Salmos 119:145-146";
   from.tags = {study::toTagId(3), study::toTagId(17)};
-  from.links.push_back(study::PassageLink{
-      study::Unit{study::UnitKind::Verse, 19, 23, 1, 0}, 77, "Salmos 23:1"});
+  from.links.push_back(study::PassageLink{study::Unit{study::UnitKind::Verse, 19, 23, 1, 0}, 77, "Salmos 23:1"});
   from.pendingUpgrade = true;
   from.whole = true;
 
