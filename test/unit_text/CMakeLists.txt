@@ -1,6 +1,7 @@
 add_executable(UnitTextTest
   UnitTextTest.cpp
   PassageTextFilterTest.cpp
+  PassageSpanTest.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitText.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitAnchors.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitFingerprint.cpp
