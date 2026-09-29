@@ -6,6 +6,9 @@
 #include <Wire.h>
 #include <XteinkDetect.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
+
+#include "Input/WakeupClassifier.h"
 
 // Global HalGPIO instance
 HalGPIO gpio;
@@ -350,24 +353,57 @@ bool HalGPIO::isUsbConnected() const {
   return digitalRead(BoardConfig::ACTIVE.usbDetect) == HIGH;
 }
 
+namespace {
+
+input::ResetKind toResetKind(const esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:
+      return input::ResetKind::PowerOn;
+    case ESP_RST_DEEPSLEEP:
+      return input::ResetKind::DeepSleep;
+    case ESP_RST_UNKNOWN:
+      return input::ResetKind::Unknown;
+    default:
+      return input::ResetKind::Other;
+  }
+}
+
+input::WakeCause toWakeCause(const esp_sleep_wakeup_cause_t cause) {
+  switch (cause) {
+    case ESP_SLEEP_WAKEUP_UNDEFINED:
+      return input::WakeCause::Undefined;
+    case ESP_SLEEP_WAKEUP_GPIO:
+    case ESP_SLEEP_WAKEUP_EXT1:
+      return input::WakeCause::GpioOrExt1;
+    default:
+      return input::WakeCause::Other;
+  }
+}
+
+HalGPIO::WakeupReason toWakeupReason(const input::WakeupClass wakeupClass) {
+  switch (wakeupClass) {
+    case input::WakeupClass::PowerButton:
+      return HalGPIO::WakeupReason::PowerButton;
+    case input::WakeupClass::AfterFlash:
+      return HalGPIO::WakeupReason::AfterFlash;
+    case input::WakeupClass::AfterUSBPower:
+      return HalGPIO::WakeupReason::AfterUSBPower;
+    case input::WakeupClass::Other:
+      break;
+  }
+  return HalGPIO::WakeupReason::Other;
+}
+
+}  // namespace
+
 HalGPIO::WakeupReason HalGPIO::getWakeupReason() const {
   const auto wakeupCause = esp_sleep_get_wakeup_cause();
   const auto resetReason = esp_reset_reason();
-
   const bool usbConnected = isUsbConnected();
 
-  if (resetReason == ESP_RST_DEEPSLEEP &&
-      (wakeupCause == ESP_SLEEP_WAKEUP_GPIO || wakeupCause == ESP_SLEEP_WAKEUP_EXT1)) {
-    return WakeupReason::PowerButton;
-  }
-  if (wakeupCause == ESP_SLEEP_WAKEUP_UNDEFINED && resetReason == ESP_RST_POWERON && !usbConnected) {
-    return WakeupReason::PowerButton;
-  }
-  if (wakeupCause == ESP_SLEEP_WAKEUP_UNDEFINED && resetReason == ESP_RST_UNKNOWN && usbConnected) {
-    return WakeupReason::AfterFlash;
-  }
-  if (wakeupCause == ESP_SLEEP_WAKEUP_UNDEFINED && resetReason == ESP_RST_POWERON && usbConnected) {
-    return WakeupReason::AfterUSBPower;
-  }
-  return WakeupReason::Other;
+  const auto wakeupClass =
+      input::classifyWakeup(toResetKind(resetReason), toWakeCause(wakeupCause), usbConnected, !BoardConfig::isX4Pro());
+  LOG_INF("GPIO", "Wakeup: reset=%d cause=%d usb=%d -> %d", static_cast<int>(resetReason),
+          static_cast<int>(wakeupCause), usbConnected ? 1 : 0, static_cast<int>(wakeupClass));
+  return toWakeupReason(wakeupClass);
 }
