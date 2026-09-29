@@ -465,7 +465,7 @@ bool render(const GfxRenderer& renderer) {
   gate.renderer = &renderer;
   gate.width = layout.width;
   gate.floor = fitRung(renderer, layout, FLOOR_RUNG, false, true, false, false);
-  // Device check 6: what the floor rung really holds, against FIT_PREFILTER_BYTES.
+  // Logged so a tester can compare what the floor rung really holds against FIT_PREFILTER_BYTES.
   constexpr const char* SAMPLE_TEN = "abcdefghij";
   const int sampleWidth = measurePassage(&renderer, gate.floor.sizeIndex, SAMPLE_TEN);
   LOG_DBG(MODULE, "Floor rung: %d lines, ~%d chars a line, prefilter %u bytes",
