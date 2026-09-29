@@ -109,7 +109,7 @@ std::string pickFrom(ScriptedRandom& script,
                      const std::vector<std::pair<std::string, std::optional<uint8_t>>>& offers) {
   study_sleep::Sampler sampler(&scripted, &script);
   uint32_t key = 1;
-  for (const auto& [snippet, age] : offers) sampler.offer(snippet, "", 0, key++, age);
+  for (const auto& [snippet, age] : offers) sampler.offer(snippet, "", 0, key++, age, true);
   const auto* chosen = sampler.result();
   return chosen ? std::string(chosen->text) : std::string("<none>");
 }
@@ -162,21 +162,42 @@ TEST(StudySleepSampler, NothingOfferedPicksNothing) {
 TEST(StudySleepSampler, KeepsTheWinnersFields) {
   ScriptedRandom script;
   study_sleep::Sampler sampler(&scripted, &script);
-  sampler.offer("In the beginning", "Genesis 1:1", 7, 0xABCDu, std::nullopt);
+  sampler.offer("In the beginning", "Genesis 1:1", 7, 0xABCDu, std::nullopt, true);
   const auto* chosen = sampler.result();
   ASSERT_NE(chosen, nullptr);
-  EXPECT_STREQ(chosen->text, "In the beginning");
+  EXPECT_EQ(chosen->text, "In the beginning");
   EXPECT_STREQ(chosen->reference, "Genesis 1:1");
   EXPECT_EQ(chosen->tag, 7);
   EXPECT_EQ(chosen->key, 0xABCDu);
 }
 
-TEST(StudySleepSampler, TruncatesAnOverlongTextToItsCapacity) {
+TEST(StudySleepSampler, KeepsALongTextWhole) {
   ScriptedRandom script;
   study_sleep::Sampler sampler(&scripted, &script);
-  const std::string longText(study_sleep::TEXT_CAPACITY + 20, 'x');
-  sampler.offer(longText, "", 0, 1, std::nullopt);
-  EXPECT_EQ(std::string(sampler.result()->text).size(), study_sleep::TEXT_CAPACITY - 1);
+  const std::string longText(1000, 'x');
+  sampler.offer(longText, "", 0, 1, std::nullopt, true);
+  EXPECT_EQ(sampler.result()->text, longText) << "the old 384-byte clip is gone";
+}
+
+TEST(StudySleepSampler, NeverPicksAPassageThatDoesNotFit) {
+  for (uint32_t roll = 0; roll < 3; ++roll) {
+    ScriptedRandom script{{roll, roll, roll}, 0, {}};
+    study_sleep::Sampler sampler(&scripted, &script);
+    sampler.offer("unfit", "", 0, 1, std::nullopt, false);
+    sampler.offer("fits", "", 0, 2, std::nullopt, true);
+    sampler.offer("unfit too", "", 0, 3, 0, false);
+    ASSERT_NE(sampler.result(), nullptr);
+    EXPECT_EQ(sampler.result()->text, "fits");
+    EXPECT_EQ(script.bounds, (std::vector<uint32_t>{1})) << "unfit rows do not count towards the reservoir";
+  }
+}
+
+TEST(StudySleepSampler, OnlyUnfitPassagesPickNothing) {
+  ScriptedRandom script;
+  study_sleep::Sampler sampler(&scripted, &script);
+  sampler.offer("unfit", "", 0, 1, std::nullopt, false);
+  sampler.offer("recent and unfit", "", 0, 2, 0, false);
+  EXPECT_EQ(sampler.result(), nullptr);
 }
 
 namespace {
@@ -273,14 +294,17 @@ TEST(StudySleepDate, ABufferTooSmallGivesNoLine) {
   EXPECT_FALSE(study_sleep::formatDateLine(at(2026, 9, 27, 10, 0), UTC, EN_WEEKDAYS, EN_MONTHS, out, sizeof(out)));
 }
 
-TEST(StudySleepRowText, AStoredWholeTextWithinTheCapIsShown) {
-  EXPECT_TRUE(study_sleep::wholeTextFits("Ustedes, los que tratan de ser declarados justos", 384));
+TEST(StudySleepRowText, AWholeRowIsShown) {
+  EXPECT_TRUE(study_sleep::rowIsWhole(true, "Ustedes, los que tratan de ser declarados justos"));
 }
 
-TEST(StudySleepRowText, AnAbsentWholeTextFallsBackToTheSnippet) {
-  EXPECT_FALSE(study_sleep::wholeTextFits("", 384)) << "a missing or non-string \"w\" reads as empty";
+TEST(StudySleepRowText, ALegacyRowWaitsForTheRepair) {
+  EXPECT_FALSE(study_sleep::rowIsWhole(false, "Ustedes, los que tratan")) << "never shown cut";
 }
 
-TEST(StudySleepRowText, AnOverCapWholeTextFallsBackToTheSnippet) {
-  EXPECT_FALSE(study_sleep::wholeTextFits(std::string(385, 'a'), 384));
+TEST(StudySleepRowText, AWholeFlagWithNoTextIsNotShown) { EXPECT_FALSE(study_sleep::rowIsWhole(true, "")); }
+
+TEST(StudySleepRowText, ATextPastThePrefilterIsRefusedWithoutMeasuring) {
+  EXPECT_TRUE(study_sleep::withinPrefilter(std::string(study_sleep::FIT_PREFILTER_BYTES, 'a')));
+  EXPECT_FALSE(study_sleep::withinPrefilter(std::string(study_sleep::FIT_PREFILTER_BYTES + 1, 'a')));
 }

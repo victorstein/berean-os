@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "StudyStore/PassageSpan.h"
 #include "StudyStore/UnitIndexFormat.h"
 #include "study/MigrationProgress.h"
 
@@ -49,6 +50,10 @@ class UnitIndexCache {
   // Visible text of a unit in `spineIndex`, for a fingerprint. Streams the
   // document; does not cache it.
   std::string unitText(uint16_t spineIndex, const study::Unit& unit);
+
+  // A passage span's text as a passage stores it (study::extractPassageText).
+  // Streams the document; does not cache it.
+  std::string rangeText(uint16_t spineIndex, const study::PassageSpan& span);
 
   // Reported during the one-off book-map build, which is the only part of this
   // class slow enough for a user to notice.

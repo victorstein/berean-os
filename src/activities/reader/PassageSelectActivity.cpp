@@ -144,10 +144,6 @@ bool PassageSelectActivity::advancePage() {
     if (!next) return false;
   }
 
-  // Only once the turn is certain: a failed one must not feed this page, or the
-  // finalize that follows on it would append the same words again.
-  appendWords(anchorIndex >= 0 ? anchorIndex : 0, static_cast<int>(words.size()) - 1);
-
   {
     // The render task reads page/words/committedRects; swapping them unfenced
     // is the hazard the tag-deletion fix closed in 0c1c884a.
@@ -242,24 +238,6 @@ std::string PassageSelectActivity::verseReference(const uint32_t startOffset) co
   return toc.title.empty() ? verse : toc.title + " " + verse;
 }
 
-void PassageSelectActivity::appendWords(const int lo, const int hi) {
-  // Same walk order as extractWords(), so `index` matches the WordBox indices
-  // the caller selected with.
-  int index = 0;
-  for (const auto& element : page->elements) {
-    if (element->getTag() != TAG_PageLine) continue;
-    const auto* line = static_cast<const PageLine*>(element.get());
-    const auto& block = line->getBlock();
-    if (!block || !block->valid()) continue;
-
-    const uint16_t wordCount = block->wordCount();
-    for (uint16_t i = 0; i < wordCount; i++, index++) {
-      if (index < lo) continue;
-      if (index > hi || !label.addWord(block->wordText(i), block->wordTextLen(i))) return;
-    }
-  }
-}
-
 int PassageSelectActivity::wordAt(const int x, const int y) const {
   constexpr int SLOP = 4;  // matches the outline box (+2) plus finger error
   for (int i = 0; i < static_cast<int>(words.size()); i++) {
@@ -302,7 +280,6 @@ void PassageSelectActivity::setAnchor(const int index) {
   anchorOffset = words[index].offset;
   cursor = index;
   phase = Phase::PickingEnd;
-  label.reset();
 }
 
 void PassageSelectActivity::commitAt(const int index) {
@@ -368,18 +345,14 @@ void PassageSelectActivity::startTagFlow(const int endIndex) {
 void PassageSelectActivity::finalizeSelection(const int endIndex, std::vector<study::TagId> tagIds) {
   const VisibleRange range = selectionRange(endIndex);
 
-  // After a page turn `label` already holds the anchor's page onwards, so this
-  // page contributes its top through the end word.
-  const int lo = (anchorIndex >= 0) ? std::min(anchorIndex, endIndex) : 0;
-  const int hi = (anchorIndex >= 0) ? std::max(anchorIndex, endIndex) : endIndex;
-  appendWords(lo, hi);
-
   // `range.end` is the last word's offset + 1 -- VisibleRange::contains tests a
   // word's START offset, so the half-open end is what the geometry expects.
   // StudyStore::addPassage preserves that convention when it resolves the
   // offsets into units; changing it here would shift every mark by one word.
-  const bool added = STUDY.addPassage(spineIndex, range.start, range.end, label.text(), verseReference(range.start),
-                                      std::move(tagIds));
+  // It also builds the stored text itself, as the whole verse(s) from the
+  // spine's source: the laid-out words lose the U+202F before verse text.
+  const bool added =
+      STUDY.addPassage(spineIndex, range.start, range.end, verseReference(range.start), std::move(tagIds));
   if (!added) {
     // addPassage saves synchronously and rolls back its own append on failure,
     // so the resident document never holds a phantom highlight.

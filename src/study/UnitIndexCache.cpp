@@ -396,3 +396,12 @@ std::string UnitIndexCache::unitText(const uint16_t spineIndex, const study::Uni
   if (!SpineHtmlStream::stream(epub_, spineIndex, renderer_, feedText, &ctx)) return {};
   return ctx.scanner.take();
 }
+
+std::string UnitIndexCache::rangeText(const uint16_t spineIndex, const study::PassageSpan& span) {
+  TextContext ctx;
+  if (!ctx.scanner.valid()) return {};
+  ctx.scanner.setRange(span.from, span.to);
+  ctx.scanner.setFilter(study::CaptureFilter{span.verseDocument, span.extendToWordEnd});
+  if (!SpineHtmlStream::stream(epub_, spineIndex, renderer_, feedText, &ctx)) return {};
+  return ctx.scanner.take();
+}

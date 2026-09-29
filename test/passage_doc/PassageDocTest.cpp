@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <functional>
+#include <type_traits>
+#include <utility>
 
 #include "StudyStore/PassageDoc.h"
 
@@ -104,7 +106,7 @@ TEST(PassageDocValidation, TruncatesAnOverlongSnippetWithoutSplittingACodepoint)
   p.reference = std::string("Génesis 1:1 ") + accented;
 
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
+  ASSERT_TRUE(doc.add(std::move(p)));
   const auto& stored = doc.passages()[0];
   EXPECT_LE(stored.snippet.size(), study::PassageDoc::MAX_SNIPPET_BYTES);
   EXPECT_LE(stored.reference.size(), study::PassageDoc::MAX_REFERENCE_BYTES);
@@ -122,7 +124,7 @@ TEST(PassageDocValidation, DedupesAndCapsTags) {
   p.tags.clear();
   for (const uint16_t raw : {5, 5, 5, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12}) p.tags.push_back(study::toTagId(raw));
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
+  ASSERT_TRUE(doc.add(std::move(p)));
   const auto& tags = doc.passages()[0].tags;
   EXPECT_LE(tags.size(), study::PassageDoc::MAX_TAGS_PER_PASSAGE);
   EXPECT_EQ(std::count(tags.begin(), tags.end(), study::toTagId(5)), 1);
@@ -132,7 +134,7 @@ TEST(PassageDocUnlabelled, StoresAPassageWithNoTagsAsUnlabelled) {
   study::TaggedPassage p = samplePassage();
   p.tags.clear();
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p)) << "marking a passage and labelling it are separate acts";
+  ASSERT_TRUE(doc.add(std::move(p))) << "marking a passage and labelling it are separate acts";
   EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::UNLABELLED}));
 }
 
@@ -140,7 +142,7 @@ TEST(PassageDocUnlabelled, ARealTagReplacesUnlabelled) {
   study::TaggedPassage p = samplePassage();
   p.tags = {study::UNLABELLED, study::toTagId(4), study::UNLABELLED};
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
+  ASSERT_TRUE(doc.add(std::move(p)));
   EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::toTagId(4)}));
 }
 
@@ -149,7 +151,7 @@ TEST(PassageDocUnlabelled, UnlabelledDoesNotCountTowardsTheTagCap) {
   p.tags = {study::UNLABELLED};
   for (uint16_t raw = 1; raw <= study::PassageDoc::MAX_TAGS_PER_PASSAGE; ++raw) p.tags.push_back(study::toTagId(raw));
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
+  ASSERT_TRUE(doc.add(std::move(p)));
   EXPECT_EQ(doc.passages()[0].tags.size(), study::PassageDoc::MAX_TAGS_PER_PASSAGE);
   EXPECT_EQ(doc.passages()[0].tags.back(), study::toTagId(study::PassageDoc::MAX_TAGS_PER_PASSAGE));
 }
@@ -158,7 +160,7 @@ TEST(PassageDocUnlabelled, SerialisesAsTheEmptyTagArrayEveryV1BuildAlreadyReads)
   study::TaggedPassage p = samplePassage();
   p.tags.clear();
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
+  ASSERT_TRUE(doc.add(std::move(p)));
 
   JsonDocument json;
   doc.toJson(json);
@@ -211,7 +213,7 @@ TEST(PassageDocRemove, RemovingUnlabelledEverywhereIsANoOp) {
   study::TaggedPassage p = samplePassage();
   p.tags.clear();
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
+  ASSERT_TRUE(doc.add(std::move(p)));
   doc.removeTagEverywhere(study::UNLABELLED);
   EXPECT_EQ(doc.passages()[0].tags, (std::vector<study::TagId>{study::UNLABELLED}));
 }
@@ -235,7 +237,7 @@ TEST(PassageDocSetTags, DoesNotReorderTheDocument) {
   study::TaggedPassage second = samplePassage();
   second.reference = "Salmos 119:146";
   ASSERT_TRUE(doc.add(samplePassage()));
-  ASSERT_TRUE(doc.add(second));
+  ASSERT_TRUE(doc.add(std::move(second)));
 
   ASSERT_TRUE(doc.setTags(0, {study::toTagId(9)}));
   EXPECT_EQ(doc.passages()[0].reference, "Salmos 119:145")
@@ -279,7 +281,7 @@ TEST(PassageDocFind, LocatesPassagesByDocument) {
   study::TaggedPassage other = samplePassage();
   other.document = "1001061131-split1.xhtml";
   ASSERT_TRUE(doc.add(samplePassage()));
-  ASSERT_TRUE(doc.add(other));
+  ASSERT_TRUE(doc.add(std::move(other)));
 
   const auto hits = doc.findByDocument("1001061130-split10.xhtml");
   ASSERT_EQ(hits.size(), 1u);
@@ -327,7 +329,7 @@ TEST(PassageDocLinks, LabelsATargetWithNoReferenceByItsSnippet) {
   target.reference.clear();
   target.snippet = std::string(200, 'a');
   ASSERT_TRUE(doc.add(samplePassage()));
-  ASSERT_TRUE(doc.add(target));
+  ASSERT_TRUE(doc.add(std::move(target)));
 
   ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
   EXPECT_EQ(doc.passages()[0].links[0].label, std::string(study::PassageDoc::MAX_REFERENCE_BYTES, 'a'));
@@ -555,7 +557,7 @@ TEST(PassageDocLinks, SameVerseIsTheSamePlaceWhateverTheSpine) {
   study::TaggedPassage other = passageAt(119, 145, "Salmos 119:145");
   other.documentSpine = 12;
   ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
-  ASSERT_TRUE(doc.add(other));
+  ASSERT_TRUE(doc.add(std::move(other)));
   EXPECT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::SelfLink)
       << "a verse address is portable; the spine is only a hint";
 }
@@ -565,10 +567,12 @@ TEST(PassageDocLinks, ReAddingABackupKeepsItsLinks) {
   ASSERT_TRUE(doc.add(passageAt(119, 145, "Salmos 119:145")));
   ASSERT_TRUE(doc.add(passageAt(23, 1, "Salmos 23:1")));
   ASSERT_EQ(doc.linkPassages(0, 1), study::PassageDoc::LinkResult::Linked);
-  const study::TaggedPassage backup = doc.passages()[0];
+  study::TaggedPassage backup;
+  ASSERT_TRUE(study::copyPassage(doc.passages()[0], backup));
+  const auto links = backup.links;
   ASSERT_TRUE(doc.remove(0));
-  ASSERT_TRUE(doc.add(backup)) << "StudyStore::removePassage rolls back a failed save this way";
-  EXPECT_EQ(doc.passages().back().links, backup.links);
+  ASSERT_TRUE(doc.add(std::move(backup))) << "StudyStore::removePassage rolls back a failed save this way";
+  EXPECT_EQ(doc.passages().back().links, links);
 }
 
 // The budget argument for the cap: even a passage with every field at its
@@ -584,7 +588,7 @@ TEST(PassageDocBudget, AFullyLinkedWorstCasePassageCannotExhaustTheBudgetInOrdin
   worst.document = std::string(64, 'd');
   worst.documentSpine = UINT16_MAX;
   worst.snippet = std::string(study::PassageDoc::MAX_SNIPPET_BYTES, '"');
-  worst.displayText = std::string(study::PassageDoc::MAX_DISPLAY_TEXT_BYTES, '"');
+  worst.displayText.assign(std::string(study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES, '"'));
   worst.reference = std::string(study::PassageDoc::MAX_REFERENCE_BYTES, '"');
   worst.pendingUpgrade = true;
   for (uint16_t t = 1; t <= study::PassageDoc::MAX_TAGS_PER_PASSAGE; ++t) {
@@ -599,7 +603,7 @@ TEST(PassageDocBudget, AFullyLinkedWorstCasePassageCannotExhaustTheBudgetInOrdin
   }
 
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(worst));
+  ASSERT_TRUE(doc.add(std::move(worst)));
   const size_t worstBytes = doc.measureBytes();
   EXPECT_LT(worstBytes, 2500u);
   EXPECT_GE(study::PassageDoc::SAVE_BYTE_BUDGET / worstBytes, 80u);
@@ -629,15 +633,15 @@ std::string wholeText(const size_t minBytes) {
 study::TaggedPassage longPassage() {
   study::TaggedPassage p = samplePassage();
   p.snippet = wholeText(200);
-  p.displayText = p.snippet;
+  p.displayText.assign(p.snippet);
   return p;
 }
 
 TEST(PassageDocWholeText, IsNotStoredWhileTheSnippetHoldsItAll) {
   study::TaggedPassage p = samplePassage();
-  p.displayText = p.snippet;
+  p.displayText.assign(p.snippet);
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
+  ASSERT_TRUE(doc.add(std::move(p)));
   EXPECT_TRUE(doc.passages()[0].displayText.empty());
 
   JsonDocument json;
@@ -654,7 +658,7 @@ TEST(PassageDocWholeText, IsStoredBesideTheSnippetWhenLonger) {
   doc.toJson(json);
   EXPECT_LE(strlen(json["p"][0]["x"].as<const char*>()), study::PassageDoc::MAX_SNIPPET_BYTES);
   EXPECT_EQ(std::string(json["p"][0]["w"].as<const char*>()), wholeText(200));
-  EXPECT_EQ(json["v"].as<int>(), study::PassageDoc::FORMAT_VERSION);
+  EXPECT_EQ(json["v"].as<int>(), study::PassageDoc::DISPLAY_TEXT_FORMAT_VERSION);
 }
 
 TEST(PassageDocWholeText, RoundTrips) {
@@ -668,24 +672,20 @@ TEST(PassageDocWholeText, RoundTrips) {
   EXPECT_EQ(back.passages()[0].displayText, wholeText(200));
 }
 
-// The cap falls between the two bytes of "ó", so a raw byte cut would split it.
-TEST(PassageDocWholeText, IsCutAtTheCapWithoutSplittingACodepoint) {
-  const std::string input = std::string(study::PassageDoc::MAX_DISPLAY_TEXT_BYTES - 1, 'a') + "ó fin";
+TEST(PassageDocWholeText, ALegacyTextOverTheCapIsRefusedNotCut) {
+  const std::string input = std::string(study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES - 1, 'a') + "ó fin";
   study::TaggedPassage p = samplePassage();
-  p.displayText = input;
+  p.displayText.assign(input);
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
-  const std::string& stored = doc.passages()[0].displayText;
-  EXPECT_EQ(stored.size(), study::PassageDoc::MAX_DISPLAY_TEXT_BYTES - 1) << "backs off to before the \"ó\"";
-  EXPECT_EQ(input.rfind(stored, 0), 0u) << "the stored text is a prefix of the input";
-  EXPECT_NE(static_cast<unsigned char>(input[stored.size()]) & 0xC0u, 0x80u) << "the cut is on a codepoint boundary";
+  EXPECT_FALSE(doc.add(std::move(p)));
+  EXPECT_TRUE(doc.passages().empty());
 }
 
 TEST(PassageDocWholeText, WhitespaceAloneNeverMakesAWholeText) {
   study::TaggedPassage p = samplePassage();
-  p.displayText = "Te" + std::string(200, ' ') + "he llamado";
+  p.displayText.assign("Te" + std::string(200, ' ') + "he llamado");
   study::PassageDoc doc;
-  ASSERT_TRUE(doc.add(p));
+  ASSERT_TRUE(doc.add(std::move(p)));
   EXPECT_TRUE(doc.passages()[0].displayText.empty()) << "collapses to 13 bytes, which the snippet holds";
 
   JsonDocument json;
@@ -696,10 +696,12 @@ TEST(PassageDocWholeText, WhitespaceAloneNeverMakesAWholeText) {
 TEST(PassageDocWholeText, ReAddingABackupKeepsIt) {
   study::PassageDoc doc;
   ASSERT_TRUE(doc.add(longPassage()));
-  const study::TaggedPassage backup = doc.passages()[0];
+  study::TaggedPassage backup;
+  ASSERT_TRUE(study::copyPassage(doc.passages()[0], backup));
+  const std::string text(backup.displayText.view());
   ASSERT_TRUE(doc.remove(0));
-  ASSERT_TRUE(doc.add(backup)) << "StudyStore::removePassage rolls back a failed save this way";
-  EXPECT_EQ(doc.passages().back().displayText, backup.displayText);
+  ASSERT_TRUE(doc.add(std::move(backup))) << "StudyStore::removePassage rolls back a failed save this way";
+  EXPECT_EQ(doc.passages().back().displayText, text);
 }
 
 TEST(PassageDocWholeText, LinksWithoutAWholeTextStillWriteVersionTwo) {
@@ -757,7 +759,7 @@ TEST(PassageDocWholeText, LoadRefusesANonString) {
 
 TEST(PassageDocWholeText, LoadRefusesOneOverTheCap) {
   const auto json = oneRowWithWholeText(
-      [](JsonObject row) { row["w"] = std::string(study::PassageDoc::MAX_DISPLAY_TEXT_BYTES + 1, 'a'); });
+      [](JsonObject row) { row["w"] = std::string(study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES + 1, 'a'); });
   study::PassageDoc doc;
   EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()));
 }
@@ -771,20 +773,392 @@ TEST(PassageDocWholeText, LoadRefusesOneTheSnippetWouldHold) {
 
 TEST(PassageDocWholeText, LoadAcceptsOneAtTheCap) {
   const auto json = oneRowWithWholeText(
-      [](JsonObject row) { row["w"] = std::string(study::PassageDoc::MAX_DISPLAY_TEXT_BYTES, 'a'); });
+      [](JsonObject row) { row["w"] = std::string(study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES, 'a'); });
   study::PassageDoc doc;
   ASSERT_TRUE(doc.fromJson(json.as<JsonVariantConst>()));
-  EXPECT_EQ(doc.passages()[0].displayText.size(), study::PassageDoc::MAX_DISPLAY_TEXT_BYTES);
+  EXPECT_EQ(doc.passages()[0].displayText.size(), study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES);
 }
 
 TEST(PassageDocBudget, TheUsersRealStoreWithAWholeTextEachStaysUnder56KB) {
   study::PassageDoc doc;
   for (int i = 0; i < 63; ++i) {
     study::TaggedPassage p = samplePassage();
-    p.displayText = std::string(study::PassageDoc::MAX_DISPLAY_TEXT_BYTES, 'a');
-    ASSERT_TRUE(doc.add(p));
+    p.displayText.assign(std::string(study::PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES, 'a'));
+    ASSERT_TRUE(doc.add(std::move(p)));
   }
   EXPECT_LT(doc.measureBytes(), 56000u);
+}
+
+// ---- Allocators (issue #188, D1) ----
+
+struct CountdownJsonAllocator : ArduinoJson::Allocator {
+  int remaining = 1 << 30;
+  void* allocate(const size_t size) override {
+    if (remaining <= 0) return nullptr;
+    --remaining;
+    return malloc(size);
+  }
+  void deallocate(void* pointer) override { free(pointer); }
+  void* reallocate(void* pointer, const size_t size) override {
+    if (remaining <= 0) return nullptr;
+    --remaining;
+    return realloc(pointer, size);
+  }
+};
+
+int docTextAllocations = 0;
+void* docCountingAllocate(const size_t bytes) {
+  ++docTextAllocations;
+  return malloc(bytes);
+}
+void docCountingRelease(void* block) { free(block); }
+const study::TextAllocator DOC_COUNTING{docCountingAllocate, docCountingRelease};
+
+void* docFailingAllocate(size_t) { return nullptr; }
+void docFailingRelease(void*) {}
+const study::TextAllocator DOC_FAILING{docFailingAllocate, docFailingRelease};
+
+study::TaggedPassage legacyLongPassage() {
+  study::TaggedPassage p = samplePassage();
+  p.displayText.assign(std::string(200, 'a'));
+  return p;
+}
+
+TEST(PassageDocAllocators, MeasureReportsSizeMaxWhenTheJsonAllocatorRunsOut) {
+  CountdownJsonAllocator json;
+  study::PassageDoc doc(study::PassageDoc::Allocators{study::defaultTextAllocator(), &json});
+  ASSERT_TRUE(doc.add(samplePassage()));
+  json.remaining = 0;
+  EXPECT_EQ(doc.measureBytes(), SIZE_MAX) << "an overflowed document measures short and would let a cut write through";
+}
+
+TEST(PassageDocAllocators, AddIsRefusedWhenTheJsonAllocatorRunsOut) {
+  CountdownJsonAllocator json;
+  json.remaining = 0;
+  study::PassageDoc doc(study::PassageDoc::Allocators{study::defaultTextAllocator(), &json});
+  EXPECT_FALSE(doc.add(samplePassage()));
+  EXPECT_TRUE(doc.passages().empty());
+}
+
+TEST(PassageDocAllocators, AddedTextsLiveOnTheDocumentsAllocator) {
+  docTextAllocations = 0;
+  study::PassageDoc doc(study::PassageDoc::Allocators{DOC_COUNTING, nullptr});
+  ASSERT_TRUE(doc.add(legacyLongPassage()));
+  EXPECT_TRUE(doc.passages()[0].displayText.allocator() == DOC_COUNTING);
+  EXPECT_GE(docTextAllocations, 1);
+}
+
+TEST(PassageDocAllocators, AddIsRefusedWhenTheTextCannotBeAllocated) {
+  study::PassageDoc doc(study::PassageDoc::Allocators{DOC_FAILING, nullptr});
+  EXPECT_FALSE(doc.add(legacyLongPassage()));
+  EXPECT_TRUE(doc.passages().empty());
+}
+
+TEST(PassageDocAllocators, LoadFailsWhenATextCannotBeAllocated) {
+  JsonDocument json;
+  json["v"] = 3;
+  const auto row = json["p"].to<JsonArray>().add<JsonObject>();
+  row["u"] = "v:19:119:145:0";
+  row["x"] = "Te he llamado";
+  row["w"] = std::string(200, 'a');
+  study::PassageDoc doc(study::PassageDoc::Allocators{DOC_FAILING, nullptr});
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()))
+      << "a load that cannot hold the text is a failure, never empty";
+  EXPECT_TRUE(doc.passages().empty());
+}
+
+TEST(PassageDocAllocators, CopyPassageReportsAFailedTextCopy) {
+  const study::TaggedPassage source = legacyLongPassage();
+  study::TaggedPassage target;
+  target.displayText = study::PassageText(DOC_FAILING);
+  EXPECT_FALSE(study::copyPassage(source, target));
+}
+
+TEST(PassageDocAllocators, TaggedPassageIsMoveOnly) {
+  EXPECT_FALSE(std::is_copy_constructible_v<study::TaggedPassage>);
+  EXPECT_TRUE(std::is_nothrow_move_constructible_v<study::TaggedPassage>);
+}
+
+// ---- Whole-verse text ("h", format v4, issue #188) ----
+
+// Seven verses of Spanish, well past the old 384-byte cap.
+std::string sevenVerses() {
+  std::string text;
+  for (int verse = 1; verse <= 7; ++verse) {
+    if (!text.empty()) text += ' ';
+    text += "Ustedes, los que tratan de ser declarados justos por medio de la ley, están separados de Cristo.";
+  }
+  return text;
+}
+
+study::TaggedPassage wholePassage(const std::string& text) {
+  study::TaggedPassage p = samplePassage();
+  p.snippet.clear();
+  p.displayText.assign(text);
+  p.whole = true;
+  return p;
+}
+
+TEST(PassageDocWholeVerse, ALongWholeTextRoundTripsByteForByte) {
+  const std::string text = sevenVerses();
+  ASSERT_GT(text.size(), 384u);
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(wholePassage(text)));
+
+  JsonDocument json;
+  doc.toJson(json);
+  EXPECT_EQ(json["v"].as<int>(), study::PassageDoc::FORMAT_VERSION);
+  EXPECT_TRUE(json["p"][0]["h"].as<bool>());
+  EXPECT_EQ(std::string(json["p"][0]["w"].as<const char*>()), text);
+
+  study::PassageDoc back;
+  ASSERT_TRUE(back.fromJson(json.as<JsonVariantConst>()));
+  EXPECT_TRUE(back.passages()[0].whole);
+  EXPECT_EQ(back.passages()[0].displayText, text);
+}
+
+TEST(PassageDocWholeVerse, AShortWholeTextIsKeptWithItsFlag) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(wholePassage("Jesús lloró.")));
+  JsonDocument json;
+  doc.toJson(json);
+  EXPECT_EQ(std::string(json["p"][0]["w"].as<const char*>()), "Jesús lloró.")
+      << "a whole text is stored whatever its length; v3's 121-byte floor does not apply";
+  EXPECT_TRUE(json["p"][0]["h"].as<bool>());
+}
+
+TEST(PassageDocWholeVerse, TheSnippetIsTheWholeTextsSummary) {
+  const std::string text = sevenVerses();
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(wholePassage(text)));
+  const std::string& snippet = doc.passages()[0].snippet;
+  EXPECT_LE(snippet.size(), study::PassageDoc::MAX_SNIPPET_BYTES);
+  EXPECT_EQ(text.rfind(snippet, 0), 0u) << "the list label starts where the whole text starts";
+}
+
+TEST(PassageDocWholeVerse, AWholePassageWithNoTextIsRefused) {
+  study::TaggedPassage p = samplePassage();
+  p.whole = true;
+  study::PassageDoc doc;
+  EXPECT_FALSE(doc.add(std::move(p)));
+  EXPECT_TRUE(doc.passages().empty());
+}
+
+TEST(PassageDocWholeVerse, AnAddOverTheBudgetIsRefusedNotCut) {
+  study::PassageDoc doc;
+  EXPECT_FALSE(doc.add(wholePassage(std::string(study::PassageDoc::SAVE_BYTE_BUDGET, 'a'))));
+  EXPECT_TRUE(doc.passages().empty());
+}
+
+TEST(PassageDocWholeVerse, ANonWholeMigratedRowStaysNonWhole) {
+  study::TaggedPassage p = samplePassage();
+  p.start = study::Unit{study::UnitKind::DocumentOffset, 0, 0, 0, 1255};
+  p.end = p.start;
+  p.pendingUpgrade = true;
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(std::move(p)));
+  EXPECT_FALSE(doc.passages()[0].whole);
+  JsonDocument json;
+  doc.toJson(json);
+  EXPECT_TRUE(json["p"][0]["h"].isNull());
+  EXPECT_EQ(json["v"].as<int>(), study::PassageDoc::LINKLESS_FORMAT_VERSION);
+}
+
+TEST(PassageDocWholeVerse, ALegacyFileLoadsNotWholeAndSavesBackUnchanged) {
+  JsonDocument json;
+  json["v"] = study::PassageDoc::DISPLAY_TEXT_FORMAT_VERSION;
+  const auto row = json["p"].to<JsonArray>().add<JsonObject>();
+  row["u"] = "v:19:119:145:0";
+  row["x"] = "Te he llamado con todo el corazon";
+  row["w"] = std::string(200, 'a');
+  row["t"].to<JsonArray>();
+
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.fromJson(json.as<JsonVariantConst>()));
+  EXPECT_FALSE(doc.passages()[0].whole);
+
+  JsonDocument back;
+  doc.toJson(back);
+  EXPECT_EQ(back["v"].as<int>(), study::PassageDoc::DISPLAY_TEXT_FORMAT_VERSION);
+  EXPECT_EQ(std::string(back["p"][0]["w"].as<const char*>()), std::string(200, 'a'));
+  EXPECT_TRUE(back["p"][0]["h"].isNull()) << "a legacy row is never promoted to whole without the repair";
+}
+
+JsonDocument oneV4Row(const std::function<void(JsonObject)>& fill) {
+  JsonDocument json;
+  json["v"] = study::PassageDoc::FORMAT_VERSION;
+  const auto row = json["p"].to<JsonArray>().add<JsonObject>();
+  row["u"] = "v:19:119:145:0";
+  row["x"] = "Te he llamado";
+  fill(row);
+  return json;
+}
+
+TEST(PassageDocWholeVerse, LoadRefusesAWholeFlagWithoutText) {
+  for (const auto& fill : std::vector<std::function<void(JsonObject)>>{[](JsonObject row) { row["h"] = true; },
+                                                                       [](JsonObject row) {
+                                                                         row["h"] = true;
+                                                                         row["w"] = "";
+                                                                       }}) {
+    study::PassageDoc doc;
+    EXPECT_FALSE(doc.fromJson(oneV4Row(fill).as<JsonVariantConst>()));
+    EXPECT_TRUE(doc.passages().empty());
+  }
+}
+
+TEST(PassageDocWholeVerse, LoadRefusesANonBooleanWholeFlag) {
+  const auto json = oneV4Row([](JsonObject row) {
+    row["h"] = 1;
+    row["w"] = "Jesús lloró.";
+  });
+  study::PassageDoc doc;
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>()));
+}
+
+// Deliberately stricter than "unchanged v1-v3 validation": no build writes "h"
+// below v4, and a load refuses what this build would not have written.
+TEST(PassageDocWholeVerse, LoadRefusesAWholeFlagInAnOlderVersion) {
+  JsonDocument json;
+  json["v"] = study::PassageDoc::DISPLAY_TEXT_FORMAT_VERSION;
+  const auto row = json["p"].to<JsonArray>().add<JsonObject>();
+  row["u"] = "v:19:119:145:0";
+  row["h"] = true;
+  row["w"] = "Jesús lloró.";
+  study::PassageDoc doc;
+  EXPECT_FALSE(doc.fromJson(json.as<JsonVariantConst>())) << "no v3 build ever wrote \"h\"";
+}
+
+TEST(PassageDocWholeVerse, LoadAcceptsAnUncappedWholeText) {
+  const std::string text(5000, 'a');
+  const auto json = oneV4Row([&text](JsonObject row) {
+    row["h"] = true;
+    row["w"] = text;
+  });
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.fromJson(json.as<JsonVariantConst>()));
+  EXPECT_EQ(doc.passages()[0].displayText.size(), 5000u);
+}
+
+TEST(PassageDocWholeVerse, AVersionThreeReaderRefusesAFileCarryingIt) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(wholePassage("Jesús lloró.")));
+  JsonDocument json;
+  doc.toJson(json);
+  constexpr int V3_FORMAT_VERSION = 3;
+  EXPECT_GT(json["v"].as<int>(), V3_FORMAT_VERSION) << "PassageDoc::fromJson's v3 guard must reject this";
+}
+
+TEST(PassageDocWholeVerse, SetWholeTextReplacesALegacyRow) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(legacyLongPassage()));
+  const std::string text = sevenVerses();
+  EXPECT_EQ(doc.setWholeText(0, text), study::PassageDoc::TextResult::Set);
+  const auto& p = doc.passages()[0];
+  EXPECT_TRUE(p.whole);
+  EXPECT_EQ(p.displayText, text);
+  EXPECT_EQ(text.rfind(p.snippet, 0), 0u);
+}
+
+// Each row stays under ArduinoJson's 65,535-byte string limit, so this reaches
+// the file budget rather than that limit.
+TEST(PassageDocWholeVerse, SetWholeTextOverTheBudgetLeavesThePassageExactlyAsItWas) {
+  study::PassageDoc doc;
+  for (int i = 0; i < 3; ++i) ASSERT_TRUE(doc.add(wholePassage(std::string(60000, 'a'))));
+  ASSERT_TRUE(doc.add(samplePassage()));
+  const std::string snippetBefore = doc.passages()[3].snippet;
+  EXPECT_EQ(doc.setWholeText(3, std::string(60000, 'b')), study::PassageDoc::TextResult::OverBudget);
+  EXPECT_FALSE(doc.passages()[3].whole);
+  EXPECT_TRUE(doc.passages()[3].displayText.empty());
+  EXPECT_EQ(doc.passages()[3].snippet, snippetBefore);
+}
+
+// ArduinoJson 7.4.2 stores a string length in two bytes (ARDUINOJSON_STRING_LENGTH_SIZE 2,
+// Configuration.hpp:140-146), so a longer "w" overflows the measuring document. It is
+// refused as OutOfMemory -- never cut. No selection comes near it: one never crosses a
+// spine document.
+TEST(PassageDocWholeVerse, ATextPastArduinoJsonsStringLimitIsRefusedNotCut) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  EXPECT_EQ(doc.setWholeText(0, std::string(70000, 'a')), study::PassageDoc::TextResult::OutOfMemory);
+  EXPECT_FALSE(doc.passages()[0].whole);
+  EXPECT_TRUE(doc.passages()[0].displayText.empty());
+  EXPECT_FALSE(doc.add(wholePassage(std::string(70000, 'a'))));
+  EXPECT_EQ(doc.passages().size(), 1u);
+}
+
+TEST(PassageDocWholeVerse, SetWholeTextRefusesEmptyAndOutOfRange) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  EXPECT_EQ(doc.setWholeText(0, ""), study::PassageDoc::TextResult::Empty);
+  EXPECT_EQ(doc.setWholeText(1, "texto"), study::PassageDoc::TextResult::NoSuchPassage);
+}
+
+TEST(PassageDocWholeVerse, SetWholeTextReportsAnAllocationFailure) {
+  study::PassageDoc doc(study::PassageDoc::Allocators{DOC_FAILING, nullptr});
+  ASSERT_TRUE(doc.add(samplePassage()));
+  EXPECT_EQ(doc.setWholeText(0, "texto entero"), study::PassageDoc::TextResult::OutOfMemory);
+  EXPECT_FALSE(doc.passages()[0].whole);
+}
+
+TEST(PassageDocWholeVerse, ReplacePutsBackTheOriginal) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  study::TaggedPassage before;
+  ASSERT_TRUE(study::copyPassage(doc.passages()[0], before));
+  ASSERT_EQ(doc.setWholeText(0, sevenVerses()), study::PassageDoc::TextResult::Set);
+  ASSERT_TRUE(doc.replace(0, std::move(before)));
+  EXPECT_FALSE(doc.passages()[0].whole);
+  EXPECT_TRUE(doc.passages()[0].displayText.empty());
+  EXPECT_EQ(doc.passages()[0].snippet, "Te he llamado con todo el corazon");
+  EXPECT_FALSE(doc.replace(1, study::TaggedPassage{}));
+}
+
+TEST(PassageDocWholeVerse, NeverWritesTheWholeFlagWithoutText) {
+  study::PassageDoc doc;
+  ASSERT_TRUE(doc.add(samplePassage()));
+  study::TaggedPassage broken = samplePassage();
+  broken.whole = true;
+  ASSERT_TRUE(doc.replace(0, std::move(broken)));
+  JsonDocument json;
+  doc.toJson(json);
+  EXPECT_TRUE(json["p"][0]["h"].isNull()) << "a flag with no text would make every build refuse the whole file";
+}
+
+// A new TaggedPassage field must be added to copyPassage and to this test; the
+// undo paths in StudyStore restore a row through it, so a forgotten field would
+// come back reset after a failed save.
+TEST(PassageDocCopy, CopyPassageCarriesEveryField) {
+  study::TaggedPassage from;
+  from.start = study::Unit{study::UnitKind::Verse, 19, 119, 145, 3};
+  from.end = study::Unit{study::UnitKind::Verse, 19, 119, 146, 9};
+  from.fingerprint = study::Fingerprint{114, 0xa1b2c3d4};
+  from.endFingerprint = study::Fingerprint{57, 0x0badf00d};
+  from.document = "1001061130-split10.xhtml";
+  from.documentSpine = 198;
+  from.snippet = "Te he llamado";
+  ASSERT_TRUE(from.displayText.assign("Te he llamado con todo el corazon"));
+  from.reference = "Salmos 119:145-146";
+  from.tags = {study::toTagId(3), study::toTagId(17)};
+  from.links.push_back(study::PassageLink{study::Unit{study::UnitKind::Verse, 19, 23, 1, 0}, 77, "Salmos 23:1"});
+  from.pendingUpgrade = true;
+  from.whole = true;
+
+  study::TaggedPassage to;
+  ASSERT_TRUE(study::copyPassage(from, to));
+
+  EXPECT_EQ(to.start, from.start);
+  EXPECT_EQ(to.end, from.end);
+  EXPECT_EQ(to.fingerprint, from.fingerprint);
+  EXPECT_EQ(to.endFingerprint, from.endFingerprint);
+  EXPECT_EQ(to.document, from.document);
+  EXPECT_EQ(to.documentSpine, from.documentSpine);
+  EXPECT_EQ(to.snippet, from.snippet);
+  EXPECT_EQ(std::string(to.displayText.view()), std::string(from.displayText.view()));
+  EXPECT_EQ(to.reference, from.reference);
+  EXPECT_EQ(to.tags, from.tags);
+  EXPECT_EQ(to.links, from.links);
+  EXPECT_EQ(to.pendingUpgrade, from.pendingUpgrade);
+  EXPECT_EQ(to.whole, from.whole);
 }
 
 }  // namespace
