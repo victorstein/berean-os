@@ -27,7 +27,10 @@ it.
 
 ## freeink-sdk is a submodule
 Do not edit it to fix something that belongs in the HAL. If a change genuinely
-belongs upstream, **stop and ask.**
+belongs in the SDK, **stop and ask.** Approved SDK changes go on the bereanOS
+fork, `victorstein/freeink-sdk` branch `berean`, with a gitlink bump in a
+bereanOS PR, pushed to `berean` only with the owner's approval — never as a
+PR to Free-Ink.
 
 ## Where things live
 - `HalStorage.{h,cpp}` — the `Storage` singleton and `HalFile`.
