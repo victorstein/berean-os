@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.0](https://github.com/victorstein/berean-os/compare/v1.19.5...v1.20.0) (2026-09-29)
+
+
+### Features
+
+* open Select chapter at the current book's chapter grid ([#189](https://github.com/victorstein/berean-os/issues/189)) ([48310b5](https://github.com/victorstein/berean-os/commit/48310b5feb0d67eaccf44289837f411b34d749db)), closes [#187](https://github.com/victorstein/berean-os/issues/187)
+
 ## [1.19.5](https://github.com/victorstein/berean-os/compare/v1.19.4...v1.19.5) (2026-09-28)
 
 
