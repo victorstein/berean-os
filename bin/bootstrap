@@ -19,6 +19,9 @@ has_required_clang_format() {
 }
 
 echo "Initialising submodules..."
+# update --init never rewrites a URL already in config, and every worktree
+# shares the primary checkout's config, so a .gitmodules repoint needs a sync.
+git submodule sync --recursive
 git submodule update --init --recursive --depth 1
 
 local_clang_format="${repo_root}/.venv/bin/clang-format"
