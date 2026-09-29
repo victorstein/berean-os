@@ -21,4 +21,8 @@ study::TextAllocator text();
 
 study::PassageDoc::Allocators passageDoc();
 
+// Internal SRAM must stay flat while the whole texts live in PSRAM; this line
+// is how a tester confirms it.
+void logMemory(const char* when);
+
 }  // namespace PsramJsonAllocator

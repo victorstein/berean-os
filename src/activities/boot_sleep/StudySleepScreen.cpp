@@ -13,10 +13,8 @@
 #include <PersistableStore.h>
 #include <SdPaths.h>
 #include <Utf8.h>
-#include <esp_heap_caps.h>
 
 #include <algorithm>
-#include <cinttypes>
 #include <cstdio>
 #include <cstring>
 #include <optional>
@@ -144,13 +142,6 @@ struct FitGate {
 };
 
 uint32_t hardwareRandom(void*, const uint32_t bound) { return static_cast<uint32_t>(random(static_cast<long>(bound))); }
-
-void logSleepMemory(const char* when) {
-  LOG_DBG("MEM", "%s: internal free %u (min %u), PSRAM free %u", when,
-          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
-          static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)),
-          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
-}
 
 int measurePassage(const void* ctx, const uint8_t sizeIndex, const char* text) {
   return static_cast<const GfxRenderer*>(ctx)->getTextWidth(PASSAGE_FONT_IDS[sizeIndex], text,
@@ -462,7 +453,7 @@ void drawScreen(const GfxRenderer& renderer, const Layout& layout, const ScreenC
 }  // namespace
 
 bool render(const GfxRenderer& renderer) {
-  logSleepMemory("Study pick start");
+  PsramJsonAllocator::logMemory("Study pick start");
   auto sampler = makeUniqueNoThrow<study_sleep::Sampler>(&hardwareRandom, nullptr);
   auto buffers = makeUniqueNoThrow<ScanBuffers>();
   if (!sampler || !buffers) {
@@ -486,13 +477,12 @@ bool render(const GfxRenderer& renderer) {
   const unsigned long scanStarted = millis();
   const bool picked = pickPassage(*sampler, *buffers, gate, totals);
   LOG_DBG(MODULE,
-          "Study pick: %u files, %u bytes parsed, cap %s, %u rows not whole, %u over prefilter, %u unfit, %lu ms, "
-          "free heap %" PRIu32 ", free PSRAM %u",
+          "Study pick: %u files, %u bytes parsed, cap %s, %u rows not whole, %u over prefilter, %u unfit, %lu ms",
           static_cast<unsigned>(totals.entries), static_cast<unsigned>(totals.bytesParsed),
           totals.capHit ? "hit" : "not hit", static_cast<unsigned>(totals.rowsNotWhole),
           static_cast<unsigned>(totals.rowsOverPrefilter), static_cast<unsigned>(totals.rowsUnfit),
-          millis() - scanStarted, ESP.getFreeHeap(), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
-  logSleepMemory("Study pick");
+          millis() - scanStarted);
+  PsramJsonAllocator::logMemory("Study pick");
   if (!picked) return false;
   const study_sleep::Candidate& passage = *sampler->result();
 

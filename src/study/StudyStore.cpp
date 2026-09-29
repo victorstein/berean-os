@@ -4,7 +4,6 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
-#include <esp_heap_caps.h>
 
 #include "ChapterCompletionFile.h"
 #include "PassageFile.h"
@@ -19,15 +18,6 @@ constexpr const char* MODULE = "STUDY";
 
 bool saveBibleCompletion(const study::ChapterCompletion& record) {
   return ChapterCompletionFile::save(study::BIBLE_PUB_KEY, record) == ChapterCompletionFile::SaveResult::Ok;
-}
-
-// Device check for issue #188: internal SRAM must stay flat while the whole
-// texts live in PSRAM.
-void logStudyMemory(const char* when) {
-  LOG_DBG("MEM", "%s: internal free %u (min %u), PSRAM free %u", when,
-          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
-          static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)),
-          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 }
 
 struct RepairTextContext {
@@ -89,7 +79,7 @@ bool StudyStore::openPublication(const std::shared_ptr<Epub>& epub, GfxRenderer&
   if (!units_ || !units_->begin()) {
     LOG_ERR(MODULE, "Unit index unavailable; addressing degraded to document offsets");
   }
-  logStudyMemory("Study open");
+  PsramJsonAllocator::logMemory("Study open");
   return true;
 }
 
@@ -337,7 +327,7 @@ bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffse
 
   if (!passages_.add(std::move(passage))) return false;
   if (save()) {
-    logStudyMemory("Passage added");
+    PsramJsonAllocator::logMemory("Passage added");
     return true;
   }
 

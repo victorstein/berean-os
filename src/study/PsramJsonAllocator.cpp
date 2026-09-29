@@ -1,5 +1,6 @@
 #include "PsramJsonAllocator.h"
 
+#include <Logging.h>
 #include <esp_heap_caps.h>
 
 namespace {
@@ -30,5 +31,12 @@ ArduinoJson::Allocator* json() {
 study::TextAllocator text() { return {allocateText, releaseText}; }
 
 study::PassageDoc::Allocators passageDoc() { return {text(), json()}; }
+
+void logMemory(const char* when) {
+  LOG_DBG("MEM", "%s: internal free %u (min %u), PSRAM free %u", when,
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+}
 
 }  // namespace PsramJsonAllocator
