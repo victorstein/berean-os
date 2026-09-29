@@ -431,26 +431,27 @@ void StudyStore::repairTexts() {
   // book search -- so a stale-hint row stored early cannot spend the budget
   // before the cheap rows after it. Classifying reads each hint's index entry
   // and counts against the same budget.
-  std::vector<size_t> phased;
-  std::vector<size_t> needsSearch;
+  struct RowAtHint {
+    size_t index;
+    bool atHint;
+  };
+  std::vector<RowAtHint> phased;
+  std::vector<RowAtHint> needsSearch;
   phased.reserve(order.size());
   needsSearch.reserve(order.size());
   for (const size_t index : order) {
     const study::TaggedPassage& passage = passages_.passages()[index];
     const bool atHint = passage.documentSpine < units_->indexedDocumentCount() &&
                         study::documentOffsetOf(units_->unitsFor(passage.documentSpine), passage.start).has_value();
-    (atHint ? phased : needsSearch).push_back(index);
+    (atHint ? phased : needsSearch).push_back({index, atHint});
   }
   phased.insert(phased.end(), needsSearch.begin(), needsSearch.end());
 
-  for (const size_t index : phased) {
+  for (const auto [index, atHint] : phased) {
     if (millis() - started >= REPAIR_TIME_BUDGET_MS) break;
     const study::TaggedPassage& passage = passages_.passages()[index];
     const std::string startUnit = study::unitToCompact(passage.start);
 
-    const bool hintInRange = passage.documentSpine < units_->indexedDocumentCount();
-    const bool atHint =
-        hintInRange && study::documentOffsetOf(units_->unitsFor(passage.documentSpine), passage.start).has_value();
     const bool searchable = passage.start.kind == study::UnitKind::Verse && passage.start.book != 0;
     if (!atHint && searchable && searchesLeft == 0) continue;  // deferred, not attempted
     repairSchedule_.markAttempted(index);
