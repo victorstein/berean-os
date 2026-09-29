@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "util/CivilDate.h"
@@ -16,11 +17,16 @@
 // runs it on the host.
 namespace study_sleep {
 
-// PassageDoc::MAX_DISPLAY_TEXT_BYTES / MAX_REFERENCE_BYTES plus a terminator.
-// StudySleepScreen.cpp static_asserts the match; including PassageDoc.h here
-// would pull ArduinoJson into the host test.
-inline constexpr size_t TEXT_CAPACITY = 385;
+// PassageDoc::MAX_REFERENCE_BYTES plus a terminator. StudySleepScreen.cpp
+// static_asserts the match; including PassageDoc.h here would pull ArduinoJson
+// into the host test.
 inline constexpr size_t REFERENCE_CAPACITY = 49;
+
+// Bytes past which a text cannot fit even the floor rung, so it is refused
+// without measuring. Conservative: Ubuntu 10 on this panel holds roughly 70
+// codepoints a line and 40 lines, under 3,000. It also bounds Candidate::text,
+// a plain std::string that would abort rather than fail on OOM.
+inline constexpr size_t FIT_PREFILTER_BYTES = 4096;
 
 inline constexpr uint32_t FNV_OFFSET_BASIS = 0x811c9dc5u;
 inline constexpr uint32_t FNV_PRIME = 0x01000193u;
@@ -82,23 +88,25 @@ inline std::optional<uint8_t> ageOf(const RingView& ring, const uint32_t key) {
 using RandomFn = uint32_t (*)(void* ctx, uint32_t bound);
 
 struct Candidate {
-  char text[TEXT_CAPACITY] = {};
+  std::string text;
   char reference[REFERENCE_CAPACITY] = {};
   uint16_t tag = 0;
   uint32_t key = 0;
   uint8_t age = 0;
 };
 
-// One pass over every passage. Passages not shown recently are reservoir-sampled:
-// the k-th replaces the pick with probability 1/k. Recent ones count only when
-// nothing else exists, and then the least recently shown wins, the first seen on
-// a tie.
+// One pass over every passage. Passages that fit and were not shown recently are
+// reservoir-sampled: the k-th replaces the pick with probability 1/k. Recent ones
+// count only when nothing else exists, and then the least recently shown wins,
+// the first seen on a tie. A passage that does not fit whole is never a
+// candidate: fit is decided before sampling, so a pick is always showable.
 class Sampler {
  public:
   Sampler(const RandomFn random, void* const randomCtx) : random_(random), randomCtx_(randomCtx) {}
 
   void offer(const std::string_view text, const std::string_view reference, const uint16_t tag, const uint32_t key,
-             const std::optional<uint8_t> age) {
+             const std::optional<uint8_t> age, const bool fits) {
+    if (!fits) return;
     if (!age) {
       ++freshSeen_;
       if (random_(randomCtx_, freshSeen_) == 0) fill(fresh_, text, reference, tag, key, 0);
@@ -124,7 +132,7 @@ class Sampler {
 
   static void fill(Candidate& slot, const std::string_view text, const std::string_view reference, const uint16_t tag,
                    const uint32_t key, const uint8_t age) {
-    copyInto(slot.text, sizeof(slot.text), text);
+    slot.text.assign(text);
     copyInto(slot.reference, sizeof(slot.reference), reference);
     slot.tag = tag;
     slot.key = key;
@@ -139,13 +147,14 @@ class Sampler {
   bool hasStale_ = false;
 };
 
-// Whether a row's stored whole text ("w") is shown instead of its snippet.
-// Lenient on purpose, unlike PassageDoc::fromJson: a malformed "w" -- absent,
-// not a string (read as ""), or over the cap -- falls back to the snippet, so one
-// damaged row still shows something.
-inline bool wholeTextFits(const std::string_view wholeText, const size_t capacity) {
-  return !wholeText.empty() && wholeText.size() <= capacity;
+// A row is shown only when its stored text is its whole verse(s): "h" set and a
+// non-empty "w" (issue #188). A legacy row waits for the repair; it is never
+// shown cut.
+inline bool rowIsWhole(const bool wholeFlag, const std::string_view wholeText) {
+  return wholeFlag && !wholeText.empty();
 }
+
+inline bool withinPrefilter(const std::string_view text) { return text.size() <= FIT_PREFILTER_BYTES; }
 
 // The scan starts at a random file and wraps: sweep 0 covers [start, count),
 // sweep 1 covers [0, start). A scan the byte budget ends early therefore covers
