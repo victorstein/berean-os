@@ -7,7 +7,7 @@ namespace {
 
 constexpr uint32_t PSRAM_CAPS = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
 
-class SpiramJsonAllocator : public ArduinoJson::Allocator {
+class PsramJsonDocumentAllocator : public ArduinoJson::Allocator {
  public:
   void* allocate(const size_t size) override { return heap_caps_malloc(size, PSRAM_CAPS); }
   void deallocate(void* pointer) override { heap_caps_free(pointer); }
@@ -24,7 +24,7 @@ void releaseText(void* block) { heap_caps_free(block); }
 namespace PsramJsonAllocator {
 
 ArduinoJson::Allocator* json() {
-  static SpiramJsonAllocator instance;
+  static PsramJsonDocumentAllocator instance;
   return &instance;
 }
 
