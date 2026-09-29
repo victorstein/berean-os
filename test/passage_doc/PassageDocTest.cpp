@@ -1124,4 +1124,42 @@ TEST(PassageDocWholeVerse, NeverWritesTheWholeFlagWithoutText) {
   EXPECT_TRUE(json["p"][0]["h"].isNull()) << "a flag with no text would make every build refuse the whole file";
 }
 
+// A new TaggedPassage field must be added to copyPassage and to this test; the
+// undo paths in StudyStore restore a row through it, so a forgotten field would
+// come back reset after a failed save.
+TEST(PassageDocCopy, CopyPassageCarriesEveryField) {
+  study::TaggedPassage from;
+  from.start = study::Unit{study::UnitKind::Verse, 19, 119, 145, 3};
+  from.end = study::Unit{study::UnitKind::Verse, 19, 119, 146, 9};
+  from.fingerprint = study::Fingerprint{114, 0xa1b2c3d4};
+  from.endFingerprint = study::Fingerprint{57, 0x0badf00d};
+  from.document = "1001061130-split10.xhtml";
+  from.documentSpine = 198;
+  from.snippet = "Te he llamado";
+  ASSERT_TRUE(from.displayText.assign("Te he llamado con todo el corazon"));
+  from.reference = "Salmos 119:145-146";
+  from.tags = {study::toTagId(3), study::toTagId(17)};
+  from.links.push_back(study::PassageLink{
+      study::Unit{study::UnitKind::Verse, 19, 23, 1, 0}, 77, "Salmos 23:1"});
+  from.pendingUpgrade = true;
+  from.whole = true;
+
+  study::TaggedPassage to;
+  ASSERT_TRUE(study::copyPassage(from, to));
+
+  EXPECT_EQ(to.start, from.start);
+  EXPECT_EQ(to.end, from.end);
+  EXPECT_EQ(to.fingerprint, from.fingerprint);
+  EXPECT_EQ(to.endFingerprint, from.endFingerprint);
+  EXPECT_EQ(to.document, from.document);
+  EXPECT_EQ(to.documentSpine, from.documentSpine);
+  EXPECT_EQ(to.snippet, from.snippet);
+  EXPECT_EQ(std::string(to.displayText.view()), std::string(from.displayText.view()));
+  EXPECT_EQ(to.reference, from.reference);
+  EXPECT_EQ(to.tags, from.tags);
+  EXPECT_EQ(to.links, from.links);
+  EXPECT_EQ(to.pendingUpgrade, from.pendingUpgrade);
+  EXPECT_EQ(to.whole, from.whole);
+}
+
 }  // namespace
