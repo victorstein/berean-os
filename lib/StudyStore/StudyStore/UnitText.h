@@ -30,6 +30,24 @@ std::string extractRangeText(const char* xhtml, size_t length, uint32_t from, ui
 // cannot drift from the offsets.
 uint32_t documentVisibleCrc(const char* xhtml, size_t length);
 
+// What a passage's stored text leaves out, on top of what every passage drops:
+// footnotes (<aside>), footnote markers (<a epub:type="noteref">), and one space
+// where a block ends. Counting is never affected, so every offset and fingerprint
+// stays VisibleOffsetCounter's.
+struct CaptureFilter {
+  // A Bible chapter's own furniture: verse and chapter numbers (<sup>,
+  // <span class="w_ch">) with the space after them, and unanchored headings such
+  // as the acrostic letters (<p class="ss"> or "sd").
+  bool verseDocument = false;
+  // Keeps capturing past `to` to the end of the word it stops in, in document
+  // order, so a filtered-out marker cannot shift where the cut lands.
+  bool extendToWordEnd = false;
+};
+
+// Visible text of [from, to) as a passage stores it.
+std::string extractPassageText(const char* xhtml, size_t length, uint32_t from, uint32_t to,
+                               const CaptureFilter& filter);
+
 // Chunk-fed form, so the firmware can stream a spine item through
 // SpineHtmlStream rather than hold it whole.
 class UnitTextScanner {
@@ -42,6 +60,8 @@ class UnitTextScanner {
   bool valid() const { return parser_ != nullptr; }
   // Capture visible codepoints in [from, to). Must be called before feeding.
   void setRange(uint32_t from, uint32_t to);
+  // Captures as extractPassageText does. Must be called before feeding.
+  void setFilter(const CaptureFilter& filter);
   bool feed(const char* chunk, size_t length, bool isFinal);
   std::string take();
 
