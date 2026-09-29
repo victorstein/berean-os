@@ -193,8 +193,7 @@ study_sleep::FitRung fitRung(const GfxRenderer& renderer, const Layout& layout, 
               chromeHeight(renderer, layout, RUNGS[rung].chrome, hasDate, hasReference, hasTag, hasProgress)};
 }
 
-bool fitsAtAll(const FitGate& gate, const std::string_view text) {
-  if (!study_sleep::withinPrefilter(text)) return false;
+bool fitsFloorRung(const FitGate& gate, const std::string_view text) {
   return study_sleep::fitPassage(text, &gate.floor, 1, gate.width, &measurePassage, gate.renderer).fits;
 }
 
@@ -218,7 +217,7 @@ void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_s
     return;
   }
   const bool underPrefilter = study_sleep::withinPrefilter(wholeText);
-  const bool fits = underPrefilter && fitsAtAll(gate, wholeText);
+  const bool fits = underPrefilter && fitsFloorRung(gate, wholeText);
   if (!underPrefilter) {
     ++totals.rowsOverPrefilter;
   } else if (!fits) {
