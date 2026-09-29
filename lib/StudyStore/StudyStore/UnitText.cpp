@@ -54,6 +54,10 @@ bool hasToken(const char* list, const std::string_view token) {
   return false;
 }
 
+// Narrower than VerseTextScanner's SKIPPED_CLASSES on purpose: search indexes
+// verse body text only, so it drops navigation, headings and superscriptions
+// wholesale, while a stored passage must keep a selection that starts inside a
+// superscription.
 Skip skipOf(const char* name, const XML_Char** atts, const bool verseDocument) {
   if (strcasecmp(name, "aside") == 0) return Skip::Element;
   if (strcasecmp(name, "a") == 0 && hasToken(attribute(atts, "epub:type"), "noteref")) return Skip::Element;
