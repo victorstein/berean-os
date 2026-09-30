@@ -42,7 +42,7 @@ TEST(HomeTargets, ContinueWithNoPlaceOpensTheBibleWhereItWasLeft) {
 
 TEST(HomeTargets, GoToTagsAndSearchOpenTheirIntents) {
   const State state = withBible(true, 3, true);
-  EXPECT_EQ(HomeTargets::route(Target::GoTo, state).intent, Kind::BookGrid);
+  EXPECT_EQ(HomeTargets::route(Target::GoTo, state).intent, Kind::GoTo);
   EXPECT_EQ(HomeTargets::route(Target::Tags, state).intent, Kind::Tags);
   EXPECT_EQ(HomeTargets::route(Target::Search, state).intent, Kind::Search);
   for (const Target target : {Target::GoTo, Target::Tags, Target::Search}) {
