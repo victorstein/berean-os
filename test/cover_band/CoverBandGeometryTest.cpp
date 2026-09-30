@@ -45,9 +45,7 @@ TEST(CoverBandCrop, TitleBandIsCentredInTheVisibleArtworkNotTheBand) {
   EXPECT_EQ(crop(300, 800, 200, 400, 300, BOOK_TITLE_BAND).yOffset, 50);
 }
 
-TEST(CoverBandCrop, ClampsToTheTopRow) {
-  EXPECT_EQ(crop(300, 400, 200, 300, 300, BOOK_TITLE_BAND).yOffset, 0);
-}
+TEST(CoverBandCrop, ClampsToTheTopRow) { EXPECT_EQ(crop(300, 400, 200, 300, 300, BOOK_TITLE_BAND).yOffset, 0); }
 
 TEST(CoverBandCrop, ClampsSoTheBandNeverRunsOffTheCoversFoot) {
   EXPECT_EQ(crop(300, 500, 200, 400, 100, 1.0f).yOffset, 100);
