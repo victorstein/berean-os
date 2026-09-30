@@ -2,7 +2,7 @@
 #include <cstdint>
 
 // size: 32x32
-// Derived from the Lucide "search" glyph in icons/search32.h, rotated into the
+// Derived from the Lucide "search" glyph (icon_search_32 in listIcons.h), rotated into the
 // bit layout GfxRenderer::drawIcon expects. The generated freeink::Icon assets
 // are stored unrotated for the FreeInkUI widget path; drawIcon applies its own
 // (size-1-row, col) mapping, so an unrotated array lands on its side.
