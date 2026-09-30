@@ -149,38 +149,47 @@ return stack holds three positions.
 
 ## 6. The reader menu
 
-Tap the centre third of the page. The menu's title shows where you are: the book and chapter in a
-Bible (for example **Isaiah 40**), the publication's title otherwise. It lists, depending on the
-publication:
+Tap the centre third of the page. The menu opens as a sheet over the lower part of the page, so
+the text you were reading stays visible above it. Its title shows where you are: the book and
+chapter in a Bible (for example **Isaiah 40**), the publication's title otherwise. Everything fits
+on the sheet at once; nothing scrolls.
 
-- **Select chapter** — the table of contents, or the Bible drill-down (section 7)
-- **Search verses** — in a Bible only
-- **Footnotes** — the footnotes on the current page
+Four large buttons sit at the top of the sheet:
+
+- **Go to** — the table of contents, or the Bible drill-down (section 7)
+- **Search** — verse search, in a Bible only
+- **Mark** — drop or remove a bookmark at the current page
+- **Tag** — start a passage selection (section 8)
+
+Below them, in two columns, depending on the publication:
+
 - **Bookmarks** — jump to or delete a saved position, once there is one
+- **Tags here** — in a Bible, the passages you tagged in this chapter, with their count
 - **Highlights** — browse what you have marked in this publication
-- **Toggle bookmark** — drop or remove a bookmark at the current page
-- **Highlight passage** — start a passage selection (section 8)
+- **Footnotes** — the footnotes on the current page
 - **Text settings** — font, size, spacing, margins, with a live preview
-- **Night mode** — invert the page
-- **Frontlight** — the light panel
+- **Night mode** — invert the page (a switch)
+- **Frontlight** — the light (a switch)
 - **Auto turn** — pages per minute
-- **Go to %** — jump by percentage
+- **Go to %** — jump by percentage (not in a Bible)
 - **Take screenshot** — writes a BMP to `screenshots/`
 - **Go home**
 - **Delete book cache** — forces a re-index of this publication on next open
 
-Back closes the menu and returns to the page.
+Tap the page above the sheet, tap **✕**, or swipe Back to close the menu and return to the page.
+When you come back to the menu from one of its screens (for example after backing out of **Go
+to**), or with night mode on, the same sheet appears on a blank screen instead of over the page.
 
 ## 7. Bible navigation
 
-In a Bible, **Select chapter** opens a three-level drill-down instead of the flat table of contents:
+In a Bible, **Go to** opens a three-level drill-down instead of the flat table of contents:
 
 1. **Book** — a paged grid of the 66 books, by their abbreviations.
 2. **Chapter** — a paged grid of numbers. Tap one to list its verses, or confirm it to open the
    chapter.
 3. **Verse** — a paged grid. Tap a verse to open the page containing it.
 
-From a Bible chapter, **Select chapter** opens straight at that book's chapter grid with the current
+From a Bible chapter, **Go to** opens straight at that book's chapter grid with the current
 chapter selected. Back, or a swipe in from the left edge, goes up to the book grid with the current
 book selected, and Back again returns to the menu. In a one-chapter book (Obadiah, Philemon, 2 John,
 3 John, Jude) it opens at the book grid with that book selected. Anywhere else, such as the
@@ -198,7 +207,7 @@ create in one publication is offered in every other.
 
 ### Marking a passage
 
-1. Open the reader menu and choose **Highlight passage**. (Or set **Long-press Menu** to
+1. Open the reader menu and choose **Tag**. (Or set **Long-press Menu** to
    **Highlight** and hold the Home key, or long-press a word outside the centre third to start the
    selection there.)
 2. Tap the first word of the passage, or move the cursor with **Left** / **Right** and tap **Home**
@@ -223,7 +232,7 @@ deleted.
 
 ## 9. Bookmarks and footnotes
 
-**Bookmarks** are saved positions. Add one from **Reader menu -> Toggle bookmark**, or by holding the
+**Bookmarks** are saved positions. Add one from **Reader menu -> Mark**, or by holding the
 Home key when **Long-press Menu** is set to **Bookmark**. **Reader menu -> Bookmarks** lists them;
 activating a row jumps there, and a long press deletes after a confirmation.
 

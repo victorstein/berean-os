@@ -48,3 +48,33 @@ target_link_libraries(TypedReferenceTest PRIVATE
 )
 
 gtest_discover_tests(TypedReferenceTest)
+
+add_executable(ReaderMenuModelTest
+  ReaderMenuModelTest.cpp
+)
+
+target_include_directories(ReaderMenuModelTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(ReaderMenuModelTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(ReaderMenuModelTest)
+
+add_executable(ReaderMenuSheetLayoutTest
+  ReaderMenuSheetLayoutTest.cpp
+)
+
+target_include_directories(ReaderMenuSheetLayoutTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(ReaderMenuSheetLayoutTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(ReaderMenuSheetLayoutTest)

@@ -53,6 +53,10 @@ class EpubReaderActivity final : public ReaderActivity {
   // may still hold the user's data, and that is a property of the session
   // rather than of one book.
   bool highlightsLoaded = false;
+  // Passages painted on the last rendered page's spine document. Written on
+  // the render task, read by openReaderMenu under RenderLock: the menu's
+  // "Tags here" count, without a StudyStore call at menu open.
+  int chapterPassageCount = 0;
 
   // Where a long press anchored the pending selection, or -1. Lives here rather
   // than as a parameter because openHighlightPassage is also reached from the
@@ -107,12 +111,15 @@ class EpubReaderActivity final : public ReaderActivity {
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
-  void openReaderMenu();
+  // pageOnScreen: the framebuffer still holds the reading page. False from a
+  // sub-screen's result handler, whose last frame is what the framebuffer holds.
+  void openReaderMenu(bool pageOnScreen);
   void openHighlightPassage();
   // Long-press a word to anchor a selection there. Suppressed inside the centre
   // menu zone, where a long contact would be ambiguous with the menu tap.
   void openHighlightPassageAt(int touchX, int touchY);
-  void openHighlights();
+  // With a spine, only that chapter's passages ("Tags here").
+  void openHighlights(std::optional<uint16_t> spineFilter = std::nullopt);
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void addBookmark();
 

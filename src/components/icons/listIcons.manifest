@@ -21,3 +21,7 @@ moon = moon
 upload = upload
 download = download
 bookmark = bookmark
+grid = layout-grid
+search = search
+tag = tag
+close = x

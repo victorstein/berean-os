@@ -257,7 +257,7 @@ void EpubReaderActivity::releaseSectionKeepingPosition() {
   section.reset();
 }
 
-void EpubReaderActivity::openReaderMenu() {
+void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
   pendingManualTurn = 0;
   // Mirrors Task 3's own BOARD_HAS_PSRAM gate on loading highlightDoc: on a
   // non-PSRAM board the document is never loaded, so offering these entries
@@ -268,19 +268,25 @@ void EpubReaderActivity::openReaderMenu() {
   constexpr bool hasHighlights = false;
 #endif
   const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
-  startActivityForResult(std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(),
-                                                                  SETTINGS.orientation, !currentPageFootnotes.empty(),
-                                                                  !bookmarks.empty(), hasHighlights, isBible),
-                         [this](const ActivityResult& result) {
-                           const auto& menu = std::get<MenuResult>(result.data);
-                           if (SETTINGS.orientation != menu.orientation) {
-                             applyOrientation(menu.orientation);
-                           }
-                           toggleAutoPageTurn(menu.pageTurnOption);
-                           if (!result.isCancelled) {
-                             onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
-                           }
-                         });
+  int tagsHereCount = 0;
+  if (isBible) {
+    RenderLock lock;
+    tagsHereCount = chapterPassageCount;
+  }
+  startActivityForResult(
+      std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
+                                               !currentPageFootnotes.empty(), !bookmarks.empty(), hasHighlights,
+                                               isBible, tagsHereCount, pageOnScreen),
+      [this](const ActivityResult& result) {
+        const auto& menu = std::get<MenuResult>(result.data);
+        if (SETTINGS.orientation != menu.orientation) {
+          applyOrientation(menu.orientation);
+        }
+        toggleAutoPageTurn(menu.pageTurnOption);
+        if (!result.isCancelled) {
+          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+        }
+      });
 }
 
 bool EpubReaderActivity::buildTickHeapGate() {
@@ -333,7 +339,7 @@ void EpubReaderActivity::openHighlightPassage() {
       [this](const ActivityResult&) { requestUpdate(); });
 }
 
-void EpubReaderActivity::openHighlights() {
+void EpubReaderActivity::openHighlights(const std::optional<uint16_t> spineFilter) {
   // Deliberately NOT progressChangeResultHandler (used by the BOOKMARKS case
   // below): that lambda calls bookmarks.load() and reopens the reader
   // menu on cancel, both wrong here, and HighlightsActivity's own class
@@ -343,7 +349,9 @@ void EpubReaderActivity::openHighlights() {
   // reusing its std::get is type-safe -- it is the surrounding side effects
   // that make reuse wrong, not the ResultVariant alternative.
   startActivityForResult(
-      std::make_unique<HighlightsActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
+      std::make_unique<HighlightsActivity>(renderer, mappedInput, spineFilter,
+                                           spineFilter ? readerMenuTitle() : std::string()),
+      [this](const ActivityResult& result) {
         if (result.isCancelled) return;
         const auto& sync = std::get<ProgressChangeResult>(result.data);
         if (!sync.hasVisibleTextOffset || sync.spineIndex < 0 || sync.spineIndex >= epub->getSpineItemsCount()) {
@@ -514,7 +522,7 @@ void EpubReaderActivity::loop() {
         }
         return;
       case CrossPointSettings::LP_MENU_READER_MENU:
-        openReaderMenu();
+        openReaderMenu(true);
         return;
       case CrossPointSettings::LP_MENU_HIGHLIGHT:
         openHighlightPassage();
@@ -530,7 +538,7 @@ void EpubReaderActivity::loop() {
   }
 
   if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
-    openReaderMenu();
+    openReaderMenu(true);
   }
 
   if (returnStack.count() > 0 && mappedInput.wasReleased(MappedInputManager::Button::Back) &&
@@ -671,7 +679,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     bookmarks.load(renderer, epub, section.get(), currentSpineIndex);
     if (result.isCancelled) {
-      openReaderMenu();
+      openReaderMenu(false);
     } else {
       const auto& sync = std::get<ProgressChangeResult>(result.data);
 
@@ -726,7 +734,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       }
       startActivityForResult(std::move(chapterList), [this](const ActivityResult& result) {
         if (result.isCancelled) {
-          openReaderMenu();
+          openReaderMenu(false);
           return;
         }
         const auto& chapterResult = std::get<ChapterResult>(result.data);
@@ -743,7 +751,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub),
                              [this](const ActivityResult& result) {
                                if (result.isCancelled) {
-                                 openReaderMenu();
+                                 openReaderMenu(false);
                                  return;
                                }
                                const auto& verse = std::get<ChapterResult>(result.data);
@@ -755,7 +763,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       startActivityForResult(std::make_unique<EpubReaderFootnotesActivity>(renderer, mappedInput, currentPageFootnotes),
                              [this](const ActivityResult& result) {
                                if (result.isCancelled) {
-                                 openReaderMenu();
+                                 openReaderMenu(false);
                                  return;
                                }
                                const auto& footnoteResult = std::get<FootnoteResult>(result.data);
@@ -769,7 +777,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
                                                                     TextSettingsActivity::Tab::Family),
                              [this](const ActivityResult&) {
                                releaseSectionKeepingPosition();
-                               openReaderMenu();
+                               openReaderMenu(false);
                              });
       break;
     }
@@ -796,7 +804,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           std::make_unique<EpubReaderPercentSelectionActivity>(renderer, mappedInput, initialPercent),
           [this](const ActivityResult& result) {
             if (result.isCancelled) {
-              openReaderMenu();
+              openReaderMenu(false);
             } else {
               jumpToPercent(std::get<PercentResult>(result.data).percent);
             }
@@ -809,6 +817,10 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
     }
     case EpubReaderMenuActivity::MenuAction::HIGHLIGHTS: {
       openHighlights();
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::TAGS_HERE: {
+      openHighlights(static_cast<uint16_t>(currentSpineIndex));
       break;
     }
     case EpubReaderMenuActivity::MenuAction::GO_HOME: {
@@ -1197,6 +1209,7 @@ void EpubReaderActivity::renderBook() {
   applyDeferredReposition();
 
   renderer.clearScreen();
+  chapterPassageCount = 0;
 
   if (section->pageCount == 0) {
     LOG_DBG("ERS", "No pages to render");
@@ -1389,6 +1402,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       highlightRanges.push_back(VisibleRange{painted.startOffset, painted.endOffset});
     }
   }
+  chapterPassageCount = static_cast<int>(highlightRanges.size());
 
   const int highlightColumnRight = renderer.getScreenWidth() - orientedMarginRight;
   // Must match the compressed pitch ChapterHtmlSlimParser used to advance yPos

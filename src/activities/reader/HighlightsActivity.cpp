@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <functional>
 #include <utility>
 #include <variant>
 
@@ -29,32 +30,52 @@ namespace {
 constexpr int ENTER_DELETE_MODE_MS = 700;
 }  // namespace
 
-HighlightsActivity::HighlightsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : UiListActivity("Highlights", renderer, mappedInput, /*wantsTouchLongPress=*/true) {}
+HighlightsActivity::HighlightsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                       std::optional<uint16_t> spineFilter, std::string title)
+    : UiListActivity("Highlights", renderer, mappedInput, /*wantsTouchLongPress=*/true),
+      spineFilter_(spineFilter),
+      title_(std::move(title)) {}
 
 void HighlightsActivity::onEnter() {
   UiListActivity::onEnter();
   app.on(ACTION_CHIP, &HighlightsActivity::onChipEvent, this);
   app.on(ACTION_MORE, &HighlightsActivity::onMoreEvent, this);
+  std::vector<size_t> nextIndices = computeVisibleIndices(filterTagId_);
   RenderLock lock(*this);
-  rebuildVisibleIndices();
+  visibleIndices_ = std::move(nextIndices);
   rebuildRowItems();
 }
 
 int HighlightsActivity::listCount() const { return static_cast<int>(visibleIndices_.size()) + 1; }
 
-const char* HighlightsActivity::headerTitle() const { return tr(STR_HIGHLIGHTS); }
+const char* HighlightsActivity::headerTitle() const { return title_.empty() ? tr(STR_HIGHLIGHTS) : title_.c_str(); }
 
-void HighlightsActivity::rebuildVisibleIndices() {
-  visibleIndices_.clear();
+std::vector<size_t> HighlightsActivity::computeVisibleIndices(const std::optional<study::TagId> filter) const {
   const auto& passages = STUDY.passages();
-  visibleIndices_.reserve(passages.size());
-  // Most recent first: add only ever appends, so storage order is
-  // oldest-to-newest and "most recent" is the reverse walk.
-  for (size_t i = passages.size(); i-- > 0;) {
-    if (!TagChips::passageMatches(passages[i].tags, filterTagId_)) continue;
-    visibleIndices_.push_back(i);
+  std::vector<size_t> candidates;
+  if (spineFilter_) {
+    // The same resolution the page paints with, so the list matches the
+    // highlighted passages and the menu's count.
+    const auto painted = STUDY.passagesInDocument(*spineFilter_);
+    candidates.reserve(painted.size());
+    for (const auto& passage : painted) candidates.push_back(passage.index);
+    std::sort(candidates.begin(), candidates.end(), std::greater<size_t>());
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+  } else {
+    candidates.reserve(passages.size());
+    // Most recent first: add only ever appends, so storage order is
+    // oldest-to-newest and "most recent" is the reverse walk.
+    for (size_t i = passages.size(); i-- > 0;) candidates.push_back(i);
   }
+
+  std::vector<size_t> visible;
+  visible.reserve(candidates.size());
+  for (const size_t i : candidates) {
+    if (i >= passages.size()) continue;
+    if (!TagChips::passageMatches(passages[i].tags, filter)) continue;
+    visible.push_back(i);
+  }
+  return visible;
 }
 
 void HighlightsActivity::dropRetiredFilter() {
@@ -173,11 +194,12 @@ void HighlightsActivity::selectChip(const int chipIndex) {
     return;
   }
 
+  std::vector<size_t> nextIndices = computeVisibleIndices(picked);
   {
     // chips_ and rowItems_ are borrowed by the render task; rebuild them under its lock.
     RenderLock lock(*this);
     filterTagId_ = picked;
-    rebuildVisibleIndices();
+    visibleIndices_ = std::move(nextIndices);
     rebuildRowItems();
   }
   moveRingTo(0);
@@ -205,9 +227,10 @@ void HighlightsActivity::openTagFilter() {
 
                            // Always rebuilt, including on cancel: a retirement changes the rows
                            // and the labels they borrow even when the filter is untouched.
+                           std::vector<size_t> nextIndices = computeVisibleIndices(filterTagId_);
                            {
                              RenderLock lock(*this);
-                             rebuildVisibleIndices();
+                             visibleIndices_ = std::move(nextIndices);
                              rebuildRowItems();
                            }
                            moveRingTo(0, buttonFocus_);
@@ -504,13 +527,14 @@ void HighlightsActivity::applyTagEdit(const size_t docIndex, const ActivityResul
   // The picker persists palette changes itself, so even a cancelled edit may
   // have retired the tag being filtered on.
   dropRetiredFilter();
+  std::vector<size_t> nextIndices = computeVisibleIndices(filterTagId_);
   {
-    // rebuildVisibleIndices/rebuildRowItems refill the vector buildScreen
-    // hands the render task as rowItems_.data(); the render lock is
-    // explicitly released before this handler runs (ActivityManager.cpp),
-    // so nothing else serialises this against a concurrent render.
+    // rebuildRowItems refills the vector buildScreen hands the render task as
+    // rowItems_.data(); the render lock is explicitly released before this
+    // handler runs (ActivityManager.cpp), so nothing else serialises this
+    // against a concurrent render.
     RenderLock lock(*this);
-    rebuildVisibleIndices();
+    visibleIndices_ = std::move(nextIndices);
     rebuildRowItems();
   }
   // The rebuild can shrink visibleIndices_ (filter reset above, or the
@@ -553,9 +577,10 @@ void HighlightsActivity::deleteHighlight(const size_t docIndex) {
   // Rebuilt under the render lock: rowItems_[i].label aliases each passage's
   // std::string storage (see rebuildRowItems) and the render task runs
   // concurrently, so it must never see rows aliasing erased or moved storage.
+  std::vector<size_t> nextIndices = computeVisibleIndices(filterTagId_);
   {
     RenderLock lock(*this);
-    rebuildVisibleIndices();
+    visibleIndices_ = std::move(nextIndices);
     rebuildRowItems();
   }
 
