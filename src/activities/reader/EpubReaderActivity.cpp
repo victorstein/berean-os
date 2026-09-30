@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "BibleNavigationActivity.h"
+#include "BibleReference.h"
 #include "BibleSearchActivity.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -1609,6 +1610,10 @@ void EpubReaderActivity::resolveBibleChapterNumber() {
   bibleChapterNumber = reader.chapter();
 }
 
+int EpubReaderActivity::currentBibleChapter() const {
+  return bibleChapterNumberSpine == currentSpineIndex ? bibleChapterNumber : -1;
+}
+
 void EpubReaderActivity::renderStatusBar() const {
   const int currentPage = section ? section->currentPage + 1 : 1;
   const float pageCount = section ? section->estimatedTotalPages() : 1;
@@ -1630,13 +1635,7 @@ void EpubReaderActivity::renderStatusBar() const {
     if (epub) {
       const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
       if (tocIndex != -1) {
-        const auto tocItem = epub->getTocItem(tocIndex);
-        title = tocItem.title;
-        // A Bible's covering TOC entry is the book, so the chapter the reader
-        // is actually in has to be appended: "Exodo" -> "Exodo 5".
-        if (bibleChapterNumber > 0 && bibleChapterNumberSpine == currentSpineIndex) {
-          title += ' ' + std::to_string(bibleChapterNumber);
-        }
+        title = bibleReference(epub->getTocItem(tocIndex).title, currentBibleChapter());
       }
     }
   } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
