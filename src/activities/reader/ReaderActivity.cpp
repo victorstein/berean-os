@@ -52,10 +52,12 @@ void ReaderActivity::onEnter() {
   sdFontSystem.ensureLoaded(renderer);
   applyInitialOrientation();
 
+  const unsigned long loadStartMs = millis();
   if (!loadBook()) {
     finish();
     return;
   }
+  LOG_DBG("READER", "Book loaded in %lu ms", millis() - loadStartMs);
 
   APP_STATE.openEpubPath = bookPath;
   APP_STATE.saveToFileAtomic();

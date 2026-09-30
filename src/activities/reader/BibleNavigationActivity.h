@@ -32,9 +32,13 @@
 // the current chapter selected (see BibleEntryPosition.h for the fallbacks).
 class BibleNavigationActivity final : public UiListActivity {
  public:
+  // goToStartMs: millis() when the reader began opening this navigator; the Go to milestones are
+  // logged relative to it.
   BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::shared_ptr<Epub>& epub,
-                          int currentSpineIndex, const std::vector<BookmarkEntry>& bookmarks);
+                          int currentSpineIndex, const std::vector<BookmarkEntry>& bookmarks,
+                          unsigned long goToStartMs);
   void onEnter() override;
+  void render(RenderLock&& lock) override;
 
  private:
   enum class Level : uint8_t { Book, Chapter, Verse };
@@ -60,6 +64,9 @@ class BibleNavigationActivity final : public UiListActivity {
   std::shared_ptr<Epub> epub;
   // The reader's spine item when the navigator was opened; decides the entry level.
   const int entrySpine;
+  const unsigned long goToStartMs;
+  // Written and read only by the render task.
+  bool firstFrameLogged = false;
   // A copy of the open book's bookmark positions, so nothing here points into
   // the reader underneath.
   std::unique_ptr<GridMarks::BookmarkPosition[]> bookmarkPositions;

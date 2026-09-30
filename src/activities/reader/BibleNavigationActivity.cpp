@@ -1,5 +1,6 @@
 #include "BibleNavigationActivity.h"
 
+#include <Arduino.h>
 #include <Epub/BibleNavScanner.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -10,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <utility>
 
 #include "BibleEntryPosition.h"
 #include "MappedInputManager.h"
@@ -38,10 +40,12 @@ bool feedVerseScanner(void* ctx, const char* chunk, const size_t length, const b
 
 BibleNavigationActivity::BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                  const std::shared_ptr<Epub>& epub, const int currentSpineIndex,
-                                                 const std::vector<BookmarkEntry>& bookmarks)
+                                                 const std::vector<BookmarkEntry>& bookmarks,
+                                                 const unsigned long goToStartMs)
     : UiListActivity("BibleNavigation", renderer, mappedInput, /*wantsTouchLongPress=*/false),
       epub(epub),
-      entrySpine(currentSpineIndex) {
+      entrySpine(currentSpineIndex),
+      goToStartMs(goToStartMs) {
   if (bookmarks.empty()) return;
   bookmarkPositions = makeUniqueNoThrow<GridMarks::BookmarkPosition[]>(bookmarks.size());
   if (!bookmarkPositions) {
@@ -71,15 +75,25 @@ void BibleNavigationActivity::onEnter() {
     const std::string cover = epub->getThumbBmpPath(Masthead::thumbHeight(renderer));
     if (Masthead::fits(renderer, cover)) mastheadCover = cover;
   }
+  LOG_DBG("BNV", "Go to: masthead checked +%lu ms", millis() - goToStartMs);
 
   if (!loadBooks()) {
     LOG_ERR("BNV", "Failed to read the book list");
   }
+  LOG_DBG("BNV", "Go to: books ready +%lu ms", millis() - goToStartMs);
   enterAtPosition();
+  LOG_DBG("BNV", "Go to: entry level ready +%lu ms", millis() - goToStartMs);
   LOG_INF("BNV", "Memory with grid open: internal free %u (largest %u), PSRAM free %u, %d bookmarks",
           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
           static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)), bookmarkCount);
+}
+
+void BibleNavigationActivity::render(RenderLock&& lock) {
+  UiListActivity::render(std::move(lock));
+  if (firstFrameLogged) return;
+  firstFrameLogged = true;
+  LOG_DBG("BNV", "Go to: first frame +%lu ms", millis() - goToStartMs);
 }
 
 bool BibleNavigationActivity::loadBooks() {

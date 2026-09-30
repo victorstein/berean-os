@@ -408,6 +408,7 @@ void LauncherActivity::openReader(const HomeTargets::Route& route, const Target 
       intent = ReaderEntryIntent::openAt(recentPlaces[slot]);
     }
   }
+  if (route.intent == ReaderEntryIntent::Kind::GoTo) LOG_DBG(MODULE, "Go to: home tap");
   activityManager.goToReader(biblePath, route.allowFastInitialRefresh, intent);
 }
 

@@ -931,6 +931,8 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
 }
 
 void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
+  const unsigned long goToStartMs = millis();
+  LOG_DBG("ERS", "Go to: opening the picker");
   const int spineIdx = currentSpineIndex;
   // Release the section while the chapter list is up (mirrors the
   // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
@@ -944,7 +946,8 @@ void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
   // at most once for the life of the Epub.
   std::unique_ptr<Activity> chapterList;
   if (isBible()) {
-    chapterList = std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx, bookmarks.entries());
+    chapterList = std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx, bookmarks.entries(),
+                                                            goToStartMs);
   } else {
     chapterList = std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx);
   }
