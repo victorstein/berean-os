@@ -118,6 +118,7 @@ class HighlightsActivity final : public UiListActivity {
   // size), mirroring UiTabListActivity's tab-band ring.
   void moveRingTo(int ringIndex, bool fromButton = false);
   void syncRingViewport(UiScreen& screen, freeink::ui::ListProps& props);
+  void confirmRingFollow();
   void navigateButtons() override;
   void onRowAction(const freeink::ui::ActionEvent& event) override;
 
@@ -196,4 +197,8 @@ class HighlightsActivity final : public UiListActivity {
   // The chip band is outlined only when a button step put the focus there; ring 0 is also where
   // every touch session starts, and an outline there would be on screen almost all the time.
   bool buttonFocus_ = false;
+  // A ring move sizes the viewport from the previous build's row count, which is only an estimate
+  // with variable-height rows; the build confirms it or advances it, as ListNav::follow does for
+  // row-indexed lists.
+  bool ringFollowPending_ = false;
 };

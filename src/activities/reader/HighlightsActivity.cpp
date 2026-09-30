@@ -259,6 +259,7 @@ void HighlightsActivity::moveRingTo(const int ringIndex, const bool fromButton) 
     const int rowCount = static_cast<int>(visibleIndices_.size());
     n.selected = std::clamp(ringIndex, 0, rowCount);
     buttonFocus_ = fromButton;
+    ringFollowPending_ = n.selected > 0;
     if (n.selected == 0) {
       n.top = 0;
     } else {
@@ -658,6 +659,23 @@ void HighlightsActivity::buildScreen(UiScreen& screen) {
   props.subtitleText.maxLines = 2;
   syncRingViewport(screen, props);
   screen.list(props);
+  confirmRingFollow();
+}
+
+void HighlightsActivity::confirmRingFollow() {
+  if (!ringFollowPending_) return;
+  auto& n = activeNav();
+  const int selectedRow = n.selected - 1;
+  const int drawn = n.drawnRows > 0 ? n.drawnRows : 1;
+  if (selectedRow < n.top || selectedRow < n.top + drawn) {
+    ringFollowPending_ = false;
+    return;
+  }
+  int next = selectedRow - drawn + 1;
+  if (next <= n.top) next = n.top + 1;
+  if (next > selectedRow) next = selectedRow;
+  n.top = next;
+  n.rebuildNeeded = true;
 }
 
 void HighlightsActivity::buildChipRow(UiScreen& screen) {
