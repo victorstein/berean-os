@@ -29,6 +29,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
+#include "PlacesStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "WifiCredentialStore.h"
@@ -417,6 +418,7 @@ static void loadPersistedState(const BootContext& boot) {
   SETTINGS.loadFromFile();
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
+  PLACES.load();
   // Loaded with the others so nothing can save it unread: the web server's Wi-Fi
   // API is reachable in hotspot mode without passing through WifiSelectionActivity,
   // and a save of an unloaded store replaces every credential on the card.
