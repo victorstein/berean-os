@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "activities/reader/TagChipRow.h"
@@ -317,4 +318,93 @@ TEST(TagChipGeometry, NeighboursShareTheGapExactly) {
   const auto below = TagChips::hitPadding(layout, 2, GAP);
   EXPECT_EQ(first.bottom + below.top, GAP);
   EXPECT_EQ(below.bottom, 0);
+}
+
+namespace {
+
+TagChips::Counts countsOf(const size_t all, const size_t unlabelled, std::vector<uint16_t> perTag) {
+  TagChips::Counts counts;
+  counts.all = all;
+  counts.unlabelled = unlabelled;
+  counts.perTag = std::move(perTag);
+  return counts;
+}
+
+std::vector<TagChips::Candidate> candidatesOf(const TagChips::Counts& counts, const std::vector<TagId>& active,
+                                              const std::optional<TagId> filter, const size_t cap = SIZE_MAX) {
+  std::vector<TagChips::Candidate> out;
+  TagChips::candidates(counts, active, filter, cap, out);
+  return out;
+}
+
+}  // namespace
+
+TEST(TagChipCandidates, AllThenTagsInActiveOrderThenUnlabelled) {
+  const auto out = candidatesOf(countsOf(6, 1, {3, 2, 1}), {HOPE, MINISTRY, NAME}, std::nullopt);
+  ASSERT_EQ(out.size(), 5u);
+  EXPECT_EQ(out[0].kind, TagChips::Kind::All);
+  for (uint16_t slot = 0; slot < 3; ++slot) {
+    EXPECT_EQ(out[1 + slot].kind, TagChips::Kind::Tag);
+    EXPECT_EQ(out[1 + slot].slot, slot);
+  }
+  EXPECT_EQ(out[4].kind, TagChips::Kind::Unlabelled);
+}
+
+TEST(TagChipCandidates, ZeroCountTagIsDroppedUnlessItIsTheFilter) {
+  const auto unfiltered = candidatesOf(countsOf(3, 0, {3, 0}), {HOPE, MINISTRY}, std::nullopt);
+  ASSERT_EQ(unfiltered.size(), 2u);
+  EXPECT_EQ(unfiltered[1].slot, 0);
+
+  const auto filtered = candidatesOf(countsOf(3, 0, {3, 0}), {HOPE, MINISTRY}, MINISTRY);
+  ASSERT_EQ(filtered.size(), 3u);
+  EXPECT_EQ(filtered[2].kind, TagChips::Kind::Tag);
+  EXPECT_EQ(filtered[2].slot, 1);
+}
+
+TEST(TagChipCandidates, ZeroUnlabelledIsDroppedUnlessItIsTheFilter) {
+  EXPECT_EQ(candidatesOf(countsOf(1, 0, {1}), {HOPE}, std::nullopt).size(), 2u);
+  const auto filtered = candidatesOf(countsOf(1, 0, {1}), {HOPE}, UNLABELLED);
+  ASSERT_EQ(filtered.size(), 3u);
+  EXPECT_EQ(filtered[2].kind, TagChips::Kind::Unlabelled);
+}
+
+TEST(TagChipCandidates, CapStopsTheListAndUncappedKeepsEveryCandidate) {
+  std::vector<TagId> active;
+  std::vector<uint16_t> perTag;
+  for (uint16_t raw = 1; raw <= 200; ++raw) {
+    active.push_back(toTagId(raw));
+    perTag.push_back(1);
+  }
+  const auto counts = countsOf(200, 2, perTag);
+  EXPECT_EQ(candidatesOf(counts, active, std::nullopt, TagChips::MAX_CHIPS + 1).size(),
+            static_cast<size_t>(TagChips::MAX_CHIPS + 1));
+  EXPECT_EQ(candidatesOf(counts, active, std::nullopt).size(), 202u);
+  EXPECT_TRUE(candidatesOf(counts, active, std::nullopt, 0).empty());
+}
+
+TEST(TagChipCandidates, ChapterScopedCountsDecideWhichTagsAppear) {
+  const std::vector<TagId> active{HOPE, MINISTRY, NAME};
+  const auto out = candidatesOf(TagChips::countIn(PUBLICATION, CHAPTER, active), active, std::nullopt);
+  ASSERT_EQ(out.size(), 4u) << "All, hope, ministry, Unlabelled; name is absent from the chapter";
+  EXPECT_EQ(out[1].slot, 0);
+  EXPECT_EQ(out[2].slot, 1);
+  EXPECT_EQ(out[3].kind, TagChips::Kind::Unlabelled);
+}
+
+// Replaces the FilterRows guard: a long-press retires only a Kind::Tag chip, so no other kind may
+// ever be one, and every Tag slot must name a real palette entry.
+TEST(TagChipCandidates, OnlyTagCandidatesNameAPaletteSlot) {
+  const std::vector<TagId> active{HOPE, MINISTRY, NAME};
+  for (const std::optional<TagId> filter : {std::optional<TagId>{}, std::optional<TagId>{UNLABELLED},
+                                            std::optional<TagId>{NAME}, std::optional<TagId>{toTagId(42)}}) {
+    const auto out = candidatesOf(countsOf(5, 2, {2, 0, 0}), active, filter);
+    int tags = 0;
+    for (size_t i = 0; i < out.size(); ++i) {
+      if (out[i].kind != TagChips::Kind::Tag) continue;
+      ++tags;
+      ASSERT_LT(out[i].slot, active.size());
+    }
+    EXPECT_EQ(out.front().kind, TagChips::Kind::All);
+    EXPECT_EQ(tags, filter == NAME ? 2 : 1);
+  }
 }

@@ -88,6 +88,31 @@ constexpr int MAX_CHIPS = 24;
 
 enum class Kind : uint8_t { All, Tag, Unlabelled };
 
+struct Candidate {
+  Kind kind = Kind::All;
+  // Index into the activeIds (and Counts::perTag) the chips were counted with; Kind::Tag only.
+  uint16_t slot = 0;
+};
+
+// The chips to offer, in display order: All, each active tag with a non-zero count, then
+// Unlabelled when non-zero. A zero-count chip stays while it is the active filter, so an empty list
+// still shows why (the palette is global, so most zeros are tags of other publications or chapters).
+inline void candidates(const Counts& counts, const std::vector<study::TagId>& activeIds,
+                       const std::optional<study::TagId> filter, const size_t cap, std::vector<Candidate>& out) {
+  out.clear();
+  if (cap == 0) return;
+  out.reserve(std::min(cap, activeIds.size() + 2));
+  out.push_back(Candidate{Kind::All, 0});
+  const size_t slots = std::min(activeIds.size(), counts.perTag.size());
+  for (size_t slot = 0; slot < slots; ++slot) {
+    if (counts.perTag[slot] == 0 && filter != activeIds[slot]) continue;
+    if (out.size() >= cap) return;
+    out.push_back(Candidate{Kind::Tag, static_cast<uint16_t>(slot)});
+  }
+  if (out.size() >= cap) return;
+  if (counts.unlabelled > 0 || filter == study::UNLABELLED) out.push_back(Candidate{Kind::Unlabelled, 0});
+}
+
 struct Placed {
   int chip = 0;  // index into the widths passed to layout(), or -1 for the ellipsis
   int line = 0;
