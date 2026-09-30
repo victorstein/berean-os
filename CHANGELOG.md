@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/victorstein/berean-os/compare/v1.20.2...v1.21.0) (2026-09-30)
+
+
+### Features
+
+* compact touch metrics and drop Bible progress indicators ([#197](https://github.com/victorstein/berean-os/issues/197)) ([3591e3f](https://github.com/victorstein/berean-os/commit/3591e3fe0c21a52f915154498cb5a86c752cd026)), closes [#194](https://github.com/victorstein/berean-os/issues/194)
+
 ## [1.20.2](https://github.com/victorstein/berean-os/compare/v1.20.1...v1.20.2) (2026-09-29)
 
 
