@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.7](https://github.com/victorstein/berean-os/compare/v1.29.6...v1.29.7) (2026-09-30)
+
+
+### Performance
+
+* make go to open the chapter grid fast ([#248](https://github.com/victorstein/berean-os/issues/248)) ([08ac400](https://github.com/victorstein/berean-os/commit/08ac40030ccac90c04ca9465a7150cba3dd7eec0)), closes [#238](https://github.com/victorstein/berean-os/issues/238)
+
 ## [1.29.6](https://github.com/victorstein/berean-os/compare/v1.29.5...v1.29.6) (2026-09-30)
 
 
