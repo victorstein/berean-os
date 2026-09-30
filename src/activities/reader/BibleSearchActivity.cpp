@@ -20,6 +20,7 @@
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "study/BibleSearchStore.h"
+#include "util/BibleReference.h"
 #include "util/TaskWatchdog.h"
 
 namespace fui = freeink::ui;
@@ -525,7 +526,9 @@ void BibleSearchActivity::runSearch() {
   char label[sizeof(goToLabel)] = {};
   if (reference.found) {
     char place[REFERENCE_BYTES];
-    formatTypedReference(place, sizeof(place), bookNames.forBook(reference.reference.book), reference.reference);
+    const TypedReference& shown = reference.reference;
+    BibleReference::format(place, sizeof(place), bookNames.forBook(shown.book),
+                           BibleReference::Verses{shown.chapter, shown.verse, shown.verseEnd});
     snprintf(label, sizeof(label), tr(STR_BIBLE_SEARCH_GO_TO), place);
   }
   [[maybe_unused]] const unsigned long resolved = millis();
@@ -594,14 +597,8 @@ void BibleSearchActivity::ensureRows(const int listTop, const int visibleRows) {
       row.textAttempted = true;
       continue;
     }
-    const char* name = bookNames.forBook(row.entry.book);
-    if (name[0] != '\0') {
-      snprintf(row.reference, sizeof(row.reference), "%s %u:%u", name, static_cast<unsigned>(row.entry.chapter),
-               static_cast<unsigned>(row.entry.verse));
-    } else {
-      snprintf(row.reference, sizeof(row.reference), "%u:%u", static_cast<unsigned>(row.entry.chapter),
-               static_cast<unsigned>(row.entry.verse));
-    }
+    BibleReference::format(row.reference, sizeof(row.reference), bookNames.forBook(row.entry.book),
+                           BibleReference::Verses{row.entry.chapter, row.entry.verse});
   }
 
   // One streamed document serves every visible row it holds.

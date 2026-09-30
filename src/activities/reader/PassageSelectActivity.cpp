@@ -19,6 +19,7 @@
 #include "TagPickerActivity.h"
 #include "components/UITheme.h"
 #include "study/StudyStore.h"
+#include "util/BibleReference.h"
 
 void PassageSelectActivity::onEnter() {
   Activity::onEnter();
@@ -227,15 +228,14 @@ std::string PassageSelectActivity::verseReference(const uint32_t startOffset) co
   if (!ok) return {};
 
   const auto anchors = scanner.take();
-  const std::string verse = VerseAnchors::format(VerseAnchors::find(anchors, startOffset));
-  if (verse.empty()) return {};
+  const VerseAnchors::VerseAnchor* anchor = VerseAnchors::find(anchors, startOffset);
+  if (!anchor) return {};
 
   // Book name comes from the covering TOC entry, never a built-in table: a
   // hardcoded list would be wrong in every other language and every non-Bible book.
   const auto spine = epub.getSpineItem(spineIndex);
-  if (spine.tocIndex < 0) return verse;
-  const auto toc = epub.getTocItem(spine.tocIndex);
-  return toc.title.empty() ? verse : toc.title + " " + verse;
+  const std::string book = spine.tocIndex >= 0 ? epub.getTocItem(spine.tocIndex).title : std::string();
+  return BibleReference::format(book, BibleReference::Verses{anchor->chapter, anchor->verse});
 }
 
 int PassageSelectActivity::wordAt(const int x, const int y) const {

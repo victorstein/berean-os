@@ -23,7 +23,6 @@
 
 #include "BibleBookNameTable.h"
 #include "BibleNavigationActivity.h"
-#include "BibleReference.h"
 #include "BibleSearchActivity.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -52,6 +51,7 @@
 #include "fontIds.h"
 #include "study/PubKeyRegistry.h"
 #include "study/StudyStore.h"
+#include "util/BibleReference.h"
 #include "util/BookCacheUtils.h"
 #include "util/PlacesDoc.h"
 #include "util/ScreenshotUtil.h"
@@ -73,6 +73,12 @@ int clampPercent(int percent) {
 bool feedChapterNumberReader(void* ctx, const char* chunk, const size_t length, const bool isFinal) {
   auto* reader = static_cast<BibleChapterNumber::Reader*>(ctx);
   return reader->feed(chunk, length, isFinal) && !reader->resolved();
+}
+
+// currentBibleChapter() is -1 until the chapter is known; BibleReference writes chapter 0 as the
+// book alone, which is what the title has always shown then.
+BibleReference::Verses knownChapter(const int chapter) {
+  return BibleReference::Verses{static_cast<uint16_t>(std::max(chapter, 0))};
 }
 
 constexpr char READ_FOLDER[] = "/read";
@@ -1790,7 +1796,7 @@ std::string EpubReaderActivity::readerMenuTitle() const {
   if (tocIndex < 0) return epub->getTitle();
   const std::string book = epub->getTocItem(tocIndex).title;
   if (book.empty()) return epub->getTitle();
-  return bibleReference(book, currentBibleChapter());
+  return BibleReference::format(book, knownChapter(currentBibleChapter()));
 }
 
 void EpubReaderActivity::renderStatusBar() const {
@@ -1814,7 +1820,7 @@ void EpubReaderActivity::renderStatusBar() const {
     if (epub) {
       const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
       if (tocIndex != -1) {
-        title = bibleReference(epub->getTocItem(tocIndex).title, currentBibleChapter());
+        title = BibleReference::format(epub->getTocItem(tocIndex).title, knownChapter(currentBibleChapter()));
       }
     }
   } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {

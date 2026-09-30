@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "BibleReference.h"
+
 namespace PlacesDoc {
 namespace {
 
@@ -34,6 +36,10 @@ bool isBiblePlace(const study::Unit& unit) {
 
 bool sameChapter(const study::Unit& a, const study::Unit& b) { return a.book == b.book && a.major == b.major; }
 
+BibleReference::Verses placeVerses(const study::Unit& unit, const bool chapterOnly) {
+  return {unit.major, static_cast<uint16_t>(chapterOnly ? 0 : unit.minor)};
+}
+
 }  // namespace
 
 std::optional<PlaceUnit> placeUnit(const study::DocumentUnits& units, const uint32_t pageOffset) {
@@ -48,15 +54,10 @@ std::optional<PlaceUnit> placeUnit(const study::DocumentUnits& units, const uint
   return PlaceUnit{study::Unit{study::UnitKind::Verse, units.book, first.major, first.minor, 0}, true};
 }
 
+// Uncapped first, then utf8SafeSummary: it collapses whitespace before it caps, so the stored
+// label matches what this function has always written.
 std::string formatReference(const std::string_view book, const study::Unit& unit, const bool chapterOnly) {
-  std::string reference(book);
-  if (!reference.empty()) reference += ' ';
-  reference += std::to_string(unit.major);
-  if (!chapterOnly) {
-    reference += ':';
-    reference += std::to_string(unit.minor);
-  }
-  return utf8SafeSummary(std::move(reference), MAX_REFERENCE_BYTES);
+  return utf8SafeSummary(BibleReference::format(book, placeVerses(unit, chapterOnly)), MAX_REFERENCE_BYTES);
 }
 
 void formatChipLabel(const std::string_view abbreviation, const Place& place, char* out, const size_t outBytes) {
@@ -64,15 +65,7 @@ void formatChipLabel(const std::string_view abbreviation, const Place& place, ch
     snprintf(out, outBytes, "%s", place.reference.c_str());
     return;
   }
-  // An abbreviation is at most 15 bytes (BibleBookNameTable::ABBREV_BYTES) and the numbers at
-  // most 11, so this never reaches MAX_REFERENCE_BYTES and never cuts a UTF-8 sequence.
-  if (place.chapterOnly) {
-    snprintf(out, outBytes, "%.*s %u", static_cast<int>(abbreviation.size()), abbreviation.data(),
-             static_cast<unsigned>(place.unit.major));
-  } else {
-    snprintf(out, outBytes, "%.*s %u:%u", static_cast<int>(abbreviation.size()), abbreviation.data(),
-             static_cast<unsigned>(place.unit.major), static_cast<unsigned>(place.unit.minor));
-  }
+  BibleReference::format(out, outBytes, abbreviation, placeVerses(place.unit, place.chapterOnly));
 }
 
 size_t pickRecent(const std::vector<Place>& places, const std::optional<study::Unit>& onScreen, Place* out,
