@@ -263,7 +263,7 @@ void HighlightsActivity::moveRingTo(const int ringIndex, const bool fromButton) 
       n.top = 0;
     } else {
       // ListNav::follow reads selected as a row index, and here it is a ring position.
-      const uint16_t rows = n.visibleRows > 0 ? static_cast<uint16_t>(n.visibleRows) : 1;
+      const uint16_t rows = n.pageRows() > 0 ? static_cast<uint16_t>(n.pageRows()) : 1;
       n.top = fui::listTopIndexFor(static_cast<int16_t>(n.selected - 1), static_cast<uint16_t>(n.top < 0 ? 0 : n.top),
                                    rows, static_cast<uint16_t>(rowCount));
     }
@@ -321,9 +321,11 @@ void HighlightsActivity::syncRingViewport(UiScreen& screen, fui::ListProps& prop
   n.scrollBy(0, rowCount);
   if (n.selected > rowCount) n.selected = rowCount;
   props.topIndex = static_cast<uint16_t>(n.top);
-  // -1 while the chip row holds the focus. props.nav stays null: ListNav::onListRendered reads
-  // selected as a row index.
+  // -1 while the chip row holds the focus.
   props.selectedIndex = static_cast<int16_t>(n.selected - 1);
+  // list() reports its drawn rows back through nav, which keeps the variable-height tail reachable.
+  // follow() is never called: it would read selected as a row index, and here it is a ring position.
+  props.nav = &n;
 }
 
 void HighlightsActivity::onRowLongPress(const int index) {
