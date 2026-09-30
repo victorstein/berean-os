@@ -1,5 +1,6 @@
 add_executable(AutoPageTurnTest
   AutoPageTurnTest.cpp
+  ForwardTurnTest.cpp
 )
 
 target_include_directories(AutoPageTurnTest PRIVATE

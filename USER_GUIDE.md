@@ -428,7 +428,7 @@ Everything is on the SD card, in two hidden directories.
 |---|---|
 | `passages/` | highlights and the tags on them, one file per publication |
 | `tags.json` | your tags, shared by every publication |
-| `completion/` | which Bible chapters you have read |
+| `completion/` | left by older firmware; no longer used, safe to delete |
 | `pubkeys.json` | which publication each downloaded file is, and which file is your Bible |
 | `meeting-weeks.json` | the meeting publications for each week looked up |
 | `search/` | the Bible search index |
