@@ -78,3 +78,19 @@ target_link_libraries(ReaderMenuSheetLayoutTest PRIVATE
 )
 
 gtest_discover_tests(ReaderMenuSheetLayoutTest)
+
+add_executable(ReaderEntryIntentTest
+  ReaderEntryIntentTest.cpp
+)
+
+target_include_directories(ReaderEntryIntentTest PRIVATE
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/StudyStore
+)
+
+target_link_libraries(ReaderEntryIntentTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(ReaderEntryIntentTest)
