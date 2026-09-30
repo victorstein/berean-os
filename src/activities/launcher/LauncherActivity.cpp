@@ -38,7 +38,6 @@
 #include "network/MeetingFilename.h"
 #include "network/MeetingLibrary.h"
 #include "network/MeetingWeekCache.h"
-#include "study/ChapterCompletionFile.h"
 #include "study/PubKeyRegistry.h"
 #include "util/CardBooks.h"
 #include "util/CoverThumb.h"
@@ -81,22 +80,6 @@ void LauncherActivity::onEnter() {
   requestUpdate();
 }
 
-void LauncherActivity::applyChaptersReadSubtitle() {
-  study::ChapterCompletion completion;
-  const auto loaded = ChapterCompletionFile::load(study::BIBLE_PUB_KEY, completion);
-  if (loaded != ChapterCompletionFile::LoadResult::Loaded &&
-      loaded != ChapterCompletionFile::LoadResult::RecoveredFromTemp) {
-    return;
-  }
-  const uint16_t chaptersRead = completion.readCount();
-  if (chaptersRead == 0) return;
-
-  char line[64];
-  snprintf(line, sizeof(line), tr(STR_BIBLE_CHAPTERS_READ), static_cast<unsigned>(chaptersRead),
-           static_cast<unsigned>(study::CANONICAL_CHAPTER_TOTAL));
-  bibleSubtitle = line;
-}
-
 void LauncherActivity::resolveTargets() {
   RECENT_BOOKS.loadFromFile();
   bool generatedAny = false;
@@ -132,7 +115,6 @@ void LauncherActivity::resolveTargets() {
   if (foundBible) {
     biblePath = std::move(*foundBible);
     bibleSubtitle = bibleTitleFor(biblePath, recents);
-    applyChaptersReadSubtitle();
     bibleCoverPath =
         CoverThumb::pathFor(biblePath, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
     // The sleep screen paints this too, and it runs while the device is shutting

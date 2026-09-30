@@ -83,10 +83,6 @@ class LauncherActivity final : public Activity {
   // Resolved once on entry: the resume strip needs a book, and the Bible tile
   // needs to know whether one is on the card before offering to open it.
   void resolveTargets();
-  // Replaces the edition title once any chapter is recorded: the title is the
-  // same every day and the cover already names the edition, while this is the
-  // one thing on the tile that changes as the user reads.
-  void applyChaptersReadSubtitle();
 
   ButtonNavigator buttonNavigator;
   int selected = 0;
