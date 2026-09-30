@@ -6,11 +6,15 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <Utf8.h>
+#include <esp_heap_caps.h>
 
 #include <algorithm>
 
 #include "CatalogSearchActivity.h"
 #include "RecentBooksStore.h"
+#include "components/CoverBandGeometry.h"
+#include "components/Masthead.h"
+#include "components/MastheadLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "study/PubKeyRegistry.h"
@@ -34,9 +38,26 @@ int PublicationsActivity::entryIndexForRow(const int row) const {
 
 const char* PublicationsActivity::headerTitle() const { return tr(STR_PUBLICATIONS); }
 
+void PublicationsActivity::drawChrome() {
+  if (!hasMasthead()) UiListActivity::drawChrome();
+}
+
+void PublicationsActivity::drawFooter() {
+  UiListActivity::drawFooter();
+  if (hasMasthead()) {
+    Masthead::draw(renderer, mastheadCover_, CoverBandGeometry::BOOK_TITLE_BAND, headerTitle());
+  }
+}
+
 void PublicationsActivity::onEnter() {
   UiListActivity::onEnter();
   refresh();
+  // Entered from the launcher's cover tiles: one clean paint over them.
+  halfRefreshPending.store(true);
+  LOG_INF(MODULE, "Memory on entry: internal free %u (largest %u), PSRAM free %u",
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 }
 
 void PublicationsActivity::refresh() {
@@ -74,6 +95,29 @@ void PublicationsActivity::refresh() {
       GUI.fillPopupProgress(renderer, popupRect, static_cast<int>((i + 1) * 100 / entries_.size()));
     }
   }
+
+  std::vector<std::string> recentPaths;
+  recentPaths.reserve(recents.size());
+  for (const RecentBook& book : recents) recentPaths.push_back(book.path);
+  std::vector<std::string> listedPaths;
+  listedPaths.reserve(entries_.size());
+  for (const Entry& entry : entries_) listedPaths.push_back(entry.path);
+  const std::vector<std::string> coverCandidates =
+      MastheadLayout::coverCandidates(recentPaths, listedPaths, MAX_MASTHEAD_CANDIDATES);
+
+  // pickCover may open an EPUB to build the band's thumbnail, which is slow:
+  // the same popup the row thumbnails use, unless one is already up.
+  if (!coverCandidates.empty() && !generatedAny && !Masthead::isCached(renderer, coverCandidates.front())) {
+    popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  }
+  std::string mastheadCover = Masthead::pickCover(renderer, coverCandidates);
+
+  // drawChrome and buildScreen read this on the render task.
+  RenderLock lock(*this);
+  // A delete or a download can swap the cover or remove it; a differential
+  // paint would leave the old art ghosted.
+  if (!mastheadCover_.empty() && mastheadCover_ != mastheadCover) halfRefreshPending.store(true);
+  mastheadCover_ = std::move(mastheadCover);
 }
 
 bool PublicationsActivity::loadThumb(Entry& entry, bool& generatedAny) {
@@ -121,8 +165,10 @@ bool PublicationsActivity::loadThumb(Entry& entry, bool& generatedAny) {
 void PublicationsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const int contentTop =
+      hasMasthead() ? Masthead::contentTop(renderer) : safe.y + metrics.topPadding + metrics.headerHeight;
   screen.setContentMargin(
-      fui::Insets{static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
+      fui::Insets{static_cast<int16_t>(contentTop),
                   static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
                   static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height) + metrics.buttonHintsHeight),
                   static_cast<int16_t>(safe.x)});

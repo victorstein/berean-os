@@ -36,6 +36,9 @@ class PublicationsActivity final : public UiListActivity {
   // Bounds what a card full of books can pin. Beyond this the rows fall back to
   // the generic icon rather than growing the buffer without limit.
   static constexpr size_t MAX_THUMBS = 32;
+  // How many books the masthead tries before giving up; each costs a BMP header
+  // read.
+  static constexpr size_t MAX_MASTHEAD_CANDIDATES = 8;
 
   struct Entry {
     std::string path;
@@ -62,6 +65,11 @@ class PublicationsActivity final : public UiListActivity {
   bool handleCustomInput() override;
   void render(RenderLock&&) override;
   const char* headerTitle() const override;
+  // With a masthead, drawChrome draws nothing and drawFooter draws the band
+  // once per paint.
+  void drawChrome() override;
+  void drawFooter() override;
+  bool hasMasthead() const { return !mastheadCover_.empty(); }
 
   // Row index -> entries_ index, or -1 for the action and header rows. Every
   // conversion goes through this: the rows and the publications stopped being
@@ -82,4 +90,6 @@ class PublicationsActivity final : public UiListActivity {
   OptionPopup confirmPopup_;
   bool confirmingDelete_ = false;
   size_t pendingDeleteEntry_ = 0;
+  // Thumbnail for the masthead, "" for none. Written under RenderLock.
+  std::string mastheadCover_;
 };
