@@ -47,6 +47,35 @@ inline int cellSizeFor(const int rectW, const int rectH, const Geometry& geometr
   return std::max(std::min(cellW, cellH), 0);
 }
 
+struct Box {
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+};
+
+// The rect to hand keyGrid, centred in the body. keyGrid divides whatever rect
+// it gets into cells, so a rect of whole square cells yields square cells.
+inline Box gridRect(const int bodyX, const int bodyY, const int bodyW, const int bodyH, const Geometry& geometry,
+                    const int gap = GAP) {
+  const int cell = cellSizeFor(bodyW, bodyH, geometry, gap);
+  if (cell <= 0) return Box{bodyX, bodyY, 0, 0};
+  const int width = geometry.cols * cell + (geometry.cols - 1) * gap;
+  const int height = geometry.rows * cell + (geometry.rows - 1) * gap;
+  return Box{bodyX + (bodyW - width) / 2, bodyY + (bodyH - height) / 2, width, height};
+}
+
+// The rect keyGrid draws page-relative cell `index` in, by keyGrid's own
+// arithmetic (key-grid.h:54-61), for drawing on top of that cell.
+inline Box cellRect(const Box& grid, const Geometry& geometry, const int index, const int gap = GAP) {
+  if (!geometry.valid() || index < 0 || index >= geometry.cellsPerPage()) return Box{};
+  const int cellW = (grid.width - (geometry.cols - 1) * gap) / geometry.cols;
+  const int cellH = (grid.height - (geometry.rows - 1) * gap) / geometry.rows;
+  const int row = index / geometry.cols;
+  const int col = index % geometry.cols;
+  return Box{grid.x + col * (cellW + gap), grid.y + row * (cellH + gap), cellW, cellH};
+}
+
 inline int pageCount(const int count, const int cellsPerPage) {
   if (count <= 0 || cellsPerPage <= 0) return 0;
   return (count + cellsPerPage - 1) / cellsPerPage;
