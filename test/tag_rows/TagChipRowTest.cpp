@@ -132,6 +132,41 @@ TEST(TagChipCounts, EveryCountEqualsTheRowsItsFilterShows) {
 
 namespace {
 
+// Passages 0-2 are in the chapter the "Tags here" view shows; 3-5 are elsewhere in the publication.
+const std::vector<FakePassage> PUBLICATION{{{HOPE}}, {{HOPE, MINISTRY}}, {{UNLABELLED}},
+                                           {{HOPE}}, {{NAME}},           {{MINISTRY}}};
+const std::vector<size_t> CHAPTER{2, 1, 0};
+
+}  // namespace
+
+TEST(TagChipScopedCounts, PublicationWideCountsEveryPassage) {
+  const auto counts = TagChips::count(PUBLICATION, {HOPE, MINISTRY, NAME});
+  EXPECT_EQ(counts.all, 6u);
+  EXPECT_EQ(counts.perTag, (std::vector<uint16_t>{3, 2, 1}));
+  EXPECT_EQ(counts.unlabelled, 1u);
+}
+
+TEST(TagChipScopedCounts, ChapterScopeCountsOnlyItsPassages) {
+  const auto counts = TagChips::countIn(PUBLICATION, CHAPTER, {HOPE, MINISTRY, NAME});
+  EXPECT_EQ(counts.all, CHAPTER.size());
+  EXPECT_EQ(counts.perTag[0], 2);
+  EXPECT_EQ(counts.perTag[1], 1);
+  EXPECT_EQ(counts.unlabelled, 1u);
+}
+
+TEST(TagChipScopedCounts, TagAbsentFromTheChapterCountsZero) {
+  const auto counts = TagChips::countIn(PUBLICATION, CHAPTER, {HOPE, MINISTRY, NAME});
+  EXPECT_EQ(counts.perTag[2], 0);
+}
+
+TEST(TagChipScopedCounts, OutOfRangeScopeIndicesAreSkipped) {
+  const auto counts = TagChips::countIn(PUBLICATION, {0, 99}, {HOPE});
+  EXPECT_EQ(counts.all, 1u);
+  EXPECT_EQ(counts.perTag[0], 1);
+}
+
+namespace {
+
 constexpr int GAP = 4;
 constexpr int MORE = 40;
 
