@@ -716,49 +716,11 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
 
   switch (action) {
     case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER: {
-      const int spineIdx = currentSpineIndex;
-      // Release the section while the chapter list is up (mirrors the
-      // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
-      // tens-of-KB footprint is the difference between the chapter list
-      // holding its CJK glyph arena (RAM-only repaints) and re-reading
-      // glyphs from SD on every row step. Cancel restores via the same
-      // cached-position rebuild TEXT_SETTINGS uses.
-      releaseSectionKeepingPosition();
-      // A Bible gets the book -> chapter -> verse drill-down instead of the flat
-      // TOC; detection is one memoised spine sweep, so a non-Bible book pays it
-      // at most once for the life of the Epub.
-      std::unique_ptr<Activity> chapterList;
-      if (epub && epub->getBibleBookNavSpineIndex() >= 0) {
-        chapterList =
-            std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx, bookmarks.entries());
-      } else {
-        chapterList = std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx);
-      }
-      startActivityForResult(std::move(chapterList), [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          openReaderMenu(false);
-          return;
-        }
-        const auto& chapterResult = std::get<ChapterResult>(result.data);
-        navigateTo({.spineIndex = chapterResult.spineIndex,
-                    .offsetJump = chapterResult.offsetJump,
-                    .anchor = chapterResult.anchor});
-      });
+      openChapterPicker(CancelTo::Menu);
       break;
     }
     case EpubReaderMenuActivity::MenuAction::SEARCH_BIBLE: {
-      // Same reasoning as SELECT_CHAPTER: a picked verse resets the section
-      // anyway, and search needs the room for its index.
-      releaseSectionKeepingPosition();
-      startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub),
-                             [this](const ActivityResult& result) {
-                               if (result.isCancelled) {
-                                 openReaderMenu(false);
-                                 return;
-                               }
-                               const auto& verse = std::get<ChapterResult>(result.data);
-                               navigateTo({.spineIndex = verse.spineIndex, .offsetJump = verse.offsetJump});
-                             });
+      openBibleSearch(CancelTo::Menu);
       break;
     }
     case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
@@ -865,6 +827,87 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       addBookmark();
       break;
     }
+  }
+}
+
+void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
+  const int spineIdx = currentSpineIndex;
+  // Release the section while the chapter list is up (mirrors the
+  // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
+  // tens-of-KB footprint is the difference between the chapter list
+  // holding its CJK glyph arena (RAM-only repaints) and re-reading
+  // glyphs from SD on every row step. Cancel restores via the same
+  // cached-position rebuild TEXT_SETTINGS uses.
+  releaseSectionKeepingPosition();
+  // A Bible gets the book -> chapter -> verse drill-down instead of the flat
+  // TOC; detection is one memoised spine sweep, so a non-Bible book pays it
+  // at most once for the life of the Epub.
+  std::unique_ptr<Activity> chapterList;
+  if (epub && epub->getBibleBookNavSpineIndex() >= 0) {
+    chapterList = std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx, bookmarks.entries());
+  } else {
+    chapterList = std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx);
+  }
+  startActivityForResult(std::move(chapterList), [this, cancelTo](const ActivityResult& result) {
+    if (result.isCancelled) {
+      // From an entry intent the page is re-rendered when this screen pops.
+      if (cancelTo == CancelTo::Menu) openReaderMenu(false);
+      return;
+    }
+    const auto& chapterResult = std::get<ChapterResult>(result.data);
+    navigateTo({.spineIndex = chapterResult.spineIndex,
+                .offsetJump = chapterResult.offsetJump,
+                .anchor = chapterResult.anchor});
+  });
+}
+
+void EpubReaderActivity::openBibleSearch(const CancelTo cancelTo) {
+  // Same reasoning as openChapterPicker: a picked verse resets the section
+  // anyway, and search needs the room for its index.
+  releaseSectionKeepingPosition();
+  startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub),
+                         [this, cancelTo](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             if (cancelTo == CancelTo::Menu) openReaderMenu(false);
+                             return;
+                           }
+                           const auto& verse = std::get<ChapterResult>(result.data);
+                           navigateTo({.spineIndex = verse.spineIndex, .offsetJump = verse.offsetJump});
+                         });
+}
+
+void EpubReaderActivity::onBookLoaded() {
+  const ReaderEntryIntent intent = entryIntent;
+  entryIntent = {};
+  const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
+  switch (ReaderEntryIntent::route(intent.kind, isBible)) {
+    case ReaderEntryIntent::Route::None:
+      if (intent.kind != ReaderEntryIntent::Kind::None) {
+        LOG_INF("ERS", "Entry intent %d does not apply to %s; opening normally", static_cast<int>(intent.kind),
+                epub->getPath().c_str());
+      }
+      return;
+    case ReaderEntryIntent::Route::Locate: {
+      // Off-lock and before the first render is requested, as STUDY.repairTexts() in loadBook is:
+      // locatePlace may build unit index entries.
+      const auto location = STUDY.locatePlace(intent.unit, intent.spineHint);
+      if (!location) {
+        ReaderUtils::showMessage(renderer, tr(STR_LINK_TARGET_NOT_FOUND));
+        return;
+      }
+      navigateTo({.spineIndex = location->spineIndex, .offsetJump = location->offset});
+      return;
+    }
+    case ReaderEntryIntent::Route::ChapterGrid:
+    case ReaderEntryIntent::Route::TocList:
+      openChapterPicker(CancelTo::Page);
+      return;
+    case ReaderEntryIntent::Route::Search:
+      openBibleSearch(CancelTo::Page);
+      return;
+    case ReaderEntryIntent::Route::Highlights:
+      openHighlights();
+      return;
   }
 }
 

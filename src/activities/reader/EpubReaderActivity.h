@@ -144,6 +144,12 @@ class EpubReaderActivity final : public ReaderActivity {
   // section build and would otherwise leak into the next chapter's.
   enum class SectionMode : uint8_t { Reset, ReuseIfSameSpine };
 
+  // Where cancelling a picker returns: the menu it was opened from, or the page (an entry intent).
+  enum class CancelTo : uint8_t { Menu, Page };
+  void openChapterPicker(CancelTo cancelTo);
+  void openBibleSearch(CancelTo cancelTo);
+  void onBookLoaded() override;
+
   struct NavTarget {
     int spineIndex;
     int pageNumber = 0;
