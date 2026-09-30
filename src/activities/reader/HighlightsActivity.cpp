@@ -172,7 +172,10 @@ void HighlightsActivity::selectChip(const int chipIndex) {
 
 void HighlightsActivity::openTagFilter() {
   app.clearTapFlash();
-  startActivityForResult(std::make_unique<TagFilterActivity>(renderer, mappedInput),
+  // Computed here, with no RenderLock held: a chapter scope resolves passages through StudyStore.
+  std::optional<std::vector<size_t>> scope;
+  if (spineFilter_) scope = computeVisibleIndices(std::nullopt);
+  startActivityForResult(std::make_unique<TagFilterActivity>(renderer, mappedInput, std::move(scope), filterTagId_),
                          [this](const ActivityResult& result) {
                            // Guarded on the alternative, not just isCancelled: any finish() that
                            // forgets to set a result leaves monostate here, and std::get on the
