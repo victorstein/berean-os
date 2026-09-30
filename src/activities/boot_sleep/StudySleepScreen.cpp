@@ -79,12 +79,8 @@ struct Rung {
 
 // Largest first; the first rung that holds the whole passage wins (issue #188).
 constexpr Rung RUNGS[] = {
-    {0, {true, true}},
-    {1, {true, true}},
-    {2, {true, true}},
-    {SERIF_12, {true, true}},
-    {SERIF_12, {false, false}},
-    {FLOOR_SIZE, {false, false}},
+    {0, {true, true}},        {1, {true, true}},          {2, {true, true}},
+    {SERIF_12, {true, true}}, {SERIF_12, {false, false}}, {FLOOR_SIZE, {false, false}},
 };
 constexpr uint8_t RUNG_COUNT = sizeof(RUNGS) / sizeof(RUNGS[0]);
 constexpr uint8_t FLOOR_RUNG = RUNG_COUNT - 1;
