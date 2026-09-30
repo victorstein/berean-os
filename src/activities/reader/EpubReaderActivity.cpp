@@ -36,6 +36,7 @@
 #include "MappedInputManager.h"
 #include "PageTurn.h"
 #include "PassageSelectActivity.h"
+#include "PlacesStore.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
 #include "ReaderUtils.h"
@@ -50,6 +51,7 @@
 #include "study/PubKeyRegistry.h"
 #include "study/StudyStore.h"
 #include "util/BookCacheUtils.h"
+#include "util/PlacesDoc.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
@@ -916,16 +918,26 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
       lastPageTurnTime = millis();
       return true;
     } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
-      RenderLock lock;
-      nextPageNumber = 0;
-      currentSpineIndex++;
-      section.reset();
-      lastPageTurnTime = millis();
+      std::optional<Place> left;
+      {
+        RenderLock lock;
+        left = captureLeftPlace();
+        nextPageNumber = 0;
+        currentSpineIndex++;
+        section.reset();
+        lastPageTurnTime = millis();
+      }
+      recordPlace(std::move(left));
       return true;
     } else {
-      RenderLock lock;
-      currentSpineIndex = epub->getSpineItemsCount();
-      lastPageTurnTime = millis();
+      std::optional<Place> left;
+      {
+        RenderLock lock;
+        left = captureLeftPlace();
+        currentSpineIndex = epub->getSpineItemsCount();
+        lastPageTurnTime = millis();
+      }
+      recordPlace(std::move(left));
       return true;
     }
   } else {
@@ -934,12 +946,17 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
       lastPageTurnTime = millis();
       return true;
     } else if (currentSpineIndex > 0) {
-      RenderLock lock;
-      nextPageNumber = 0;
-      pendingPageJump = std::numeric_limits<uint16_t>::max();
-      currentSpineIndex--;
-      section.reset();
-      lastPageTurnTime = millis();
+      std::optional<Place> left;
+      {
+        RenderLock lock;
+        left = captureLeftPlace();
+        nextPageNumber = 0;
+        pendingPageJump = std::numeric_limits<uint16_t>::max();
+        currentSpineIndex--;
+        section.reset();
+        lastPageTurnTime = millis();
+      }
+      recordPlace(std::move(left));
       return true;
     }
   }
@@ -949,20 +966,30 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
 bool EpubReaderActivity::skipPages(int amount) {
   if (!section) return false;
   if (amount > 0) {
-    RenderLock lock;
-    nextPageNumber = 0;
-    currentSpineIndex++;
-    section.reset();
+    std::optional<Place> left;
+    {
+      RenderLock lock;
+      left = captureLeftPlace();
+      nextPageNumber = 0;
+      currentSpineIndex++;
+      section.reset();
+    }
+    recordPlace(std::move(left));
     return true;
   } else {
     if (section->currentPage > 0) {
       section->currentPage = 0;
       return true;
     } else if (currentSpineIndex > 0) {
-      RenderLock lock;
-      nextPageNumber = 0;
-      currentSpineIndex--;
-      section.reset();
+      std::optional<Place> left;
+      {
+        RenderLock lock;
+        left = captureLeftPlace();
+        nextPageNumber = 0;
+        currentSpineIndex--;
+        section.reset();
+      }
+      recordPlace(std::move(left));
       return true;
     }
   }
@@ -1260,6 +1287,7 @@ void EpubReaderActivity::renderBook() {
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     LOG_DBG("ERS", "Rendered page in %lums", millis() - start);
     lastRenderCompleteMs = millis();
+    pageShown = true;
   }
 
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
@@ -1334,6 +1362,49 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
   if (section && section->currentPage >= 0 && section->currentPage < section->pageCount) {
     cachedVisibleTextOffset = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(section->currentPage));
   }
+}
+
+std::optional<Place> EpubReaderActivity::captureLeftPlace() {
+  if (!pageShown || !highlightsLoaded || !epub) return std::nullopt;
+  if (currentSpineIndex < 0 || currentSpineIndex >= epub->getSpineItemsCount()) return std::nullopt;
+
+  uint32_t pageOffset = 0;
+  if (section) {
+    if (currentPageVisibleOffset.has_value()) {
+      pageOffset = *currentPageVisibleOffset;
+    } else if (section->currentPage >= 0 && section->currentPage < section->pageCount) {
+      pageOffset = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(section->currentPage)).value_or(0);
+    }
+  } else if (cachedSpineIndex == currentSpineIndex && cachedVisibleTextOffset.has_value()) {
+    pageOffset = *cachedVisibleTextOffset;
+  }
+
+  const auto placeUnit = STUDY.placeAt(static_cast<uint16_t>(currentSpineIndex), pageOffset);
+  if (!placeUnit) {
+    LOG_DBG("ERS", "No place for spine %d (not an indexed Bible chapter)", currentSpineIndex);
+    return std::nullopt;
+  }
+
+  const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+  const std::string book = tocIndex >= 0 ? epub->getTocItem(tocIndex).title : std::string();
+  Place place;
+  place.unit = placeUnit->unit;
+  place.chapterOnly = placeUnit->chapterOnly;
+  place.reference = PlacesDoc::formatReference(book, placeUnit->unit, placeUnit->chapterOnly);
+  place.spineIndex = static_cast<uint16_t>(currentSpineIndex);
+  place.visibleTextOffset = pageOffset;
+  return place;
+}
+
+void EpubReaderActivity::recordPlace(std::optional<Place> place) {
+  if (place) PLACES.record(std::move(*place));
+}
+
+void EpubReaderActivity::onExit() {
+  // ActivityManager holds RenderLock while it calls onExit, which is what captureLeftPlace needs;
+  // ReaderActivity::onExit saves APP_STATE under the same lock.
+  recordPlace(captureLeftPlace());
+  ReaderActivity::onExit();
 }
 
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
@@ -1661,8 +1732,11 @@ void EpubReaderActivity::navigateTo(NavTarget target, const ReturnPolicy policy)
   assert((target.sectionMode == SectionMode::Reset || (target.anchor.empty() && !target.spineProgress.has_value())) &&
          "ReuseIfSameSpine cannot carry an anchor or a percent jump");
 
+  std::optional<Place> left;
   {
     RenderLock lock;
+    // Before clearDeferredReposition(), which erases the offset a released section left behind.
+    if (target.spineIndex != currentSpineIndex) left = captureLeftPlace();
     switch (policy) {
       case ReturnPolicy::Clear:
         returnStack.clear();
@@ -1698,6 +1772,7 @@ void EpubReaderActivity::navigateTo(NavTarget target, const ReturnPolicy policy)
       section.reset();
     }
   }
+  recordPlace(std::move(left));
   requestUpdate();
 }
 

@@ -16,6 +16,7 @@
 #include "ReaderActivity.h"
 #include "ReaderBookmarks.h"
 #include "ReaderEntryIntent.h"
+#include "Place.h"
 #include "ReturnStack.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -47,6 +48,10 @@ class EpubReaderActivity final : public ReaderActivity {
   bool pendingReadFolderMove = false;
   // Consumed once by onBookLoaded(); None thereafter.
   ReaderEntryIntent entryIntent;
+  // Set by the render task once a page has been drawn this session, read only under RenderLock.
+  // Nothing is recorded before it: an intent's navigateTo would otherwise record the progress.bin
+  // position the reader never saw.
+  bool pageShown = false;
 
   // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
   // two live JsonDocuments are a real risk against the C3's ~50KB free heap
@@ -112,6 +117,11 @@ class EpubReaderActivity final : public ReaderActivity {
   // cached-position rebuild restores it when the overlay is cancelled.
   void releaseSectionKeepingPosition();
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
+  // The Bible place the reader is on, or nullopt. The caller holds RenderLock: the unit cache is
+  // shared with the render task.
+  std::optional<Place> captureLeftPlace();
+  // Persists a captured place. Called after the lock that captured it is released, except on exit.
+  static void recordPlace(std::optional<Place> place);
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
   // pageOnScreen: the framebuffer still holds the reading page. False from a
@@ -168,6 +178,7 @@ class EpubReaderActivity final : public ReaderActivity {
   ~EpubReaderActivity() override;
 
   void loop() override;
+  void onExit() override;
 
   bool pageTurn(bool isForward) override;
   bool skipPages(int amount) override;
