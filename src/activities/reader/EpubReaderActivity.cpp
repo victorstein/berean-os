@@ -257,15 +257,6 @@ void EpubReaderActivity::releaseSectionKeepingPosition() {
 
 void EpubReaderActivity::openReaderMenu() {
   pendingManualTurn = 0;
-  const int currentPage = section ? section->currentPage + 1 : 0;
-  const int totalPages = section ? section->estimatedTotalPages() : 0;
-  float bookProgress = 0.0f;
-  if (epub->getBookSize() > 0 && section && section->estimatedTotalPages() > 0) {
-    const float chapterProgress =
-        static_cast<float>(section->currentPage) / static_cast<float>(section->estimatedTotalPages());
-    bookProgress = epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f;
-  }
-  const int bookProgressPercent = clampPercent(static_cast<int>(bookProgress + 0.5f));
   // Mirrors Task 3's own BOARD_HAS_PSRAM gate on loading highlightDoc: on a
   // non-PSRAM board the document is never loaded, so offering these entries
   // there would operate on a permanently empty document.
@@ -276,9 +267,9 @@ void EpubReaderActivity::openReaderMenu() {
 #endif
   const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
   startActivityForResult(
-      std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), currentPage, totalPages,
-                                               bookProgressPercent, SETTINGS.orientation, !currentPageFootnotes.empty(),
-                                               !bookmarks.empty(), hasHighlights, isBible),
+      std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
+                                               !currentPageFootnotes.empty(), !bookmarks.empty(), hasHighlights,
+                                               isBible),
       [this](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -1612,6 +1603,15 @@ void EpubReaderActivity::resolveBibleChapterNumber() {
 
 int EpubReaderActivity::currentBibleChapter() const {
   return bibleChapterNumberSpine == currentSpineIndex ? bibleChapterNumber : -1;
+}
+
+std::string EpubReaderActivity::readerMenuTitle() const {
+  if (epub->getBibleBookNavSpineIndex() < 0) return epub->getTitle();
+  const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+  if (tocIndex < 0) return epub->getTitle();
+  const std::string book = epub->getTocItem(tocIndex).title;
+  if (book.empty()) return epub->getTitle();
+  return bibleReference(book, currentBibleChapter());
 }
 
 void EpubReaderActivity::renderStatusBar() const {
