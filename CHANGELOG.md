@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.0](https://github.com/victorstein/berean-os/compare/v1.28.1...v1.29.0) (2026-09-30)
+
+
+### Features
+
+* hide whole-Bible progress in the reader status bar ([#229](https://github.com/victorstein/berean-os/issues/229)) ([d2882dd](https://github.com/victorstein/berean-os/commit/d2882dda0cbfcbee4deac1ee887a478d41c8de8c)), closes [#228](https://github.com/victorstein/berean-os/issues/228)
+
 ## [1.28.1](https://github.com/victorstein/berean-os/compare/v1.28.0...v1.28.1) (2026-09-30)
 
 
