@@ -58,6 +58,14 @@
 
 namespace {
 
+// On a non-PSRAM board the study store is never opened (loadBook), so there is
+// no passage document for a tag action to act on.
+#if BOARD_HAS_PSRAM
+constexpr bool HIGHLIGHTS_SUPPORTED = true;
+#else
+constexpr bool HIGHLIGHTS_SUPPORTED = false;
+#endif
+
 int clampPercent(int percent) {
   if (percent < 0) {
     return 0;
@@ -268,14 +276,6 @@ void EpubReaderActivity::releaseSectionKeepingPosition() {
 
 void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
   pendingManualTurn = 0;
-  // Mirrors Task 3's own BOARD_HAS_PSRAM gate on loading highlightDoc: on a
-  // non-PSRAM board the document is never loaded, so offering these entries
-  // there would operate on a permanently empty document.
-#if BOARD_HAS_PSRAM
-  constexpr bool hasHighlights = true;
-#else
-  constexpr bool hasHighlights = false;
-#endif
   int tagsHereCount = 0;
   std::optional<Place> onScreen;
   if (isBible()) {
@@ -287,8 +287,8 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
       isBible() ? collectRecentChips(onScreen) : ReaderMenuSheetLayout::RecentChipLabels{};
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
-                                               !currentPageFootnotes.empty(), !bookmarks.empty(), hasHighlights,
-                                               isBible(), tagsHereCount, pageOnScreen, recent),
+                                               !currentPageFootnotes.empty(), !bookmarks.empty(), HIGHLIGHTS_SUPPORTED,
+                                               false, isBible(), tagsHereCount, pageOnScreen, recent),
       [this](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {

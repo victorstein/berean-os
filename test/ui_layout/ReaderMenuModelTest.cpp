@@ -16,6 +16,7 @@ struct Flags {
   bool hasHighlights;
   bool hasFrontlight;
   bool hasRotation;
+  bool bibleReachable;
 };
 
 // The items EpubReaderMenuActivity::buildMenuItems built before the sheet
@@ -49,6 +50,7 @@ ReaderMenuModel::Inputs inputsFor(const Flags& f, const int tagsHere) {
   in.hasHighlights = f.hasHighlights;
   in.hasFrontlight = f.hasFrontlight;
   in.hasRotation = f.hasRotation;
+  in.bibleReachable = f.bibleReachable;
   in.tagsHereCount = tagsHere;
   return in;
 }
@@ -57,8 +59,8 @@ std::vector<A> quickOf(const ReaderMenuModel::Model& m) { return {m.items, m.ite
 std::vector<A> rowsOf(const ReaderMenuModel::Model& m) { return {m.items + m.quickCount, m.items + m.count()}; }
 std::vector<A> allOf(const ReaderMenuModel::Model& m) { return {m.items, m.items + m.count()}; }
 
-constexpr Flags BIBLE_ALL{true, true, true, true, true, false};
-constexpr Flags BOOK_ALL{false, true, true, true, true, false};
+constexpr Flags BIBLE_ALL{true, true, true, true, true, false, true};
+constexpr Flags BOOK_ALL{false, true, true, true, true, false, true};
 
 }  // namespace
 
@@ -131,15 +133,20 @@ TEST(ReaderMenuModel, WorstCaseCountsOnTheX4Pro) {
 }
 
 // The acceptance criterion "keeps all their items", for every flag combination:
-// the sheet has exactly today's items, minus Go to % in a Bible, plus Tags here.
+// the sheet has exactly today's items, minus Go to % in a Bible, plus Tags here,
+// minus both tag entries in a non-Bible with no Bible to open (issue #235).
 TEST(ReaderMenuModel, EveryLegacyItemSurvivesForEveryFlagCombination) {
-  for (int mask = 0; mask < 64; ++mask) {
-    const Flags f{(mask & 1) != 0, (mask & 2) != 0,  (mask & 4) != 0,
-                  (mask & 8) != 0, (mask & 16) != 0, (mask & 32) != 0};
+  for (int mask = 0; mask < 128; ++mask) {
+    const Flags f{(mask & 1) != 0,  (mask & 2) != 0,  (mask & 4) != 0, (mask & 8) != 0,
+                  (mask & 16) != 0, (mask & 32) != 0, (mask & 64) != 0};
     for (const int tagsHere : {0, 3}) {
       std::vector<A> expected = legacyItems(f);
       if (f.isBible) expected.erase(std::remove(expected.begin(), expected.end(), A::GO_TO_PERCENT), expected.end());
       if (f.isBible && f.hasHighlights && tagsHere > 0) expected.push_back(A::TAGS_HERE);
+      if (!f.isBible && !f.bibleReachable) {
+        expected.erase(std::remove(expected.begin(), expected.end(), A::HIGHLIGHTS), expected.end());
+        expected.erase(std::remove(expected.begin(), expected.end(), A::HIGHLIGHT_PASSAGE), expected.end());
+      }
       const auto m = ReaderMenuModel::build(inputsFor(f, tagsHere));
       std::vector<A> actual = allOf(m);
       std::sort(expected.begin(), expected.end());
@@ -179,4 +186,36 @@ TEST(ReaderMenuModel, TagTargetRule) {
   EXPECT_EQ(tagTarget(true, false, true), T::BibleTags);
   EXPECT_EQ(tagTarget(true, true, false), T::ThisBook);
   EXPECT_EQ(tagTarget(true, true, true), T::ThisBook);
+}
+
+TEST(ReaderMenuModel, NonBibleWithABibleKeepsBothTagEntries) {
+  const auto m = ReaderMenuModel::build(inputsFor(BOOK_ALL, 0));
+  EXPECT_EQ(quickOf(m), (std::vector<A>{A::SELECT_CHAPTER, A::TOGGLE_BOOKMARK, A::HIGHLIGHT_PASSAGE}));
+  const auto rows = rowsOf(m);
+  EXPECT_EQ(std::count(rows.begin(), rows.end(), A::HIGHLIGHTS), 1);
+}
+
+TEST(ReaderMenuModel, NonBibleWithoutABibleHidesBothTagEntries) {
+  Flags f = BOOK_ALL;
+  f.bibleReachable = false;
+  const auto m = ReaderMenuModel::build(inputsFor(f, 0));
+  EXPECT_EQ(quickOf(m), (std::vector<A>{A::SELECT_CHAPTER, A::TOGGLE_BOOKMARK}));
+  EXPECT_EQ(rowsOf(m),
+            (std::vector<A>{A::BOOKMARKS, A::FOOTNOTES, A::TEXT_SETTINGS, A::NIGHT_MODE, A::FRONTLIGHT,
+                            A::AUTO_PAGE_TURN, A::GO_TO_PERCENT, A::SCREENSHOT, A::GO_HOME, A::DELETE_CACHE}));
+}
+
+TEST(ReaderMenuModel, BibleIgnoresBibleReachable) {
+  Flags without = BIBLE_ALL;
+  without.bibleReachable = false;
+  EXPECT_EQ(allOf(ReaderMenuModel::build(inputsFor(BIBLE_ALL, 2))), allOf(ReaderMenuModel::build(inputsFor(without, 2))));
+}
+
+TEST(ReaderMenuModel, BibleReachableDefaultsToHidden) {
+  ReaderMenuModel::Inputs in;
+  in.hasHighlights = true;
+  const auto m = ReaderMenuModel::build(in);
+  const auto all = allOf(m);
+  EXPECT_EQ(std::count(all.begin(), all.end(), A::HIGHLIGHTS), 0);
+  EXPECT_EQ(std::count(all.begin(), all.end(), A::HIGHLIGHT_PASSAGE), 0);
 }
