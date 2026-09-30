@@ -426,3 +426,155 @@ TEST(TagChipGeometry, ArrayHitPaddingMatchesTheLayoutOverload) {
     EXPECT_EQ(viaArray.left, viaLayout.left) << i;
   }
 }
+
+namespace {
+
+// Lyra-like portrait body: 480 wide less a 20 px inset each side; chips at the 44 px touch minimum.
+constexpr int GRID_LINE = 440;
+constexpr int GRID_GAP = 5;
+constexpr int GRID_CHIP = 44;
+constexpr int GRID_BODY = 600;
+
+std::vector<int> variedWidths(const int n) {
+  std::vector<int> widths;
+  widths.reserve(static_cast<size_t>(n));
+  for (int i = 0; i < n; ++i) widths.push_back(44 + (i * 53) % 180);
+  return widths;
+}
+
+}  // namespace
+
+TEST(TagChipGrid, LinesPerPageIsNeverBelowOne) {
+  EXPECT_EQ(TagChips::linesPerPage(GRID_BODY, GRID_CHIP, GRID_GAP), 12);
+  EXPECT_EQ(TagChips::linesPerPage(10, GRID_CHIP, GRID_GAP), 1);
+  EXPECT_EQ(TagChips::linesPerPage(0, 0, GRID_GAP), 1);
+}
+
+// The owner's case: 24 chips like "sabiduria 9" (~140 px) fit one portrait screen.
+TEST(TagChipGrid, OwnersTwentyFourChipsFitOnePage) {
+  const std::vector<int> widths(24, 140);
+  const int lines = TagChips::linesPerPage(GRID_BODY, GRID_CHIP, GRID_GAP);
+  EXPECT_EQ(TagChips::pageCountOf(widths.data(), 24, GRID_LINE, GRID_GAP, lines), 1);
+  TagChips::GridPage page;
+  TagChips::layoutPage(widths.data(), 24, 0, GRID_LINE, GRID_GAP, lines, page);
+  EXPECT_EQ(page.placedCount, 24);
+  EXPECT_EQ(page.first, 0);
+  EXPECT_EQ(page.lines, 8) << "three 140 px chips per 440 px line";
+}
+
+TEST(TagChipGrid, NoChipsGiveNoPages) {
+  EXPECT_EQ(TagChips::pageCountOf(nullptr, 0, GRID_LINE, GRID_GAP, 12), 0);
+  TagChips::GridPage page;
+  TagChips::layoutPage(nullptr, 0, 0, GRID_LINE, GRID_GAP, 12, page);
+  EXPECT_EQ(page.placedCount, 0);
+  EXPECT_EQ(page.lines, 0);
+}
+
+TEST(TagChipGrid, AFullPaletteSplitsIntoPagesThatCoverEveryChipOnce) {
+  constexpr int count = 202;
+  const auto widths = variedWidths(count);
+  const int lines = TagChips::linesPerPage(GRID_BODY, GRID_CHIP, GRID_GAP);
+  const int pages = TagChips::pageCountOf(widths.data(), count, GRID_LINE, GRID_GAP, lines);
+  EXPECT_GT(pages, 1);
+
+  int expected = 0;
+  int seenPages = 0;
+  for (int first = 0; first < count; first = TagChips::nextPageStart(widths.data(), count, first, GRID_LINE, GRID_GAP,
+                                                                     lines)) {
+    TagChips::GridPage page;
+    TagChips::layoutPage(widths.data(), count, first, GRID_LINE, GRID_GAP, lines, page);
+    ++seenPages;
+    ASSERT_GT(page.placedCount, 0) << "a page always makes progress";
+    EXPECT_LE(page.placedCount, TagChips::GRID_MAX_CHIPS);
+    EXPECT_LE(page.lines, lines);
+    for (int k = 0; k < page.placedCount; ++k) {
+      const auto& p = page.placed[k];
+      EXPECT_EQ(p.chip, expected++) << "chips in order, each exactly once";
+      EXPECT_GE(p.line, 0);
+      EXPECT_LT(p.line, page.lines) << "lines count from the top of the page";
+      EXPECT_LE(p.x + p.width, GRID_LINE);
+    }
+  }
+  EXPECT_EQ(expected, count);
+  EXPECT_EQ(seenPages, pages);
+}
+
+TEST(TagChipGrid, NarrowChipsStopAtTheInteractionCap) {
+  const std::vector<int> widths(202, 10);
+  TagChips::GridPage page;
+  TagChips::layoutPage(widths.data(), 202, 0, GRID_LINE, GRID_GAP, 12, page);
+  EXPECT_EQ(page.placedCount, TagChips::GRID_MAX_CHIPS);
+  EXPECT_EQ(TagChips::nextPageStart(widths.data(), 202, 0, GRID_LINE, GRID_GAP, 12), TagChips::GRID_MAX_CHIPS);
+}
+
+TEST(TagChipGrid, AChipWiderThanTheLineStillGetsAPage) {
+  const std::vector<int> widths{2000, 2000};
+  EXPECT_EQ(TagChips::nextPageStart(widths.data(), 2, 0, GRID_LINE, GRID_GAP, 1), 1);
+  EXPECT_EQ(TagChips::pageCountOf(widths.data(), 2, GRID_LINE, GRID_GAP, 1), 2);
+  TagChips::GridPage page;
+  TagChips::layoutPage(widths.data(), 2, 1, GRID_LINE, GRID_GAP, 1, page);
+  ASSERT_EQ(page.placedCount, 1);
+  EXPECT_EQ(page.placed[0].chip, 1);
+  EXPECT_EQ(page.placed[0].width, GRID_LINE);
+}
+
+TEST(TagChipGrid, PageHoldingAgreesWithTheLaidOutPages) {
+  constexpr int count = 202;
+  const auto widths = variedWidths(count);
+  const int lines = 5;
+  int page = 0;
+  for (int first = 0; first < count; ++page) {
+    const int next = TagChips::nextPageStart(widths.data(), count, first, GRID_LINE, GRID_GAP, lines);
+    for (int index = first; index < next; ++index) {
+      const auto span = TagChips::pageHolding(widths.data(), count, index, GRID_LINE, GRID_GAP, lines);
+      EXPECT_EQ(span.first, first) << index;
+      EXPECT_EQ(span.next, next) << index;
+      EXPECT_EQ(span.page, page) << index;
+    }
+    first = next;
+  }
+  const auto clampedHigh = TagChips::pageHolding(widths.data(), count, 9999, GRID_LINE, GRID_GAP, lines);
+  EXPECT_EQ(clampedHigh.next, count);
+  EXPECT_EQ(clampedHigh.page, page - 1);
+  EXPECT_EQ(TagChips::pageHolding(widths.data(), count, -5, GRID_LINE, GRID_GAP, lines).first, 0);
+}
+
+// Taking a strip out of the body can only keep a paged grid paged (spec A9's two-step pagination).
+TEST(TagChipGrid, ShorterBodyNeverHasFewerPages) {
+  const auto widths = variedWidths(120);
+  for (int body = 100; body <= 700; body += 25) {
+    const int tall = TagChips::linesPerPage(body, GRID_CHIP, GRID_GAP);
+    const int shorter = TagChips::linesPerPage(body - 50, GRID_CHIP, GRID_GAP);
+    EXPECT_GE(TagChips::pageCountOf(widths.data(), 120, GRID_LINE, GRID_GAP, shorter),
+              TagChips::pageCountOf(widths.data(), 120, GRID_LINE, GRID_GAP, tall))
+        << body;
+  }
+}
+
+TEST(TagChipGrid, GridHitRectsNeverIntersect) {
+  const auto widths = variedWidths(202);
+  for (const int gap : {3, 4, 5, 8}) {
+    for (int first = 0; first < 202; first = TagChips::nextPageStart(widths.data(), 202, first, GRID_LINE, gap, 6)) {
+      TagChips::GridPage page;
+      TagChips::layoutPage(widths.data(), 202, first, GRID_LINE, gap, 6, page);
+      struct Box {
+        int left, top, right, bottom;
+      };
+      std::vector<Box> boxes;
+      boxes.reserve(static_cast<size_t>(page.placedCount));
+      for (int i = 0; i < page.placedCount; ++i) {
+        const auto& p = page.placed[i];
+        const auto pad = TagChips::hitPadding(page.placed, page.placedCount, page.lines, i, gap);
+        const int top = TagChips::lineTop(p.line, GRID_CHIP, gap);
+        boxes.push_back({p.x - pad.left, top - pad.top, p.x + p.width + pad.right, top + GRID_CHIP + pad.bottom});
+      }
+      for (size_t a = 0; a < boxes.size(); ++a) {
+        for (size_t b = a + 1; b < boxes.size(); ++b) {
+          const bool overlap = boxes[a].left < boxes[b].right && boxes[b].left < boxes[a].right &&
+                               boxes[a].top < boxes[b].bottom && boxes[b].top < boxes[a].bottom;
+          EXPECT_FALSE(overlap) << "gap " << gap << ", page at " << first << ", chips " << a << " and " << b;
+        }
+      }
+    }
+  }
+}
