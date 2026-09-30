@@ -93,9 +93,12 @@ void LauncherActivity::computeLayout() {
   const HomeLayout::LineHeights lines{renderer.getLineHeight(SMALL_FONT_ID), renderer.getLineHeight(UI_10_FONT_ID),
                                       renderer.getLineHeight(NOTOSERIF_12_FONT_ID),
                                       renderer.getLineHeight(NOTOSERIF_14_FONT_ID)};
+  const HomeLayout::TextWidths widths{renderer.getTextWidth(UI_10_FONT_ID, "0"),
+                                      renderer.getTextWidth(UI_10_FONT_ID, "00")};
   layout = HomeLayout::compute(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                HomeLayout::Insets{marginTop, marginRight, marginBottom, marginLeft},
-                               UITheme::getInstance().getMetrics(), lines);
+                               UITheme::getInstance().getMetrics(), lines, widths);
+  LOG_DBG(MODULE, "Week strip cell %d px (digit %d, day %d)", layout.stripCell, widths.digit, widths.twoDigits);
 }
 
 void LauncherActivity::resolveTargets() {
@@ -241,7 +244,6 @@ void LauncherActivity::drawButton(const Box& box, const char* label, const bool 
 }
 
 void LauncherActivity::drawHero() const {
-  const auto& metrics = UITheme::getInstance().getMetrics();
   const CoverBand::Style style{CoverBandGeometry::BOOK_TITLE_BAND, RADIUS, layout.plate.height};
   const bool drawn = !bibleCoverPath.empty() && CoverBand::draw(renderer, bibleCoverPath, toRect(layout.hero), style);
   const char* subtitle = hasDateLine ? dateLine : nullptr;
@@ -249,8 +251,7 @@ void LauncherActivity::drawHero() const {
     GUI.drawHeader(renderer, toRect(layout.plateHeader), tr(STR_BIBLE), subtitle);
   } else {
     // CoverBand has left the band as paper, so the header never sits on dither.
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
-                   tr(STR_BIBLE), subtitle);
+    GUI.drawHeader(renderer, toRect(layout.fallbackHeader), tr(STR_BIBLE), subtitle);
   }
   // Outlined only around a drawn cover: the fallback header sits across the band's top rows, as Masthead's does.
   if (drawn) {
@@ -322,11 +323,11 @@ void LauncherActivity::drawMeetings() const {
   const int dayHeight = renderer.getLineHeight(UI_10_FONT_ID);
   for (size_t i = 0; i < strip.size(); ++i) {
     const WeekStripCell& cell = strip[i];
-    const Box cellBox{layout.strip.x + static_cast<int>(i) * HomeLayout::STRIP_CELL, layout.strip.y,
-                      HomeLayout::STRIP_CELL, letterHeight + dayHeight};
+    const Box cellBox = HomeLayout::stripDay(layout, static_cast<int>(i), letterHeight + dayHeight);
     const bool black = !cell.today;
     if (cell.today) {
-      renderer.fillRoundedRect(cellBox.x + 1, cellBox.y, cellBox.width - 2, cellBox.height, RADIUS / 2, Color::Black);
+      const Box today = HomeLayout::stripHighlight(cellBox);
+      renderer.fillRoundedRect(today.x, today.y, today.width, today.height, RADIUS / 2, Color::Black);
     }
     drawCentredIn(renderer, SMALL_FONT_ID, Box{cellBox.x - PAD, cellBox.y, cellBox.width + 2 * PAD, letterHeight},
                   cellBox.y, stripLetters[i], black);

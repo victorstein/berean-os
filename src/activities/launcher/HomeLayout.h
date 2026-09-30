@@ -29,7 +29,8 @@ inline constexpr int MIN_HERO_ART = 96;
 inline constexpr int RECENT_SLOTS = 3;
 inline constexpr int VERSE_TEXT_LINES = 3;
 inline constexpr int STRIP_CELLS = 7;
-inline constexpr int STRIP_CELL = 26;
+// The cell when the UI font cannot be measured.
+inline constexpr int STRIP_CELL_MIN = 26;
 inline constexpr int STRIP_DOT = 6;
 inline constexpr int ICON_TILES = 4;
 
@@ -40,6 +41,13 @@ struct LineHeights {
   int serif14 = 0;
 };
 
+// Measured ink widths at UI_10, the week strip's day-number font.
+struct TextWidths {
+  int digit = 0;
+  // "00": digits are tabular, so no day number is wider.
+  int twoDigits = 0;
+};
+
 struct Insets {
   int top = 0;
   int right = 0;
@@ -48,6 +56,8 @@ struct Insets {
 };
 
 struct Layout {
+  // The Bible header when there is no cover to put it on.
+  Box fallbackHeader;
   Box hero;
   Box plate;
   Box plateHeader;
@@ -66,6 +76,7 @@ struct Layout {
   Box meetingsTitle;
   Box meetingsPercent;
   Box strip;
+  int stripCell = 0;
   Box meetingsRange;
   Box icons[ICON_TILES];
 };
@@ -73,6 +84,11 @@ struct Layout {
 constexpr int iconRowHeight(const LineHeights& lines) { return ICON + lines.small + 3 * PAD; }
 
 constexpr int stripHeight(const LineHeights& lines) { return lines.small + lines.ui10 + PAD; }
+
+// Wide enough for the widest day number plus a digit of space to its neighbour.
+constexpr int stripCellWidth(const TextWidths& widths) {
+  return std::max(STRIP_CELL_MIN, widths.twoDigits + widths.digit);
+}
 
 // Title and % beside the strip, then the full-width range row below the strip's
 // foot, so the meeting-day dots never sit over the range text.
@@ -91,13 +107,13 @@ constexpr int recentHeight(const ThemeMetrics& metrics, const LineHeights& lines
 }
 
 constexpr int plateHeight(const ThemeMetrics& metrics, const LineHeights& lines) {
-  return metrics.headerHeight + 1 + (lines.ui10 + 2 * PAD) + PAD;
+  return metrics.headerHeight + 1 + PAD + (lines.ui10 + 2 * PAD) + PAD;
 }
 
 constexpr Layout compute(const int screenWidth, const int screenHeight, const Insets& insets,
-                         const ThemeMetrics& metrics, const LineHeights& lines) {
+                         const ThemeMetrics& metrics, const LineHeights& lines, const TextWidths& widths) {
   const int gap = metrics.verticalSpacing;
-  const int top = insets.top + metrics.topPadding;
+  const int top = insets.top + metrics.topPadding + PAD;
   const int bottom = screenHeight - insets.bottom - metrics.topPadding;
   const int fixed =
       recentHeight(metrics, lines) + verseCardHeight(lines) + meetingsHeight(lines) + iconRowHeight(lines);
@@ -106,7 +122,10 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
   Layout out{};
   // The masthead band's left edge and width, so the hero asks CoverBand for the
   // thumbnail the masthead and the sleep screen already share.
-  out.hero = MastheadLayout::band(screenWidth, insets.top, insets.right, insets.left, metrics.topPadding, heroHeight);
+  out.hero =
+      MastheadLayout::band(screenWidth, insets.top + PAD, insets.right, insets.left, metrics.topPadding, heroHeight);
+  // Full width and inset-free like every other screen's header, but PAD lower so Home breathes at the top.
+  out.fallbackHeader = Box{0, metrics.topPadding + PAD, screenWidth, metrics.headerHeight};
   const int left = out.hero.x;
   const int width = out.hero.width;
 
@@ -114,7 +133,7 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
   out.plate = Box{left, bottomOf(out.hero) - plate, width, plate};
   out.plateHeader = Box{left, out.plate.y + 1, width, metrics.headerHeight};
   const int buttonHeight = lines.ui10 + 2 * PAD;
-  out.buttonRow = Box{left + PAD, bottomOf(out.plateHeader), width - 2 * PAD, buttonHeight};
+  out.buttonRow = Box{left + PAD, bottomOf(out.plateHeader) + PAD, width - 2 * PAD, buttonHeight};
   const int continueWidth = (width - 3 * PAD) * 2 / 3;
   out.continueButton = Box{left + PAD, out.buttonRow.y, continueWidth, buttonHeight};
   out.goToButton = Box{left + 2 * PAD + continueWidth, out.buttonRow.y, width - 3 * PAD - continueWidth, buttonHeight};
@@ -134,7 +153,8 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
 
   out.meetings = Box{left, y, width, meetingsHeight(lines)};
   out.meetingsIcon = Box{left + PAD, y + PAD, ICON, ICON};
-  const int stripWidth = STRIP_CELLS * STRIP_CELL;
+  out.stripCell = stripCellWidth(widths);
+  const int stripWidth = STRIP_CELLS * out.stripCell;
   out.strip = Box{left + width - PAD - stripWidth, y + PAD, stripWidth, stripHeight(lines)};
   const int textX = left + PAD + ICON + PAD;
   const int textWidth = out.strip.x - PAD - textX;
@@ -152,5 +172,13 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
   }
   return out;
 }
+
+// Day `index`'s column in the strip: its letter and number are both centred in it.
+constexpr Box stripDay(const Layout& layout, const int index, const int height) {
+  return Box{layout.strip.x + index * layout.stripCell, layout.strip.y, layout.stripCell, height};
+}
+
+// The inverted box behind today, a pixel inside its column so it never meets a neighbour.
+constexpr Box stripHighlight(const Box& day) { return Box{day.x + 1, day.y, day.width - 2, day.height}; }
 
 }  // namespace HomeLayout

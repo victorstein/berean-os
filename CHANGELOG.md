@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.29.5](https://github.com/victorstein/berean-os/compare/v1.29.4...v1.29.5) (2026-09-30)
+
+
+### Bug Fixes
+
+* keep the page behind the reader sheet after a sub-screen ([#243](https://github.com/victorstein/berean-os/issues/243)) ([969d9d1](https://github.com/victorstein/berean-os/commit/969d9d10ada21bd3eaab23cc19bb13cdbf40ea28)), closes [#239](https://github.com/victorstein/berean-os/issues/239)
+
+## [1.29.4](https://github.com/victorstein/berean-os/compare/v1.29.3...v1.29.4) (2026-09-30)
+
+
+### Bug Fixes
+
+* give Home breathing room and space the week-strip days ([#242](https://github.com/victorstein/berean-os/issues/242)) ([a5c55b1](https://github.com/victorstein/berean-os/commit/a5c55b141a3564b6d542c07187075210e806e76d)), closes [#237](https://github.com/victorstein/berean-os/issues/237)
+
 ## [1.29.3](https://github.com/victorstein/berean-os/compare/v1.29.2...v1.29.3) (2026-09-30)
 
 

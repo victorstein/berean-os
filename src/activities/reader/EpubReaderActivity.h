@@ -53,6 +53,9 @@ class EpubReaderActivity final : public ReaderActivity {
   // Nothing is recorded before it: an intent's navigateTo would otherwise record the progress.bin
   // position the reader never saw.
   bool pageShown = false;
+  // Whether the last render drew a reading page, unlike the session-long pageShown. Cleared by
+  // reopenReaderMenu before its render, set by renderBook, both under RenderLock.
+  bool pageRendered = false;
 
   // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
   // two live JsonDocuments are a real risk against the C3's ~50KB free heap
@@ -144,15 +147,16 @@ class EpubReaderActivity final : public ReaderActivity {
   void openRecentPlace(int index);
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(const MenuResult& menu);
-  // pageOnScreen: the framebuffer still holds the reading page. False from a
-  // sub-screen's result handler, whose last frame is what the framebuffer holds.
+  // pageOnScreen: the framebuffer holds the reading page, so the sheet may be
+  // drawn over it. A sub-screen's cancel decides it through reopenReaderMenu.
   void openReaderMenu(bool pageOnScreen);
+  // Cancel from a sub-screen the sheet opened: redraw the page, then reopen the
+  // sheet over it. Loop task only, with no RenderLock held (requestUpdateAndWait).
+  void reopenReaderMenu();
   void openHighlightPassage();
   // Long-press a word to anchor a selection there. Suppressed inside the centre
   // menu zone, where a long contact would be ambiguous with the menu tap.
   void openHighlightPassageAt(int touchX, int touchY);
-  // With a spine, only that chapter's passages ("Tags here").
-  void openHighlights(std::optional<uint16_t> spineFilter = std::nullopt);
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void addBookmark();
 
@@ -168,6 +172,8 @@ class EpubReaderActivity final : public ReaderActivity {
   enum class CancelTo : uint8_t { Menu, Page };
   void openChapterPicker(CancelTo cancelTo);
   void openBibleSearch(CancelTo cancelTo);
+  // With a spine, only that chapter's passages ("Tags here").
+  void openHighlights(CancelTo cancelTo, std::optional<uint16_t> spineFilter = std::nullopt);
   void onBookLoaded() override;
 
   struct NavTarget {
