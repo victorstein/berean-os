@@ -94,3 +94,18 @@ target_link_libraries(ReaderEntryIntentTest PRIVATE
 )
 
 gtest_discover_tests(ReaderEntryIntentTest)
+
+add_executable(StatusBarProgressTest
+  StatusBarProgressTest.cpp
+)
+
+target_include_directories(StatusBarProgressTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(StatusBarProgressTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(StatusBarProgressTest)
