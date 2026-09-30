@@ -5,12 +5,14 @@
 add_executable(StudySleepPickTest
   StudySleepPickTest.cpp
   StudySleepFitTest.cpp
+  StudySleepSeedTest.cpp
   ${REPO_ROOT}/lib/Catalog/Catalog/CatalogLabel.cpp
 )
 
 target_include_directories(StudySleepPickTest PRIVATE
   ${REPO_ROOT}/src
   ${REPO_ROOT}/lib/Catalog
+  ${REPO_ROOT}/lib/StudyStore
 )
 
 target_link_libraries(StudySleepPickTest PRIVATE

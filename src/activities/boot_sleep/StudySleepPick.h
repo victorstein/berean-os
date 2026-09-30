@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Catalog/CatalogLabel.h>
+#include <StudyStore/Unit.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -93,6 +94,10 @@ struct Candidate {
   uint16_t tag = 0;
   uint32_t key = 0;
   uint8_t age = 0;
+  // Where the passage opens: its start unit and the spine it was tagged in, the
+  // hint StudyStore::locate passes too. Only a Verse unit is found without it.
+  study::Unit start{};
+  uint16_t spine = 0;
 };
 
 // One pass over every passage. Passages that fit and were not shown recently are
@@ -105,15 +110,16 @@ class Sampler {
   Sampler(const RandomFn random, void* const randomCtx) : random_(random), randomCtx_(randomCtx) {}
 
   void offer(const std::string_view text, const std::string_view reference, const uint16_t tag, const uint32_t key,
-             const std::optional<uint8_t> age, const bool fits) {
+             const std::optional<uint8_t> age, const bool fits, const study::Unit& start = {},
+             const uint16_t spine = 0) {
     if (!fits) return;
     if (!age) {
       ++freshSeen_;
-      if (random_(randomCtx_, freshSeen_) == 0) fill(fresh_, text, reference, tag, key, 0);
+      if (random_(randomCtx_, freshSeen_) == 0) fill(fresh_, text, reference, tag, key, 0, start, spine);
       return;
     }
     if (!hasStale_ || *age > stale_.age) {
-      fill(stale_, text, reference, tag, key, *age);
+      fill(stale_, text, reference, tag, key, *age, start, spine);
       hasStale_ = true;
     }
   }
@@ -131,12 +137,14 @@ class Sampler {
   }
 
   static void fill(Candidate& slot, const std::string_view text, const std::string_view reference, const uint16_t tag,
-                   const uint32_t key, const uint8_t age) {
+                   const uint32_t key, const uint8_t age, const study::Unit& start, const uint16_t spine) {
     slot.text.assign(text);
     copyInto(slot.reference, sizeof(slot.reference), reference);
     slot.tag = tag;
     slot.key = key;
     slot.age = age;
+    slot.start = start;
+    slot.spine = spine;
   }
 
   RandomFn random_;
@@ -154,13 +162,34 @@ inline bool rowIsWhole(const bool wholeFlag, const std::string_view wholeText) {
   return wholeFlag && !wholeText.empty();
 }
 
-inline bool withinPrefilter(const std::string_view text) { return text.size() <= FIT_PREFILTER_BYTES; }
+inline bool withinPrefilter(const std::string_view text, const size_t limitBytes) { return text.size() <= limitBytes; }
+
+inline bool withinPrefilter(const std::string_view text) { return withinPrefilter(text, FIT_PREFILTER_BYTES); }
 
 // The scan starts at a random file and wraps: sweep 0 covers [start, count),
 // sweep 1 covers [0, start). A scan the byte budget ends early therefore covers
 // a random window, not the same leading files on every sleep.
 inline bool inSweep(const uint8_t sweep, const uint32_t index, const uint32_t start) {
   return sweep == 0 ? index >= start : index < start;
+}
+
+// The Home verse's seed: the local date's "yyyymmdd", hashed so that adjacent
+// days start the generator from unrelated states.
+inline uint32_t dailySeed(const CivilDate& date) {
+  char digits[9];
+  snprintf(digits, sizeof(digits), "%04u%02u%02u", static_cast<unsigned>(date.year) % 10000u,
+           static_cast<unsigned>(date.month) % 100u, static_cast<unsigned>(date.day) % 100u);
+  return fnv1a32(FNV_OFFSET_BASIS, digits);
+}
+
+// A RandomFn over a uint32_t state in ctx: one splitmix32 step per draw.
+inline uint32_t splitmixDraw(void* const ctx, const uint32_t bound) {
+  auto* const state = static_cast<uint32_t*>(ctx);
+  uint32_t z = (*state += 0x9E3779B9u);
+  z = (z ^ (z >> 16)) * 0x85EBCA6Bu;
+  z = (z ^ (z >> 13)) * 0xC2B2AE35u;
+  z ^= z >> 16;
+  return z % bound;
 }
 
 struct ClockReading {
