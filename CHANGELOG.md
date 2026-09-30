@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.2](https://github.com/victorstein/berean-os/compare/v1.21.1...v1.21.2) (2026-09-30)
+
+
+### Refactor
+
+* extract reusable CoverBand component from the launcher ([#209](https://github.com/victorstein/berean-os/issues/209)) ([c72df63](https://github.com/victorstein/berean-os/commit/c72df63476ae089eacf6f918e200b7e49d5d8b6e)), closes [#202](https://github.com/victorstein/berean-os/issues/202)
+
 ## [1.21.1](https://github.com/victorstein/berean-os/compare/v1.21.0...v1.21.1) (2026-09-30)
 
 
