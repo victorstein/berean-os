@@ -166,6 +166,6 @@ void UiListActivity::render(RenderLock&&) {
     renderUi();
   }
   drawFooter();
-  renderer.displayBuffer();
+  renderer.displayBuffer(halfRefreshPending.exchange(false) ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   PostedMessage::drawNext(renderer);
 }
