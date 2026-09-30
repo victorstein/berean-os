@@ -57,13 +57,6 @@ class LauncherActivity final : public Activity {
   void drawIconTile(const HomeLayout::Box& box, const uint8_t* icon, const char* label, bool selected) const;
   bool isSelected(Target target) const;
 
-  // A Bible that did not come through Buscar, recognised by the CDN's filename.
-  static std::optional<std::string> findBibleOnCard();
-  // A guess over recently opened books, for a Bible that was opened without
-  // ever being registered. Only asked when the registry and the card scan
-  // both miss.
-  static std::optional<std::string> findBibleInRecents(const std::vector<RecentBook>& recents);
-
   ButtonNavigator buttonNavigator;
   HomeLayout::Layout layout{};
   Target selected = Target::Continue;
