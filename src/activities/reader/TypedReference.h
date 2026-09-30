@@ -32,3 +32,7 @@ struct BookNameSource {
 // names and abbreviations with search's fold. Returns an invalid reference for
 // anything else, including a book that more than one name could mean.
 TypedReference parseTypedReference(std::string_view query, const BookNameSource& books);
+
+// "Isaías 40:31", "Génesis 1", "Juan 3:16-18"; "40:31" when `bookName` is
+// empty, as the search hit rows fall back.
+void formatTypedReference(char* out, size_t outBytes, const char* bookName, const TypedReference& ref);

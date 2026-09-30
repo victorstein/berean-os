@@ -3,6 +3,7 @@
 #include <BibleSearch/Fold.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -213,4 +214,22 @@ TypedReference parseTypedReference(const std::string_view query, const BookNameS
   if (book == 0) return {};
   ref.book = static_cast<uint8_t>(book);
   return ref;
+}
+
+void formatTypedReference(char* out, const size_t outBytes, const char* bookName, const TypedReference& ref) {
+  if (outBytes == 0) return;
+  char numbers[16];
+  if (ref.verse == 0) {
+    snprintf(numbers, sizeof(numbers), "%u", static_cast<unsigned>(ref.chapter));
+  } else if (ref.verseEnd == 0) {
+    snprintf(numbers, sizeof(numbers), "%u:%u", static_cast<unsigned>(ref.chapter), static_cast<unsigned>(ref.verse));
+  } else {
+    snprintf(numbers, sizeof(numbers), "%u:%u-%u", static_cast<unsigned>(ref.chapter),
+             static_cast<unsigned>(ref.verse), static_cast<unsigned>(ref.verseEnd));
+  }
+  if (bookName == nullptr || bookName[0] == '\0') {
+    snprintf(out, outBytes, "%s", numbers);
+  } else {
+    snprintf(out, outBytes, "%s %s", bookName, numbers);
+  }
 }
