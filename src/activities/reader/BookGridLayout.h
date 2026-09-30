@@ -13,6 +13,9 @@ namespace BookGrid {
 
 constexpr int MIN_COLS = 3;
 constexpr int MAX_COLS = 6;
+// The book level's own page cap, independent of NumberGrid::MAX_CELLS: raising
+// the chapter grid's cap must not re-page the books.
+constexpr int MAX_CELLS = 48;
 // Horizontal room a key needs around its label so the text never touches the
 // key border.
 constexpr int LABEL_PADDING = 16;
@@ -88,7 +91,7 @@ inline Layout layoutFor(const int bookCount, const int* sectionStarts, const int
   layout.cols = columnsFor(contentW, widestLabelPx, gap);
   const int rowsNeeded = (largestRun + layout.cols - 1) / layout.cols;
   const int rowsFit = contentH > 0 ? (contentH + gap) / (NumberGrid::MIN_CELL + gap) : 0;
-  layout.rows = std::max(1, std::min({rowsNeeded, rowsFit, NumberGrid::MAX_CELLS / layout.cols}));
+  layout.rows = std::max(1, std::min({rowsNeeded, rowsFit, MAX_CELLS / layout.cols}));
 
   if (!sectioned) {
     appendPages(layout, 0, bookCount, -1);

@@ -70,7 +70,7 @@ TEST(BookGridPages, FourColumnHebrewScripturesNeedTheFullPortraitBody) {
 TEST(BookGridPages, EveryPageStaysWithinTheCellCap) {
   const auto layout = BookGrid::layoutFor(66, NWT_SECTION_STARTS, 2, PORTRAIT_W, PORTRAIT_H, SPANISH_WIDEST_LABEL);
 
-  EXPECT_LE(layout.cols * layout.rows, NumberGrid::MAX_CELLS);
+  EXPECT_LE(layout.cols * layout.rows, BookGrid::MAX_CELLS);
   for (int p = 0; p < layout.pageCount; p++) EXPECT_LE(layout.pages[p].count, layout.cols * layout.rows);
 }
 
@@ -81,8 +81,12 @@ TEST(BookGridPages, CellCapLimitsRowsWhenManyColumnsFit) {
 
   EXPECT_EQ(layout.cols, BookGrid::MAX_COLS);
   EXPECT_EQ(layout.rows, 8);
-  EXPECT_LE(layout.cols * layout.rows, NumberGrid::MAX_CELLS);
+  EXPECT_LE(layout.cols * layout.rows, BookGrid::MAX_CELLS);
 }
+
+// The chapter grid's cap grew to 70 for 7 x 10 pages; the book level's layout
+// must not move with it.
+TEST(BookGridPages, KeepsItsOwnCellCap) { EXPECT_EQ(BookGrid::MAX_CELLS, 48); }
 
 TEST(BookGridPages, NoSectionsPagesContinuously) {
   const auto layout = BookGrid::layoutFor(66, nullptr, 0, PORTRAIT_W, PORTRAIT_H, SPANISH_WIDEST_LABEL);
