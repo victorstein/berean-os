@@ -2,13 +2,17 @@
 
 #include <I18n.h>
 #include <Logging.h>
+#include <esp_heap_caps.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <vector>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/network/MeetingDownloadActivity.h"
+#include "components/CoverBandGeometry.h"
+#include "components/Masthead.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "network/MeetingLibrary.h"
@@ -49,10 +53,23 @@ MeetingsActivity::MeetingsActivity(GfxRenderer& renderer, MappedInputManager& ma
 
 const char* MeetingsActivity::headerTitle() const { return tr(STR_MEETINGS); }
 
+void MeetingsActivity::drawChrome() {}
+
+void MeetingsActivity::drawFooter() {
+  UiListActivity::drawFooter();
+  Masthead::draw(renderer, mastheadCover_, CoverBandGeometry::MAGAZINE_MASTHEAD_BAND, headerTitle());
+}
+
 void MeetingsActivity::onEnter() {
   UiListActivity::onEnter();
   computeLayout();
   refresh();
+  // Entered from the launcher's cover tiles: one clean paint over them.
+  halfRefreshPending.store(true);
+  LOG_INF(MODULE, "Memory on entry: internal free %u (largest %u), PSRAM free %u",
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 }
 
 void MeetingsActivity::computeLayout() {
@@ -61,7 +78,9 @@ void MeetingsActivity::computeLayout() {
   const int gap = metrics.verticalSpacing;
   const int left = safe.x + metrics.contentSidePadding;
   const int width = safe.width - 2 * metrics.contentSidePadding;
-  const int top = safe.y + metrics.topPadding + metrics.headerHeight + gap;
+  // Always under the masthead band, cover or not: the card thumbnails are sized
+  // from this layout and must not change size mid-visit.
+  const int top = Masthead::contentTop(renderer) + gap;
   const int bottom = safe.y + safe.height - metrics.buttonHintsHeight;
 
   // The fonts the list and the theme draw with, so the Refresh band matches the row list() lays out.
@@ -137,10 +156,17 @@ void MeetingsActivity::refresh() {
   buildWeekHeader(haveWeek ? &week : nullptr, entry, haveDate && todayIsLocal ? &today : nullptr, header);
   std::array<Card, 2> cards{};
   const int cardCount = buildCards(entry, cards);
+  std::vector<std::string> coverCandidates;
+  coverCandidates.reserve(cards.size());
+  for (int i = 0; i < cardCount; ++i) {
+    if (!cards[static_cast<size_t>(i)].path.empty()) coverCandidates.push_back(cards[static_cast<size_t>(i)].path);
+  }
+  std::string mastheadCover = Masthead::pickCover(renderer, coverCandidates);
 
   RenderLock lock(*this);
   week_ = header;
   cards_ = std::move(cards);
+  mastheadCover_ = std::move(mastheadCover);
   cardCount_ = cardCount;
   // A resolve can turn three items into two; a selection past the end would
   // leave nothing highlighted and Confirm doing nothing.

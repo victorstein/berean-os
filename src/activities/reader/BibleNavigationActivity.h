@@ -5,6 +5,7 @@
 #include <atomic>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "BibleBookNameTable.h"
@@ -64,6 +65,9 @@ class BibleNavigationActivity final : public UiListActivity {
   std::unique_ptr<GridMarks::BookmarkPosition[]> bookmarkPositions;
   int bookmarkCount = 0;
   Level level = Level::Book;
+  // The open Bible's cached thumbnail when it fills the masthead band, else "".
+  // Resolved once in onEnter: nothing on this screen generates a thumbnail.
+  std::string mastheadCover;
 
   // Only the display name and the resolved spine target are kept: chapter rows
   // are literally 1..N, so no hrefs need storing past the one sweep that
@@ -132,6 +136,10 @@ class BibleNavigationActivity final : public UiListActivity {
   const char* cellLabel(int row, int cell);
   // Grid top inset: the book level adds a section sub-header below the title.
   int subHeaderHeight() const;
+  // The chapter and verse levels carry the cover masthead when there is a cover.
+  bool hasMasthead() const;
+  // The header title for the current level. Formats into headerTitle.
+  const char* levelTitle();
   void rebuildBookLayout(int width, int height);
   // The selection moves below always bring their page with them. The base
   // moveSelectionTo pulls a sliding row window instead, which would leave
