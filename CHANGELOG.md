@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.28.0](https://github.com/victorstein/berean-os/compare/v1.27.0...v1.28.0) (2026-09-30)
+
+
+### Features
+
+* redesign Home for a reference Bible ([#223](https://github.com/victorstein/berean-os/issues/223)) ([829e7f7](https://github.com/victorstein/berean-os/commit/829e7f71c47439e9b007a95862d90ef382a9e500)), closes [#203](https://github.com/victorstein/berean-os/issues/203)
+
 ## [1.27.0](https://github.com/victorstein/berean-os/compare/v1.26.0...v1.27.0) (2026-09-30)
 
 
