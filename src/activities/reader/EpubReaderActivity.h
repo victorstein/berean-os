@@ -91,6 +91,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // bibleChapterNumber when it was resolved for the current spine, else -1.
   int currentBibleChapter() const;
   // The reference ("Isaiah 40") in a Bible, the publication's title otherwise.
+  bool isBible() const { return epub && epub->getBibleBookNavSpineIndex() >= 0; }
   std::string readerMenuTitle() const;
 
   int lastSavedSpineIndex = -1;

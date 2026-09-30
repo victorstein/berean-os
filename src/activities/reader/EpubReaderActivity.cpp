@@ -242,8 +242,7 @@ bool EpubReaderActivity::loadBook() {
   // by the CDN's filename. Registering it here, once, is what lets the Bible
   // tile find it by symbol from then on, whatever it is called or wherever it is.
   const auto registration = registerBibleIfUnknown(
-      epub->getBibleBookNavSpineIndex() >= 0, epub->getPath(),
-      [](const std::string& path) { return PubKeyRegistry::lookup(path).has_value(); },
+      isBible(), epub->getPath(), [](const std::string& path) { return PubKeyRegistry::lookup(path).has_value(); },
       [](const std::string& path) {
         return PubKeyRegistry::record(path, study::RegisteredPub{std::string(BIBLE_SYMBOL), "", ""});
       });
@@ -277,20 +276,19 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
 #else
   constexpr bool hasHighlights = false;
 #endif
-  const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
   int tagsHereCount = 0;
   std::optional<Place> onScreen;
-  if (isBible) {
+  if (isBible()) {
     RenderLock lock;
     tagsHereCount = chapterPassageCount;
     onScreen = captureLeftPlace();
   }
   const ReaderMenuSheetLayout::RecentChipLabels recent =
-      isBible ? collectRecentChips(onScreen) : ReaderMenuSheetLayout::RecentChipLabels{};
+      isBible() ? collectRecentChips(onScreen) : ReaderMenuSheetLayout::RecentChipLabels{};
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
                                                !currentPageFootnotes.empty(), !bookmarks.empty(), hasHighlights,
-                                               isBible, tagsHereCount, pageOnScreen, recent),
+                                               isBible(), tagsHereCount, pageOnScreen, recent),
       [this](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -860,7 +858,7 @@ void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
   // TOC; detection is one memoised spine sweep, so a non-Bible book pays it
   // at most once for the life of the Epub.
   std::unique_ptr<Activity> chapterList;
-  if (epub && epub->getBibleBookNavSpineIndex() >= 0) {
+  if (isBible()) {
     chapterList = std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx, bookmarks.entries());
   } else {
     chapterList = std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx);
@@ -941,8 +939,7 @@ static_assert(ReaderMenuSheetLayout::RECENT_LABEL_BYTES == PlacesDoc::MAX_REFERE
 void EpubReaderActivity::onBookLoaded() {
   const ReaderEntryIntent intent = entryIntent;
   entryIntent = {};
-  const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
-  switch (ReaderEntryIntent::route(intent.kind, isBible)) {
+  switch (ReaderEntryIntent::route(intent.kind, isBible())) {
     case ReaderEntryIntent::Route::None:
       if (intent.kind != ReaderEntryIntent::Kind::None) {
         LOG_INF("ERS", "Entry intent %d does not apply to %s; opening normally", static_cast<int>(intent.kind),
@@ -1772,7 +1769,7 @@ void EpubReaderActivity::resolveBibleChapterNumber() {
   bibleChapterNumber = -1;
 
   // One cached int comparison for every non-Bible book, which never opens a file.
-  if (!epub || epub->getBibleBookNavSpineIndex() < 0) return;
+  if (!isBible()) return;
 
   BibleChapterNumber::Reader reader;
   // WhenMissing::Fail on two counts: renderBook runs under the render lock, and
@@ -1791,7 +1788,7 @@ int EpubReaderActivity::currentBibleChapter() const {
 }
 
 std::string EpubReaderActivity::readerMenuTitle() const {
-  if (epub->getBibleBookNavSpineIndex() < 0) return epub->getTitle();
+  if (!isBible()) return epub->getTitle();
   const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
   if (tocIndex < 0) return epub->getTitle();
   const std::string book = epub->getTocItem(tocIndex).title;
@@ -1827,9 +1824,8 @@ void EpubReaderActivity::renderStatusBar() const {
     title = epub ? epub->getTitle() : "";
   }
 
-  const bool isBible = epub && epub->getBibleBookNavSpineIndex() >= 0;
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true,
-                    bookmarks.currentPageBookmarked(), section ? section->isBuilding() : false, !isBible);
+                    bookmarks.currentPageBookmarked(), section ? section->isBuilding() : false, !isBible());
 }
 
 void EpubReaderActivity::navigateTo(NavTarget target, const ReturnPolicy policy) {
