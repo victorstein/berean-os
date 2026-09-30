@@ -12,9 +12,9 @@
 #include "MappedInputManager.h"
 #include "PassageLinksActivity.h"
 #include "ReaderUtils.h"
+#include "TagChipRow.h"
 #include "TagFilterActivity.h"
 #include "TagPickerActivity.h"
-#include "TagChipRow.h"
 #include "activities/PostedMessage.h"
 #include "components/ListRowHeight.h"
 #include "components/UITheme.h"
@@ -682,9 +682,8 @@ void HighlightsActivity::buildChipRow(UiScreen& screen) {
   TagChips::layout(chipWidths_, count, moreWidth, lineWidth, gap, chipLayout_);
   if (chipLayout_.lines == 0) return;
 
-  const fui::Rect band =
-      screen.takeTop(static_cast<int16_t>(TagChips::bandHeight(chipLayout_.lines, chipHeight, gap)),
-                     static_cast<int16_t>(metrics.verticalSpacing));
+  const fui::Rect band = screen.takeTop(static_cast<int16_t>(TagChips::bandHeight(chipLayout_.lines, chipHeight, gap)),
+                                        static_cast<int16_t>(metrics.verticalSpacing));
 
   fui::StyleSet styles;
   styles.explicitlySet = true;
