@@ -90,8 +90,7 @@ std::optional<PlacesDoc::PlaceUnit> StudyStore::placeAt(const uint16_t spineInde
   return PlacesDoc::placeUnit(units_->peekUnits(spineIndex), pageOffset);
 }
 
-std::optional<StudyStore::Location> StudyStore::locatePlaceAtHint(const study::Unit& unit,
-                                                                    const uint16_t spineHint) {
+std::optional<StudyStore::Location> StudyStore::locatePlaceAtHint(const study::Unit& unit, const uint16_t spineHint) {
   if (pubKey_ != study::BIBLE_PUB_KEY || !units_ || !units_->ready()) return std::nullopt;
   if (spineHint >= units_->indexedDocumentCount()) return std::nullopt;
   if (const auto offset = study::documentOffsetOf(units_->peekUnits(spineHint), unit)) {

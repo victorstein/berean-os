@@ -86,8 +86,8 @@ inline Layout compute(const Inputs& in) {
 
   const int tilesBand = quick > 0 ? out.tileHeight + in.gap : 0;
   const int recentBand = in.recentCount > 0 ? in.recentHeight + in.gap : 0;
-  const int sheetHeight = in.ruleWidth + in.titleHeight + in.gap + tilesBand + recentBand +
-                          out.rowsPerColumn * in.rowHeight + in.gap;
+  const int sheetHeight =
+      in.ruleWidth + in.titleHeight + in.gap + tilesBand + recentBand + out.rowsPerColumn * in.rowHeight + in.gap;
   const int safeBottom = in.safeY + in.safeH;
   int sheetTop = safeBottom - sheetHeight;
   out.fitsAlone = sheetTop >= in.safeY;

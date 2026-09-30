@@ -141,9 +141,8 @@ bool fromJson(const JsonVariantConst doc, std::vector<Place>& places, bool& need
     }
     // Strings are read as const char*, never | std::string(""): see PersistableStore.h.
     const auto unit = study::unitFromCompact(std::string(obj["u"] | ""));
-    const bool repeatsAChapter =
-        unit && std::any_of(places.begin(), places.end(),
-                            [&](const Place& kept) { return sameChapter(kept.unit, *unit); });
+    const bool repeatsAChapter = unit && std::any_of(places.begin(), places.end(),
+                                                     [&](const Place& kept) { return sameChapter(kept.unit, *unit); });
     if (!unit || !isBiblePlace(*unit) || repeatsAChapter) {
       needsResave = true;
       continue;

@@ -66,8 +66,7 @@ void formatChipLabel(std::string_view abbreviation, const Place& place, char* ou
 
 // Copies up to `max` places into `out`, newest first, skipping any verse of the chapter on screen;
 // the cap applies after the skip. Returns how many were copied.
-size_t pickRecent(const std::vector<Place>& places, const std::optional<study::Unit>& onScreen, Place* out,
-                  size_t max);
+size_t pickRecent(const std::vector<Place>& places, const std::optional<study::Unit>& onScreen, Place* out, size_t max);
 
 // "Genesis 1 | Revelation 21:4", for the save log line.
 std::string describe(const std::vector<Place>& places);

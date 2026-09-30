@@ -13,11 +13,11 @@
 
 #include "AutoPageTurn.h"
 #include "EpubReaderMenuActivity.h"
+#include "Place.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
 #include "ReaderBookmarks.h"
 #include "ReaderEntryIntent.h"
-#include "Place.h"
 #include "ReturnStack.h"
 
 class EpubReaderActivity final : public ReaderActivity {

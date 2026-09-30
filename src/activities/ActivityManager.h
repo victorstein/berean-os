@@ -12,8 +12,8 @@
 
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
-#include "util/ScreenshotInfo.h"
 #include "reader/ReaderEntryIntent.h"
+#include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
