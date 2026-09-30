@@ -34,6 +34,16 @@ constexpr int MAX_QUICK = 4;
 constexpr int MAX_ROWS = 14;
 constexpr int MAX_ITEMS = MAX_QUICK + MAX_ROWS;
 
+// Where a tag action leads. Tags are Bible-only: outside the Bible the actions
+// open the Bible's tag list, and with no Bible to open they are not offered.
+enum class TagTarget : uint8_t { Hidden, ThisBook, BibleTags };
+
+constexpr TagTarget tagTarget(const bool hasHighlights, const bool isBible, const bool bibleReachable) {
+  if (!hasHighlights) return TagTarget::Hidden;
+  if (isBible) return TagTarget::ThisBook;
+  return bibleReachable ? TagTarget::BibleTags : TagTarget::Hidden;
+}
+
 struct Inputs {
   bool isBible = false;
   bool hasFootnotes = false;

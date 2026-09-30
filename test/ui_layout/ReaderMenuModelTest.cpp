@@ -166,3 +166,17 @@ TEST(ReaderMenuModel, QuickActionAfterRowsIsRefused) {
   EXPECT_EQ(m.row(0), A::SCREENSHOT);
   EXPECT_TRUE(m.overflowed);
 }
+
+TEST(ReaderMenuModel, TagTargetRule) {
+  using T = ReaderMenuModel::TagTarget;
+  using ReaderMenuModel::tagTarget;
+  // (hasHighlights, isBible, bibleReachable)
+  EXPECT_EQ(tagTarget(false, false, false), T::Hidden);
+  EXPECT_EQ(tagTarget(false, false, true), T::Hidden);
+  EXPECT_EQ(tagTarget(false, true, false), T::Hidden);
+  EXPECT_EQ(tagTarget(false, true, true), T::Hidden);
+  EXPECT_EQ(tagTarget(true, false, false), T::Hidden);
+  EXPECT_EQ(tagTarget(true, false, true), T::BibleTags);
+  EXPECT_EQ(tagTarget(true, true, false), T::ThisBook);
+  EXPECT_EQ(tagTarget(true, true, true), T::ThisBook);
+}
