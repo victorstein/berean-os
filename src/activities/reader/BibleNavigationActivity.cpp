@@ -6,6 +6,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <esp_heap_caps.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -65,6 +66,10 @@ void BibleNavigationActivity::onEnter() {
     LOG_ERR("BNV", "Failed to read the book list");
   }
   enterAtPosition();
+  LOG_INF("BNV", "Memory with grid open: internal free %u (largest %u), PSRAM free %u, %d bookmarks",
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)), bookmarkCount);
 }
 
 bool BibleNavigationActivity::loadBooks() {
