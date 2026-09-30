@@ -13,6 +13,7 @@
 #include <string>
 
 #include "I18n.h"
+#include "components/StatusBarProgress.h"
 #include "components/ToastLayout.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
@@ -575,12 +576,17 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
 
 void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,
                               const int pageCount, std::string title, const int paddingBottom, const int textYOffset,
-                              const bool fillMargin, const bool isPageBookmarked, const bool pageCountEstimated) const {
+                              const bool fillMargin, const bool isPageBookmarked, const bool pageCountEstimated,
+                              const bool showWholeBookProgress) const {
   auto metrics = UITheme::getInstance().getMetrics();
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
                                    &orientedMarginLeft);
   const auto sb = SETTINGS.statusBarSpec();
+  const auto progressView = StatusBarProgress::resolve(
+      {.showWholeBookProgress = showWholeBookProgress,
+       .showBookPercent = sb.showBookProgressPercent,
+       .barTracksBook = sb.progressBarMode == CrossPointSettings::STATUS_BAR_PROGRESS_BAR::BOOK_PROGRESS});
   const bool showStatusBarTextLane = sb.textLaneVisible(halClock.isAvailable());
 
   // Draw Progress Text
@@ -592,17 +598,17 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   int leftClusterWidth = 0;
   int rightClusterWidth = 0;
 
-  if (sb.showBookProgressPercent || sb.showChapterPageCount) {
+  if (progressView.showBookPercent || sb.showChapterPageCount) {
     // Right aligned text for progress counter
     char progressStr[32];
 
     // Prefix the page count with "~" while a still-building spine only yields an estimated total.
     const char* estimatePrefix = pageCountEstimated ? "~" : "";
 
-    if (sb.showBookProgressPercent && sb.showChapterPageCount) {
+    if (progressView.showBookPercent && sb.showChapterPageCount) {
       snprintf(progressStr, sizeof(progressStr), "%s%d/%d  %.0f%%", estimatePrefix, currentPage, pageCount,
                bookProgress);
-    } else if (sb.showBookProgressPercent) {
+    } else if (progressView.showBookPercent) {
       snprintf(progressStr, sizeof(progressStr), "%.0f%%", bookProgress);
     } else {
       snprintf(progressStr, sizeof(progressStr), "%s%d/%d", estimatePrefix, currentPage, pageCount);
@@ -622,7 +628,7 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     const int progressBarY = renderer.getScreenHeight() - orientedMarginBottom - sb.progressBarHeightPx -
                              paddingBottom + (fillMargin ? 1 : 0);
     size_t progress;
-    if (sb.progressBarMode == CrossPointSettings::STATUS_BAR_PROGRESS_BAR::BOOK_PROGRESS) {
+    if (progressView.barTracksBook) {
       progress = static_cast<size_t>(bookProgress);
     } else {
       // Chapter progress
