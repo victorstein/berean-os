@@ -24,7 +24,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
   // last frame, so the sheet may be drawn over it.
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   uint8_t currentOrientation, bool hasFootnotes, bool hasBookmarks, bool hasHighlights,
-                                  bool isBible, int tagsHereCount, bool pageOnScreen,
+                                  bool bibleReachable, bool isBible, int tagsHereCount, bool pageOnScreen,
                                   const ReaderMenuSheetLayout::RecentChipLabels& recent);
 
   void onEnter() override;

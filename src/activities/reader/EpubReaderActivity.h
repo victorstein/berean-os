@@ -73,6 +73,17 @@ class EpubReaderActivity final : public ReaderActivity {
   int pendingSelectionAnchorX = -1;
   int pendingSelectionAnchorY = -1;
 
+  // The Bible that a non-Bible publication's tag actions open, found on first
+  // use and kept for this reader; empty when there is none. Never looked up
+  // inside the Bible.
+  std::string bibleForTagsPath;
+  bool bibleForTagsResolved = false;
+  bool bibleReachableForTags();
+  ReaderMenuModel::TagTarget tagTarget();
+  void openBibleTags();
+  // The long-press Tag command: tag here in the Bible, open the Bible's tags elsewhere.
+  void runTagCommand();
+
   // Footnote support
   std::vector<FootnoteEntry> currentPageFootnotes;
   ReturnStack returnStack;

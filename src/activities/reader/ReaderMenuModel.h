@@ -34,11 +34,23 @@ constexpr int MAX_QUICK = 4;
 constexpr int MAX_ROWS = 14;
 constexpr int MAX_ITEMS = MAX_QUICK + MAX_ROWS;
 
+// Where a tag action leads. Tags are Bible-only: outside the Bible the actions
+// open the Bible's tag list, and with no Bible to open they are not offered.
+enum class TagTarget : uint8_t { Hidden, ThisBook, BibleTags };
+
+constexpr TagTarget tagTarget(const bool hasHighlights, const bool isBible, const bool bibleReachable) {
+  if (!hasHighlights) return TagTarget::Hidden;
+  if (isBible) return TagTarget::ThisBook;
+  return bibleReachable ? TagTarget::BibleTags : TagTarget::Hidden;
+}
+
 struct Inputs {
   bool isBible = false;
   bool hasFootnotes = false;
   bool hasBookmarks = false;
   bool hasHighlights = false;
+  // Another book on the card is the Bible. Only read outside a Bible.
+  bool bibleReachable = false;
   bool hasFrontlight = false;
   bool hasRotation = false;
   int tagsHereCount = 0;
@@ -74,16 +86,17 @@ struct Model {
 };
 
 inline Model build(const Inputs& in) {
+  const bool offerTags = tagTarget(in.hasHighlights, in.isBible, in.bibleReachable) != TagTarget::Hidden;
   using A = ReaderMenuAction;
   Model m;
   m.addQuick(A::SELECT_CHAPTER);
   if (in.isBible) m.addQuick(A::SEARCH_BIBLE);
   m.addQuick(A::TOGGLE_BOOKMARK);
-  if (in.hasHighlights) m.addQuick(A::HIGHLIGHT_PASSAGE);
+  if (offerTags) m.addQuick(A::HIGHLIGHT_PASSAGE);
 
   if (in.hasBookmarks) m.addRow(A::BOOKMARKS);
   if (in.isBible && in.hasHighlights && in.tagsHereCount > 0) m.addRow(A::TAGS_HERE);
-  if (in.hasHighlights) m.addRow(A::HIGHLIGHTS);
+  if (offerTags) m.addRow(A::HIGHLIGHTS);
   if (in.hasFootnotes) m.addRow(A::FOOTNOTES);
   m.addRow(A::TEXT_SETTINGS);
   m.addRow(A::NIGHT_MODE);

@@ -25,9 +25,11 @@ TEST(ReaderEntryIntent, SearchIsBibleOnly) {
   EXPECT_EQ(ReaderEntryIntent::route(Kind::Search, false), Route::None);
 }
 
-TEST(ReaderEntryIntent, TagsOpenTheHighlightsEverywhere) {
+// A Tags intent into a book that is not the Bible would list that book's own
+// passages; like OpenAt and Search it opens the book normally instead.
+TEST(ReaderEntryIntent, TagsAreBibleOnly) {
   EXPECT_EQ(ReaderEntryIntent::route(Kind::Tags, true), Route::Highlights);
-  EXPECT_EQ(ReaderEntryIntent::route(Kind::Tags, false), Route::Highlights);
+  EXPECT_EQ(ReaderEntryIntent::route(Kind::Tags, false), Route::None);
 }
 
 TEST(ReaderEntryIntent, OpenAtCarriesThePlacesUnitAndHint) {
