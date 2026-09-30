@@ -13,6 +13,7 @@
 #include "ReaderUtils.h"
 #include "TagFilterActivity.h"
 #include "TagPickerActivity.h"
+#include "TagChipRow.h"
 #include "activities/PostedMessage.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -46,10 +47,7 @@ void HighlightsActivity::rebuildVisibleIndices() {
   // Most recent first: add only ever appends, so storage order is
   // oldest-to-newest and "most recent" is the reverse walk.
   for (size_t i = passages.size(); i-- > 0;) {
-    if (filterTagId_) {
-      const auto& tags = passages[i].tags;
-      if (std::find(tags.begin(), tags.end(), *filterTagId_) == tags.end()) continue;
-    }
+    if (!TagChips::passageMatches(passages[i].tags, filterTagId_)) continue;
     visibleIndices_.push_back(i);
   }
 }
