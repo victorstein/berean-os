@@ -147,9 +147,12 @@ class EpubReaderActivity final : public ReaderActivity {
   void openRecentPlace(int index);
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(const MenuResult& menu);
-  // pageOnScreen: the framebuffer still holds the reading page. False from a
-  // sub-screen's result handler, whose last frame is what the framebuffer holds.
+  // pageOnScreen: the framebuffer holds the reading page, so the sheet may be
+  // drawn over it. A sub-screen's cancel decides it through reopenReaderMenu.
   void openReaderMenu(bool pageOnScreen);
+  // Cancel from a sub-screen the sheet opened: redraw the page, then reopen the
+  // sheet over it. Loop task only, with no RenderLock held (requestUpdateAndWait).
+  void reopenReaderMenu();
   void openHighlightPassage();
   // Long-press a word to anchor a selection there. Suppressed inside the centre
   // menu zone, where a long contact would be ambiguous with the menu tap.

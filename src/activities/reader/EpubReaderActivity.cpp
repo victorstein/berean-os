@@ -303,6 +303,28 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
       });
 }
 
+void EpubReaderActivity::reopenReaderMenu() {
+  // Night mode inverts at output, so the sheet is drawn cleared there whatever
+  // the framebuffer holds; a page render first would only cost a refresh.
+  if (SETTINGS.screenInverted != 0) {
+    LOG_DBG("ERS", "Reopening menu cleared: night");
+    openReaderMenu(false);
+    return;
+  }
+  {
+    RenderLock lock;
+    pageRendered = false;
+  }
+  requestUpdateAndWait();
+  bool onPage;
+  {
+    RenderLock lock;
+    onPage = pageRendered;
+  }
+  LOG_DBG("ERS", "Reopening menu %s", onPage ? "over page" : "cleared: no page");
+  openReaderMenu(onPage);
+}
+
 bool EpubReaderActivity::buildTickHeapGate() {
   const size_t freeHeap = ESP.getFreeHeap();
   const size_t maxBlock = ESP.getMaxAllocHeap();
