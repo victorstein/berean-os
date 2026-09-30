@@ -18,9 +18,8 @@
 // Tiles carry no denormalised counts. An earlier design put "12 etiquetas - 248
 // pasajes" here, which needs counters that nothing reconciles; for a device
 // whose value is being a trustworthy record, a visibly wrong number is worse
-// than no number. Live state that cannot drift stays: which meeting week is
-// loaded, and chapters read -- counted from the completion record itself each
-// time the launcher opens, never kept as a separate tally.
+// than no number. Live state that cannot drift stays, such as which meeting week
+// is loaded.
 class LauncherActivity final : public Activity {
  public:
   explicit LauncherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool cleanInitialRefresh = false)
