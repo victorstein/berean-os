@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.8](https://github.com/victorstein/berean-os/compare/v1.29.7...v1.29.8) (2026-09-30)
+
+
+### Documentation
+
+* bring the guide up to date with Bible-only tags and the sheet ([#250](https://github.com/victorstein/berean-os/issues/250)) ([c4275ba](https://github.com/victorstein/berean-os/commit/c4275ba54571874a65c6b64159ac54eae080bb5d))
+
 ## [1.29.7](https://github.com/victorstein/berean-os/compare/v1.29.6...v1.29.7) (2026-09-30)
 
 
