@@ -222,7 +222,9 @@ TEST(TagChipLayout, InvariantsHoldForEveryCandidateCount) {
       EXPECT_GE(p.x, 0) << n;
       EXPECT_LE(p.x + p.width, 300) << n;
       EXPECT_LT(p.line, TagChips::MAX_LINES) << n;
-      if (p.chip >= 0) EXPECT_EQ(p.chip, expectedChip++) << n;
+      if (p.chip >= 0) {
+        EXPECT_EQ(p.chip, expectedChip++) << n;
+      }
     }
     if (layout.overflow) {
       EXPECT_EQ(layout.placed[layout.placedCount - 1].chip, -1) << n;
