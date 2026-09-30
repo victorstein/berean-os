@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "PassageActions.h"
+#include "TagChipRow.h"
 #include "activities/ActivityResult.h"
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
@@ -95,6 +96,24 @@ class HighlightsActivity final : public UiListActivity {
   void onBackButton() override;
   const char* headerTitle() const override;
 
+  static constexpr freeink::ui::ActionId ACTION_CHIP = ACTION_USER;
+  static constexpr freeink::ui::ActionId ACTION_MORE = ACTION_USER + 1;
+
+  // One candidate chip. The label is owned here because ButtonProps borrows it during the render.
+  struct ChipEntry {
+    TagChips::Kind kind = TagChips::Kind::All;
+    study::TagId id = study::UNLABELLED;
+    char label[40] = {};
+  };
+
+  // Rebuilds chips_ from the passages and palette; called from rebuildRowItems().
+  void rebuildChips();
+  bool chipIsSelected(const ChipEntry& chip) const;
+  void buildChipRow(UiScreen& screen);
+  void selectChip(int chipIndex);
+  static void onChipEvent(const freeink::ui::ActionEvent& event, void* user);
+  static void onMoreEvent(const freeink::ui::ActionEvent& event, void* user);
+
   // Rebuilds visibleIndices_ from STUDY.passages() + filterTagId_.
   // Indices only, most-recent-first (reverse insertion order) -- never the
   // findBySpine-style raw HighlightEntry* pointers, which addHighlight's
@@ -162,4 +181,11 @@ class HighlightsActivity final : public UiListActivity {
   // The rows actionChooser_ is showing, so its callback maps the chosen row back
   // to the action it displayed.
   PassageActions::Menu pendingMenu_;
+
+  // Candidates in display order (All, active tags, Unlabelled), at most MAX_CHIPS + 1: layout()
+  // places at most MAX_CHIPS, so the extra slot is what makes a longer palette show the ellipsis.
+  std::vector<ChipEntry> chips_;
+  // Filled on the render task; members rather than locals to keep its stack frame small.
+  int chipWidths_[TagChips::MAX_CHIPS + 1] = {};
+  TagChips::Layout chipLayout_;
 };
