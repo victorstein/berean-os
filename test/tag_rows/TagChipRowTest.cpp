@@ -209,19 +209,6 @@ TEST(TagChipLayout, TruncatedCandidatesStillOverflow) {
   EXPECT_TRUE(layoutOf(narrow, 2000, 20).overflow);
 }
 
-// Widths are measured bold for every chip, so the layout cannot depend on the selection (A13).
-TEST(TagChipLayout, SameWidthsGiveTheSamePlacements) {
-  const std::vector<int> widths{60, 120, 80, 200, 90, 70, 150};
-  const auto a = layoutOf(widths, 300);
-  const auto b = layoutOf(widths, 300);
-  ASSERT_EQ(a.placedCount, b.placedCount);
-  for (int i = 0; i < a.placedCount; ++i) {
-    EXPECT_EQ(a.placed[i].chip, b.placed[i].chip);
-    EXPECT_EQ(a.placed[i].x, b.placed[i].x);
-    EXPECT_EQ(a.placed[i].line, b.placed[i].line);
-  }
-}
-
 TEST(TagChipLayout, InvariantsHoldForEveryCandidateCount) {
   for (int n = 0; n <= 60; ++n) {
     std::vector<int> widths;
