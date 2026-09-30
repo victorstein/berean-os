@@ -227,16 +227,7 @@ const study::DocumentUnits& UnitIndexCache::unitsFor(const uint16_t spineIndex) 
   if (cachedSpine_ == spineIndex) return cached_;
   if (!ready_) return empty;
 
-  study::UnitIndexEntry entry;
-  if (readEntry(spineIndex, entry) && entry.indexed()) {
-    study::DocumentUnits loaded;
-    if (loadAnchors(entry, loaded)) {
-      cachedSpine_ = spineIndex;
-      cached_ = std::move(loaded);
-      cachedBuildFailed_ = false;
-      return cached_;
-    }
-  }
+  if (loadIndexedIntoCache(spineIndex)) return cached_;
 
   if (!buildDocument(spineIndex)) {
     LOG_ERR(MODULE, "Index build failed for spine %u; addressing degraded", spineIndex);
@@ -245,6 +236,24 @@ const study::DocumentUnits& UnitIndexCache::unitsFor(const uint16_t spineIndex) 
     cachedBuildFailed_ = true;
   }
   return cached_;
+}
+
+const study::DocumentUnits& UnitIndexCache::peekUnits(const uint16_t spineIndex) {
+  static const study::DocumentUnits empty;
+  if (cachedSpine_ == spineIndex) return cached_;
+  if (!ready_) return empty;
+  return loadIndexedIntoCache(spineIndex) ? cached_ : empty;
+}
+
+bool UnitIndexCache::loadIndexedIntoCache(const uint16_t spineIndex) {
+  study::UnitIndexEntry entry;
+  if (!readEntry(spineIndex, entry) || !entry.indexed()) return false;
+  study::DocumentUnits loaded;
+  if (!loadAnchors(entry, loaded)) return false;
+  cachedSpine_ = spineIndex;
+  cached_ = std::move(loaded);
+  cachedBuildFailed_ = false;
+  return true;
 }
 
 bool UnitIndexCache::buildBookMap() {

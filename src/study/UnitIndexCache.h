@@ -35,6 +35,11 @@ class UnitIndexCache {
   // units or the build fails -- readable, addressing degraded, never fatal.
   const study::DocumentUnits& unitsFor(uint16_t spineIndex);
 
+  // The units for `spineIndex` from the cache or the index file, or an empty result when the
+  // document is not indexed yet. Never builds: a build streams the document through
+  // SpineHtmlStream, which takes the render lock, and this is called with it held.
+  const study::DocumentUnits& peekUnits(uint16_t spineIndex);
+
   // Canonical Bible book for a spine index, or 0. Built once from
   // biblebooknav.xhtml AND the 66 chapter-nav pages it points at -- the nav page
   // alone yields only the nav pages, not the chapters -- then persisted, so that
@@ -73,6 +78,9 @@ class UnitIndexCache {
   bool readEntry(uint16_t spineIndex, study::UnitIndexEntry& out) const;
   bool writeEntry(uint16_t spineIndex, const study::UnitIndexEntry& entry) const;
   bool loadAnchors(const study::UnitIndexEntry& entry, study::DocumentUnits& out) const;
+  // Loads an indexed entry into the one-document cache. False when the entry is absent, not
+  // indexed, or unreadable.
+  bool loadIndexedIntoCache(uint16_t spineIndex);
   bool buildDocument(uint16_t spineIndex);
   bool buildBookMap();
 
