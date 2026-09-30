@@ -152,7 +152,7 @@ already on the card.
 | Next page | tap the right third, or press **Right** |
 | Previous page | tap the left third, or press **Left** |
 | Reader menu | tap the centre third, or hold **Right** and release |
-| Start a passage selection | long-press a word outside the centre third (section 8) |
+| Start a passage selection (Bible only) | long-press a word outside the centre third (section 8) |
 | Leave the book | **Home**, hold **Left** and release, or **Reader menu -> Go home** |
 
 **Cross-references.** Following a link inside a publication remembers where you came from. Back —
@@ -173,7 +173,8 @@ Four large buttons sit at the top of the sheet:
 - **Go to** — the table of contents, or the Bible drill-down (section 7)
 - **Search** — verse search, in a Bible only
 - **Mark** — drop or remove a bookmark at the current page
-- **Tag** — start a passage selection (section 8)
+- **Tag** — in a Bible, start a passage selection (section 8); in any other publication, open your
+  Bible tags
 
 In a Bible, a **Recent** row comes next: up to three places you recently left, by their short
 names, such as **Rev. 21:4**. The chapter on screen is not among them. Tap one to go there.
@@ -182,7 +183,8 @@ Below them, in two columns, depending on the publication:
 
 - **Bookmarks** — jump to or delete a saved position, once there is one
 - **Tags here** — in a Bible, the passages you tagged in this chapter, with their count
-- **Highlights** — browse what you have marked in this publication
+- **Highlights** — browse your tagged Bible passages; from any other publication it opens the
+  Bible's list
 - **Footnotes** — the footnotes on the current page
 - **Text settings** — font, size, spacing, margins, with a live preview
 - **Night mode** — invert the page (a switch)
@@ -195,7 +197,8 @@ Below them, in two columns, depending on the publication:
 
 Tap the page above the sheet, tap **✕**, or swipe Back to close the menu and return to the page.
 When you come back to the menu from one of its screens (for example after backing out of **Go
-to**), or with night mode on, the same sheet appears on a blank screen instead of over the page.
+to**), the page is redrawn and the sheet opens over it again. With night mode on, the sheet appears
+on a blank screen instead.
 
 ## 7. Bible navigation
 
@@ -229,12 +232,14 @@ row appears above the matching verses; tap it to open the Bible there.
 
 ## 8. Highlights and tags
 
-A **highlight** marks a passage. A **tag** is a label you attach to it. Tags are global: a tag you
-create in one publication is offered in every other.
+A **highlight** marks a passage. A **tag** is a label you attach to it. Highlights and tags belong
+to the Bible: you mark Bible verses, and your tag list is the same wherever you open it. In any
+other publication, **Tag** and **Highlights** in the reader menu take you to the Bible's tag list
+rather than marking that publication.
 
 ### Marking a passage
 
-1. Open the reader menu and choose **Tag**. (Or set **Long-press Menu** to
+1. In the Bible, open the reader menu and choose **Tag**. (Or set **Long-press Menu** to
    **Highlight** and hold the Home key, or long-press a word outside the centre third to start the
    selection there.)
 2. Tap the first word of the passage, or move the cursor with **Left** / **Right** and tap **Home**
@@ -247,15 +252,15 @@ create in one publication is offered in every other.
 
 In a Bible, the text saved with a passage is always the whole verse or verses it touches, even if
 you selected only part of one. The highlight on the page stays exactly what you selected. Passages
-tagged with older firmware are rebuilt as whole verses when their publication is next opened; a
-long list may take a few openings.
+tagged with older firmware are rebuilt as whole verses when the Bible is next opened; a long list
+may take a few openings.
 
 Swiping Back at any point cancels the whole selection, including from the final chooser.
 
 ### Browsing what you marked
 
-**Reader menu -> Highlights** lists this publication's highlights, newest first, with the passage
-text. Activating a row jumps to it.
+**Reader menu -> Highlights** lists your Bible highlights, newest first, with the passage text.
+Activating a row opens the Bible there.
 
 Above the list, a row of tag chips shows each tag with its number of passages, such as **hope 12**.
 **All** comes first and **Unlabeled** last. Tap a chip to show only that tag's passages, and **All**
@@ -263,10 +268,10 @@ to show every passage again. Only tags that have passages here get a chip. **Tag
 reader menu opens the same screen for the current chapter only, and there the chips count that
 chapter's passages.
 
-Long-pressing a row offers to delete the highlight, or to change its tags. The full tag list
-opens from **…**, shown when there are more tags than fit, or by selecting the chip row and holding
-**Right**. Long-pressing a tag in that list retires it: it stops being offered in the tag picker,
-and it is removed from this publication's highlights. A highlight left with no tag shows as
+Long-pressing a row offers to delete the highlight, or to change its tags. **…**, shown when there
+are more tags than fit in the row, opens every tag as a grid of chips with its count, on one
+screen; tap a chip to filter by it. Long-pressing a chip there retires the tag: it stops being
+offered in the tag picker, and it is removed from your highlights. A highlight left with no tag shows as
 **Unlabeled**; no highlight is deleted.
 
 ## 9. Bookmarks and footnotes
@@ -477,7 +482,7 @@ Everything is on the SD card, in two hidden directories.
 
 | | |
 |---|---|
-| `passages/` | highlights and the tags on them, one file per publication |
+| `passages/` | your Bible highlights and the tags on them (`bible.json`) |
 | `tags.json` | your tags, shared by every publication |
 | `completion/` | left by older firmware; no longer used, safe to delete |
 | `pubkeys.json` | which publication each downloaded file is, and which file is your Bible |
