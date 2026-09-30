@@ -201,7 +201,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .mastheadHeight = 120};
 // A designated initializer that omits the field compiles and reads 0.
 static_assert(values.mastheadHeight > 0, "BaseMetrics must set mastheadHeight");
-}
+}  // namespace BaseMetrics
 
 class BaseTheme {
  public:

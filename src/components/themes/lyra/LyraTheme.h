@@ -79,7 +79,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
                                  .mastheadHeight = 120};
 // A designated initializer that omits the field compiles and reads 0.
 static_assert(values.mastheadHeight > 0, "LyraMetrics must set mastheadHeight");
-}
+}  // namespace LyraMetrics
 
 class LyraTheme : public BaseTheme {
  public:

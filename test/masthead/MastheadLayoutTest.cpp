@@ -26,8 +26,7 @@ constexpr int LAUNCHER_BIBLE_W = 464;
 constexpr int LAUNCHER_BIBLE_H = 321;
 
 MastheadLayout::Box bandFor(const ThemeMetrics& metrics) {
-  return MastheadLayout::band(SCREEN_W, INSET_TOP, INSET_RIGHT, INSET_LEFT, metrics.topPadding,
-                              metrics.mastheadHeight);
+  return MastheadLayout::band(SCREEN_W, INSET_TOP, INSET_RIGHT, INSET_LEFT, metrics.topPadding, metrics.mastheadHeight);
 }
 
 // BibleNavigationActivity::buildScreen under a masthead: content from
