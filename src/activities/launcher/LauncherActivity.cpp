@@ -241,7 +241,6 @@ void LauncherActivity::drawButton(const Box& box, const char* label, const bool 
 }
 
 void LauncherActivity::drawHero() const {
-  const auto& metrics = UITheme::getInstance().getMetrics();
   const CoverBand::Style style{CoverBandGeometry::BOOK_TITLE_BAND, RADIUS, layout.plate.height};
   const bool drawn = !bibleCoverPath.empty() && CoverBand::draw(renderer, bibleCoverPath, toRect(layout.hero), style);
   const char* subtitle = hasDateLine ? dateLine : nullptr;
@@ -249,8 +248,7 @@ void LauncherActivity::drawHero() const {
     GUI.drawHeader(renderer, toRect(layout.plateHeader), tr(STR_BIBLE), subtitle);
   } else {
     // CoverBand has left the band as paper, so the header never sits on dither.
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
-                   tr(STR_BIBLE), subtitle);
+    GUI.drawHeader(renderer, toRect(layout.fallbackHeader), tr(STR_BIBLE), subtitle);
   }
   // Outlined only around a drawn cover: the fallback header sits across the band's top rows, as Masthead's does.
   if (drawn) {

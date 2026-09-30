@@ -48,6 +48,8 @@ struct Insets {
 };
 
 struct Layout {
+  // The Bible header when there is no cover to put it on.
+  Box fallbackHeader;
   Box hero;
   Box plate;
   Box plateHeader;
@@ -97,7 +99,7 @@ constexpr int plateHeight(const ThemeMetrics& metrics, const LineHeights& lines)
 constexpr Layout compute(const int screenWidth, const int screenHeight, const Insets& insets,
                          const ThemeMetrics& metrics, const LineHeights& lines) {
   const int gap = metrics.verticalSpacing;
-  const int top = insets.top + metrics.topPadding;
+  const int top = insets.top + metrics.topPadding + PAD;
   const int bottom = screenHeight - insets.bottom - metrics.topPadding;
   const int fixed =
       recentHeight(metrics, lines) + verseCardHeight(lines) + meetingsHeight(lines) + iconRowHeight(lines);
@@ -106,7 +108,10 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
   Layout out{};
   // The masthead band's left edge and width, so the hero asks CoverBand for the
   // thumbnail the masthead and the sleep screen already share.
-  out.hero = MastheadLayout::band(screenWidth, insets.top, insets.right, insets.left, metrics.topPadding, heroHeight);
+  out.hero =
+      MastheadLayout::band(screenWidth, insets.top + PAD, insets.right, insets.left, metrics.topPadding, heroHeight);
+  // Full width and inset-free like every other screen's header, but PAD lower so Home breathes at the top.
+  out.fallbackHeader = Box{0, metrics.topPadding + PAD, screenWidth, metrics.headerHeight};
   const int left = out.hero.x;
   const int width = out.hero.width;
 

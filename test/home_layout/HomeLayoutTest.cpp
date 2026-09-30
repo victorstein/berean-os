@@ -35,7 +35,7 @@ bool within(const HomeLayout::Box& inner, const HomeLayout::Box& outer) {
 TEST(HomeLayout, TheHeroSharesTheMastheadThumbnail) {
   const auto layout = layoutFor(LyraMetrics::values);
   EXPECT_EQ(layout.hero.x, 8);
-  EXPECT_EQ(layout.hero.y, 14);
+  EXPECT_EQ(layout.hero.y, 22);
   EXPECT_EQ(layout.hero.width, 464);
   EXPECT_EQ(CoverBandGeometry::thumbHeightFor(layout.hero.width, layout.hero.height), 773);
 }
@@ -52,8 +52,26 @@ TEST(HomeLayout, FixedSectionHeights) {
 }
 
 TEST(HomeLayout, TheHeroTakesTheRemainder) {
-  EXPECT_EQ(layoutFor(LyraMetrics::values).hero.height, 258);
-  EXPECT_EQ(layoutFor(BaseMetrics::values).hero.height, 280);
+  EXPECT_EQ(layoutFor(LyraMetrics::values).hero.height, 250);
+  EXPECT_EQ(layoutFor(BaseMetrics::values).hero.height, 272);
+}
+
+TEST(HomeLayout, TheTopLeavesAGapAboveTheHero) {
+  for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
+    const auto layout = layoutFor(*metrics);
+    EXPECT_EQ(layout.hero.y - (INSETS.top + metrics->topPadding), HomeLayout::PAD);
+    EXPECT_EQ(layout.fallbackHeader.x, 0);
+    EXPECT_EQ(layout.fallbackHeader.y, metrics->topPadding + HomeLayout::PAD);
+    EXPECT_EQ(layout.fallbackHeader.width, SCREEN_W);
+    EXPECT_EQ(layout.fallbackHeader.height, metrics->headerHeight);
+  }
+}
+
+TEST(HomeLayout, TheGapsLeaveTheSectionsBelowTheHeroInPlace) {
+  for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
+    const auto layout = layoutFor(*metrics);
+    EXPECT_EQ(bottomOf(layout.hero), INSETS.top + metrics->topPadding + (metrics == &LyraMetrics::values ? 258 : 280));
+  }
 }
 
 TEST(HomeLayout, TheHeroKeepsItsArtAboveThePlate) {
