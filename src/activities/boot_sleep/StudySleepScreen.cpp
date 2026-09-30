@@ -27,7 +27,6 @@
 #include "CrossPointState.h"
 #include "StudySleepFit.h"
 #include "StudySleepPick.h"
-#include "StudyStore/ChapterCompletion.h"
 #include "StudyStore/PassageDoc.h"
 #include "StudyStore/PubKey.h"
 #include "StudyStore/TagPalette.h"
@@ -51,10 +50,6 @@ constexpr int SIDE_MARGIN = 24;
 constexpr int SECTION_GAP = 18;
 constexpr int PILL_PAD_X = 12;
 constexpr int PILL_PAD_Y = 4;
-constexpr int STRIP_MAX_BAR = 48;
-constexpr int STRIP_MIN_BAR = 3;
-constexpr int STRIP_BAR_GAP = 2;
-constexpr int STRIP_CAPTION_GAP = 6;
 constexpr int MARK_SIZE = 40;
 constexpr int MARK_TEXT_GAP = 4;
 constexpr int FOOTER_BOTTOM_GAP = 16;
@@ -83,7 +78,6 @@ struct ScreenContent {
   const study_sleep::Candidate* passage = nullptr;
   const char* dateLine = nullptr;
   std::string tagName;
-  const study::ChapterCompletion* progress = nullptr;
 };
 
 uint32_t hardwareRandom(void*, const uint32_t bound) { return static_cast<uint32_t>(random(static_cast<long>(bound))); }
@@ -229,65 +223,6 @@ std::string tagName(const uint16_t rawTag) {
   return palette.name(study::toTagId(rawTag));
 }
 
-// A missing record is an empty strip: the user has not read yet. Only a record
-// that exists but cannot be trusted hides the strip.
-bool loadCompletion(study::ChapterCompletion& record) {
-  char path[64];
-  snprintf(path, sizeof(path), "%s/%s.json", sdpaths::COMPLETION_DIR, study::BIBLE_PUB_KEY);
-  JsonDocument doc;
-  switch (PersistableStoreBase::readDocFromFileChecked(path, doc)) {
-    case DocReadStatus::Missing:
-      return true;
-    case DocReadStatus::Ok:
-      if (record.fromJson(doc.as<JsonVariantConst>())) return true;
-      LOG_ERR(MODULE, "Chapter record rejected; no progress strip");
-      return false;
-    default:
-      LOG_ERR(MODULE, "Chapter record unreadable; no progress strip");
-      return false;
-  }
-}
-
-int progressHeight(const GfxRenderer& renderer) {
-  return STRIP_MAX_BAR + STRIP_CAPTION_GAP + renderer.getLineHeight(SMALL_FONT_ID);
-}
-
-void drawProgress(const GfxRenderer& renderer, const study::ChapterCompletion& record, const int left, const int width,
-                  const int top) {
-  const int slot = width / study::BIBLE_BOOK_COUNT;
-  const int barWidth = std::max(1, slot - STRIP_BAR_GAP);
-  const int stripLeft = left + (width - slot * study::BIBLE_BOOK_COUNT) / 2;
-
-  uint8_t longestBook = 1;
-  for (uint8_t book = 1; book <= study::BIBLE_BOOK_COUNT; ++book) {
-    longestBook = std::max(longestBook, study::canonicalChapterCount(book));
-  }
-
-  unsigned finishedBooks = 0;
-  for (uint8_t book = 1; book <= study::BIBLE_BOOK_COUNT; ++book) {
-    const int chapters = study::canonicalChapterCount(book);
-    const int read = record.readCountInBook(book);
-    const int barHeight = std::max(STRIP_MIN_BAR, STRIP_MAX_BAR * chapters / longestBook);
-    const int x = stripLeft + (book - 1) * slot;
-    const int barTop = top + STRIP_MAX_BAR - barHeight;
-    if (read >= chapters) {
-      renderer.fillRect(x, barTop, barWidth, barHeight, true);
-      ++finishedBooks;
-      continue;
-    }
-    renderer.drawRect(x, barTop, barWidth, barHeight, true);
-    const int filled = barHeight * read / chapters;
-    if (filled > 0) renderer.fillRect(x, barTop + barHeight - filled, barWidth, filled, true);
-  }
-
-  char finished[48];
-  snprintf(finished, sizeof(finished), tr(STR_BOOKS_FINISHED), finishedBooks);
-  char caption[96];
-  snprintf(caption, sizeof(caption), "%u / %u   %s", static_cast<unsigned>(record.readCount()),
-           static_cast<unsigned>(study::CANONICAL_CHAPTER_TOTAL), finished);
-  renderer.drawCenteredText(SMALL_FONT_ID, top + STRIP_MAX_BAR + STRIP_CAPTION_GAP, caption);
-}
-
 int measurePassage(const void* ctx, const uint8_t sizeIndex, const char* text) {
   return static_cast<const GfxRenderer*>(ctx)->getTextWidth(PASSAGE_FONT_IDS[sizeIndex], text, EpdFontFamily::ITALIC);
 }
@@ -300,7 +235,6 @@ void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
   renderer.getOrientedViewableTRBL(&viewTop, &viewRight, &viewBottom, &viewLeft);
   const int pageWidth = renderer.getScreenWidth();
   const int pageHeight = renderer.getScreenHeight();
-  const int left = viewLeft + SIDE_MARGIN;
   const int width = pageWidth - viewLeft - viewRight - 2 * SIDE_MARGIN;
 
   const int serifLine = renderer.getLineHeight(NOTOSERIF_18_FONT_ID);
@@ -316,7 +250,6 @@ void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
   if (content.dateLine) chromeHeight += uiLine + SECTION_GAP;
   if (hasReference) chromeHeight += SECTION_GAP + uiLine;
   if (hasTag) chromeHeight += SECTION_GAP + pillHeight;
-  if (content.progress) chromeHeight += SECTION_GAP * 2 + progressHeight(renderer);
 
   const int footerTextY = pageHeight - viewBottom - FOOTER_BOTTOM_GAP - smallLine;
   const int markY = footerTextY - MARK_SIZE - MARK_TEXT_GAP;
@@ -358,10 +291,6 @@ void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
     renderer.drawCenteredText(SMALL_FONT_ID, y + PILL_PAD_Y, content.tagName.c_str());
     y += pillHeight;
   }
-  if (content.progress) {
-    y += SECTION_GAP * 2;
-    drawProgress(renderer, *content.progress, left, width, y);
-  }
 
   berean_mark::draw(renderer, (pageWidth - MARK_SIZE) / 2, markY, MARK_SIZE);
   renderer.drawCenteredText(SMALL_FONT_ID, footerTextY, tr(STR_BEREAN));
@@ -393,12 +322,6 @@ bool render(const GfxRenderer& renderer) {
   char dateLine[48];
   if (formatDate(dateLine, sizeof(dateLine))) content.dateLine = dateLine;
   content.tagName = tagName(passage.tag);
-  auto completion = makeUniqueNoThrow<study::ChapterCompletion>();
-  if (!completion) {
-    LOG_ERR(MODULE, "OOM: chapter record; no progress strip");
-  } else if (loadCompletion(*completion)) {
-    content.progress = completion.get();
-  }
 
   drawScreen(renderer, content);
 
