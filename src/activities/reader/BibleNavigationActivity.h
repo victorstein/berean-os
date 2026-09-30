@@ -48,6 +48,13 @@ class BibleNavigationActivity final : public UiListActivity {
   static constexpr int MAX_GRID_CELLS = NumberGrid::MAX_CELLS;
   // "176" plus its NUL: no chapter or verse number reaches four digits.
   static constexpr int CELL_LABEL_BYTES = 4;
+  // BookmarkStatusIcon (components/icons/bookmark.h) is 16x16; BaseTheme draws
+  // it without its top two rows, and so does the grid.
+  static constexpr int RIBBON_W = 16;
+  static constexpr int RIBBON_H = 14;
+  static constexpr int RIBBON_TOP_CROP = 2;
+  static constexpr int DOT_W = 12;
+  static constexpr int MARK_INSET = 3;
 
   std::shared_ptr<Epub> epub;
   // The reader's spine item when the navigator was opened; decides the entry level.
@@ -112,6 +119,10 @@ class BibleNavigationActivity final : public UiListActivity {
   char cellLabels[MAX_GRID_CELLS][CELL_LABEL_BYTES] = {};
   NumberGrid::Geometry grid{};
   void buildGrid(UiScreen& screen);
+  // The page's tag and bookmark marks, top-right in each cell, inked by the
+  // cell's resolved state so they stay visible on the inverted current cell.
+  void drawCellMarks(UiScreen& screen, const NumberGrid::Box& gridBox, const NumberGrid::Geometry& geometry,
+                     int pageFirst, int pageCells, const freeink::ui::KeyGridProps& props);
   // Page arithmetic that differs by level: the book level pages by section
   // (bookLayout), the number levels by NumberGrid's uniform pages.
   int gridPageCount() const;

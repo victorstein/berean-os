@@ -15,6 +15,7 @@
 #include "SpineHtmlStream.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
+#include "components/icons/bookmark.h"
 #include "study/StudyStore.h"
 
 namespace fui = freeink::ui;
@@ -537,7 +538,66 @@ void BibleNavigationActivity::buildGrid(UiScreen& screen) {
   props.labelText = screen.theme().bodyText;
   props.labelText.align = fui::TextAlign::Center;
   props.keyStyles = screen.theme().key;
-  fui::keyGrid(screen.frame(), body, props);
+
+  const NumberGrid::Geometry pageGeometry{cols, rows};
+  const NumberGrid::Box gridBox = NumberGrid::gridRect(body.x, body.y, body.width, body.height, pageGeometry);
+  const bool squareGrid = level != Level::Book && gridBox.width > 0;
+  if (!squareGrid) {
+    fui::keyGrid(screen.frame(), body, props);
+    return;
+  }
+  fui::keyGrid(screen.frame(),
+               fui::Rect{static_cast<int16_t>(gridBox.x), static_cast<int16_t>(gridBox.y),
+                         static_cast<int16_t>(gridBox.width), static_cast<int16_t>(gridBox.height)},
+               props);
+  drawCellMarks(screen, gridBox, pageGeometry, pageFirst, pageCells, props);
+}
+
+void BibleNavigationActivity::drawCellMarks(UiScreen& screen, const NumberGrid::Box& gridBox,
+                                            const NumberGrid::Geometry& geometry, const int pageFirst,
+                                            const int pageCells, const fui::KeyGridProps& props) {
+  const GridMarks::Bits& tagged = level == Level::Verse ? verseTagged : chapterTagged;
+  const GridMarks::Bits& bookmarked = level == Level::Verse ? verseBookmarked : chapterBookmarked;
+  auto& frame = screen.frame();
+
+  fui::BitmapRef ribbon;
+  ribbon.data = BookmarkStatusIcon + RIBBON_TOP_CROP * (RIBBON_W / 8);
+  ribbon.width = RIBBON_W;
+  ribbon.height = RIBBON_H;
+  ribbon.format = fui::BitmapFormat::BW1;
+
+  fui::TextStyle dotStyle = screen.theme().smallText;
+  dotStyle.align = fui::TextAlign::Center;
+  const int16_t dotHeight = frame.target().lineHeight(dotStyle.font);
+
+  for (int i = 0; i < pageCells; i++) {
+    const int row = pageFirst + i;
+    const bool hasTag = tagged.test(row);
+    const bool hasBookmark = bookmarked.test(row);
+    if (!hasTag && !hasBookmark) continue;
+
+    const NumberGrid::Box cell = NumberGrid::cellRect(gridBox, geometry, i);
+    // Resolved as keyGrid resolves the key itself (key-grid.h:86), so pressed
+    // and tap-flash states ink the mark too.
+    const fui::State base = props.selectedIndex == i ? fui::StateSelected : fui::StateNormal;
+    const fui::Paint ink =
+        props.keyStyles.resolve(frame.stateFor(props.action, static_cast<int16_t>(row), base)).foreground;
+
+    int markRight = cell.x + cell.width - MARK_INSET;
+    const int markTop = cell.y + MARK_INSET;
+    if (hasBookmark) {
+      frame.target().bitmap(
+          fui::Rect{static_cast<int16_t>(markRight - RIBBON_W), static_cast<int16_t>(markTop), RIBBON_W, RIBBON_H},
+          ribbon, fui::BitmapMode::Center, ink);
+      markRight -= RIBBON_W;
+    }
+    if (hasTag) {
+      dotStyle.color = ink.color;
+      frame.target().text(
+          fui::Rect{static_cast<int16_t>(markRight - DOT_W), static_cast<int16_t>(markTop), DOT_W, dotHeight},
+          "\xE2\x80\xA2", dotStyle);
+    }
+  }
 }
 
 void BibleNavigationActivity::rebuildBookLayout(const int width, const int height) {
