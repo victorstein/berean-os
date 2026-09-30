@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.3](https://github.com/victorstein/berean-os/compare/v1.29.2...v1.29.3) (2026-09-30)
+
+
+### Bug Fixes
+
+* open the Bible's tags from any publication ([#236](https://github.com/victorstein/berean-os/issues/236)) ([bed7580](https://github.com/victorstein/berean-os/commit/bed7580113003b15fec8eec233f94f25b9ec67c5)), closes [#235](https://github.com/victorstein/berean-os/issues/235)
+
 ## [1.29.2](https://github.com/victorstein/berean-os/compare/v1.29.1...v1.29.2) (2026-09-30)
 
 

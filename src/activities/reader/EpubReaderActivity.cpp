@@ -45,6 +45,7 @@
 #include "SpineHtmlStream.h"
 #include "activities/PostedMessage.h"
 #include "activities/SettingsSave.h"
+#include "activities/launcher/BibleFinder.h"
 #include "activities/launcher/LauncherBible.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/UITheme.h"
@@ -57,6 +58,14 @@
 #include "util/ScreenshotUtil.h"
 
 namespace {
+
+// On a non-PSRAM board the study store is never opened (loadBook), so there is
+// no passage document for a tag action to act on.
+#if BOARD_HAS_PSRAM
+constexpr bool HIGHLIGHTS_SUPPORTED = true;
+#else
+constexpr bool HIGHLIGHTS_SUPPORTED = false;
+#endif
 
 int clampPercent(int percent) {
   if (percent < 0) {
@@ -268,14 +277,6 @@ void EpubReaderActivity::releaseSectionKeepingPosition() {
 
 void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
   pendingManualTurn = 0;
-  // Mirrors Task 3's own BOARD_HAS_PSRAM gate on loading highlightDoc: on a
-  // non-PSRAM board the document is never loaded, so offering these entries
-  // there would operate on a permanently empty document.
-#if BOARD_HAS_PSRAM
-  constexpr bool hasHighlights = true;
-#else
-  constexpr bool hasHighlights = false;
-#endif
   int tagsHereCount = 0;
   std::optional<Place> onScreen;
   if (isBible()) {
@@ -287,8 +288,9 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
       isBible() ? collectRecentChips(onScreen) : ReaderMenuSheetLayout::RecentChipLabels{};
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
-                                               !currentPageFootnotes.empty(), !bookmarks.empty(), hasHighlights,
-                                               isBible(), tagsHereCount, pageOnScreen, recent),
+                                               !currentPageFootnotes.empty(), !bookmarks.empty(), HIGHLIGHTS_SUPPORTED,
+                                               tagTarget() == ReaderMenuModel::TagTarget::BibleTags, isBible(),
+                                               tagsHereCount, pageOnScreen, recent),
       [this](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -323,7 +325,53 @@ void EpubReaderActivity::openHighlightPassageAt(const int touchX, const int touc
   pendingSelectionAnchorY = -1;
 }
 
+bool EpubReaderActivity::bibleReachableForTags() {
+  if (!epub || isBible()) return false;
+  if (!bibleForTagsResolved) {
+    bibleForTagsResolved = true;
+    const std::string& openPath = epub->getPath();
+    const auto found = BibleFinder::find(openPath);
+    if (found && found->path != openPath) {
+      bibleForTagsPath = found->path;
+      LOG_INF("ERS", "Bible for tags: %s (%s)", bibleForTagsPath.c_str(), bibleLookupName(found->by));
+    } else {
+      if (found) LOG_INF("ERS", "Bible lookup returned the open book %s; ignoring it", openPath.c_str());
+      LOG_INF("ERS", "No Bible for tags; tag actions hidden");
+    }
+  }
+  return !bibleForTagsPath.empty();
+}
+
+ReaderMenuModel::TagTarget EpubReaderActivity::tagTarget() {
+  const bool reachable = HIGHLIGHTS_SUPPORTED && !isBible() && bibleReachableForTags();
+  return ReaderMenuModel::tagTarget(HIGHLIGHTS_SUPPORTED, isBible(), reachable);
+}
+
+void EpubReaderActivity::openBibleTags() {
+  LOG_INF("ERS", "Tag action outside the Bible; opening the Bible's tags");
+  activityManager.goToReader(bibleForTagsPath, false, ReaderEntryIntent::of(ReaderEntryIntent::Kind::Tags));
+}
+
+void EpubReaderActivity::runTagCommand() {
+  switch (tagTarget()) {
+    case ReaderMenuModel::TagTarget::ThisBook:
+      openHighlightPassage();
+      return;
+    case ReaderMenuModel::TagTarget::BibleTags:
+      openBibleTags();
+      return;
+    case ReaderMenuModel::TagTarget::Hidden:
+      LOG_DBG("ERS", "Tag command ignored: no Bible to open");
+      return;
+  }
+}
+
 void EpubReaderActivity::openHighlightPassage() {
+  // Tags are Bible-only: nothing may write a passage for another publication.
+  if (!isBible()) {
+    LOG_ERR("ERS", "Refusing to tag outside the Bible");
+    return;
+  }
   if (!section) return;
   auto page = section->loadPage(section->currentPage);
   if (!page) return;
@@ -463,7 +511,11 @@ void EpubReaderActivity::loop() {
     int longPressY = 0;
     if (SETTINGS.touchReaderControls && mappedInput.wasScreenLongPress(longPressX, longPressY) &&
         !ReaderUtils::isInMenuZone(renderer, longPressX, longPressY)) {
-      openHighlightPassageAt(longPressX, longPressY);
+      if (isBible()) {
+        openHighlightPassageAt(longPressX, longPressY);
+      } else {
+        LOG_DBG("ERS", "Long-press outside the Bible: nothing to tag");
+      }
       return;
     }
   }
@@ -513,7 +565,7 @@ void EpubReaderActivity::loop() {
         break;
       case CrossPointSettings::LP_MENU_HIGHLIGHT:
         if (mappedInput.getHeldTime() >= ReaderUtils::BOOKMARK_HOLD_MS) {
-          openHighlightPassage();
+          runTagCommand();
           return;
         }
         break;
@@ -537,7 +589,7 @@ void EpubReaderActivity::loop() {
         openReaderMenu(true);
         return;
       case CrossPointSettings::LP_MENU_HIGHLIGHT:
-        openHighlightPassage();
+        runTagCommand();
         return;
       case CrossPointSettings::LP_MENU_DISABLED:
       default:
@@ -787,10 +839,18 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
       break;
     }
     case EpubReaderMenuActivity::MenuAction::HIGHLIGHT_PASSAGE: {
+      if (tagTarget() == ReaderMenuModel::TagTarget::BibleTags) {
+        openBibleTags();
+        return;
+      }
       openHighlightPassage();
       break;
     }
     case EpubReaderMenuActivity::MenuAction::HIGHLIGHTS: {
+      if (tagTarget() == ReaderMenuModel::TagTarget::BibleTags) {
+        openBibleTags();
+        return;
+      }
       openHighlights();
       break;
     }
