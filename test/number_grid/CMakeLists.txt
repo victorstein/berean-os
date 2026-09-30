@@ -42,3 +42,20 @@ target_link_libraries(BibleEntryPositionTest PRIVATE
 )
 
 gtest_discover_tests(BibleEntryPositionTest)
+
+add_executable(GridMarksTest
+  GridMarksTest.cpp
+)
+
+target_include_directories(GridMarksTest PRIVATE
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/StudyStore
+  ${REPO_ROOT}/lib/Epub
+)
+
+target_link_libraries(GridMarksTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(GridMarksTest)
