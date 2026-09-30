@@ -134,3 +134,33 @@ TEST(TypedReferenceParse, ExactMatchBeatsAPrefixOfAnotherBook) {
   expectReference(parse("Phil 4:13", english()), 50, 4, 13);
   expectReference(parse("Philem 1", english()), 57, 1);
 }
+
+namespace {
+
+void expectNotAReference(const char* query, const Books& books) {
+  const TypedReference r = parse(query, books);
+  EXPECT_FALSE(r.valid()) << '"' << query << "\" parsed as book " << static_cast<int>(r.book);
+}
+
+}  // namespace
+
+TEST(TypedReferenceParse, AUniquePrefixNamesTheBook) {
+  expectReference(parse("Isa 40", spanish()), 23, 40);
+  expectReference(parse("Salmo 23", spanish()), 19, 23);
+  expectReference(parse("Gene 1", spanish()), 1, 1);
+  expectReference(parse("Lament 3", english()), 25, 3);
+}
+
+TEST(TypedReferenceParse, AnAmbiguousPrefixIsNotAReference) {
+  expectNotAReference("Jud 1", english());  // Judges and Jude
+  expectNotAReference("Phi 1", english());  // Philippians and Philemon
+}
+
+TEST(TypedReferenceParse, TwoLetterPrefixesAreNotReferences) {
+  expectNotAReference("de 3", spanish());
+  expectNotAReference("la 3", spanish());
+  expectNotAReference("el 3", spanish());
+  expectNotAReference("de 3", english());
+  expectNotAReference("la 3", english());
+  expectNotAReference("Ju 3", spanish());
+}

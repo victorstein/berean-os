@@ -14,6 +14,9 @@ constexpr size_t KEY_BYTES = 64;
 // The index stores chapter and verse as u8.
 constexpr int MAX_NUMBER = 255;
 constexpr int MAX_NUMBER_DIGITS = 3;
+// Two-letter function words ("de", "la", "el") each prefix exactly one book.
+// Exact two-letter abbreviations ("Is.", "Ps.") still match.
+constexpr size_t MIN_PREFIX_BYTES = 3;
 // Pasted references often carry an en dash; the keyboard types '-'.
 constexpr std::string_view EN_DASH = "\xE2\x80\x93";
 
@@ -167,10 +170,12 @@ const char* rowAt(const char* base, const size_t stride, const int index) {
   return base == nullptr ? nullptr : base + static_cast<size_t>(index) * stride;
 }
 
-// Canonical book number the key names, or 0.
+// Canonical book number the key names, or 0 when none or several do.
 int matchBook(const char* key, const size_t keyLength, const BookNameSource& books, std::string& scratch) {
   int exactBook = 0;
   int exactBooks = 0;
+  int prefixBook = 0;
+  int prefixBooks = 0;
   for (int i = 0; i < books.count; i++) {
     const Match byName = compareCandidate(rowAt(books.names, books.nameStride, i), key, keyLength, scratch);
     const Match byAbbreviation =
@@ -178,9 +183,14 @@ int matchBook(const char* key, const size_t keyLength, const BookNameSource& boo
     if (byName == Match::Exact || byAbbreviation == Match::Exact) {
       exactBook = i + 1;
       exactBooks++;
+    } else if (byName == Match::Prefix || byAbbreviation == Match::Prefix) {
+      prefixBook = i + 1;
+      prefixBooks++;
     }
   }
-  return exactBooks == 1 ? exactBook : 0;
+  if (exactBooks > 0) return exactBooks == 1 ? exactBook : 0;
+  if (keyLength < MIN_PREFIX_BYTES || prefixBooks != 1) return 0;
+  return prefixBook;
 }
 
 }  // namespace
