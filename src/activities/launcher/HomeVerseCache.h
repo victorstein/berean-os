@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -73,8 +74,9 @@ constexpr Empty emptyReason(const uint32_t rowsUnfit, const uint32_t rowsOverPre
 // text than the buffer holds.
 inline bool packLines(const std::vector<std::string>& fitted, Pick& pick) {
   if (fitted.empty() || fitted.size() > MAX_LINES) return false;
-  size_t needed = 0;
-  for (const std::string& text : fitted) needed += text.size() + 1;
+  const size_t needed =
+      std::accumulate(fitted.begin(), fitted.end(), size_t{0},
+                      [](const size_t sum, const std::string& text) { return sum + text.size() + 1; });
   if (needed > LINE_BUFFER_BYTES) return false;
 
   size_t at = 0;
