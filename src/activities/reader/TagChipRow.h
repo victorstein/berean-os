@@ -56,4 +56,78 @@ Counts count(const Passages& passages, const std::vector<study::TagId>& activeId
   return out;
 }
 
+constexpr int MAX_LINES = 2;
+// Chip hit rects share UiAppHost's 64-interaction table with the visible passage rows; past it,
+// hits are dropped silently and the chip becomes untappable.
+constexpr int MAX_CHIPS = 24;
+
+enum class Kind : uint8_t { All, Tag, Unlabelled };
+
+struct Placed {
+  int chip = 0;  // index into the widths passed to layout(), or -1 for the ellipsis
+  int line = 0;
+  int x = 0;
+  int width = 0;
+};
+
+struct Layout {
+  Placed placed[MAX_CHIPS + 1];
+  int placedCount = 0;
+  int lines = 0;
+  bool overflow = false;
+};
+
+// Fills a caller-owned Layout: returning ~400 B by value would put a temporary on the render
+// task's stack.
+inline void layout(const int* widths, const int count, const int moreWidth, const int lineWidth, const int gap,
+                   Layout& out) {
+  out.placedCount = 0;
+  out.lines = 0;
+  out.overflow = false;
+  if (lineWidth <= 0) return;
+
+  int line = 0;
+  int x = 0;
+  bool fitsAll = true;
+  for (int i = 0; i < count; ++i) {
+    const int width = std::clamp(widths[i], 0, lineWidth);
+    if (x > 0 && x + width > lineWidth) {
+      ++line;
+      x = 0;
+    }
+    if (line >= MAX_LINES || out.placedCount >= MAX_CHIPS) {
+      fitsAll = false;
+      break;
+    }
+    out.placed[out.placedCount++] = Placed{i, line, x, width};
+    x += width + gap;
+  }
+
+  if (!fitsAll) {
+    const int more = std::clamp(moreWidth, 0, lineWidth);
+    // Drop chips from the end until the ellipsis fits after the last one kept.
+    while (true) {
+      int moreLine = 0;
+      int moreX = 0;
+      if (out.placedCount > 0) {
+        const Placed& last = out.placed[out.placedCount - 1];
+        moreLine = last.line;
+        moreX = last.x + last.width + gap;
+        if (moreX + more > lineWidth) {
+          ++moreLine;
+          moreX = 0;
+        }
+      }
+      if (moreLine < MAX_LINES) {
+        out.placed[out.placedCount++] = Placed{-1, moreLine, moreX, more};
+        out.overflow = true;
+        break;
+      }
+      --out.placedCount;
+    }
+  }
+
+  out.lines = out.placedCount > 0 ? out.placed[out.placedCount - 1].line + 1 : 0;
+}
+
 }  // namespace TagChips

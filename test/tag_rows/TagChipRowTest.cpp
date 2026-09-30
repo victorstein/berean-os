@@ -129,3 +129,118 @@ TEST(TagChipCounts, EveryCountEqualsTheRowsItsFilterShows) {
     EXPECT_EQ(static_cast<size_t>(counts.perTag[slot]), shown(active[slot])) << "slot " << slot;
   }
 }
+
+namespace {
+
+constexpr int GAP = 4;
+constexpr int MORE = 40;
+
+TagChips::Layout layoutOf(const std::vector<int>& widths, const int lineWidth, const int more = MORE) {
+  TagChips::Layout out;
+  TagChips::layout(widths.data(), static_cast<int>(widths.size()), more, lineWidth, GAP, out);
+  return out;
+}
+
+}  // namespace
+
+TEST(TagChipLayout, NoChipsPlaceNothing) {
+  const auto layout = layoutOf({}, 400);
+  EXPECT_EQ(layout.placedCount, 0);
+  EXPECT_EQ(layout.lines, 0);
+  EXPECT_FALSE(layout.overflow);
+}
+
+TEST(TagChipLayout, AllAndUnlabelledShareOneLine) {
+  const auto layout = layoutOf({50, 90}, 400);
+  ASSERT_EQ(layout.placedCount, 2);
+  EXPECT_EQ(layout.placed[0].x, 0);
+  EXPECT_EQ(layout.placed[1].x, 54);
+  EXPECT_EQ(layout.placed[1].line, 0);
+  EXPECT_EQ(layout.lines, 1);
+  EXPECT_FALSE(layout.overflow);
+}
+
+TEST(TagChipLayout, WrapsOntoASecondLineWithoutEllipsis) {
+  const auto layout = layoutOf({150, 150, 150, 150}, 400);
+  ASSERT_EQ(layout.placedCount, 4);
+  EXPECT_EQ(layout.placed[2].line, 1);
+  EXPECT_EQ(layout.placed[2].x, 0);
+  EXPECT_EQ(layout.lines, 2);
+  EXPECT_FALSE(layout.overflow);
+}
+
+TEST(TagChipLayout, OverflowPutsEllipsisLastOnLineTwo) {
+  const auto layout = layoutOf({150, 150, 150, 150, 150, 150}, 400);
+  ASSERT_EQ(layout.placedCount, 5);
+  for (int i = 0; i < 4; ++i) EXPECT_EQ(layout.placed[i].chip, i) << "chips are the input prefix, in order";
+  EXPECT_EQ(layout.placed[4].chip, -1);
+  EXPECT_EQ(layout.placed[4].line, 1);
+  EXPECT_EQ(layout.placed[4].x, 308);
+  EXPECT_TRUE(layout.overflow);
+  EXPECT_EQ(layout.lines, 2);
+}
+
+TEST(TagChipLayout, EllipsisDropsItsNeighbourWhenItDoesNotFit) {
+  const auto layout = layoutOf({190, 190, 190, 190, 190, 190}, 400);
+  ASSERT_EQ(layout.placedCount, 4);
+  EXPECT_EQ(layout.placed[2].chip, 2);
+  EXPECT_EQ(layout.placed[3].chip, -1);
+  EXPECT_EQ(layout.placed[3].line, 1);
+  EXPECT_EQ(layout.placed[3].x, 194);
+  EXPECT_LE(layout.placed[3].x + layout.placed[3].width, 400);
+}
+
+TEST(TagChipLayout, ChipWiderThanTheLineIsClampedToIt) {
+  const auto layout = layoutOf({1000}, 400);
+  ASSERT_EQ(layout.placedCount, 1);
+  EXPECT_EQ(layout.placed[0].width, 400);
+}
+
+TEST(TagChipLayout, NeverPlacesMoreThanMaxChips) {
+  const std::vector<int> narrow(30, 10);
+  const auto layout = layoutOf(narrow, 400, 20);
+  EXPECT_LE(layout.placedCount, TagChips::MAX_CHIPS + 1);
+  EXPECT_TRUE(layout.overflow);
+}
+
+// chips_ holds at most MAX_CHIPS + 1 candidates; a full list must still show the ellipsis.
+TEST(TagChipLayout, TruncatedCandidatesStillOverflow) {
+  const std::vector<int> narrow(TagChips::MAX_CHIPS + 1, 10);
+  EXPECT_TRUE(layoutOf(narrow, 2000, 20).overflow);
+}
+
+// Widths are measured bold for every chip, so the layout cannot depend on the selection (A13).
+TEST(TagChipLayout, SameWidthsGiveTheSamePlacements) {
+  const std::vector<int> widths{60, 120, 80, 200, 90, 70, 150};
+  const auto a = layoutOf(widths, 300);
+  const auto b = layoutOf(widths, 300);
+  ASSERT_EQ(a.placedCount, b.placedCount);
+  for (int i = 0; i < a.placedCount; ++i) {
+    EXPECT_EQ(a.placed[i].chip, b.placed[i].chip);
+    EXPECT_EQ(a.placed[i].x, b.placed[i].x);
+    EXPECT_EQ(a.placed[i].line, b.placed[i].line);
+  }
+}
+
+TEST(TagChipLayout, InvariantsHoldForEveryCandidateCount) {
+  for (int n = 0; n <= 60; ++n) {
+    std::vector<int> widths;
+    for (int i = 0; i < n; ++i) widths.push_back(20 + (i * 37) % 120);
+    const auto layout = layoutOf(widths, 300, 30);
+    EXPECT_LE(layout.lines, TagChips::MAX_LINES) << n;
+    EXPECT_LE(layout.placedCount, TagChips::MAX_CHIPS + 1) << n;
+    int expectedChip = 0;
+    for (int i = 0; i < layout.placedCount; ++i) {
+      const auto& p = layout.placed[i];
+      EXPECT_GE(p.x, 0) << n;
+      EXPECT_LE(p.x + p.width, 300) << n;
+      EXPECT_LT(p.line, TagChips::MAX_LINES) << n;
+      if (p.chip >= 0) EXPECT_EQ(p.chip, expectedChip++) << n;
+    }
+    if (layout.overflow) {
+      EXPECT_EQ(layout.placed[layout.placedCount - 1].chip, -1) << n;
+    } else {
+      EXPECT_EQ(layout.placedCount, n) << n;
+    }
+  }
+}
