@@ -75,7 +75,10 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
                                  .textFieldHorizontalPadding = 6,
                                  .textFieldNormalThickness = 1,
                                  .textFieldCursorThickness = 3,
-                                 .textFieldLineEndOffset = 0};
+                                 .textFieldLineEndOffset = 0,
+                                 .mastheadHeight = 120};
+// A designated initializer that omits the field compiles and reads 0.
+static_assert(values.mastheadHeight > 0, "LyraMetrics must set mastheadHeight");
 }
 
 class LyraTheme : public BaseTheme {

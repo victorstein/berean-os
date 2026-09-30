@@ -116,6 +116,11 @@ struct ThemeMetrics {
   int textFieldNormalThickness;
   int textFieldCursorThickness;
   int textFieldLineEndOffset;
+
+  // Cover masthead band height (components/Masthead.h). Must stay at or below
+  // 146 on the X4 Pro or the 7x10 chapter grid loses a row
+  // (test/masthead/MastheadLayoutTest.cpp).
+  int mastheadHeight;
 };
 
 enum UIIcon { None = 0, Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Bookmark };
@@ -192,7 +197,10 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .textFieldHorizontalPadding = 6,
                                  .textFieldNormalThickness = 1,
                                  .textFieldCursorThickness = 3,
-                                 .textFieldLineEndOffset = 0};
+                                 .textFieldLineEndOffset = 0,
+                                 .mastheadHeight = 120};
+// A designated initializer that omits the field compiles and reads 0.
+static_assert(values.mastheadHeight > 0, "BaseMetrics must set mastheadHeight");
 }
 
 class BaseTheme {
