@@ -34,6 +34,7 @@
 #include "HighlightOverlay.h"
 #include "HighlightsActivity.h"
 #include "MappedInputManager.h"
+#include "PageTurn.h"
 #include "PassageSelectActivity.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
@@ -900,7 +901,7 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
     clearDeferredReposition();
   }
   if (isForwardTurn) {
-    if (!study::forwardTurnLeavesDocument(section->currentPage, section->pageCount, section->isBuilding())) {
+    if (!forwardTurnLeavesDocument(section->currentPage, section->pageCount, section->isBuilding())) {
       section->currentPage++;
       lastPageTurnTime = millis();
       return true;
