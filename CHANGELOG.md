@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.28.1](https://github.com/victorstein/berean-os/compare/v1.28.0...v1.28.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* count Tags here chips over the chapter ([222019b](https://github.com/victorstein/berean-os/commit/222019b0c5322437378c0b8b7536421bb2f215e1))
+* drop leading space from a bookless place reference ([222019b](https://github.com/victorstein/berean-os/commit/222019b0c5322437378c0b8b7536421bb2f215e1))
+* tell the reader when recent places fail to save ([222019b](https://github.com/victorstein/berean-os/commit/222019b0c5322437378c0b8b7536421bb2f215e1))
+
+
+### Documentation
+
+* describe the shipped Home, Recent and tag chips ([222019b](https://github.com/victorstein/berean-os/commit/222019b0c5322437378c0b8b7536421bb2f215e1))
+
 ## [1.28.0](https://github.com/victorstein/berean-os/compare/v1.27.0...v1.28.0) (2026-09-30)
 
 
