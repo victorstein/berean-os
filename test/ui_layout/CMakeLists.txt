@@ -27,3 +27,24 @@ target_link_libraries(BibleReferenceTest PRIVATE
 )
 
 gtest_discover_tests(BibleReferenceTest)
+
+add_executable(TypedReferenceTest
+  TypedReferenceTest.cpp
+  ${REPO_ROOT}/src/activities/reader/TypedReference.cpp
+  ${REPO_ROOT}/lib/BibleSearch/BibleSearch/Fold.cpp
+  ${REPO_ROOT}/lib/BibleSearch/BibleSearch/IndexFormat.cpp
+  ${REPO_ROOT}/lib/BibleSearch/BibleSearch/IndexBuilder.cpp
+  ${REPO_ROOT}/lib/BibleSearch/BibleSearch/IndexReader.cpp
+)
+
+target_include_directories(TypedReferenceTest PRIVATE
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/BibleSearch
+)
+
+target_link_libraries(TypedReferenceTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(TypedReferenceTest)
