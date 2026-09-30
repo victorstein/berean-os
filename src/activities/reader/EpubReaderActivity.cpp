@@ -217,9 +217,6 @@ bool EpubReaderActivity::loadBook() {
   if (STUDY.saveDisabled()) {
     ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
   }
-  if (STUDY.takeCompletionLoadFailureNotice()) {
-    ReaderUtils::showMessage(renderer, tr(STR_CHAPTERS_READ_LOAD_FAILED));
-  }
   // Rebuilds passages saved before issue #188 as their whole verses. Bounded,
   // and resumed on the next open. loadBook holds no RenderLock, which the
   // inflate popup would otherwise deadlock on.
@@ -907,7 +904,6 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
       return true;
     } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
       RenderLock lock;
-      recordDocumentRead();
       nextPageNumber = 0;
       currentSpineIndex++;
       section.reset();
@@ -915,7 +911,6 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
       return true;
     } else {
       RenderLock lock;
-      recordDocumentRead();
       currentSpineIndex = epub->getSpineItemsCount();
       lastPageTurnTime = millis();
       return true;
@@ -936,13 +931,6 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
     }
   }
   return false;
-}
-
-void EpubReaderActivity::recordDocumentRead() {
-  if (!highlightsLoaded || currentSpineIndex < 0) return;
-  if (STUDY.markDocumentRead(static_cast<uint16_t>(currentSpineIndex)) == study::CompletionMarkResult::SaveFailed) {
-    ReaderUtils::showMessage(renderer, tr(STR_CHAPTERS_READ_SAVE_FAILED));
-  }
 }
 
 bool EpubReaderActivity::skipPages(int amount) {
