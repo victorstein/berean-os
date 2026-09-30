@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0](https://github.com/victorstein/berean-os/compare/v1.23.0...v1.24.0) (2026-09-30)
+
+
+### Features
+
+* replace the tag filter row with tag chips and counts ([#212](https://github.com/victorstein/berean-os/issues/212)) ([e15281c](https://github.com/victorstein/berean-os/commit/e15281c923bca5ad58b9873bce11975a7f55473e)), closes [#205](https://github.com/victorstein/berean-os/issues/205)
+
 ## [1.23.0](https://github.com/victorstein/berean-os/compare/v1.22.0...v1.23.0) (2026-09-30)
 
 
