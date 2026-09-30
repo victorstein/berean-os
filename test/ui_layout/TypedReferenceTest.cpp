@@ -164,3 +164,25 @@ TEST(TypedReferenceParse, TwoLetterPrefixesAreNotReferences) {
   expectNotAReference("la 3", english());
   expectNotAReference("Ju 3", spanish());
 }
+
+TEST(TypedReferenceParse, OrdinaryWordsAreNotReferences) {
+  for (const char* query : {"amor", "amor 3", "dios es amor", "Dios 3", "vida 3", "paz 1", "ley 5"}) {
+    expectNotAReference(query, spanish());
+  }
+  for (const char* query : {"love", "love 3", "God is love"}) expectNotAReference(query, english());
+}
+
+TEST(TypedReferenceParse, MalformedInputIsNotAReference) {
+  for (const char* query : {"", "   ", "Gen", "Gen1", "Gen 0", "Gen 1:0", "Gen 256", "Gen 1000", "Gen 1:3-2",
+                            "Gen 1:", "Gen :3", "Gen 1-3", "Gen 1:1:1", "Gen 1:2-", "3:16", "1234", "a 3",
+                            "1 3", "Juan 3.16", "Juan 3,16"}) {
+    expectNotAReference(query, spanish());
+  }
+}
+
+TEST(TypedReferenceParse, NoNamesMeansNoReference) {
+  const Books empty;
+  expectNotAReference("Gen 1", empty);
+  BookNameSource none;
+  EXPECT_FALSE(parseTypedReference("Gen 1", none).valid());
+}
