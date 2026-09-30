@@ -510,6 +510,26 @@ void BibleSearchActivity::runSearch() {
   }
 
   [[maybe_unused]] const unsigned long started = millis();
+  ResolvedReference reference;
+  const TypedReference typed = parseTypedReference(query, bookNames.nameSource());
+  if (typed.valid()) {
+    if (!resolveTypedReference(*reader, typed, reference)) {
+      LOG_ERR(MODULE, "Reference %u %u:%u could not be read from the index", static_cast<unsigned>(typed.book),
+              static_cast<unsigned>(typed.chapter), static_cast<unsigned>(typed.verse));
+      reference = ResolvedReference{};
+    } else if (!reference.found) {
+      LOG_DBG(MODULE, "Reference %u %u:%u is not in the index", static_cast<unsigned>(typed.book),
+              static_cast<unsigned>(typed.chapter), static_cast<unsigned>(typed.verse));
+    }
+  }
+  char label[sizeof(goToLabel)] = {};
+  if (reference.found) {
+    char place[REFERENCE_BYTES];
+    formatTypedReference(place, sizeof(place), bookNames.forBook(reference.reference.book), reference.reference);
+    snprintf(label, sizeof(label), tr(STR_BIBLE_SEARCH_GO_TO), place);
+  }
+  [[maybe_unused]] const unsigned long resolved = millis();
+
   BibleSearch::QueryResult found = BibleSearch::runQuery(*reader, query);
   if (!found.ok) {
     LOG_ERR(MODULE, "Query '%s' could not read the index", query);
@@ -518,18 +538,22 @@ void BibleSearchActivity::runSearch() {
     showPrompt(Status::Unreadable);
     return;
   }
-  LOG_INF(MODULE, "'%s' matched %u verse(s)%s in %lu ms", query, static_cast<unsigned>(found.verses.size()),
-          found.truncated ? " (truncated)" : "", millis() - started);
+  LOG_INF(MODULE, "'%s' matched %u verse(s)%s in %lu ms; reference %s in %lu ms", query,
+          static_cast<unsigned>(found.verses.size()), found.truncated ? " (truncated)" : "", millis() - resolved,
+          reference.found ? "found" : "none", resolved - started);
 
   {
     RenderLock lock;
     results = std::move(found.verses);
     resultsTruncated = found.truncated;
+    goTo = reference;
+    memcpy(goToLabel, label, sizeof(goToLabel));
     rowsFirst = 0;
     rowsCount = 0;
     rowsGeneration++;
-    // Row 0 is Edit search; the selection starts on the first verse.
-    nav.reset(results.empty() ? 0 : 1);
+    // Row 0 is Edit search; the selection starts on row 1, the Go-to row or
+    // else the first verse.
+    nav.reset(goTo.found || !results.empty() ? 1 : 0);
     hasSearched = true;
     state = State::Results;
   }
@@ -540,15 +564,16 @@ void BibleSearchActivity::runSearch() {
 }
 
 int BibleSearchActivity::listCount() const {
-  return state == State::Results ? 1 + static_cast<int>(results.size()) : 0;
+  return state == State::Results ? firstResultRow() + static_cast<int>(results.size()) : 0;
 }
 
 void BibleSearchActivity::ensureRows(const int listTop, const int visibleRows) {
   if (!reader) return;
   const int total = static_cast<int>(results.size());
-  const int first = std::max(listTop, 1) - 1;
+  const int firstRow = firstResultRow();
+  const int first = std::max(listTop, firstRow) - firstRow;
   if (first >= total) return;
-  const int end = std::min({listTop + std::max(visibleRows, 1) - 1, total, first + ROW_CACHE});
+  const int end = std::min({listTop + std::max(visibleRows, 1) - firstRow, total, first + ROW_CACHE});
 
   bool covered = first >= rowsFirst && end <= rowsFirst + rowsCount;
   for (int r = first; covered && r < end; r++) covered = rows[r - rowsFirst].textAttempted;
@@ -672,7 +697,18 @@ void BibleSearchActivity::activateIndex(const int index) {
     openKeyboard();
     return;
   }
-  finishWithVerse(index - 1);
+  if (goTo.found && index == 1) {
+    finishWithReference();
+    return;
+  }
+  finishWithVerse(index - firstResultRow());
+}
+
+void BibleSearchActivity::finishWithReference() {
+  leaving = true;
+  app.clearTapFlash();
+  setResult(ChapterResult{static_cast<int>(goTo.spine), "", goTo.offset});
+  finish();
 }
 
 void BibleSearchActivity::finishWithVerse(const int resultIndex) {
@@ -861,7 +897,7 @@ void BibleSearchActivity::buildResults(UiScreen& screen) {
   const auto& theme = screen.theme();
   const int count = listCount();
 
-  if (results.empty()) {
+  if (results.empty() && !goTo.found) {
     fui::TextStyle empty = theme.bodyText;
     empty.align = fui::TextAlign::Center;
     empty.maxLines = 2;
@@ -888,8 +924,10 @@ void BibleSearchActivity::buildResults(UiScreen& screen) {
     if (listIndex == 0) {
       item.label = tr(STR_BIBLE_SEARCH_EDIT);
       if (query[0] != '\0') item.subtitle = query;
+    } else if (goTo.found && listIndex == 1) {
+      item.label = goToLabel;
     } else {
-      const int result = listIndex - 1;
+      const int result = listIndex - firstResultRow();
       if (result >= rowsFirst && result < rowsFirst + rowsCount) {
         const Row& row = rows[result - rowsFirst];
         item.label = row.reference;
@@ -939,7 +977,7 @@ void BibleSearchActivity::drawChrome() {
   if (state == State::Results) {
     snprintf(headerTitle, sizeof(headerTitle),
              resultsTruncated ? tr(STR_BIBLE_SEARCH_RESULTS_MORE) : tr(STR_BIBLE_SEARCH_RESULTS),
-             static_cast<int>(results.size()));
+             static_cast<int>(results.size()) + (goTo.found ? 1 : 0));
     title = headerTitle;
   }
   const auto& metrics = UITheme::getInstance().getMetrics();

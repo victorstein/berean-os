@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "BibleBookNameTable.h"
+#include "TypedReference.h"
 #include "activities/UiListActivity.h"
 #include "components/themes/BaseTheme.h"
 #include "study/BibleSearchIndexer.h"
@@ -141,6 +142,10 @@ class BibleSearchActivity final : public UiListActivity {
   bool hasSearched = false;
   std::vector<uint16_t> results;
   bool resultsTruncated = false;
+  // The place the query names, when it reads as a reference the index has.
+  // While found it is list row 1, above the word hits.
+  ResolvedReference goTo;
+  char goToLabel[REFERENCE_BYTES + 16] = {};
 
   Row rows[ROW_CACHE];
   int rowsFirst = 0;  // result index of rows[0]
@@ -193,6 +198,10 @@ class BibleSearchActivity final : public UiListActivity {
   void moveTo(int index);
   void scrollPage(int direction);
   void finishWithVerse(int resultIndex);
+  void finishWithReference();
+  // List row of the first word hit: after Edit search and, when there is one,
+  // the Go-to row. Every row <-> result conversion goes through this.
+  int firstResultRow() const { return goTo.found ? 2 : 1; }
 
   void buildDialog(UiScreen& screen, const char* title, const char* message, const char* primaryLabel,
                    freeink::ui::ActionId primaryAction, const char* secondaryLabel,
