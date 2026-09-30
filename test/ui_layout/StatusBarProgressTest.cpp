@@ -35,5 +35,6 @@ TEST(StatusBarProgress, BibleNeverShowsWholeBookProgress) {
   }
 }
 
-static_assert(!StatusBarProgress::resolve({.showWholeBookProgress = false, .showBookPercent = true, .barTracksBook = true})
-                   .showBookPercent);
+static_assert(
+    !StatusBarProgress::resolve({.showWholeBookProgress = false, .showBookPercent = true, .barTracksBook = true})
+         .showBookPercent);
