@@ -82,11 +82,36 @@ Counts countIn(const Passages& passages, const std::vector<size_t>& scope, const
 }
 
 constexpr int MAX_LINES = 2;
-// Chip hit rects share UiAppHost's 64-interaction table with the visible passage rows; past it,
-// hits are dropped silently and the chip becomes untappable.
+// Chip hit rects share UiAppHost's 96-interaction table (UiAppHost::MAX_INTERACTIONS) with the
+// visible passage rows; past it, hits are dropped and the chip becomes untappable.
 constexpr int MAX_CHIPS = 24;
 
 enum class Kind : uint8_t { All, Tag, Unlabelled };
+
+struct Candidate {
+  Kind kind = Kind::All;
+  // Index into the activeIds (and Counts::perTag) the chips were counted with; Kind::Tag only.
+  uint16_t slot = 0;
+};
+
+// The chips to offer, in display order: All, each active tag with a non-zero count, then
+// Unlabelled when non-zero. A zero-count chip stays while it is the active filter, so an empty list
+// still shows why (the palette is global, so most zeros are tags of other publications or chapters).
+inline void candidates(const Counts& counts, const std::vector<study::TagId>& activeIds,
+                       const std::optional<study::TagId> filter, const size_t cap, std::vector<Candidate>& out) {
+  out.clear();
+  if (cap == 0) return;
+  out.reserve(std::min(cap, activeIds.size() + 2));
+  out.push_back(Candidate{Kind::All, 0});
+  const size_t slots = std::min(activeIds.size(), counts.perTag.size());
+  for (size_t slot = 0; slot < slots; ++slot) {
+    if (counts.perTag[slot] == 0 && filter != activeIds[slot]) continue;
+    if (out.size() >= cap) return;
+    out.push_back(Candidate{Kind::Tag, static_cast<uint16_t>(slot)});
+  }
+  if (out.size() >= cap) return;
+  if (counts.unlabelled > 0 || filter == study::UNLABELLED) out.push_back(Candidate{Kind::Unlabelled, 0});
+}
 
 struct Placed {
   int chip = 0;  // index into the widths passed to layout(), or -1 for the ellipsis
@@ -161,6 +186,105 @@ inline int bandHeight(const int lines, const int chipHeight, const int gap) {
   return lines > 0 ? lines * chipHeight + (lines - 1) * gap : 0;
 }
 
+// The chip itself meets the touch minimum; its hit rect is never grown past it, because that would
+// overlap the next line (hitPadding tiles the gaps instead).
+inline int chipHeight(const int textLineHeight, const int padY, const int minTouch) {
+  return std::max(textLineHeight + 2 * padY, minTouch);
+}
+
+// The ellipsis screen's grid pages at line boundaries. A page stays well under UiAppHost's 96
+// interactions, leaving room for the chrome, as NumberGrid::MAX_CELLS = 70 does.
+constexpr int GRID_MAX_CHIPS = 64;
+
+inline int linesPerPage(const int bodyHeight, const int chipHeight, const int gap) {
+  if (chipHeight <= 0) return 1;
+  return std::max(1, (bodyHeight + gap) / (chipHeight + gap));
+}
+
+// One page of the grid. ~1 KB: keep it a member, never a render-task local.
+struct GridPage {
+  Placed placed[GRID_MAX_CHIPS];
+  int placedCount = 0;
+  // Counted from the top of this page, as is each Placed::line.
+  int lines = 0;
+  int first = 0;
+};
+
+namespace detail {
+
+// Greedy wrap of widths[first..] into at most maxLines lines and GRID_MAX_CHIPS chips; returns the
+// index of the first chip left over. The first chip always fits, so paging always advances.
+inline int placePage(const int* widths, const int count, const int first, const int lineWidth, const int gap,
+                     const int maxLines, GridPage* out) {
+  if (out) {
+    out->placedCount = 0;
+    out->lines = 0;
+    out->first = first;
+  }
+  if (first >= count || lineWidth <= 0) return count;
+
+  const int lineCap = std::max(maxLines, 1);
+  int line = 0;
+  int x = 0;
+  int placed = 0;
+  int i = first;
+  for (; i < count; ++i) {
+    const int width = std::clamp(widths[i], 0, lineWidth);
+    if (x > 0 && x + width > lineWidth) {
+      ++line;
+      x = 0;
+    }
+    if (line >= lineCap || placed >= GRID_MAX_CHIPS) break;
+    if (out) out->placed[placed] = Placed{i, line, x, width};
+    ++placed;
+    x += width + gap;
+  }
+  if (out) {
+    out->placedCount = placed;
+    out->lines = placed > 0 ? out->placed[placed - 1].line + 1 : 0;
+  }
+  return i;
+}
+
+}  // namespace detail
+
+inline int nextPageStart(const int* widths, const int count, const int first, const int lineWidth, const int gap,
+                         const int maxLines) {
+  return detail::placePage(widths, count, first, lineWidth, gap, maxLines, nullptr);
+}
+
+inline void layoutPage(const int* widths, const int count, const int first, const int lineWidth, const int gap,
+                       const int maxLines, GridPage& out) {
+  detail::placePage(widths, count, first, lineWidth, gap, maxLines, &out);
+}
+
+inline int pageCountOf(const int* widths, const int count, const int lineWidth, const int gap, const int maxLines) {
+  int pages = 0;
+  for (int first = 0; first < count; first = nextPageStart(widths, count, first, lineWidth, gap, maxLines)) ++pages;
+  return pages;
+}
+
+struct PageSpan {
+  int first = 0;
+  int next = 0;
+  int page = 0;
+};
+
+// The page holding `index`, clamped into [0, count). O(count): at most 202 chips, walked on a build
+// or a button press, never per chip.
+inline PageSpan pageHolding(const int* widths, const int count, const int index, const int lineWidth, const int gap,
+                            const int maxLines) {
+  PageSpan span;
+  if (count <= 0) return span;
+  const int target = std::clamp(index, 0, count - 1);
+  while (true) {
+    span.next = nextPageStart(widths, count, span.first, lineWidth, gap, maxLines);
+    if (target < span.next || span.next >= count) return span;
+    span.first = span.next;
+    ++span.page;
+  }
+}
+
 struct Pad {
   int top = 0;
   int right = 0;
@@ -169,16 +293,21 @@ struct Pad {
 };
 
 // Splits each gap between the two chips facing across it, so hit rects tile without overlapping.
-inline Pad hitPadding(const Layout& layout, const int index, const int gap) {
+// `lines` and each Placed::line count from the top of the placed block.
+inline Pad hitPadding(const Placed* placed, const int placedCount, const int lines, const int index, const int gap) {
   Pad pad;
-  const Placed& p = layout.placed[index];
+  const Placed& p = placed[index];
   const int before = gap / 2;
   const int after = gap - before;
   if (p.x > 0) pad.left = before;
-  if (index + 1 < layout.placedCount && layout.placed[index + 1].line == p.line) pad.right = after;
+  if (index + 1 < placedCount && placed[index + 1].line == p.line) pad.right = after;
   if (p.line > 0) pad.top = before;
-  if (p.line + 1 < layout.lines) pad.bottom = after;
+  if (p.line + 1 < lines) pad.bottom = after;
   return pad;
+}
+
+inline Pad hitPadding(const Layout& layout, const int index, const int gap) {
+  return hitPadding(layout.placed, layout.placedCount, layout.lines, index, gap);
 }
 
 }  // namespace TagChips

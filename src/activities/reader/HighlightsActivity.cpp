@@ -14,6 +14,7 @@
 #include "PassageLinksActivity.h"
 #include "ReaderUtils.h"
 #include "TagChipRow.h"
+#include "TagChipView.h"
 #include "TagFilterActivity.h"
 #include "TagPickerActivity.h"
 #include "activities/PostedMessage.h"
@@ -127,47 +128,9 @@ void HighlightsActivity::rebuildRowItems() {
 }
 
 void HighlightsActivity::rebuildChips() {
-  chips_.clear();
-  chips_.reserve(TagChips::MAX_CHIPS + 1);
-
-  const std::vector<study::TagId> activeIds = STUDY.palette().activeIds();
-  const TagChips::Counts counts =
-      spineFilter_ ? TagChips::countIn(STUDY.passages(), computeVisibleIndices(std::nullopt), activeIds)
-                   : TagChips::count(STUDY.passages(), activeIds);
-
-  const auto push = [this](const TagChips::Kind kind, const study::TagId id, const char* name, const size_t n) {
-    if (chips_.size() >= TagChips::MAX_CHIPS + 1) return;
-    ChipEntry chip;
-    chip.kind = kind;
-    chip.id = id;
-    snprintf(chip.label, sizeof(chip.label), "%s %u", name, static_cast<unsigned>(n));
-    chips_.push_back(chip);
-  };
-
-  push(TagChips::Kind::All, study::UNLABELLED, tr(STR_TAG_FILTER_ALL), counts.all);
-  for (size_t slot = 0; slot < activeIds.size(); ++slot) {
-    const study::TagId id = activeIds[slot];
-    // Zero-count tags belong to other publications or chapters (the palette is global); the active
-    // filter stays visible even at zero so an empty list still shows why.
-    if (counts.perTag[slot] == 0 && filterTagId_ != id) continue;
-    if (chips_.size() >= TagChips::MAX_CHIPS + 1) break;
-    push(TagChips::Kind::Tag, id, STUDY.tagName(id).c_str(), counts.perTag[slot]);
-  }
-  if (counts.unlabelled > 0 || filterTagId_ == study::UNLABELLED) {
-    push(TagChips::Kind::Unlabelled, study::UNLABELLED, tr(STR_TAG_UNLABELLED), counts.unlabelled);
-  }
-}
-
-bool HighlightsActivity::chipIsSelected(const ChipEntry& chip) const {
-  switch (chip.kind) {
-    case TagChips::Kind::All:
-      return !filterTagId_;
-    case TagChips::Kind::Unlabelled:
-      return filterTagId_ == study::UNLABELLED;
-    case TagChips::Kind::Tag:
-      return filterTagId_ == chip.id;
-  }
-  return false;
+  std::optional<std::vector<size_t>> scope;
+  if (spineFilter_) scope = computeVisibleIndices(std::nullopt);
+  TagChipView::buildEntries(scope, filterTagId_, TagChips::MAX_CHIPS + 1, chips_);
 }
 
 void HighlightsActivity::onChipEvent(const fui::ActionEvent& event, void* user) {
@@ -188,7 +151,7 @@ void HighlightsActivity::selectChip(const int chipIndex) {
   if (confirmPopup_.isActive() || actionChooser_.isActive()) return;
   if (chipIndex < 0 || chipIndex >= static_cast<int>(chips_.size())) return;
 
-  const ChipEntry& chip = chips_[static_cast<size_t>(chipIndex)];
+  const TagChipView::ChipEntry& chip = chips_[static_cast<size_t>(chipIndex)];
   std::optional<study::TagId> picked;
   if (chip.kind != TagChips::Kind::All) picked = chip.id;
   if (picked == filterTagId_) {
@@ -209,7 +172,10 @@ void HighlightsActivity::selectChip(const int chipIndex) {
 
 void HighlightsActivity::openTagFilter() {
   app.clearTapFlash();
-  startActivityForResult(std::make_unique<TagFilterActivity>(renderer, mappedInput),
+  // Computed here, with no RenderLock held: a chapter scope resolves passages through StudyStore.
+  std::optional<std::vector<size_t>> scope;
+  if (spineFilter_) scope = computeVisibleIndices(std::nullopt);
+  startActivityForResult(std::make_unique<TagFilterActivity>(renderer, mappedInput, std::move(scope), filterTagId_),
                          [this](const ActivityResult& result) {
                            // Guarded on the alternative, not just isCancelled: any finish() that
                            // forgets to set a result leaves monostate here, and std::get on the
@@ -708,85 +674,48 @@ void HighlightsActivity::confirmRingFollow() {
 void HighlightsActivity::buildChipRow(UiScreen& screen) {
   const auto& theme = screen.theme();
   const auto& metrics = UITheme::getInstance().getMetrics();
+  const TagChipView::Metrics chip = TagChipView::metricsFor(screen);
 
-  // Every chip is measured bold, the selected weight, so which chip is selected never changes a
-  // width and never reflows the row.
-  fui::TextStyle measureStyle = theme.smallText;
-  measureStyle.bold = true;
-  const int padX = theme.spaceMd;
-  const int chipHeight = screen.target().lineHeight(theme.smallText.font) + 2 * theme.spaceSm;
-  const int gap = theme.spaceSm;
   const int count = static_cast<int>(chips_.size());
-  for (int i = 0; i < count; ++i) {
-    const int textWidth = screen.target().measureText(theme.smallText.font, chips_[i].label, measureStyle).width;
-    chipWidths_[i] = std::max(textWidth + 2 * padX, chipHeight);
-  }
-  const int moreWidth = std::max(
-      screen.target().measureText(theme.smallText.font, fui::TEXT_ELLIPSIS, measureStyle).width + 2 * padX, chipHeight);
+  for (int i = 0; i < count; ++i) chipWidths_[i] = TagChipView::measure(screen, chips_[i].label, chip);
+  const int moreWidth = TagChipView::measure(screen, fui::TEXT_ELLIPSIS, chip);
 
   const int inset = theme.listInset;
   const int lineWidth = screen.body().width - 2 * inset;
-  TagChips::layout(chipWidths_, count, moreWidth, lineWidth, gap, chipLayout_);
+  TagChips::layout(chipWidths_, count, moreWidth, lineWidth, chip.gap, chipLayout_);
   if (chipLayout_.lines == 0) return;
 
-  const fui::Rect band = screen.takeTop(static_cast<int16_t>(TagChips::bandHeight(chipLayout_.lines, chipHeight, gap)),
-                                        static_cast<int16_t>(metrics.verticalSpacing));
-
-  fui::StyleSet styles;
-  styles.explicitlySet = true;
-  const auto radius = static_cast<uint8_t>(std::min(chipHeight / 2, 255));
-  styles.normal.background = fui::Paint::solid(fui::Color::White);
-  styles.normal.foreground = fui::Paint::solid(fui::Color::Black);
-  styles.normal.border = fui::Paint::solid(fui::Color::Black);
-  styles.normal.borderWidth = 1;
-  styles.normal.radius = radius;
-  styles.selected = styles.normal;
-  styles.selected.background = fui::Paint::solid(fui::Color::Black);
-  styles.selected.foreground = fui::Paint::solid(fui::Color::White);
-  // Focus/flash states keep the inverted pill instead of falling back to an unset style.
-  styles.focused = styles.selected;
-  styles.active = styles.selected;
-  styles.disabled = styles.normal;
+  const fui::Rect band =
+      screen.takeTop(static_cast<int16_t>(TagChips::bandHeight(chipLayout_.lines, chip.chipHeight, chip.gap)),
+                     static_cast<int16_t>(metrics.verticalSpacing));
 
   bool selectedPlaced = false;
   for (int k = 0; k < chipLayout_.placedCount; ++k) {
-    const int chip = chipLayout_.placed[k].chip;
-    if (chip >= 0 && chipIsSelected(chips_[static_cast<size_t>(chip)])) selectedPlaced = true;
+    const int index = chipLayout_.placed[k].chip;
+    if (index >= 0 && TagChipView::isSelected(chips_[static_cast<size_t>(index)], filterTagId_)) selectedPlaced = true;
   }
 
   for (int k = 0; k < chipLayout_.placedCount; ++k) {
     const TagChips::Placed& placed = chipLayout_.placed[k];
     const bool isMore = placed.chip < 0;
     // An active filter pushed past the row is shown by inverting the ellipsis that leads to it.
-    const bool selected = isMore ? !selectedPlaced : chipIsSelected(chips_[static_cast<size_t>(placed.chip)]);
-
-    fui::ButtonProps props;
-    props.label = isMore ? fui::TEXT_ELLIPSIS : chips_[static_cast<size_t>(placed.chip)].label;
-    props.action = isMore ? ACTION_MORE : ACTION_CHIP;
-    props.value = static_cast<int16_t>(isMore ? 0 : placed.chip);
-    props.inputMask = fui::InputTouch;
-    props.state = selected ? fui::StateSelected : fui::StateNormal;
-    props.text = theme.smallText;
-    props.text.bold = selected;
-    props.styles = styles;
-    // screen.button() would force the theme's minTouchSize, growing each hit rect over the
-    // neighbouring line; the padding below tiles the gaps instead.
-    props.minTouchSize = 0;
-    const TagChips::Pad pad = TagChips::hitPadding(chipLayout_, k, gap);
-    props.hitPadding = fui::Insets{static_cast<int16_t>(pad.top), static_cast<int16_t>(pad.right),
-                                   static_cast<int16_t>(pad.bottom), static_cast<int16_t>(pad.left)};
+    const bool selected =
+        isMore ? !selectedPlaced : TagChipView::isSelected(chips_[static_cast<size_t>(placed.chip)], filterTagId_);
     const fui::Rect rect{static_cast<int16_t>(band.x + inset + placed.x),
-                         static_cast<int16_t>(band.y + TagChips::lineTop(placed.line, chipHeight, gap)),
-                         static_cast<int16_t>(placed.width), static_cast<int16_t>(chipHeight)};
-    fui::button(screen.frame(), rect, props);
+                         static_cast<int16_t>(band.y + TagChips::lineTop(placed.line, chip.chipHeight, chip.gap)),
+                         static_cast<int16_t>(placed.width), static_cast<int16_t>(chip.chipHeight)};
+    TagChipView::draw(screen, rect, isMore ? fui::TEXT_ELLIPSIS : chips_[static_cast<size_t>(placed.chip)].label,
+                      selected, isMore ? ACTION_MORE : ACTION_CHIP, static_cast<int16_t>(isMore ? 0 : placed.chip),
+                      fui::InputTouch, TagChips::hitPadding(chipLayout_, k, chip.gap));
   }
 
   if (activeNav().selected == 0 && buttonFocus_) {
     // Horizontally the outline may only use the list inset (0 on the base theme); vertically it
     // sits in the spacer above and the takeTop gap below, both at least verticalSpacing.
-    const int outset = std::min(gap, inset);
-    const fui::Rect outline{static_cast<int16_t>(band.x + inset - outset), static_cast<int16_t>(band.y - gap),
-                            static_cast<int16_t>(lineWidth + 2 * outset), static_cast<int16_t>(band.height + 2 * gap)};
+    const int outset = std::min(chip.gap, inset);
+    const fui::Rect outline{static_cast<int16_t>(band.x + inset - outset), static_cast<int16_t>(band.y - chip.gap),
+                            static_cast<int16_t>(lineWidth + 2 * outset),
+                            static_cast<int16_t>(band.height + 2 * chip.gap)};
     screen.target().stroke(outline, fui::Paint::solid(fui::Color::Black), 2, theme.listRowRadius);
   }
 }

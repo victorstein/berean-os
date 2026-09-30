@@ -3,25 +3,55 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <utility>
+
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
-#include "TagRowMapping.h"
 #include "activities/ActivityResult.h"
 #include "activities/PostedMessage.h"
 #include "components/UITheme.h"
+#include "study/StudyStore.h"
 
 namespace fui = freeink::ui;
 
-TagFilterActivity::TagFilterActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : UiListActivity("TagFilter", renderer, mappedInput, /*wantsTouchLongPress=*/true), tags_(STUDY.activeTags()) {}
+TagFilterActivity::TagFilterActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                     std::optional<std::vector<size_t>> scope, const std::optional<study::TagId> filter)
+    : UiListActivity("TagFilter", renderer, mappedInput, /*wantsTouchLongPress=*/true),
+      scope_(std::move(scope)),
+      filter_(filter) {}
 
-int TagFilterActivity::listCount() const { return FilterRows::rowCount(static_cast<int>(tags_.size())); }
+void TagFilterActivity::onEnter() {
+  UiListActivity::onEnter();
+  rebuildChips();
+  {
+    RenderLock lock(*this);
+    nav.selected = selectedChipIndex();
+  }
+  requestUpdate();
+}
+
+int TagFilterActivity::listCount() const { return static_cast<int>(chips_.size()); }
 
 const char* TagFilterActivity::headerTitle() const { return tr(STR_FILTER_BY_TAG); }
 
-void TagFilterActivity::drawFooter() {
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+void TagFilterActivity::rebuildChips() {
+  std::vector<TagChipView::ChipEntry> next;
+  TagChipView::buildEntries(scope_, filter_, SIZE_MAX, next);
+  RenderLock lock(*this);
+  chips_ = std::move(next);
+  widths_.assign(chips_.size(), 0);
+  const int last = static_cast<int>(chips_.size()) - 1;
+  nav.selected = std::clamp(nav.selected, 0, std::max(last, 0));
+}
+
+int TagFilterActivity::selectedChipIndex() const {
+  for (size_t i = 0; i < chips_.size(); ++i) {
+    if (TagChipView::isSelected(chips_[i], filter_)) return static_cast<int>(i);
+  }
+  return 0;
 }
 
 void TagFilterActivity::buildScreen(UiScreen& screen) {
@@ -34,36 +64,71 @@ void TagFilterActivity::buildScreen(UiScreen& screen) {
                   static_cast<int16_t>(safe.x)});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  // Refreshed every call: a retirement between visits changes the list, and
-  // rowItems_ borrows label pointers from tags_, so both move together.
-  tags_ = STUDY.activeTags();
-  rowItems_.clear();
-  rowItems_.reserve(static_cast<size_t>(FilterRows::rowCount(static_cast<int>(tags_.size()))));
+  const int count = static_cast<int>(chips_.size());
+  if (count == 0 || static_cast<int>(widths_.size()) != count) return;
+  const TagChipView::Metrics chip = TagChipView::metricsFor(screen);
+  for (int i = 0; i < count; ++i) widths_[i] = TagChipView::measure(screen, chips_[i].label, chip);
 
-  fui::ListItem allItem{};
-  allItem.label = tr(STR_TAG_FILTER_ALL);
-  allItem.actionValue = static_cast<int16_t>(FilterRows::ALL);
-  rowItems_.push_back(allItem);
-
-  fui::ListItem unlabelledItem{};
-  unlabelledItem.label = tr(STR_TAG_UNLABELLED);
-  unlabelledItem.actionValue = static_cast<int16_t>(FilterRows::UNLABELLED);
-  rowItems_.push_back(unlabelledItem);
-
-  for (size_t i = 0; i < tags_.size(); ++i) {
-    fui::ListItem item{};
-    item.label = tags_[i].name.c_str();
-    item.actionValue = static_cast<int16_t>(FilterRows::rowForTagIndex(static_cast<int>(i)));
-    rowItems_.push_back(item);
+  const int inset = screen.theme().listInset;
+  const fui::Rect body = screen.body();
+  gridLineWidth_ = body.width - 2 * inset;
+  gridGap_ = chip.gap;
+  gridLinesPerPage_ = TagChips::linesPerPage(body.height, chip.chipHeight, chip.gap);
+  pageCount_ = TagChips::pageCountOf(widths_.data(), count, gridLineWidth_, gridGap_, gridLinesPerPage_);
+  int stripHeight = 0;
+  if (pageCount_ > 1) {
+    // Only a paged grid shows the page strip; taking its height out can only keep the grid paged.
+    stripHeight = metrics.tabBarHeight;
+    gridLinesPerPage_ = TagChips::linesPerPage(body.height - stripHeight, chip.chipHeight, chip.gap);
+    pageCount_ = TagChips::pageCountOf(widths_.data(), count, gridLineWidth_, gridGap_, gridLinesPerPage_);
   }
 
-  fui::ListProps props;
-  props.items = rowItems_.data();
-  props.count = static_cast<uint16_t>(rowItems_.size());
-  props.action = ACTION_ROW;
-  props.inputMask = fui::InputTouch | fui::InputLongPress;
-  syncListViewport(screen, props);
-  screen.list(props);
+  const TagChips::PageSpan span =
+      TagChips::pageHolding(widths_.data(), count, nav.selected, gridLineWidth_, gridGap_, gridLinesPerPage_);
+  pageNumber_ = span.page;
+  nav.top = span.first;
+  TagChips::layoutPage(widths_.data(), count, span.first, gridLineWidth_, gridGap_, gridLinesPerPage_, page_);
+
+  const int gridTop = body.y + stripHeight;
+  fui::Rect focused{};
+  for (int k = 0; k < page_.placedCount; ++k) {
+    const TagChips::Placed& placed = page_.placed[k];
+    const TagChipView::ChipEntry& entry = chips_[static_cast<size_t>(placed.chip)];
+    const fui::Rect rect{static_cast<int16_t>(body.x + inset + placed.x),
+                         static_cast<int16_t>(gridTop + TagChips::lineTop(placed.line, chip.chipHeight, gridGap_)),
+                         static_cast<int16_t>(placed.width), static_cast<int16_t>(chip.chipHeight)};
+    TagChipView::draw(screen, rect, entry.label, TagChipView::isSelected(entry, filter_), ACTION_ROW,
+                      static_cast<int16_t>(placed.chip), fui::InputTouch | fui::InputLongPress,
+                      TagChips::hitPadding(page_.placed, page_.placedCount, page_.lines, k, gridGap_));
+    if (placed.chip == nav.selected) focused = rect;
+  }
+
+  if (buttonFocus_ && focused.width > 0) {
+    // Drawn in the gap around the chip, which hitPadding splits but nothing paints.
+    // Clamped to the body horizontally: with a zero listInset an edge chip's outline would
+    // otherwise fall off the screen, which HighlightsActivity's band outline avoids the same way.
+    const int outset = std::max(gridGap_ / 2, 1);
+    const int left = std::max(focused.x - outset, static_cast<int>(body.x));
+    const int right = std::min(focused.x + focused.width + outset, body.x + body.width);
+    const fui::Rect outline{static_cast<int16_t>(left), static_cast<int16_t>(focused.y - outset),
+                            static_cast<int16_t>(right - left), static_cast<int16_t>(focused.height + 2 * outset)};
+    screen.target().stroke(outline, fui::Paint::solid(fui::Color::Black), 2,
+                           static_cast<uint8_t>(std::min(outline.height / 2, 255)));
+  }
+}
+
+void TagFilterActivity::drawFooter() {
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (pageCount_ <= 1) return;
+
+  char indicator[24];
+  snprintf(indicator, sizeof(indicator), "%d/%d", pageNumber_ + 1, pageCount_);
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  GUI.drawSubHeader(renderer,
+                    Rect{safe.x, safe.y + metrics.topPadding + metrics.headerHeight, safe.width, metrics.tabBarHeight},
+                    "", indicator);
 }
 
 void TagFilterActivity::onBackButton() {
@@ -80,16 +145,25 @@ bool TagFilterActivity::handleHomeGesture() {
   return true;
 }
 
-void TagFilterActivity::onRowLongPress(const int row) {
-  if (confirmPopup_.isActive()) return;
-  const int tagIndex = FilterRows::tagIndexForRow(row, static_cast<int>(tags_.size()));
-  if (tagIndex < 0) return;
-  app.clearTapFlash();
-  nav.selected = row;
-  showRetireConfirmation(static_cast<size_t>(tagIndex));
+void TagFilterActivity::onRowAction(const fui::ActionEvent& event) {
+  {
+    RenderLock lock(*this);
+    buttonFocus_ = false;
+  }
+  UiListActivity::onRowAction(event);
 }
 
-void TagFilterActivity::showRetireConfirmation(const size_t tagRow) {
+void TagFilterActivity::onRowLongPress(const int index) {
+  if (confirmPopup_.isActive()) return;
+  if (index < 0 || index >= listCount()) return;
+  const TagChipView::ChipEntry& chip = chips_[static_cast<size_t>(index)];
+  // All and Unlabelled are not palette entries; a long-press there must never reach the retire path.
+  if (chip.kind != TagChips::Kind::Tag) return;
+  app.clearTapFlash();
+  showRetireConfirmation(chip.id);
+}
+
+void TagFilterActivity::showRetireConfirmation(const study::TagId id) {
   if (confirmPopup_.isActive()) return;
   if (STUDY.saveDisabled()) {
     // The file may still hold the user's data; never let a destructive palette
@@ -99,30 +173,26 @@ void TagFilterActivity::showRetireConfirmation(const size_t tagRow) {
     return;
   }
 
-  pendingRetireRow_ = tagRow;
+  pendingRetireId_ = id;
   confirmingDelete_ = true;
   const char* options[] = {tr(STR_CANCEL), tr(STR_DELETE)};
   confirmPopup_.show(tr(STR_CONFIRM_DELETE_TAG), options, 2, 0, [this](const int idx) {
     confirmingDelete_ = false;
-    if (idx == 1) retireTag(pendingRetireRow_);
+    if (idx == 1) retireTag(pendingRetireId_);
     requestUpdate();
   });
   requestUpdate();
 }
 
-void TagFilterActivity::retireTag(const size_t tagRow) {
-  if (tagRow >= tags_.size()) return;  // stale row; nothing to do
-  const study::TagId id = tags_[tagRow].id;
-
-  // rowItems_ borrows label pointers from tags_, so the snapshot must be
-  // replaced under the render lock. The SD write happens after, outside it.
-  bool saved = false;
+void TagFilterActivity::retireTag(const study::TagId id) {
+  const bool saved = STUDY.retireTag(id);
   {
+    // A filter on a retired tag has no chip; fall back to All so one chip stays inverted, as
+    // HighlightsActivity::dropRetiredFilter does on return. UNLABELLED is in no palette.
     RenderLock lock(*this);
-    saved = STUDY.retireTag(id);
-    tags_ = STUDY.activeTags();
-    rowItems_.clear();
+    if (filter_ && *filter_ != study::UNLABELLED && !STUDY.palette().isActive(*filter_)) filter_.reset();
   }
+  rebuildChips();
   requestUpdate();
 
   if (!saved) ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
@@ -132,12 +202,60 @@ bool TagFilterActivity::handleCustomInput() {
   if (confirmPopup_.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
   if (confirmingDelete_) {
     // Popup dismissed without choosing (Back, or a tap outside it): drop the
-    // pending delete and stay here.
+    // pending retire and stay here.
     confirmingDelete_ = false;
     requestUpdate();
     return true;
   }
-  return false;
+
+  const auto swipe = mappedInput.wasSwipe();
+  if (swipe != MappedInputManager::SwipeDir::Up && swipe != MappedInputManager::SwipeDir::Down) return false;
+  // Consumed either way: the base loop would scroll by list rows, which a grid does not have.
+  turnPage(swipe == MappedInputManager::SwipeDir::Up ? 1 : -1, /*fromButton=*/false);
+  return true;
+}
+
+void TagFilterActivity::navigateButtons() {
+  // Each handler takes RenderLock only when its button fires. Locking here would
+  // block every loop pass for as long as a render (panel refresh included) runs.
+  buttonNavigator.onNextRelease([this] { stepSelection(1); });
+  buttonNavigator.onPreviousRelease([this] { stepSelection(-1); });
+  buttonNavigator.onNextContinuous([this] { turnPage(1, /*fromButton=*/true); });
+  buttonNavigator.onPreviousContinuous([this] { turnPage(-1, /*fromButton=*/true); });
+}
+
+void TagFilterActivity::stepSelection(const int direction) {
+  {
+    RenderLock lock(*this);
+    const int last = listCount() - 1;
+    if (last < 0) return;
+    nav.selected = std::clamp(nav.selected + direction, 0, last);
+    buttonFocus_ = true;
+  }
+  requestUpdate();
+}
+
+void TagFilterActivity::turnPage(const int direction, const bool fromButton) {
+  bool moved = false;
+  {
+    // One lock around read and write: the render task rewrites the page geometry mid-build.
+    RenderLock lock(*this);
+    const int count = listCount();
+    const TagChips::PageSpan span =
+        TagChips::pageHolding(widths_.data(), count, nav.selected, gridLineWidth_, gridGap_, gridLinesPerPage_);
+    int target = -1;
+    if (direction > 0 && span.next < count) target = span.next;
+    if (direction < 0 && span.first > 0) {
+      target = TagChips::pageHolding(widths_.data(), count, span.first - 1, gridLineWidth_, gridGap_, gridLinesPerPage_)
+                   .first;
+    }
+    if (target >= 0) {
+      nav.selected = target;
+      buttonFocus_ = fromButton;
+      moved = true;
+    }
+  }
+  if (moved) requestUpdate();
 }
 
 void TagFilterActivity::render(RenderLock&&) {
@@ -160,18 +278,16 @@ void TagFilterActivity::render(RenderLock&&) {
 }
 
 void TagFilterActivity::activateIndex(const int index) {
+  if (confirmPopup_.isActive()) return;
   if (index < 0 || index >= listCount()) return;
-  nav.selected = index;
+  app.clearTapFlash();
 
   TagSelectionResult result;
-  // "All" returns an empty selection; every other row reports a tag ID, never
-  // the row number -- the caller holds that filter across screens where the
-  // palette may be edited.
-  if (index == FilterRows::UNLABELLED) {
-    result.tagIds.push_back(study::UNLABELLED);
-  } else if (const int tagIndex = FilterRows::tagIndexForRow(index, static_cast<int>(tags_.size())); tagIndex >= 0) {
-    result.tagIds.push_back(tags_[static_cast<size_t>(tagIndex)].id);
-  }
+  // "All" returns an empty selection; every other chip reports a tag ID, never
+  // an index -- the caller holds that filter across screens where the palette
+  // may be edited. Unlabelled's id is study::UNLABELLED.
+  const TagChipView::ChipEntry& chip = chips_[static_cast<size_t>(index)];
+  if (chip.kind != TagChips::Kind::All) result.tagIds.push_back(chip.id);
   setResult(std::move(result));
   finish();
 }
