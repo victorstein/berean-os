@@ -81,7 +81,10 @@
 // behave inconsistently with every other browse list in the app.
 class HighlightsActivity final : public UiListActivity {
  public:
-  explicit HighlightsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  // spineFilter narrows the list to the passages that paint in that spine
+  // document ("Tags here"); title then names that chapter in the header.
+  explicit HighlightsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                              std::optional<uint16_t> spineFilter = std::nullopt, std::string title = {});
 
   void onEnter() override;
   void render(RenderLock&&) override;
@@ -122,12 +125,14 @@ class HighlightsActivity final : public UiListActivity {
   void navigateButtons() override;
   void onRowAction(const freeink::ui::ActionEvent& event) override;
 
-  // Rebuilds visibleIndices_ from STUDY.passages() + filterTagId_.
+  // visibleIndices_'s next value from STUDY.passages() + filter + spineFilter_.
   // Indices only, most-recent-first (reverse insertion order) -- never the
   // findBySpine-style raw HighlightEntry* pointers, which addHighlight's
   // push_back (rollback on a failed delete-save) or removeHighlight's erase
   // would invalidate out from under a held pointer.
-  void rebuildVisibleIndices();
+  // Call with no RenderLock held: with a spine filter it resolves passages
+  // through StudyStore, which can inflate the chapter and take the lock itself.
+  std::vector<size_t> computeVisibleIndices(std::optional<study::TagId> filter) const;
   // Rebuilds rowTagValues_/rowItems_ and chips_ from visibleIndices_ + filterTagId_.
   // Called only when the underlying data changes (onEnter, chip tap, picker result, retag,
   // delete), not on every repaint -- mirrors
@@ -160,8 +165,11 @@ class HighlightsActivity final : public UiListActivity {
   std::optional<study::TagId> filterTagId_;
 
   // Indices into STUDY.passages(), most-recent-first, filtered by filterTagId_.
-  // See rebuildVisibleIndices()'s comment for why these are indices and not
+  // See computeVisibleIndices()'s comment for why these are indices and not
   // pointers.
+  const std::optional<uint16_t> spineFilter_;
+  const std::string title_;
+
   std::vector<size_t> visibleIndices_;
 
   // rowItems_[i] is the passage at ring position i + 1; ring position 0 is the chip row.
