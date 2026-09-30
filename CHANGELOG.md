@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.5](https://github.com/victorstein/berean-os/compare/v1.29.4...v1.29.5) (2026-09-30)
+
+
+### Bug Fixes
+
+* keep the page behind the reader sheet after a sub-screen ([#243](https://github.com/victorstein/berean-os/issues/243)) ([969d9d1](https://github.com/victorstein/berean-os/commit/969d9d10ada21bd3eaab23cc19bb13cdbf40ea28)), closes [#239](https://github.com/victorstein/berean-os/issues/239)
+
 ## [1.29.4](https://github.com/victorstein/berean-os/compare/v1.29.3...v1.29.4) (2026-09-30)
 
 
