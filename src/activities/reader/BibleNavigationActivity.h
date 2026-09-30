@@ -96,6 +96,15 @@ class BibleNavigationActivity final : public UiListActivity {
 
   std::vector<VerseAnchors::VerseAnchor> verseAnchors;
   int verseSpine = -1;
+  // Built by loadChapters() and loadVerses() on the loop task before
+  // enterLevel() publishes the level, the same hand-off chapterSpine and
+  // verseAnchors use; buildGrid() only reads them.
+  GridMarks::Bits chapterTagged;
+  GridMarks::Bits chapterBookmarked;
+  GridMarks::Bits verseTagged;
+  GridMarks::Bits verseBookmarked;
+  void markChapters(int bookIndex);
+  void markVerses();
 
   // `grid` carries the last number-grid build's geometry, which the loop task
   // reads to page and to step the selection by a row.

@@ -15,6 +15,7 @@
 #include "SpineHtmlStream.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
+#include "study/StudyStore.h"
 
 namespace fui = freeink::ui;
 
@@ -123,6 +124,8 @@ bool BibleNavigationActivity::loadBooks() {
 
 bool BibleNavigationActivity::loadChapters(const int bookIndex) {
   chapterCount = 0;
+  chapterTagged.clear();
+  chapterBookmarked.clear();
   if (!epub || bookIndex < 0 || bookIndex >= bookCount) return false;
 
   BibleNav::Scanner scanner;
@@ -148,12 +151,15 @@ bool BibleNavigationActivity::loadChapters(const int bookIndex) {
   for (int i = 0; i < chapterCount; i++) {
     chapterSpine[i] = static_cast<int16_t>(spineIndices[i]);
   }
+  markChapters(bookIndex);
   return true;
 }
 
 bool BibleNavigationActivity::loadVerses(const int spineIndex) {
   verseAnchors.clear();
   verseSpine = spineIndex;
+  verseTagged.clear();
+  verseBookmarked.clear();
 
   VerseAnchors::Scanner scanner;
   if (!scanner.valid()) {
@@ -163,7 +169,40 @@ bool BibleNavigationActivity::loadVerses(const int spineIndex) {
   if (!SpineHtmlStream::stream(epub, spineIndex, renderer, feedVerseScanner, &scanner)) return false;
 
   verseAnchors = scanner.take();
+  markVerses();
   return !verseAnchors.empty();
+}
+
+void BibleNavigationActivity::markChapters(const int bookIndex) {
+  GridMarks::markBookmarkChapters(chapterBookmarked, bookmarkPositions.get(), bookmarkCount, chapterSpine,
+                                  chapterCount);
+  if (!STUDY.isOpen()) return;
+  // Unit.book and the navigator's book index both count books in
+  // biblebooknav.xhtml's link order, from 1 and from 0.
+  const auto book = static_cast<uint8_t>(bookIndex + 1);
+  for (const auto& passage : STUDY.passages()) {
+    GridMarks::VerseSpan span;
+    if (GridMarks::spanFor(passage.start, passage.end, book, span)) {
+      GridMarks::markPassageChapters(chapterTagged, span, chapterCount);
+    }
+  }
+}
+
+void BibleNavigationActivity::markVerses() {
+  const int count = static_cast<int>(verseAnchors.size());
+  if (count > GridMarks::CAPACITY) {
+    LOG_DBG("BNV", "Verse marks cover %d of %d cells", GridMarks::CAPACITY, count);
+  }
+  GridMarks::markBookmarkVerses(verseBookmarked, bookmarkPositions.get(), bookmarkCount, verseSpine,
+                                verseAnchors.data(), count);
+  if (!STUDY.isOpen() || selectedBook < 0) return;
+  const auto book = static_cast<uint8_t>(selectedBook + 1);
+  for (const auto& passage : STUDY.passages()) {
+    GridMarks::VerseSpan span;
+    if (GridMarks::spanFor(passage.start, passage.end, book, span)) {
+      GridMarks::markPassageVerses(verseTagged, span, verseAnchors.data(), count);
+    }
+  }
 }
 
 void BibleNavigationActivity::enterAtPosition() {
