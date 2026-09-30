@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.2](https://github.com/victorstein/berean-os/compare/v1.20.1...v1.20.2) (2026-09-29)
+
+
+### Bug Fixes
+
+* keep the full verse in tagged passages ([#193](https://github.com/victorstein/berean-os/issues/193)) ([fc0796f](https://github.com/victorstein/berean-os/commit/fc0796fbd2dc30d566c976b38303d9dd70fcc697)), closes [#188](https://github.com/victorstein/berean-os/issues/188)
+
 ## [1.20.1](https://github.com/victorstein/berean-os/compare/v1.20.0...v1.20.1) (2026-09-29)
 
 

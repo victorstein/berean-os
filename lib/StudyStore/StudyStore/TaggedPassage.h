@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "StudyStore/PassageText.h"
 #include "StudyStore/TagPalette.h"
 #include "StudyStore/Unit.h"
 #include "StudyStore/UnitFingerprint.h"
@@ -35,11 +36,31 @@ struct TaggedPassage {
   std::string document;            // filename inside the archive, a hint
   uint16_t documentSpine = 0;      // spine index, a weaker hint
   std::string snippet;             // bounded passage text, for the tag list
-  std::string displayText;         // the whole text when longer than snippet, else empty
+  PassageText displayText;         // "w": the whole text when `whole`, else a legacy v3 text or empty
   std::string reference;           // "Salmos 119:145", display + migration cross-check
   std::vector<TagId> tags;         // global ids
   std::vector<PassageLink> links;  // outgoing only
   bool pendingUpgrade = false;     // migrated without the EPUB; upgrade on next open
+  bool whole = false;              // "h": displayText is the passage's complete verse(s)
 };
+
+// Field by field into `to`, whose displayText keeps its own allocator. False when
+// the text could not be allocated: `to` is then incomplete and must be discarded,
+// and a caller backing up a row must abandon its edit before changing anything.
+inline bool copyPassage(const TaggedPassage& from, TaggedPassage& to) {
+  to.start = from.start;
+  to.end = from.end;
+  to.fingerprint = from.fingerprint;
+  to.endFingerprint = from.endFingerprint;
+  to.document = from.document;
+  to.documentSpine = from.documentSpine;
+  to.snippet = from.snippet;
+  to.reference = from.reference;
+  to.tags = from.tags;
+  to.links = from.links;
+  to.pendingUpgrade = from.pendingUpgrade;
+  to.whole = from.whole;
+  return to.displayText.copyFrom(from.displayText);
+}
 
 }  // namespace study

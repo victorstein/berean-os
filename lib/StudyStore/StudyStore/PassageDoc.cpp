@@ -4,7 +4,10 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <string_view>
+#include <utility>
 
 namespace study {
 namespace {
@@ -83,29 +86,39 @@ bool linksFromJson(const JsonVariantConst row, TaggedPassage& passage) {
 }
 
 // Refused, not repaired, for the reason linksFromJson gives: a cut text would be
-// saved back cut. A "w" no longer than the snippet is one this build never writes.
-bool displayTextFromJson(const JsonVariantConst row, TaggedPassage& passage) {
+// saved back cut. "h" exists from v4 on and promises a non-empty "w" of any
+// length; without it "w" is a legacy v3 text, 121..384 bytes as v3 wrote it.
+bool displayTextFromJson(const JsonVariantConst row, const int version, TaggedPassage& passage) {
+  const JsonVariantConst wholeFlag = row["h"];
+  if (!wholeFlag.isNull()) {
+    if (version < PassageDoc::FORMAT_VERSION || !wholeFlag.is<bool>()) return false;
+    passage.whole = wholeFlag.as<bool>();
+  }
+
   const JsonVariantConst stored = row["w"];
-  if (stored.isNull()) return true;
+  if (stored.isNull()) return !passage.whole;
   if (!stored.is<const char*>()) return false;
   const char* text = stored.as<const char*>();
   const size_t length = strlen(text);
-  if (length <= PassageDoc::MAX_SNIPPET_BYTES || length > PassageDoc::MAX_DISPLAY_TEXT_BYTES) return false;
-  passage.displayText = text;
-  return true;
+  if (passage.whole) {
+    if (length == 0) return false;
+  } else if (length <= PassageDoc::MAX_SNIPPET_BYTES || length > PassageDoc::V3_MAX_DISPLAY_TEXT_BYTES) {
+    return false;
+  }
+  return passage.displayText.assign(std::string_view(text, length));
 }
 
-bool anyPassageHasLinks(const std::vector<TaggedPassage>& passages) {
-  return std::any_of(passages.begin(), passages.end(), [](const TaggedPassage& p) { return !p.links.empty(); });
-}
-
-bool anyPassageHasDisplayText(const std::vector<TaggedPassage>& passages) {
-  return std::any_of(passages.begin(), passages.end(), [](const TaggedPassage& p) { return !p.displayText.empty(); });
-}
+bool isWholeWithText(const TaggedPassage& p) { return p.whole && !p.displayText.empty(); }
 
 int formatVersionFor(const std::vector<TaggedPassage>& passages) {
-  if (anyPassageHasDisplayText(passages)) return PassageDoc::FORMAT_VERSION;
-  if (anyPassageHasLinks(passages)) return PassageDoc::LINKS_FORMAT_VERSION;
+  const auto has = [&passages](const auto predicate) {
+    return std::any_of(passages.begin(), passages.end(), predicate);
+  };
+  if (has(isWholeWithText)) return PassageDoc::FORMAT_VERSION;
+  if (has([](const TaggedPassage& p) { return !p.displayText.empty(); })) {
+    return PassageDoc::DISPLAY_TEXT_FORMAT_VERSION;
+  }
+  if (has([](const TaggedPassage& p) { return !p.links.empty(); })) return PassageDoc::LINKS_FORMAT_VERSION;
   return PassageDoc::LINKLESS_FORMAT_VERSION;
 }
 
@@ -116,11 +129,24 @@ bool PassageDoc::add(TaggedPassage passage) {
   // raw byte cut can land after a lead byte, producing an invalid sequence that
   // ArduinoJson will then serialise. HighlightDoc::addHighlight uses the same
   // helper for the same reason.
-  passage.snippet = utf8SafeSummary(std::move(passage.snippet), MAX_SNIPPET_BYTES);
-  // Summarised before the length test, so whitespace alone can never carry a text
-  // over MAX_SNIPPET_BYTES into a "w" that fromJson would refuse.
-  passage.displayText = utf8SafeSummary(std::move(passage.displayText), MAX_DISPLAY_TEXT_BYTES);
-  if (passage.displayText.size() <= MAX_SNIPPET_BYTES) passage.displayText.clear();
+  if (passage.whole) {
+    if (passage.displayText.empty()) return false;
+    passage.snippet = utf8SafeSummary(std::string(passage.displayText.view()), MAX_SNIPPET_BYTES);
+  } else {
+    passage.snippet = utf8SafeSummary(std::move(passage.snippet), MAX_SNIPPET_BYTES);
+    // Normalised before the length test, so whitespace alone can never carry a
+    // text over MAX_SNIPPET_BYTES into a "w" that fromJson would refuse. Over
+    // the cap is refused, as fromJson does: passage text is never cut.
+    std::string legacy = utf8SafeSummary(std::string(passage.displayText.view()), SIZE_MAX);
+    if (legacy.size() > V3_MAX_DISPLAY_TEXT_BYTES) return false;
+    if (legacy.size() <= MAX_SNIPPET_BYTES) legacy.clear();
+    if (!passage.displayText.assign(legacy)) return false;
+  }
+  if (!(passage.displayText.allocator() == allocators_.text)) {
+    PassageText homed = newText();
+    if (!homed.copyFrom(passage.displayText)) return false;
+    passage.displayText = std::move(homed);
+  }
   passage.reference = utf8SafeSummary(std::move(passage.reference), MAX_REFERENCE_BYTES);
   passage.tags = normaliseTags(passage.tags);
   passage.links = normaliseLinks(std::move(passage.links), passage.start, passage.documentSpine);
@@ -137,6 +163,33 @@ bool PassageDoc::remove(const size_t index) {
   if (index >= passages_.size()) return false;
   passages_.erase(passages_.begin() + static_cast<long>(index));
   return true;
+}
+
+bool PassageDoc::replace(const size_t index, TaggedPassage passage) {
+  if (index >= passages_.size()) return false;
+  passages_[index] = std::move(passage);
+  return true;
+}
+
+PassageDoc::TextResult PassageDoc::setWholeText(const size_t index, const std::string_view text) {
+  if (index >= passages_.size()) return TextResult::NoSuchPassage;
+  if (text.empty()) return TextResult::Empty;
+  PassageText replacement = newText();
+  if (!replacement.assign(text)) return TextResult::OutOfMemory;
+  std::string snippet = utf8SafeSummary(std::string(text), MAX_SNIPPET_BYTES);
+
+  auto& passage = passages_[index];
+  std::swap(passage.displayText, replacement);
+  std::swap(passage.snippet, snippet);
+  const bool wasWhole = std::exchange(passage.whole, true);
+
+  const size_t bytes = measureBytes();
+  if (bytes <= SAVE_BYTE_BUDGET) return TextResult::Set;
+
+  std::swap(passage.displayText, replacement);
+  std::swap(passage.snippet, snippet);
+  passage.whole = wasWhole;
+  return bytes == SIZE_MAX ? TextResult::OutOfMemory : TextResult::OverBudget;
 }
 
 bool PassageDoc::setTags(const size_t index, std::vector<TagId> tags) {
@@ -225,7 +278,10 @@ void PassageDoc::toJson(JsonDocument& doc) const {
     row["d"] = p.document;
     row["s"] = p.documentSpine;
     row["x"] = p.snippet;
-    if (!p.displayText.empty()) row["w"] = p.displayText;
+    if (!p.displayText.empty()) row["w"] = p.displayText.c_str();
+    // Never "h" without its text: fromJson refuses that row, which would lock
+    // the user out of the whole file on every build.
+    if (isWholeWithText(p)) row["h"] = true;
     row["r"] = p.reference;
     if (p.pendingUpgrade) row["g"] = true;
     // UNLABELLED is written as the empty array, which is how every v1 build
@@ -256,6 +312,7 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
     if (!start) continue;  // unaddressable: cannot be painted or listed
 
     TaggedPassage p;
+    p.displayText = newText();
     p.start = *start;
     p.end = unitFromCompact(v["e"] | "").value_or(*start);
     p.fingerprint = fingerprintFromCompact(v["f"] | "").value_or(Fingerprint{});
@@ -270,7 +327,7 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
       if (id <= UINT16_MAX) p.tags.push_back(toTagId(static_cast<uint16_t>(id)));
     }
     p.tags = normaliseTags(p.tags);
-    if (!linksFromJson(v, p) || !displayTextFromJson(v, p)) {
+    if (!linksFromJson(v, p) || !displayTextFromJson(v, version, p)) {
       passages_.clear();
       return false;
     }
@@ -285,8 +342,9 @@ bool PassageDoc::fromJson(const JsonVariantConst doc) {
 }
 
 size_t PassageDoc::measureBytes() const {
-  JsonDocument doc;
+  JsonDocument doc = newJsonDocument();
   toJson(doc);
+  if (doc.overflowed()) return SIZE_MAX;
   return measureJson(doc);
 }
 

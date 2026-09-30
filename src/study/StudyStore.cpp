@@ -1,5 +1,6 @@
 #include "StudyStore.h"
 
+#include <Arduino.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -17,6 +18,21 @@ constexpr const char* MODULE = "STUDY";
 
 bool saveBibleCompletion(const study::ChapterCompletion& record) {
   return ChapterCompletionFile::save(study::BIBLE_PUB_KEY, record) == ChapterCompletionFile::SaveResult::Ok;
+}
+
+struct RepairTextContext {
+  UnitIndexCache* units;
+  uint16_t spine;
+};
+
+std::string repairSpanText(void* ctx, const study::PassageSpan& span) {
+  auto* self = static_cast<RepairTextContext*>(ctx);
+  return self->units->rangeText(self->spine, span);
+}
+
+std::string repairUnitText(void* ctx, const study::Unit& unit) {
+  auto* self = static_cast<RepairTextContext*>(ctx);
+  return self->units->unitText(self->spine, unit);
 }
 
 }  // namespace
@@ -63,12 +79,13 @@ bool StudyStore::openPublication(const std::shared_ptr<Epub>& epub, GfxRenderer&
   if (!units_ || !units_->begin()) {
     LOG_ERR(MODULE, "Unit index unavailable; addressing degraded to document offsets");
   }
+  PsramJsonAllocator::logMemory("Study open");
   return true;
 }
 
 void StudyStore::closePublication() {
   units_.reset();
-  passages_ = study::PassageDoc{};
+  passages_ = study::PassageDoc{PsramJsonAllocator::passageDoc()};
   completion_ = study::ChapterCompletion{};
   pubKey_.clear();
   linkSource_.reset();
@@ -274,7 +291,7 @@ std::vector<StudyStore::PaintedPassage> StudyStore::passagesInDocument(const uin
 }
 
 bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffset, const uint32_t endOffset,
-                            const std::string& snippet, const std::string& reference, std::vector<study::TagId> tags) {
+                            const std::string& reference, std::vector<study::TagId> tags) {
   if (saveDisabled_ || !units_) return false;
 
   const study::DocumentUnits& units = units_->unitsFor(spineIndex);
@@ -283,17 +300,36 @@ bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffse
   passage.start = study::resolve(units, startOffset);
   passage.end = study::resolve(units, endOffset);
   passage.documentSpine = spineIndex;
-  passage.snippet = snippet;
-  passage.displayText = snippet;
   passage.reference = reference;
   passage.tags = std::move(tags);
+
+  const auto span = study::snapSpan(units, passage.start, passage.end);
+  if (!span) {
+    LOG_ERR(MODULE, "Passage span unresolved in spine %u; not saved", spineIndex);
+    return false;
+  }
+  const std::string whole = study::normaliseWholeText(units_->rangeText(spineIndex, *span));
+  if (whole.empty()) {
+    LOG_ERR(MODULE, "Passage text unreadable in spine %u; not saved", spineIndex);
+    return false;
+  }
+  passage.displayText = passages_.newText();
+  if (!passage.displayText.assign(whole)) {
+    LOG_ERR(MODULE, "OOM: %u-byte passage text; not saved", static_cast<unsigned>(whole.size()));
+    return false;
+  }
+  passage.whole = true;
+
   passage.fingerprint = study::fingerprintOf(units_->unitText(spineIndex, passage.start));
   if (!(passage.end == passage.start)) {
     passage.endFingerprint = study::fingerprintOf(units_->unitText(spineIndex, passage.end));
   }
 
   if (!passages_.add(std::move(passage))) return false;
-  if (save()) return true;
+  if (save()) {
+    PsramJsonAllocator::logMemory("Passage added");
+    return true;
+  }
 
   passages_.remove(passages_.passages().size() - 1);
   return false;
@@ -302,12 +338,17 @@ bool StudyStore::addPassage(const uint16_t spineIndex, const uint32_t startOffse
 bool StudyStore::removePassage(const size_t index) {
   if (saveDisabled_ || index >= passages_.passages().size()) return false;
 
-  const study::TaggedPassage backup = passages_.passages()[index];
+  study::TaggedPassage backup;
+  backup.displayText = passages_.newText();
+  if (!study::copyPassage(passages_.passages()[index], backup)) {
+    LOG_ERR(MODULE, "OOM: backup of passage %u; not removed", static_cast<unsigned>(index));
+    return false;
+  }
   if (!passages_.remove(index)) return false;
   linkSource_.reset();
   if (save()) return true;
 
-  passages_.add(backup);
+  passages_.add(std::move(backup));
   return false;
 }
 
@@ -359,4 +400,129 @@ bool StudyStore::removeLink(const size_t passageIndex, const size_t linkIndex) {
 
   passages_.setLinks(passageIndex, backup);
   return false;
+}
+
+void StudyStore::repairTexts() {
+  if (saveDisabled_ || !units_ || !units_->ready() || pubKey_.empty()) return;
+  if (repairPubKey_ != pubKey_) {
+    repairSchedule_ = study::RepairSchedule{};
+    repairPubKey_ = pubKey_;
+  }
+
+  std::vector<bool> needsRepair(passages_.passages().size());
+  for (size_t i = 0; i < needsRepair.size(); ++i) needsRepair[i] = !passages_.passages()[i].whole;
+  const std::vector<size_t> order = repairSchedule_.order(needsRepair);
+  if (order.empty()) return;
+
+  struct Undo {
+    size_t index;
+    study::TaggedPassage before;
+  };
+  std::vector<Undo> undo;
+  undo.reserve(order.size());
+  uint8_t searchesLeft = REPAIR_SEARCHES_PER_PASS;
+  unsigned rebuilt = 0;
+  unsigned suspect = 0;
+  unsigned leftAsIs = 0;
+  const unsigned long started = millis();
+
+  // Phase 1: rows whose units resolve at their stored spine hint, one document
+  // each. Phase 2: the rest, of which at most REPAIR_SEARCHES_PER_PASS run the
+  // book search -- so a stale-hint row stored early cannot spend the budget
+  // before the cheap rows after it. Classifying reads each hint's index entry
+  // and counts against the same budget.
+  struct RowAtHint {
+    size_t index;
+    bool atHint;
+  };
+  std::vector<RowAtHint> phased;
+  std::vector<RowAtHint> needsSearch;
+  phased.reserve(order.size());
+  needsSearch.reserve(order.size());
+  for (const size_t index : order) {
+    const study::TaggedPassage& passage = passages_.passages()[index];
+    const bool atHint = passage.documentSpine < units_->indexedDocumentCount() &&
+                        study::documentOffsetOf(units_->unitsFor(passage.documentSpine), passage.start).has_value();
+    (atHint ? phased : needsSearch).push_back({index, atHint});
+  }
+  phased.insert(phased.end(), needsSearch.begin(), needsSearch.end());
+
+  for (const auto [index, atHint] : phased) {
+    if (millis() - started >= REPAIR_TIME_BUDGET_MS) break;
+    const study::TaggedPassage& passage = passages_.passages()[index];
+    const std::string startUnit = study::unitToCompact(passage.start);
+
+    const bool searchable = passage.start.kind == study::UnitKind::Verse && passage.start.book != 0;
+    if (!atHint && searchable && searchesLeft == 0) continue;  // deferred, not attempted
+    repairSchedule_.markAttempted(index);
+
+    std::optional<uint16_t> spine;
+    if (atHint) {
+      spine = passage.documentSpine;
+    } else if (searchable) {
+      --searchesLeft;
+      if (const auto found = locateUnit(passage.start, passage.documentSpine)) spine = found->spineIndex;
+    }
+
+    RepairTextContext ctx{units_.get(), spine.value_or(0)};
+    study::TextRepairInputs in;
+    if (spine) {
+      in.units = &units_->unitsFor(*spine);
+      in.ctx = &ctx;
+      in.spanText = &repairSpanText;
+      in.unitText = &repairUnitText;
+    }
+    const study::TextRepairPlan plan = study::planTextRepair(passage, in);
+
+    if (plan.outcome != study::TextRepairOutcome::Rebuilt &&
+        plan.outcome != study::TextRepairOutcome::RebuiltSuspectStart) {
+      LOG_ERR(MODULE, "Repair: %s left as is (%s)", startUnit.c_str(),
+              plan.outcome == study::TextRepairOutcome::FingerprintMismatch ? "fingerprint mismatch" : "unresolvable");
+      ++leftAsIs;
+      vTaskDelay(1);
+      continue;
+    }
+
+    Undo entry{index, study::TaggedPassage{}};
+    entry.before.displayText = passages_.newText();
+    if (!study::copyPassage(passage, entry.before)) {
+      LOG_ERR(MODULE, "Repair: %s left as is (OOM for its backup)", startUnit.c_str());
+      ++leftAsIs;
+      vTaskDelay(1);
+      continue;
+    }
+
+    const auto result = passages_.setWholeText(index, plan.wholeText);
+    if (result != study::PassageDoc::TextResult::Set) {
+      LOG_ERR(MODULE, "Repair: %s left as is (%s)", startUnit.c_str(),
+              result == study::PassageDoc::TextResult::OverBudget ? "over budget" : "out of memory");
+      ++leftAsIs;
+      vTaskDelay(1);
+      continue;
+    }
+    if (*spine != entry.before.documentSpine) passages_.repairDocumentSpine(index, *spine);
+    if (plan.outcome == study::TextRepairOutcome::RebuiltSuspectStart) {
+      LOG_INF(MODULE, "Repair: %s (%s) rebuilt from a suspect start", startUnit.c_str(),
+              entry.before.reference.c_str());
+      ++suspect;
+    }
+    ++rebuilt;
+    undo.push_back(std::move(entry));
+    // One yield per row: each can stream a document, and the task watchdog
+    // panics at 5 s -- MigrationRunner yields the same way.
+    vTaskDelay(1);
+  }
+
+  if (!undo.empty() && !save()) {
+    for (auto it = undo.rbegin(); it != undo.rend(); ++it) passages_.replace(it->index, std::move(it->before));
+    LOG_ERR(MODULE, "Repair: save failed; %u rebuilt passages restored", static_cast<unsigned>(undo.size()));
+    return;
+  }
+
+  unsigned notWhole = 0;
+  for (const auto& p : passages_.passages()) {
+    if (!p.whole) ++notWhole;
+  }
+  LOG_INF(MODULE, "Repair: %u rebuilt (%u suspect), %u left as is, %u still not whole, %lu ms", rebuilt, suspect,
+          leftAsIs, notWhole, millis() - started);
 }

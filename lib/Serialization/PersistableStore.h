@@ -114,6 +114,12 @@ class PersistableStoreBase {
   // one task can rename the .tmp another task is still writing.
   static AdoptedLoad loadAdopting(const char* path, DocReader read, DocAcceptor accept, void* target);
 
+  // As above, parsing into a document on `allocator` (nullptr: ArduinoJson's
+  // default), for a store whose data belongs in PSRAM. An allocation failure
+  // while parsing is a parse error, so the load is Failed, never Empty.
+  static AdoptedLoad loadAdopting(const char* path, DocReader read, DocAcceptor accept, void* target,
+                                  ArduinoJson::Allocator* allocator);
+
  protected:
   /**
    * Helper function for extracting an obfuscated password from a JSON value.

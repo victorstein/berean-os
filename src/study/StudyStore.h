@@ -10,6 +10,8 @@
 #include "StudyStore/ChapterCompletion.h"
 #include "StudyStore/PassageDoc.h"
 #include "StudyStore/TagPalette.h"
+#include "StudyStore/TextRepair.h"
+#include "study/PsramJsonAllocator.h"
 #include "study/UnitIndexCache.h"
 
 class GfxRenderer;
@@ -116,8 +118,12 @@ class StudyStore {
   // words the user never marked.
   std::vector<PaintedPassage> passagesInDocument(uint16_t spineIndex);
 
-  bool addPassage(uint16_t spineIndex, uint32_t startOffset, uint32_t endOffset, const std::string& snippet,
-                  const std::string& reference, std::vector<study::TagId> tags);
+  // Builds the stored text itself: the whole verse(s) the selection touches
+  // (study::snapSpan), read from the spine's source text. Refuses, saving
+  // nothing, when that text cannot be read or allocated, or would exceed the
+  // budget -- a passage is never stored cut.
+  bool addPassage(uint16_t spineIndex, uint32_t startOffset, uint32_t endOffset, const std::string& reference,
+                  std::vector<study::TagId> tags);
   bool removePassage(size_t index);
   bool setPassageTags(size_t index, std::vector<study::TagId> tags);
 
@@ -151,6 +157,13 @@ class StudyStore {
   LinkOutcome linkMarkedSourceTo(size_t targetIndex);
   bool removeLink(size_t passageIndex, size_t linkIndex);
 
+  // Rebuilds this publication's not-yet-whole passages as their whole verse(s)
+  // (issue #188) for up to REPAIR_TIME_BUDGET_MS, then saves once; the rest wait
+  // for the next open. A row that cannot be resolved, or whose fingerprint no
+  // longer matches, is left exactly as it was. Main task, no render lock held: a
+  // document that has to be inflated borrows the framebuffer for its popup.
+  void repairTexts();
+
   // For the migration runner, which owns its own save cadence.
   study::PassageDoc& mutableDoc() { return passages_; }
   study::TagPalette& mutablePalette() { return palette_; }
@@ -162,11 +175,20 @@ class StudyStore {
   std::optional<Location> locateUnit(const study::Unit& unit, uint16_t spineHint);
 
   study::TagPalette palette_;
-  study::PassageDoc passages_;
+  study::PassageDoc passages_{PsramJsonAllocator::passageDoc()};
   std::string pubKey_;
   bool saveDisabled_ = false;
   std::optional<size_t> linkSource_;
   std::unique_ptr<UnitIndexCache> units_;
+
+  static constexpr uint32_t REPAIR_TIME_BUDGET_MS = 3000;
+  // A Verse row whose spine hint is stale needs the book search, up to 150
+  // documents; this many a pass, so such rows cannot eat every pass's budget.
+  static constexpr uint8_t REPAIR_SEARCHES_PER_PASS = 2;
+  // Session-scoped, kept across reopening the same publication so a stuck row
+  // does not come first again on every open.
+  study::RepairSchedule repairSchedule_;
+  std::string repairPubKey_;
 
   // Held for the life of an open Bible: 149 bytes of static storage in this
   // singleton, no heap. Empty for any other publication.

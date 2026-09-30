@@ -219,6 +219,10 @@ bool EpubReaderActivity::loadBook() {
   if (STUDY.takeCompletionLoadFailureNotice()) {
     ReaderUtils::showMessage(renderer, tr(STR_CHAPTERS_READ_LOAD_FAILED));
   }
+  // Rebuilds passages saved before issue #188 as their whole verses. Bounded,
+  // and resumed on the next open. loadBook holds no RenderLock, which the
+  // inflate popup would otherwise deadlock on.
+  STUDY.repairTexts();
 #else
   // The study store is never opened on non-PSRAM boards: a resident passage
   // document plus two live JsonDocuments is a real risk against ~50KB of free

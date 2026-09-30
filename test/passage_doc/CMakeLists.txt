@@ -1,5 +1,6 @@
 add_executable(PassageDocTest
   PassageDocTest.cpp
+  PassageTextTest.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/PassageDoc.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitFingerprint.cpp

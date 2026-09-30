@@ -1,9 +1,11 @@
 #include "StudyStore/UnitText.h"
 
 #include <expat.h>
+#include <strings.h>
 
 #include <cstring>
 #include <new>
+#include <string_view>
 
 #include "Epub/VisibleOffsetCounter.h"
 #include "Epub/htmlEntities.h"
@@ -21,7 +23,91 @@ struct State {
   uint32_t hi = 0;
   std::string captured;
   uint32_t crc = crc32Begin();
+
+  bool filtering = false;
+  CaptureFilter filter;
+  uint16_t skipDepth = 0;
+  bool skippingNumber = false;
+  bool dropNextSeparator = false;
+  bool extensionDone = false;
 };
+
+enum class Skip : uint8_t { None, Element, Number };
+
+const char* attribute(const XML_Char** atts, const char* key) {
+  if (atts == nullptr) return nullptr;
+  for (size_t i = 0; atts[i] != nullptr && atts[i + 1] != nullptr; i += 2) {
+    if (strcmp(atts[i], key) == 0) return atts[i + 1];
+  }
+  return nullptr;
+}
+
+bool hasToken(const char* list, const std::string_view token) {
+  if (list == nullptr) return false;
+  std::string_view rest(list);
+  while (!rest.empty()) {
+    const size_t space = rest.find(' ');
+    if (rest.substr(0, space) == token) return true;
+    if (space == std::string_view::npos) break;
+    rest.remove_prefix(space + 1);
+  }
+  return false;
+}
+
+// Narrower than VerseTextScanner's SKIPPED_CLASSES on purpose: search indexes
+// verse body text only, so it drops navigation, headings and superscriptions
+// wholesale, while a stored passage must keep a selection that starts inside a
+// superscription.
+Skip skipOf(const char* name, const XML_Char** atts, const bool verseDocument) {
+  if (strcasecmp(name, "aside") == 0) return Skip::Element;
+  if (strcasecmp(name, "a") == 0 && hasToken(attribute(atts, "epub:type"), "noteref")) return Skip::Element;
+  if (!verseDocument) return Skip::None;
+  if (strcasecmp(name, "sup") == 0) return Skip::Number;
+  if (strcasecmp(name, "span") == 0 && hasToken(attribute(atts, "class"), "w_ch")) return Skip::Number;
+  if (strcasecmp(name, "p") == 0) {
+    const char* classes = attribute(atts, "class");
+    if (hasToken(classes, "ss") || hasToken(classes, "sd")) return Skip::Element;
+  }
+  return Skip::None;
+}
+
+bool isBlockElement(const char* name) {
+  static constexpr const char* BLOCKS[] = {"p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6"};
+  for (const char* block : BLOCKS) {
+    if (strcasecmp(name, block) == 0) return true;
+  }
+  return false;
+}
+
+// The space a verse number is followed by: U+202F in the NWT's markup, sometimes
+// U+00A0 or a plain space.
+bool isNumberSeparator(const std::string_view codepoint) {
+  return codepoint == " " || codepoint == "\xC2\xA0" || codepoint == "\xE2\x80\xAF";
+}
+
+bool isAsciiSpace(const std::string_view codepoint) {
+  return codepoint.size() == 1 &&
+         (codepoint[0] == ' ' || codepoint[0] == '\n' || codepoint[0] == '\t' || codepoint[0] == '\r');
+}
+
+bool shouldCapture(State& state, const std::string_view codepoint) {
+  const uint32_t offset = state.counter.offset;
+  if (!state.filtering) return offset >= state.lo && offset < state.hi;
+  if (state.skipDepth > 0) return false;
+
+  const bool droppedSeparator = state.dropNextSeparator && isNumberSeparator(codepoint);
+  state.dropNextSeparator = false;
+  if (droppedSeparator) return false;
+
+  if (offset < state.lo) return false;
+  if (offset < state.hi) return true;
+  if (!state.filter.extendToWordEnd || state.extensionDone) return false;
+  if (isAsciiSpace(codepoint)) {
+    state.extensionDone = true;
+    return false;
+  }
+  return true;
+}
 
 void XMLCALL onText(void* userData, const XML_Char* text, const int len) {
   auto* self = static_cast<State*>(userData);
@@ -35,18 +121,40 @@ void XMLCALL onText(void* userData, const XML_Char* text, const int len) {
 
     const std::string_view codepoint(text + i, static_cast<size_t>(width));
     self->crc = crc32Update(self->crc, codepoint);
-    if (self->counter.offset >= self->lo && self->counter.offset < self->hi) self->captured.append(codepoint);
+    if (shouldCapture(*self, codepoint)) self->captured.append(codepoint);
 
     self->counter.offset++;
     i += width;
   }
 }
 
-void XMLCALL onStart(void* userData, const XML_Char* name, const XML_Char**) {
-  static_cast<State*>(userData)->counter.onStartElement(name);
+void XMLCALL onStart(void* userData, const XML_Char* name, const XML_Char** atts) {
+  auto* self = static_cast<State*>(userData);
+  self->counter.onStartElement(name);
+  if (!self->filtering) return;
+  if (self->skipDepth > 0) {
+    ++self->skipDepth;
+    return;
+  }
+  const Skip skip = skipOf(name, atts, self->filter.verseDocument);
+  if (skip == Skip::None) return;
+  self->skipDepth = 1;
+  self->skippingNumber = skip == Skip::Number;
 }
 
-void XMLCALL onEnd(void* userData, const XML_Char* name) { static_cast<State*>(userData)->counter.onEndElement(name); }
+void XMLCALL onEnd(void* userData, const XML_Char* name) {
+  auto* self = static_cast<State*>(userData);
+  self->counter.onEndElement(name);
+  if (!self->filtering) return;
+  if (self->skipDepth > 0) {
+    if (--self->skipDepth == 0 && self->skippingNumber) self->dropNextSeparator = true;
+    return;
+  }
+  if (!isBlockElement(name)) return;
+  // A word never runs on past its block.
+  if (self->counter.offset >= self->hi) self->extensionDone = true;
+  if (!self->captured.empty() && self->captured.back() != ' ') self->captured.push_back(' ');
+}
 
 // Mirrors VerseAnchors::onDefault. Under XML_GE=0 every undeclared entity
 // arrives here rather than at the character handler; leaving it uncounted would
@@ -106,6 +214,13 @@ void UnitTextScanner::setRange(const uint32_t from, const uint32_t to) {
   state->hi = to;
 }
 
+void UnitTextScanner::setFilter(const CaptureFilter& filter) {
+  if (!state_) return;
+  auto* state = static_cast<State*>(state_);
+  state->filtering = true;
+  state->filter = filter;
+}
+
 bool UnitTextScanner::feed(const char* chunk, const size_t length, const bool isFinal) {
   if (!parser_ || failed_) return false;
   const XML_Status status =
@@ -127,6 +242,18 @@ std::string extractRangeText(const char* xhtml, const size_t length, const uint3
   State state;
   state.lo = from;
   state.hi = to;
+  if (!walk(xhtml, length, state)) return {};
+  return std::move(state.captured);
+}
+
+std::string extractPassageText(const char* xhtml, const size_t length, const uint32_t from, const uint32_t to,
+                               const CaptureFilter& filter) {
+  if (to <= from) return {};
+  State state;
+  state.lo = from;
+  state.hi = to;
+  state.filtering = true;
+  state.filter = filter;
   if (!walk(xhtml, length, state)) return {};
   return std::move(state.captured);
 }

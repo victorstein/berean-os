@@ -496,26 +496,35 @@ file only to drop a field and erase it on its next save:
 
 | `v` | Written when | Adds |
 | --- | --- | --- |
-| 1 | no passage has links or a whole text | — |
-| 2 | some passage has links, none a whole text | `"k"` |
-| 3 | some passage has a whole text | `"w"` |
+| 1 | no passage has links or a text | — |
+| 2 | some passage has links, none a text | `"k"` |
+| 3 | some passage has a legacy text, none a whole-verse one | `"w"` (121..384 bytes) |
+| 4 | some passage has a whole-verse text | `"h"`, and an uncapped `"w"` |
 
 ```json
-{"v":3,"p":[{"u":"v:48:5:4:0","e":"v:48:5:4:137","f":"134:a1b2c3d4","d":"1001061152-split5.xhtml","s":1152,
+{"v":4,"p":[{"u":"v:48:5:4:12","e":"v:48:5:4:40","f":"134:a1b2c3d4","d":"1001061152-split5.xhtml","s":1152,
   "x":"Ustedes, los que tratan de ser declarados justos por medio de la ley, están separados de Cristo. Se han apartado de su",
   "w":"Ustedes, los que tratan de ser declarados justos por medio de la ley, están separados de Cristo. Se han apartado de su bondad inmerecida.",
-  "r":"Gálatas 5:4","t":[3]}]}
+  "h":true,"r":"Gálatas 5:4","t":[3]}]}
 ```
 
 Row keys: `u` start unit, `e` end unit, `f`/`fe` start and end fingerprints, `d` document and `s`
-spine (resolution hints), `x` snippet (≤ 120 bytes, for lists), `r` reference (≤ 48 bytes), `t` tag
-ids (empty = unlabelled), `g` pending upgrade, `k` outgoing links (≤ 8, each `u`/`s`/`r`).
+spine (resolution hints), `x` snippet (≤ 120 bytes, for lists), `w` text, `h` whole-verse flag,
+`r` reference (≤ 48 bytes), `t` tag ids (empty = unlabelled), `g` pending upgrade, `k` outgoing
+links (≤ 8, each `u`/`s`/`r`).
 
-`w` is the passage's whole text, for the Study sleep screen. It is normalised (whitespace collapsed,
-trimmed) and written only when it is longer than the snippet: **121..384 bytes**. A stored `"w"`
-outside that range, or one that is not a string, fails the whole load, which latches saving off —
-it is refused, never cut, so widening the cap needs a version bump. Passages saved before v3 have no
-`"w"` and show their snippet.
+`w` with `h:true` (v4) is the passage's **whole text**: the complete verse(s) its selection touches,
+even when the selection starts or ends mid-verse, without verse numbers, footnote markers,
+footnotes or acrostic headings. It is normalised (whitespace collapsed, trimmed) and has no cap of
+its own: it is bounded by the file's 200,000-byte save budget and by ArduinoJson's 65,535-byte
+string limit. A passage past either is refused, never cut. `x` is its first 120 bytes. A row with `h:true` and an empty or missing `w` fails
+the whole load.
+
+`w` without `h` is a **legacy** text, 121..384 bytes as v3 wrote it; any other length fails the whole
+load. Such rows, and rows with no `w` at all, are rebuilt to whole-verse text when their publication
+is opened (`StudyStore::repairTexts`, a few seconds per open until done). Until then the Study sleep
+screen does not show them. A row whose verses cannot be resolved, or whose fingerprint no longer
+matches the open edition, is left exactly as stored.
 
 ## `/.berean/search/bible.idx`
 

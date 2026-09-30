@@ -15,7 +15,6 @@
 #include <Utf8.h>
 
 #include <algorithm>
-#include <cinttypes>
 #include <cstdio>
 #include <cstring>
 #include <optional>
@@ -32,6 +31,7 @@
 #include "StudyStore/TagPalette.h"
 #include "StudyStore/Unit.h"
 #include "fontIds.h"
+#include "study/PsramJsonAllocator.h"
 #include "util/WeekdayNames.h"
 
 namespace study_sleep_screen {
@@ -54,13 +54,41 @@ constexpr int MARK_SIZE = 40;
 constexpr int MARK_TEXT_GAP = 4;
 constexpr int FOOTER_BOTTOM_GAP = 16;
 constexpr const char* OPENING_QUOTE = "\xE2\x80\x9C";
-// The reader's serif sizes, largest first: the passage is set at the first one
-// it fits.
-constexpr int PASSAGE_FONT_IDS[] = {NOTOSERIF_18_FONT_ID, NOTOSERIF_16_FONT_ID, NOTOSERIF_14_FONT_ID,
-                                    NOTOSERIF_12_FONT_ID};
-constexpr uint8_t PASSAGE_SIZE_COUNT = sizeof(PASSAGE_FONT_IDS) / sizeof(PASSAGE_FONT_IDS[0]);
 
-static_assert(study_sleep::TEXT_CAPACITY == study::PassageDoc::MAX_DISPLAY_TEXT_BYTES + 1);
+// The reader's serif sizes, largest first, then Ubuntu 10: the smallest face on
+// the device the UI already sets body text in. There is no serif below 12pt, and
+// Ubuntu has no italic.
+constexpr int PASSAGE_FONT_IDS[] = {NOTOSERIF_18_FONT_ID, NOTOSERIF_16_FONT_ID, NOTOSERIF_14_FONT_ID,
+                                    NOTOSERIF_12_FONT_ID, UI_10_FONT_ID};
+constexpr EpdFontFamily::Style PASSAGE_FONT_STYLES[] = {
+    EpdFontFamily::ITALIC, EpdFontFamily::ITALIC, EpdFontFamily::ITALIC, EpdFontFamily::ITALIC, EpdFontFamily::REGULAR};
+constexpr uint8_t SERIF_12 = 3;
+constexpr uint8_t FLOOR_SIZE = 4;
+
+// What a rung keeps around the passage. The quote mark, the reference and the
+// Berean mark always stay: without its reference a quote has no address.
+struct Chrome {
+  bool date;
+  bool tag;
+};
+
+struct Rung {
+  uint8_t sizeIndex;
+  Chrome chrome;
+};
+
+// Largest first; the first rung that holds the whole passage wins (issue #188).
+constexpr Rung RUNGS[] = {
+    {0, {true, true}},
+    {1, {true, true}},
+    {2, {true, true}},
+    {SERIF_12, {true, true}},
+    {SERIF_12, {false, false}},
+    {FLOOR_SIZE, {false, false}},
+};
+constexpr uint8_t RUNG_COUNT = sizeof(RUNGS) / sizeof(RUNGS[0]);
+constexpr uint8_t FLOOR_RUNG = RUNG_COUNT - 1;
+
 static_assert(study_sleep::REFERENCE_CAPACITY == study::PassageDoc::MAX_REFERENCE_BYTES + 1);
 
 struct ScanBuffers {
@@ -72,6 +100,9 @@ struct ScanTotals {
   uint32_t entries = 0;
   size_t bytesParsed = 0;
   bool capHit = false;
+  uint32_t rowsNotWhole = 0;
+  uint32_t rowsOverPrefilter = 0;
+  uint32_t rowsUnfit = 0;
 };
 
 struct ScreenContent {
@@ -80,7 +111,75 @@ struct ScreenContent {
   std::string tagName;
 };
 
+struct Layout {
+  int width = 0;
+  int pageWidth = 0;
+  int viewTop = 0;
+  int areaBottom = 0;
+  int footerTextY = 0;
+  int markY = 0;
+  int serifLine = 0;
+  int uiLine = 0;
+  int pillHeight = 0;
+};
+
+// Decides, before sampling, whether a passage can be shown whole at all: at the
+// floor rung, every optional piece of chrome dropped and a reference line
+// assumed. A pick that then failed to fit would leave nothing to show.
+struct FitGate {
+  const GfxRenderer* renderer = nullptr;
+  study_sleep::FitRung floor{};
+  int width = 0;
+};
+
 uint32_t hardwareRandom(void*, const uint32_t bound) { return static_cast<uint32_t>(random(static_cast<long>(bound))); }
+
+int measurePassage(const void* ctx, const uint8_t sizeIndex, const char* text) {
+  return static_cast<const GfxRenderer*>(ctx)->getTextWidth(PASSAGE_FONT_IDS[sizeIndex], text,
+                                                            PASSAGE_FONT_STYLES[sizeIndex]);
+}
+
+Layout measureLayout(const GfxRenderer& renderer) {
+  int viewTop = 0;
+  int viewRight = 0;
+  int viewBottom = 0;
+  int viewLeft = 0;
+  renderer.getOrientedViewableTRBL(&viewTop, &viewRight, &viewBottom, &viewLeft);
+
+  Layout layout;
+  layout.pageWidth = renderer.getScreenWidth();
+  layout.width = layout.pageWidth - viewLeft - viewRight - 2 * SIDE_MARGIN;
+  layout.viewTop = viewTop;
+  layout.serifLine = renderer.getLineHeight(NOTOSERIF_18_FONT_ID);
+  layout.uiLine = renderer.getLineHeight(UI_12_FONT_ID);
+  const int smallLine = renderer.getLineHeight(SMALL_FONT_ID);
+  layout.pillHeight = smallLine + 2 * PILL_PAD_Y;
+  layout.footerTextY = renderer.getScreenHeight() - viewBottom - FOOTER_BOTTOM_GAP - smallLine;
+  layout.markY = layout.footerTextY - MARK_SIZE - MARK_TEXT_GAP;
+  layout.areaBottom = layout.markY - SECTION_GAP;
+  return layout;
+}
+
+// Everything but the passage lines, the quote mark included.
+int chromeHeight(const Layout& layout, const Chrome& chrome, const bool hasDate, const bool hasReference,
+                 const bool hasTag) {
+  int height = layout.serifLine;
+  if (chrome.date && hasDate) height += layout.uiLine + SECTION_GAP;
+  if (hasReference) height += SECTION_GAP + layout.uiLine;
+  if (chrome.tag && hasTag) height += SECTION_GAP + layout.pillHeight;
+  return height;
+}
+
+study_sleep::FitRung fitRung(const GfxRenderer& renderer, const Layout& layout, const uint8_t rung, const bool hasDate,
+                             const bool hasReference, const bool hasTag) {
+  const uint8_t sizeIndex = RUNGS[rung].sizeIndex;
+  return {sizeIndex, renderer.getLineHeight(PASSAGE_FONT_IDS[sizeIndex]),
+          layout.areaBottom - layout.viewTop - chromeHeight(layout, RUNGS[rung].chrome, hasDate, hasReference, hasTag)};
+}
+
+bool fitsFloorRung(const FitGate& gate, const std::string_view text) {
+  return study_sleep::fitPassage(text, &gate.floor, 1, gate.width, &measurePassage, gate.renderer).fits;
+}
 
 std::optional<std::string_view> readPassageFileName(HalFile& entry, char* name) {
   if (entry.isDirectory()) return std::nullopt;
@@ -88,28 +187,30 @@ std::optional<std::string_view> readPassageFileName(HalFile& entry, char* name) 
   return study_sleep::pubKeyFromFileName(name);
 }
 
-// Drops a row PassageDoc::fromJson would drop -- an unaddressable start -- but is
-// otherwise lenient: a malformed "w" falls back to "x" and "k" is never read, so
-// one damaged row still shows something. "w" is read in place: it was
-// normalised when saved.
+// Drops a row PassageDoc::fromJson would drop -- an unaddressable start -- and any
+// row whose text is not its whole verse(s): a legacy row waits for the repair
+// rather than showing cut (issue #188). "k" is never read.
 void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_sleep::Sampler& sampler,
-              const study_sleep::RingView& ring) {
+              const study_sleep::RingView& ring, const FitGate& gate, ScanTotals& totals) {
   const char* startUnit = row["u"] | "";
   if (!study::unitFromCompact(startUnit)) return;
+
+  const std::string_view wholeText = row["w"] | "";
+  if (!study_sleep::rowIsWhole(row["h"] | false, wholeText)) {
+    ++totals.rowsNotWhole;
+    return;
+  }
+  const bool underPrefilter = study_sleep::withinPrefilter(wholeText);
+  const bool fits = underPrefilter && fitsFloorRung(gate, wholeText);
+  if (!underPrefilter) {
+    ++totals.rowsOverPrefilter;
+  } else if (!fits) {
+    ++totals.rowsUnfit;
+  }
+
   const char* storedEnd = row["e"] | "";
   const std::string_view endUnit =
       study_sleep::endUnitOrStart(startUnit, storedEnd, study::unitFromCompact(storedEnd).has_value());
-
-  const std::string_view wholeText = row["w"] | "";
-  std::string snippet;
-  std::string_view text;
-  if (study_sleep::wholeTextFits(wholeText, study::PassageDoc::MAX_DISPLAY_TEXT_BYTES)) {
-    text = wholeText;
-  } else {
-    snippet = utf8SafeSummary(row["x"] | "", study::PassageDoc::MAX_SNIPPET_BYTES);
-    text = snippet;
-  }
-  if (text.empty()) return;
   const std::string reference = utf8SafeSummary(row["r"] | "", study::PassageDoc::MAX_REFERENCE_BYTES);
 
   uint16_t tag = 0;
@@ -122,12 +223,12 @@ void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_s
   }
 
   const uint32_t key = study_sleep::passageKey(pubKey, startUnit, endUnit);
-  sampler.offer(text, reference, tag, key, study_sleep::ageOf(ring, key));
+  sampler.offer(wholeText, reference, tag, key, study_sleep::ageOf(ring, key), fits);
 }
 
 // False when the byte budget stops the scan.
 bool offerFile(const char* path, const size_t bytes, const std::string_view pubKey, study_sleep::Sampler& sampler,
-               const study_sleep::RingView& ring, ScanTotals& totals) {
+               const study_sleep::RingView& ring, const FitGate& gate, ScanTotals& totals) {
   if (bytes > MAX_FILE_BYTES) {
     LOG_ERR(MODULE, "Skipping %s: %u bytes exceeds the %u-byte cap", path, static_cast<unsigned>(bytes),
             static_cast<unsigned>(MAX_FILE_BYTES));
@@ -140,8 +241,9 @@ bool offerFile(const char* path, const size_t bytes, const std::string_view pubK
   totals.bytesParsed += bytes;
 
   // Not PassageFile::load: that promotes a leftover .tmp, a rename, and this
-  // path must never write to the study store.
-  JsonDocument doc;
+  // path must never write to the study store. PSRAM, as the store keeps it: the
+  // whole texts would otherwise be copied into internal SRAM on the way to sleep.
+  JsonDocument doc(PsramJsonAllocator::json());
   const DocReadStatus status = PersistableStoreBase::readDocFromFileStreamed(path, doc);
   if (status != DocReadStatus::Ok) {
     LOG_ERR(MODULE, "Skipping %s: passages unreadable (status %u)", path, static_cast<unsigned>(status));
@@ -152,11 +254,11 @@ bool offerFile(const char* path, const size_t bytes, const std::string_view pubK
     LOG_ERR(MODULE, "Skipping %s: unknown passage format v%d", path, version);
     return true;
   }
-  for (const JsonVariantConst row : doc["p"].as<JsonArrayConst>()) offerRow(row, pubKey, sampler, ring);
+  for (const JsonVariantConst row : doc["p"].as<JsonArrayConst>()) offerRow(row, pubKey, sampler, ring, gate, totals);
   return true;
 }
 
-bool pickPassage(study_sleep::Sampler& sampler, ScanBuffers& buffers, ScanTotals& totals) {
+bool pickPassage(study_sleep::Sampler& sampler, ScanBuffers& buffers, const FitGate& gate, ScanTotals& totals) {
   auto dir = Storage.open(sdpaths::PASSAGES_DIR);
   if (!dir || !dir.isDirectory()) return false;
 
@@ -183,7 +285,7 @@ bool pickPassage(study_sleep::Sampler& sampler, ScanBuffers& buffers, ScanTotals
       if (!study_sleep::inSweep(sweep, current, start)) continue;
 
       snprintf(buffers.path, sizeof(buffers.path), "%s/%s", sdpaths::PASSAGES_DIR, buffers.name);
-      if (!offerFile(buffers.path, entry.size(), *pubKey, sampler, ring, totals)) {
+      if (!offerFile(buffers.path, entry.size(), *pubKey, sampler, ring, gate, totals)) {
         LOG_INF(MODULE, "Passage scan stopped at the %u-byte budget", static_cast<unsigned>(MAX_TOTAL_BYTES));
         return sampler.result() != nullptr;
       }
@@ -223,85 +325,58 @@ std::string tagName(const uint16_t rawTag) {
   return palette.name(study::toTagId(rawTag));
 }
 
-int measurePassage(const void* ctx, const uint8_t sizeIndex, const char* text) {
-  return static_cast<const GfxRenderer*>(ctx)->getTextWidth(PASSAGE_FONT_IDS[sizeIndex], text, EpdFontFamily::ITALIC);
-}
-
-void drawScreen(const GfxRenderer& renderer, const ScreenContent& content) {
-  int viewTop = 0;
-  int viewRight = 0;
-  int viewBottom = 0;
-  int viewLeft = 0;
-  renderer.getOrientedViewableTRBL(&viewTop, &viewRight, &viewBottom, &viewLeft);
-  const int pageWidth = renderer.getScreenWidth();
-  const int pageHeight = renderer.getScreenHeight();
-  const int width = pageWidth - viewLeft - viewRight - 2 * SIDE_MARGIN;
-
-  const int serifLine = renderer.getLineHeight(NOTOSERIF_18_FONT_ID);
-  const int uiLine = renderer.getLineHeight(UI_12_FONT_ID);
-  const int smallLine = renderer.getLineHeight(SMALL_FONT_ID);
+void drawScreen(const GfxRenderer& renderer, const Layout& layout, const ScreenContent& content,
+                const study_sleep::FitResult& passage) {
+  const Chrome& chrome = RUNGS[passage.rung].chrome;
   const bool hasReference = content.passage->reference[0] != '\0';
-  const bool hasTag = !content.tagName.empty();
-  const int pillHeight = smallLine + 2 * PILL_PAD_Y;
+  const bool showDate = chrome.date && content.dateLine != nullptr;
+  const bool showTag = chrome.tag && !content.tagName.empty();
+  const uint8_t sizeIndex = RUNGS[passage.rung].sizeIndex;
+  const int passageFont = PASSAGE_FONT_IDS[sizeIndex];
+  const int passageLine = renderer.getLineHeight(passageFont);
 
-  // Everything but the passage lines, the quote mark included: these keep their
-  // sizes, and the passage gets whatever height is left.
-  int chromeHeight = serifLine;
-  if (content.dateLine) chromeHeight += uiLine + SECTION_GAP;
-  if (hasReference) chromeHeight += SECTION_GAP + uiLine;
-  if (hasTag) chromeHeight += SECTION_GAP + pillHeight;
-
-  const int footerTextY = pageHeight - viewBottom - FOOTER_BOTTOM_GAP - smallLine;
-  const int markY = footerTextY - MARK_SIZE - MARK_TEXT_GAP;
-  const int areaBottom = markY - SECTION_GAP;
-
-  study_sleep::FitSize sizes[PASSAGE_SIZE_COUNT];
-  for (uint8_t i = 0; i < PASSAGE_SIZE_COUNT; ++i) sizes[i].lineHeight = renderer.getLineHeight(PASSAGE_FONT_IDS[i]);
-  const auto passage = study_sleep::fitPassage(content.passage->text, sizes, PASSAGE_SIZE_COUNT, width,
-                                               areaBottom - viewTop - chromeHeight, &measurePassage, &renderer);
-  const int passageFont = PASSAGE_FONT_IDS[passage.sizeIndex];
-  const int passageLine = sizes[passage.sizeIndex].lineHeight;
-
-  const int blockHeight = chromeHeight + static_cast<int>(passage.lines.size()) * passageLine;
-  int y = viewTop + std::max(0, (areaBottom - viewTop - blockHeight) / 2);
+  const int blockHeight =
+      chromeHeight(layout, chrome, content.dateLine != nullptr, hasReference, !content.tagName.empty()) +
+      static_cast<int>(passage.lines.size()) * passageLine;
+  int y = layout.viewTop + std::max(0, (layout.areaBottom - layout.viewTop - blockHeight) / 2);
 
   // The "Entering sleep" popup is still in the framebuffer.
   renderer.clearScreen();
 
-  if (content.dateLine) {
+  if (showDate) {
     renderer.drawCenteredText(UI_12_FONT_ID, y, content.dateLine);
-    y += uiLine + SECTION_GAP;
+    y += layout.uiLine + SECTION_GAP;
   }
   renderer.drawCenteredText(NOTOSERIF_18_FONT_ID, y, OPENING_QUOTE, true, EpdFontFamily::BOLD);
-  y += serifLine;
+  y += layout.serifLine;
   for (const auto& line : passage.lines) {
-    renderer.drawCenteredText(passageFont, y, line.c_str(), true, EpdFontFamily::ITALIC);
+    renderer.drawCenteredText(passageFont, y, line.c_str(), true, PASSAGE_FONT_STYLES[sizeIndex]);
     y += passageLine;
   }
   if (hasReference) {
     y += SECTION_GAP;
     renderer.drawCenteredText(UI_12_FONT_ID, y, content.passage->reference, true, EpdFontFamily::BOLD);
-    y += uiLine;
+    y += layout.uiLine;
   }
-  if (hasTag) {
+  if (showTag) {
     y += SECTION_GAP;
     const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, content.tagName.c_str());
-    const int pillWidth = std::min(width, textWidth + 2 * PILL_PAD_X);
-    renderer.drawRoundedRect((pageWidth - pillWidth) / 2, y, pillWidth, pillHeight, 1, pillHeight / 2, true);
+    const int pillWidth = std::min(layout.width, textWidth + 2 * PILL_PAD_X);
+    renderer.drawRoundedRect((layout.pageWidth - pillWidth) / 2, y, pillWidth, layout.pillHeight, 1,
+                             layout.pillHeight / 2, true);
     renderer.drawCenteredText(SMALL_FONT_ID, y + PILL_PAD_Y, content.tagName.c_str());
-    y += pillHeight;
+    y += layout.pillHeight;
   }
 
-  berean_mark::draw(renderer, (pageWidth - MARK_SIZE) / 2, markY, MARK_SIZE);
-  renderer.drawCenteredText(SMALL_FONT_ID, footerTextY, tr(STR_BEREAN));
+  berean_mark::draw(renderer, (layout.pageWidth - MARK_SIZE) / 2, layout.markY, MARK_SIZE);
+  renderer.drawCenteredText(SMALL_FONT_ID, layout.footerTextY, tr(STR_BEREAN));
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 }
 
 }  // namespace
 
 bool render(const GfxRenderer& renderer) {
-  LOG_DBG(MODULE, "Study pick start: free heap %" PRIu32 ", free PSRAM %" PRIu32, ESP.getFreeHeap(),
-          ESP.getFreePsram());
+  PsramJsonAllocator::logMemory("Study pick start");
   auto sampler = makeUniqueNoThrow<study_sleep::Sampler>(&hardwareRandom, nullptr);
   auto buffers = makeUniqueNoThrow<ScanBuffers>();
   if (!sampler || !buffers) {
@@ -309,11 +384,27 @@ bool render(const GfxRenderer& renderer) {
     return false;
   }
 
+  const Layout layout = measureLayout(renderer);
+  FitGate gate;
+  gate.renderer = &renderer;
+  gate.width = layout.width;
+  gate.floor = fitRung(renderer, layout, FLOOR_RUNG, false, true, false);
+  // Logged so a tester can compare what the floor rung really holds against FIT_PREFILTER_BYTES.
+  constexpr const char* SAMPLE_TEN = "abcdefghij";
+  const int sampleWidth = measurePassage(&renderer, gate.floor.sizeIndex, SAMPLE_TEN);
+  LOG_DBG(MODULE, "Floor rung: %d lines, ~%d chars a line, prefilter %u bytes",
+          gate.floor.lineHeight > 0 ? gate.floor.maxHeight / gate.floor.lineHeight : 0,
+          sampleWidth > 0 ? gate.width * 10 / sampleWidth : 0, static_cast<unsigned>(study_sleep::FIT_PREFILTER_BYTES));
+
   ScanTotals totals;
-  const bool picked = pickPassage(*sampler, *buffers, totals);
-  LOG_DBG(MODULE, "Study pick: %u files, %u bytes parsed, cap %s, free heap %" PRIu32 ", free PSRAM %" PRIu32,
-          static_cast<unsigned>(totals.entries), static_cast<unsigned>(totals.bytesParsed),
-          totals.capHit ? "hit" : "not hit", ESP.getFreeHeap(), ESP.getFreePsram());
+  const unsigned long scanStarted = millis();
+  const bool picked = pickPassage(*sampler, *buffers, gate, totals);
+  LOG_DBG(
+      MODULE, "Study pick: %u files, %u bytes parsed, cap %s, %u rows not whole, %u over prefilter, %u unfit, %lu ms",
+      static_cast<unsigned>(totals.entries), static_cast<unsigned>(totals.bytesParsed),
+      totals.capHit ? "hit" : "not hit", static_cast<unsigned>(totals.rowsNotWhole),
+      static_cast<unsigned>(totals.rowsOverPrefilter), static_cast<unsigned>(totals.rowsUnfit), millis() - scanStarted);
+  PsramJsonAllocator::logMemory("Study pick");
   if (!picked) return false;
   const study_sleep::Candidate& passage = *sampler->result();
 
@@ -323,7 +414,21 @@ bool render(const GfxRenderer& renderer) {
   if (formatDate(dateLine, sizeof(dateLine))) content.dateLine = dateLine;
   content.tagName = tagName(passage.tag);
 
-  drawScreen(renderer, content);
+  study_sleep::FitRung rungs[RUNG_COUNT];
+  for (uint8_t rung = 0; rung < RUNG_COUNT; ++rung) {
+    rungs[rung] = fitRung(renderer, layout, rung, content.dateLine != nullptr, passage.reference[0] != '\0',
+                          !content.tagName.empty());
+  }
+  const auto fitted =
+      study_sleep::fitPassage(passage.text, rungs, RUNG_COUNT, layout.width, &measurePassage, &renderer);
+  if (!fitted.fits) {
+    // The gate measured this text at the floor rung with a reference assumed, so
+    // this means the two measurements disagreed. Never draw it cut.
+    LOG_ERR(MODULE, "Picked passage does not fit; study screen skipped");
+    return false;
+  }
+
+  drawScreen(renderer, layout, content, fitted);
 
   APP_STATE.pushRecentStudySleep(passage.key);
   APP_STATE.saveToFileAtomic();

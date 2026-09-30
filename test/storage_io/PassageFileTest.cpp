@@ -4,9 +4,12 @@
 
 #include <ArduinoJson.h>
 #include <HalStorage.h>
+#include <PersistableStore.h>
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <string>
+#include <utility>
 
 #include "HalStorageFake.h"
 #include "PassageFile.h"
@@ -45,7 +48,7 @@ study::PassageDoc pastTheReadCap() {
   for (int i = 0; i < 300; ++i) {
     study::TaggedPassage p = samplePassage();
     p.snippet = std::string(study::PassageDoc::MAX_SNIPPET_BYTES - 4, 'a') + std::to_string(i);
-    EXPECT_TRUE(doc.add(p));
+    EXPECT_TRUE(doc.add(std::move(p)));
   }
   return doc;
 }
@@ -124,6 +127,103 @@ TEST_F(PassageFileIo, AnUnreadablePrimaryFailsAndIsLeftAsItWas) {
   study::PassageDoc loaded;
   EXPECT_EQ(PassageFile::load(PUB_KEY, loaded), PassageFile::LoadResult::Failed);
   EXPECT_EQ(storage_fake::fileBytes(PATH), serialised(saved));
+}
+
+struct CountdownJsonAllocator : ArduinoJson::Allocator {
+  int remaining = 1 << 30;
+  int allocations = 0;
+  void* allocate(const size_t size) override {
+    if (remaining <= 0) return nullptr;
+    --remaining;
+    ++allocations;
+    return malloc(size);
+  }
+  void deallocate(void* pointer) override { free(pointer); }
+  void* reallocate(void* pointer, const size_t size) override {
+    if (remaining <= 0) return nullptr;
+    --remaining;
+    ++allocations;
+    return realloc(pointer, size);
+  }
+};
+
+study::TaggedPassage wholeSevenVerses() {
+  study::TaggedPassage p = samplePassage();
+  std::string text;
+  for (int verse = 1; verse <= 7; ++verse) {
+    if (!text.empty()) text += ' ';
+    text += "Ustedes, los que tratan de ser declarados justos por medio de la ley, están separados de Cristo.";
+  }
+  p.displayText.assign(text);
+  p.whole = true;
+  return p;
+}
+
+TEST_F(PassageFileIo, AWholePassagePastTheOldCapRoundTripsThroughTheFile) {
+  study::PassageDoc saved;
+  ASSERT_TRUE(saved.add(wholeSevenVerses()));
+  ASSERT_EQ(PassageFile::save(PUB_KEY, saved), PassageFile::SaveResult::Ok);
+
+  study::PassageDoc loaded;
+  ASSERT_EQ(PassageFile::load(PUB_KEY, loaded), PassageFile::LoadResult::Loaded);
+  ASSERT_EQ(loaded.passages().size(), 1u);
+  EXPECT_TRUE(loaded.passages()[0].whole);
+  EXPECT_EQ(loaded.passages()[0].displayText, saved.passages()[0].displayText);
+  EXPECT_GT(loaded.passages()[0].displayText.size(), 384u);
+}
+
+struct AcceptProbe {
+  CountdownJsonAllocator* allocator;
+  int allocationsWhenAccepted = -1;
+};
+
+// Counted at accept time, before PassageDoc::fromJson runs: fromJson's own
+// measureBytes also allocates from the document's allocator, so counting after
+// the load would pass even if the parse itself ignored the allocator.
+TEST_F(PassageFileIo, TheAllocatorOverloadParsesOnTheGivenAllocator) {
+  study::PassageDoc saved;
+  ASSERT_TRUE(saved.add(wholeSevenVerses()));
+  ASSERT_EQ(PassageFile::save(PUB_KEY, saved), PassageFile::SaveResult::Ok);
+
+  CountdownJsonAllocator json;
+  AcceptProbe probe{&json};
+  const AdoptedLoad result = PersistableStoreBase::loadAdopting(
+      PATH.c_str(), &PersistableStoreBase::readDocFromFileStreamed,
+      [](void* target, JsonVariantConst) {
+        auto* self = static_cast<AcceptProbe*>(target);
+        self->allocationsWhenAccepted = self->allocator->allocations;
+        return true;
+      },
+      &probe, &json);
+  EXPECT_EQ(result, AdoptedLoad::Loaded);
+  EXPECT_GT(probe.allocationsWhenAccepted, 0) << "the parse itself must allocate from the given allocator";
+}
+
+TEST_F(PassageFileIo, ALoadThatRunsOutOfMemoryFailsAndLeavesTheFile) {
+  study::PassageDoc saved;
+  ASSERT_TRUE(saved.add(wholeSevenVerses()));
+  ASSERT_EQ(PassageFile::save(PUB_KEY, saved), PassageFile::SaveResult::Ok);
+  const auto before = storage_fake::fileBytes(PATH);
+
+  CountdownJsonAllocator json;
+  json.remaining = 0;
+  study::PassageDoc loaded(study::PassageDoc::Allocators{study::defaultTextAllocator(), &json});
+  EXPECT_EQ(PassageFile::load(PUB_KEY, loaded), PassageFile::LoadResult::Failed) << "never Empty: data may exist";
+  EXPECT_EQ(storage_fake::fileBytes(PATH), before);
+}
+
+TEST_F(PassageFileIo, ASaveThatRunsOutOfMemoryIsRefusedAndWritesNothing) {
+  CountdownJsonAllocator json;
+  study::PassageDoc doc(study::PassageDoc::Allocators{study::defaultTextAllocator(), &json});
+  ASSERT_TRUE(doc.add(wholeSevenVerses()));
+  ASSERT_EQ(PassageFile::save(PUB_KEY, doc), PassageFile::SaveResult::Ok);
+  const auto before = storage_fake::fileBytes(PATH);
+
+  json.remaining = 0;
+  EXPECT_EQ(PassageFile::save(PUB_KEY, doc), PassageFile::SaveResult::WriteFailed);
+  EXPECT_EQ(storage_fake::fileBytes(PATH), before)
+      << "an overflowed document is smaller and would overwrite the good file";
+  EXPECT_FALSE(Storage.exists(TMP_PATH.c_str()));
 }
 
 }  // namespace
