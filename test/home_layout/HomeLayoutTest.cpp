@@ -47,8 +47,8 @@ TEST(HomeLayout, FixedSectionHeights) {
   EXPECT_EQ(HomeLayout::verseTextHeight(LINES), 102);
   EXPECT_EQ(HomeLayout::recentHeight(LyraMetrics::values, LINES), 143);
   EXPECT_EQ(HomeLayout::recentHeight(BaseMetrics::values, LINES), 113);
-  EXPECT_EQ(HomeLayout::plateHeight(LyraMetrics::values, LINES), 93);
-  EXPECT_EQ(HomeLayout::plateHeight(BaseMetrics::values, LINES), 94);
+  EXPECT_EQ(HomeLayout::plateHeight(LyraMetrics::values, LINES), 101);
+  EXPECT_EQ(HomeLayout::plateHeight(BaseMetrics::values, LINES), 102);
 }
 
 TEST(HomeLayout, TheHeroTakesTheRemainder) {
@@ -89,7 +89,9 @@ TEST(HomeLayout, ThePlateHoldsTheHeaderAndTheButtons) {
   EXPECT_TRUE(within(layout.continueButton, layout.plate));
   EXPECT_TRUE(within(layout.goToButton, layout.plate));
   EXPECT_TRUE(within(layout.buttonRow, layout.plate));
-  EXPECT_EQ(layout.continueButton.y, bottomOf(layout.plateHeader));
+  EXPECT_EQ(layout.continueButton.y, bottomOf(layout.plateHeader) + HomeLayout::PAD);
+  EXPECT_EQ(layout.goToButton.y, layout.continueButton.y);
+  EXPECT_EQ(layout.buttonRow.y, layout.continueButton.y);
   EXPECT_LT(layout.continueButton.x + layout.continueButton.width, layout.goToButton.x);
   EXPECT_EQ(bottomOf(layout.buttonRow) + HomeLayout::PAD, bottomOf(layout.plate));
 }

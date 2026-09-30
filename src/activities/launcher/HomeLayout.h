@@ -91,7 +91,7 @@ constexpr int recentHeight(const ThemeMetrics& metrics, const LineHeights& lines
 }
 
 constexpr int plateHeight(const ThemeMetrics& metrics, const LineHeights& lines) {
-  return metrics.headerHeight + 1 + (lines.ui10 + 2 * PAD) + PAD;
+  return metrics.headerHeight + 1 + PAD + (lines.ui10 + 2 * PAD) + PAD;
 }
 
 constexpr Layout compute(const int screenWidth, const int screenHeight, const Insets& insets,
@@ -114,7 +114,7 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
   out.plate = Box{left, bottomOf(out.hero) - plate, width, plate};
   out.plateHeader = Box{left, out.plate.y + 1, width, metrics.headerHeight};
   const int buttonHeight = lines.ui10 + 2 * PAD;
-  out.buttonRow = Box{left + PAD, bottomOf(out.plateHeader), width - 2 * PAD, buttonHeight};
+  out.buttonRow = Box{left + PAD, bottomOf(out.plateHeader) + PAD, width - 2 * PAD, buttonHeight};
   const int continueWidth = (width - 3 * PAD) * 2 / 3;
   out.continueButton = Box{left + PAD, out.buttonRow.y, continueWidth, buttonHeight};
   out.goToButton = Box{left + 2 * PAD + continueWidth, out.buttonRow.y, width - 3 * PAD - continueWidth, buttonHeight};
