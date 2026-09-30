@@ -1821,8 +1821,9 @@ void EpubReaderActivity::renderStatusBar() const {
     title = epub ? epub->getTitle() : "";
   }
 
+  const bool isBible = epub && epub->getBibleBookNavSpineIndex() >= 0;
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true,
-                    bookmarks.currentPageBookmarked(), section ? section->isBuilding() : false);
+                    bookmarks.currentPageBookmarked(), section ? section->isBuilding() : false, !isBible);
 }
 
 void EpubReaderActivity::navigateTo(NavTarget target, const ReturnPolicy policy) {
