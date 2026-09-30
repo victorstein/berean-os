@@ -116,6 +116,4 @@ TEST(ReferenceConsistency, ALongNameReadsTheSameEverywhere) {
 
 TEST(ReferenceConsistency, AMissingNameReadsTheSameEverywhere) { expectOnePlaceReadsTheSameEverywhere({23, "", ""}); }
 
-TEST(ReferenceConsistency, AnUnknownChapterLeavesTheTitleAtTheBook) {
-  EXPECT_EQ(readerTitle("Isaiah", -1), "Isaiah");
-}
+TEST(ReferenceConsistency, AnUnknownChapterLeavesTheTitleAtTheBook) { EXPECT_EQ(readerTitle("Isaiah", -1), "Isaiah"); }
