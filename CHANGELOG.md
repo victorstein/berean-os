@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/victorstein/berean-os/compare/v1.22.0...v1.23.0) (2026-09-30)
+
+
+### Features
+
+* square 7x10 chapter grid with tag and bookmark markers ([#213](https://github.com/victorstein/berean-os/issues/213)) ([7d01934](https://github.com/victorstein/berean-os/commit/7d0193490e868a4cdabad8faa7dd071bb3fef7a0)), closes [#199](https://github.com/victorstein/berean-os/issues/199)
+
 ## [1.22.0](https://github.com/victorstein/berean-os/compare/v1.21.2...v1.22.0) (2026-09-30)
 
 
