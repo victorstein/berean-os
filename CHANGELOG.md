@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.24.0](https://github.com/victorstein/berean-os/compare/v1.23.0...v1.24.0) (2026-09-30)
+
+
+### Features
+
+* replace the tag filter row with tag chips and counts ([#212](https://github.com/victorstein/berean-os/issues/212)) ([e15281c](https://github.com/victorstein/berean-os/commit/e15281c923bca5ad58b9873bce11975a7f55473e)), closes [#205](https://github.com/victorstein/berean-os/issues/205)
+
+## [1.23.0](https://github.com/victorstein/berean-os/compare/v1.22.0...v1.23.0) (2026-09-30)
+
+
+### Features
+
+* square 7x10 chapter grid with tag and bookmark markers ([#213](https://github.com/victorstein/berean-os/issues/213)) ([7d01934](https://github.com/victorstein/berean-os/commit/7d0193490e868a4cdabad8faa7dd071bb3fef7a0)), closes [#199](https://github.com/victorstein/berean-os/issues/199)
+
+## [1.22.0](https://github.com/victorstein/berean-os/compare/v1.21.2...v1.22.0) (2026-09-30)
+
+
+### Features
+
+* jump to typed Bible references from verse search ([#211](https://github.com/victorstein/berean-os/issues/211)) ([30e3777](https://github.com/victorstein/berean-os/commit/30e3777c5c9965dfe4a155092a0689d658b16cb2)), closes [#206](https://github.com/victorstein/berean-os/issues/206)
+
+## [1.21.2](https://github.com/victorstein/berean-os/compare/v1.21.1...v1.21.2) (2026-09-30)
+
+
+### Refactor
+
+* extract reusable CoverBand component from the launcher ([#209](https://github.com/victorstein/berean-os/issues/209)) ([c72df63](https://github.com/victorstein/berean-os/commit/c72df63476ae089eacf6f918e200b7e49d5d8b6e)), closes [#202](https://github.com/victorstein/berean-os/issues/202)
+
+## [1.21.1](https://github.com/victorstein/berean-os/compare/v1.21.0...v1.21.1) (2026-09-30)
+
+
+### Refactor
+
+* retire Bible chapter-completion recording ([#207](https://github.com/victorstein/berean-os/issues/207)) ([7ed964d](https://github.com/victorstein/berean-os/commit/7ed964d3818d175c14103686eec89c4292afead7)), closes [#195](https://github.com/victorstein/berean-os/issues/195)
+
 ## [1.21.0](https://github.com/victorstein/berean-os/compare/v1.20.2...v1.21.0) (2026-09-30)
 
 

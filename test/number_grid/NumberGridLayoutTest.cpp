@@ -10,23 +10,37 @@
 
 namespace {
 
-// The real content rects the reader leaves for the grid on the 800x480 panel:
-// touch boards get the whole safe area because UITheme zeroes buttonHintsHeight.
+// The content rects the reader leaves for the grid. 743 is the Lyra chapter
+// body on a touch board (800 less topPadding 5, headerHeight 44 and the 8 px
+// spacer; UITheme zeroes buttonHintsHeight on touch); 695 was the body before
+// the compact metrics. Computed, not measured on the device.
 constexpr int PORTRAIT_W = 480;
-constexpr int PORTRAIT_H = 695;
+constexpr int PORTRAIT_H = 743;
+constexpr int PRE_COMPACT_H = 695;
 constexpr int LANDSCAPE_W = 800;
 constexpr int LANDSCAPE_H = 375;
 
+constexpr int PAGE = 70;
 constexpr int PSALM_119_VERSES = 176;
 
 }  // namespace
 
-TEST(NumberGridGeometry, PortraitRectStaysWithinTheCellCap) {
+TEST(NumberGridGeometry, PortraitBodyIsSevenByTen) {
   const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, PORTRAIT_H);
 
   EXPECT_EQ(geometry.cols, 7);
+  EXPECT_EQ(geometry.rows, 10);
+  EXPECT_EQ(geometry.cellsPerPage(), PAGE);
   EXPECT_LE(geometry.cellsPerPage(), NumberGrid::MAX_CELLS);
-  EXPECT_GE(geometry.rows, 1);
+}
+
+TEST(NumberGridGeometry, PreCompactBodyIsSevenByTenWithoutTheClamp) {
+  const int unclampedRows = (PRE_COMPACT_H + NumberGrid::GAP) / (NumberGrid::MIN_CELL + NumberGrid::GAP);
+  const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, PRE_COMPACT_H);
+
+  EXPECT_EQ(unclampedRows, 10);
+  EXPECT_EQ(geometry.cols, 7);
+  EXPECT_EQ(geometry.rows, 10);
 }
 
 TEST(NumberGridGeometry, LandscapeRectStaysWithinTheCellCap) {
@@ -41,9 +55,19 @@ TEST(NumberGridGeometry, RowClampFiresInsteadOfOverflowing) {
   const int unclampedRows = (PORTRAIT_H + NumberGrid::GAP) / (NumberGrid::MIN_CELL + NumberGrid::GAP);
   const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, PORTRAIT_H);
 
+  EXPECT_EQ(unclampedRows, 11);
   EXPECT_GT(unclampedRows * geometry.cols, NumberGrid::MAX_CELLS);
   EXPECT_LT(geometry.rows, unclampedRows);
   EXPECT_EQ(geometry.rows, NumberGrid::MAX_CELLS / geometry.cols);
+}
+
+TEST(NumberGridGeometry, TallPortraitBodiesStayAtTenRowsAboveTheTapFloor) {
+  for (int height = 632; height <= 2000; height++) {
+    const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, height);
+    ASSERT_EQ(geometry.cols, 7) << height;
+    ASSERT_EQ(geometry.rows, 10) << height;
+    EXPECT_GE(NumberGrid::cellSizeFor(PORTRAIT_W, height, geometry), NumberGrid::MIN_CELL) << height;
+  }
 }
 
 TEST(NumberGridGeometry, NarrowRectKeepsTheMinimumColumns) {
@@ -83,65 +107,148 @@ TEST(NumberGridGeometry, CellSizeBoundsTheTouchTargetFloor) {
   const int cellW = (PORTRAIT_W - (geometry.cols - 1) * NumberGrid::GAP) / geometry.cols;
   const int cellH = (PORTRAIT_H - (geometry.rows - 1) * NumberGrid::GAP) / geometry.rows;
   EXPECT_EQ(cell, std::min(cellW, cellH));
-  EXPECT_GT(cell, 0);
+  EXPECT_EQ(cell, 61);
+  EXPECT_GE(cell, NumberGrid::MIN_CELL);
 }
 
-TEST(NumberGridPaging, Psalm119TakesFourPages) { EXPECT_EQ(NumberGrid::pageCount(PSALM_119_VERSES, 48), 4); }
+TEST(NumberGridPaging, ChapterListsFitTheirPages) {
+  EXPECT_EQ(NumberGrid::pageCount(50, PAGE), 1);   // Genesis
+  EXPECT_EQ(NumberGrid::pageCount(66, PAGE), 1);   // Isaiah
+  EXPECT_EQ(NumberGrid::pageCount(150, PAGE), 3);  // Psalms
+  EXPECT_EQ(NumberGrid::cellsOnPage(150, NumberGrid::pageFirstCell(2, PAGE), PAGE), 10);
+}
+
+TEST(NumberGridPaging, Psalm119TakesThreePages) { EXPECT_EQ(NumberGrid::pageCount(PSALM_119_VERSES, PAGE), 3); }
 
 TEST(NumberGridPaging, LastPageIsPartlyPadded) {
-  const int lastPageFirst = NumberGrid::pageFirstCell(3, 48);
+  const int lastPageFirst = NumberGrid::pageFirstCell(2, PAGE);
 
-  EXPECT_EQ(lastPageFirst, 144);
-  EXPECT_EQ(NumberGrid::cellsOnPage(PSALM_119_VERSES, lastPageFirst, 48), 32);
-  EXPECT_EQ(48 - NumberGrid::cellsOnPage(PSALM_119_VERSES, lastPageFirst, 48), 16);
+  EXPECT_EQ(lastPageFirst, 140);
+  EXPECT_EQ(NumberGrid::cellsOnPage(PSALM_119_VERSES, lastPageFirst, PAGE), 36);
+  EXPECT_EQ(PAGE - NumberGrid::cellsOnPage(PSALM_119_VERSES, lastPageFirst, PAGE), 34);
 }
 
 TEST(NumberGridPaging, ExactlyOnePageHasNoEmptyTrailingPage) {
-  EXPECT_EQ(NumberGrid::pageCount(48, 48), 1);
-  EXPECT_EQ(NumberGrid::cellsOnPage(48, 0, 48), 48);
-  EXPECT_EQ(NumberGrid::pageCount(49, 48), 2);
+  EXPECT_EQ(NumberGrid::pageCount(PAGE, PAGE), 1);
+  EXPECT_EQ(NumberGrid::cellsOnPage(PAGE, 0, PAGE), PAGE);
+  EXPECT_EQ(NumberGrid::pageCount(PAGE + 1, PAGE), 2);
 }
 
 TEST(NumberGridPaging, HandlesOneAndZeroCounts) {
-  EXPECT_EQ(NumberGrid::pageCount(1, 48), 1);
-  EXPECT_EQ(NumberGrid::cellsOnPage(1, 0, 48), 1);
-  EXPECT_EQ(NumberGrid::pageCount(0, 48), 0);
-  EXPECT_EQ(NumberGrid::cellsOnPage(0, 0, 48), 0);
-  EXPECT_EQ(NumberGrid::pageStartFor(0, 0, 48), 0);
+  EXPECT_EQ(NumberGrid::pageCount(1, PAGE), 1);
+  EXPECT_EQ(NumberGrid::cellsOnPage(1, 0, PAGE), 1);
+  EXPECT_EQ(NumberGrid::pageCount(0, PAGE), 0);
+  EXPECT_EQ(NumberGrid::cellsOnPage(0, 0, PAGE), 0);
+  EXPECT_EQ(NumberGrid::pageStartFor(0, 0, PAGE), 0);
 }
 
 TEST(NumberGridPaging, IndexRoundTripsOnEveryPage) {
-  constexpr int cellsPerPage = 42;
   for (int index = 0; index < PSALM_119_VERSES; index++) {
-    const int page = NumberGrid::pageOfIndex(index, cellsPerPage);
-    const int pageFirst = NumberGrid::pageFirstCell(page, cellsPerPage);
-    const int cell = NumberGrid::pageRelativeIndex(index, pageFirst, cellsPerPage);
+    const int page = NumberGrid::pageOfIndex(index, PAGE);
+    const int pageFirst = NumberGrid::pageFirstCell(page, PAGE);
+    const int cell = NumberGrid::pageRelativeIndex(index, pageFirst, PAGE);
 
     ASSERT_GE(cell, 0) << index;
-    ASSERT_LT(cell, cellsPerPage) << index;
+    ASSERT_LT(cell, PAGE) << index;
     EXPECT_EQ(pageFirst + cell, index);
-    EXPECT_EQ(NumberGrid::pageStartFor(index, PSALM_119_VERSES, cellsPerPage), pageFirst);
+    EXPECT_EQ(NumberGrid::pageStartFor(index, PSALM_119_VERSES, PAGE), pageFirst);
   }
 }
 
 TEST(NumberGridPaging, PageStartClampsAPageThatNoLongerExists) {
-  // An orientation change shrinks the page; a selection kept from the wider
+  // A geometry change shrinks the page; a selection kept from the larger
   // geometry must land on a page the new count still has.
-  EXPECT_EQ(NumberGrid::pageStartFor(144, PSALM_119_VERSES, 48), 144);
-  EXPECT_EQ(NumberGrid::pageStartFor(144, 40, 48), 0);
-  EXPECT_EQ(NumberGrid::pageStartFor(-5, PSALM_119_VERSES, 48), 0);
+  EXPECT_EQ(NumberGrid::pageStartFor(140, PSALM_119_VERSES, PAGE), 140);
+  EXPECT_EQ(NumberGrid::pageStartFor(140, 40, PAGE), 0);
+  EXPECT_EQ(NumberGrid::pageStartFor(-5, PSALM_119_VERSES, PAGE), 0);
 }
 
 TEST(NumberGridSelection, SelectedIndexIsPageRelative) {
-  EXPECT_EQ(NumberGrid::pageRelativeIndex(144, NumberGrid::pageFirstCell(3, 48), 48), 0);
-  EXPECT_EQ(NumberGrid::pageRelativeIndex(175, NumberGrid::pageFirstCell(3, 48), 48), 31);
-  EXPECT_EQ(NumberGrid::pageRelativeIndex(0, 0, 48), 0);
+  EXPECT_EQ(NumberGrid::pageRelativeIndex(140, NumberGrid::pageFirstCell(2, PAGE), PAGE), 0);
+  EXPECT_EQ(NumberGrid::pageRelativeIndex(175, NumberGrid::pageFirstCell(2, PAGE), PAGE), 35);
+  EXPECT_EQ(NumberGrid::pageRelativeIndex(0, 0, PAGE), 0);
 }
 
 TEST(NumberGridSelection, SelectionOffThePageRendersAsNoSelection) {
-  const int pageFirst = NumberGrid::pageFirstCell(3, 48);
+  const int pageFirst = NumberGrid::pageFirstCell(2, PAGE);
 
-  EXPECT_EQ(NumberGrid::pageRelativeIndex(143, pageFirst, 48), -1);
-  EXPECT_EQ(NumberGrid::pageRelativeIndex(192, pageFirst, 48), -1);
-  EXPECT_EQ(NumberGrid::pageRelativeIndex(0, pageFirst, 48), -1);
+  EXPECT_EQ(NumberGrid::pageRelativeIndex(139, pageFirst, PAGE), -1);
+  EXPECT_EQ(NumberGrid::pageRelativeIndex(210, pageFirst, PAGE), -1);
+  EXPECT_EQ(NumberGrid::pageRelativeIndex(0, pageFirst, PAGE), -1);
+}
+
+TEST(NumberGridSquare, GridRectIsSquareCelledAndCentred) {
+  const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, PORTRAIT_H);
+  const auto box = NumberGrid::gridRect(0, 0, PORTRAIT_W, PORTRAIT_H, geometry);
+
+  EXPECT_EQ(box.width, 7 * 61 + 6 * NumberGrid::GAP);
+  EXPECT_EQ(box.height, 10 * 61 + 9 * NumberGrid::GAP);
+  EXPECT_EQ(box.x, (PORTRAIT_W - box.width) / 2);
+  EXPECT_EQ(box.y, (PORTRAIT_H - box.height) / 2);
+  EXPECT_GE(box.x, 0);
+  EXPECT_GE(box.y, 0);
+  EXPECT_LE(box.x + box.width, PORTRAIT_W);
+  EXPECT_LE(box.y + box.height, PORTRAIT_H);
+}
+
+TEST(NumberGridSquare, GridRectIsOffsetByTheBodyOrigin) {
+  const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, PORTRAIT_H);
+  const auto atOrigin = NumberGrid::gridRect(0, 0, PORTRAIT_W, PORTRAIT_H, geometry);
+  const auto offset = NumberGrid::gridRect(10, 57, PORTRAIT_W, PORTRAIT_H, geometry);
+
+  EXPECT_EQ(offset.x, atOrigin.x + 10);
+  EXPECT_EQ(offset.y, atOrigin.y + 57);
+  EXPECT_EQ(offset.width, atOrigin.width);
+  EXPECT_EQ(offset.height, atOrigin.height);
+}
+
+TEST(NumberGridSquare, KeyGridArithmeticOnTheRectGivesSquareCells) {
+  // keyGrid (key-grid.h:54-55) divides the rect it is handed; the rect must
+  // come back out as whole square cells.
+  for (int height = 632; height <= 900; height++) {
+    const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, height);
+    const auto box = NumberGrid::gridRect(0, 0, PORTRAIT_W, height, geometry);
+    const int cell = NumberGrid::cellSizeFor(PORTRAIT_W, height, geometry);
+    const int keyGridW = (box.width - (geometry.cols - 1) * NumberGrid::GAP) / geometry.cols;
+    const int keyGridH = (box.height - (geometry.rows - 1) * NumberGrid::GAP) / geometry.rows;
+    ASSERT_EQ(keyGridW, cell) << height;
+    ASSERT_EQ(keyGridH, cell) << height;
+  }
+}
+
+TEST(NumberGridSquare, DegenerateGeometryYieldsAnEmptyRect) {
+  const auto box = NumberGrid::gridRect(5, 5, PORTRAIT_W, PORTRAIT_H, NumberGrid::Geometry{});
+
+  EXPECT_EQ(box.width, 0);
+  EXPECT_EQ(box.height, 0);
+}
+
+TEST(NumberGridSquare, CellRectsCoverTheFourCornersOfAFullPage) {
+  const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, PORTRAIT_H);
+  const auto box = NumberGrid::gridRect(0, 0, PORTRAIT_W, PORTRAIT_H, geometry);
+  const int stride = 61 + NumberGrid::GAP;
+
+  const auto first = NumberGrid::cellRect(box, geometry, 0);
+  const auto topRight = NumberGrid::cellRect(box, geometry, 6);
+  const auto bottomLeft = NumberGrid::cellRect(box, geometry, 63);
+  const auto last = NumberGrid::cellRect(box, geometry, 69);
+
+  EXPECT_EQ(first.x, box.x);
+  EXPECT_EQ(first.y, box.y);
+  EXPECT_EQ(first.width, 61);
+  EXPECT_EQ(first.height, 61);
+  EXPECT_EQ(topRight.x, box.x + 6 * stride);
+  EXPECT_EQ(topRight.y, box.y);
+  EXPECT_EQ(bottomLeft.x, box.x);
+  EXPECT_EQ(bottomLeft.y, box.y + 9 * stride);
+  EXPECT_EQ(last.x + last.width, box.x + box.width);
+  EXPECT_EQ(last.y + last.height, box.y + box.height);
+}
+
+TEST(NumberGridSquare, CellRectRejectsAnIndexOffThePage) {
+  const auto geometry = NumberGrid::geometryFor(PORTRAIT_W, PORTRAIT_H);
+  const auto box = NumberGrid::gridRect(0, 0, PORTRAIT_W, PORTRAIT_H, geometry);
+
+  EXPECT_EQ(NumberGrid::cellRect(box, geometry, -1).width, 0);
+  EXPECT_EQ(NumberGrid::cellRect(box, geometry, PAGE).width, 0);
 }

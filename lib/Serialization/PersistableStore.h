@@ -108,8 +108,8 @@ class PersistableStoreBase {
   // reader and writer of the adopting files runs on the Arduino loop task. The
   // CRTP stores additionally hold storeMutex, but /.berean/pubkeys.json,
   // migration-ledger.json, meeting-weeks.json and the files behind
-  // ChapterCompletionFile, PassageFile, TagPaletteFile, BookmarkFile and
-  // HighlightFile rely on that single-task property alone. If a background
+  // PassageFile, TagPaletteFile, BookmarkFile and HighlightFile rely on that
+  // single-task property alone. If a background
   // task ever touches them, give them a mutex -- otherwise an adopting read on
   // one task can rename the .tmp another task is still writing.
   static AdoptedLoad loadAdopting(const char* path, DocReader read, DocAcceptor accept, void* target);

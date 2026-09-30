@@ -4,6 +4,7 @@
 #include <Logging.h>
 #include <Utf8.h>
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -30,23 +31,30 @@ bool BibleBookNameTable::load(const std::shared_ptr<Epub>& epub, GfxRenderer& re
   const int bookNavSpine = epub->getBibleBookNavSpineIndex();
   if (bookNavSpine < 0) return false;
 
-  BibleNav::Scanner scanner;
+  BibleNav::Scanner scanner(/*collectText=*/true);
   if (!scanner.valid()) {
     LOG_ERR("BNAME", "OOM: nav scanner");
     return false;
   }
   if (!SpineHtmlStream::stream(epub, bookNavSpine, renderer, feedNavScanner, &scanner)) return false;
 
-  std::vector<std::string> targets = scanner.take();
+  BibleNav::BookNavPage page = scanner.takeBookNav();
+  std::vector<std::string>& targets = page.targets;
   if (targets.empty()) return false;
   if (targets.size() > MAX_BOOKS) targets.resize(MAX_BOOKS);
   joinToc(*epub, targets.data(), static_cast<int>(targets.size()));
+
+  const int labelCount = std::min(bookCount, static_cast<int>(page.labels.size()));
+  for (int i = 0; i < labelCount; i++) copyUtf8Truncated(abbreviations[i], ABBREV_BYTES, page.labels[i]);
   return true;
 }
 
 void BibleBookNameTable::joinToc(const Epub& epub, const std::string* targets, const int targetCount) {
   bookCount = targetCount < MAX_BOOKS ? targetCount : MAX_BOOKS;
-  for (int i = 0; i < bookCount; i++) names[i][0] = '\0';
+  for (int i = 0; i < bookCount; i++) {
+    names[i][0] = '\0';
+    abbreviations[i][0] = '\0';
+  }
 
   const int tocCount = epub.getTocItemsCount();
   for (int i = 0; i < tocCount; i++) {
@@ -59,4 +67,14 @@ void BibleBookNameTable::joinToc(const Epub& epub, const std::string* targets, c
 const char* BibleBookNameTable::at(const int index) const {
   if (index < 0 || index >= bookCount) return "";
   return names[index];
+}
+
+BookNameSource BibleBookNameTable::nameSource() const {
+  BookNameSource source;
+  source.names = &names[0][0];
+  source.nameStride = NAME_BYTES;
+  source.abbreviations = &abbreviations[0][0];
+  source.abbreviationStride = ABBREV_BYTES;
+  source.count = bookCount;
+  return source;
 }

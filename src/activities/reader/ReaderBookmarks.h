@@ -37,6 +37,7 @@ class ReaderBookmarks {
   const char* toastText() const;
   bool currentPageBookmarked() const { return currentPageBookmarked_; }
   bool empty() const { return cachedBookmarks_.empty(); }
+  const std::vector<BookmarkEntry>& entries() const { return cachedBookmarks_; }
 
  private:
   // Which message the bookmark popup shows. beginToggle() and toggle() are the only writers.

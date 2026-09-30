@@ -6,6 +6,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <esp_heap_caps.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -15,6 +16,8 @@
 #include "SpineHtmlStream.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
+#include "components/icons/bookmark.h"
+#include "study/StudyStore.h"
 
 namespace fui = freeink::ui;
 
@@ -31,10 +34,22 @@ bool feedVerseScanner(void* ctx, const char* chunk, const size_t length, const b
 }  // namespace
 
 BibleNavigationActivity::BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                                 const std::shared_ptr<Epub>& epub, const int currentSpineIndex)
+                                                 const std::shared_ptr<Epub>& epub, const int currentSpineIndex,
+                                                 const std::vector<BookmarkEntry>& bookmarks)
     : UiListActivity("BibleNavigation", renderer, mappedInput, /*wantsTouchLongPress=*/false),
       epub(epub),
-      entrySpine(currentSpineIndex) {}
+      entrySpine(currentSpineIndex) {
+  if (bookmarks.empty()) return;
+  bookmarkPositions = makeUniqueNoThrow<GridMarks::BookmarkPosition[]>(bookmarks.size());
+  if (!bookmarkPositions) {
+    LOG_ERR("BNV", "OOM: %u bookmark positions", static_cast<unsigned>(bookmarks.size()));
+    return;
+  }
+  for (const auto& bookmark : bookmarks) {
+    bookmarkPositions[bookmarkCount++] = GridMarks::BookmarkPosition{
+        bookmark.computedSpineIndex, bookmark.hasVisibleTextOffset, bookmark.visibleTextOffset};
+  }
+}
 
 void BibleNavigationActivity::onEnter() {
   UiListActivity::onEnter();
@@ -51,6 +66,10 @@ void BibleNavigationActivity::onEnter() {
     LOG_ERR("BNV", "Failed to read the book list");
   }
   enterAtPosition();
+  LOG_INF("BNV", "Memory with grid open: internal free %u (largest %u), PSRAM free %u, %d bookmarks",
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)), bookmarkCount);
 }
 
 bool BibleNavigationActivity::loadBooks() {
@@ -111,6 +130,8 @@ bool BibleNavigationActivity::loadBooks() {
 
 bool BibleNavigationActivity::loadChapters(const int bookIndex) {
   chapterCount = 0;
+  chapterTagged.clear();
+  chapterBookmarked.clear();
   if (!epub || bookIndex < 0 || bookIndex >= bookCount) return false;
 
   BibleNav::Scanner scanner;
@@ -136,12 +157,15 @@ bool BibleNavigationActivity::loadChapters(const int bookIndex) {
   for (int i = 0; i < chapterCount; i++) {
     chapterSpine[i] = static_cast<int16_t>(spineIndices[i]);
   }
+  markChapters(bookIndex);
   return true;
 }
 
 bool BibleNavigationActivity::loadVerses(const int spineIndex) {
   verseAnchors.clear();
   verseSpine = spineIndex;
+  verseTagged.clear();
+  verseBookmarked.clear();
 
   VerseAnchors::Scanner scanner;
   if (!scanner.valid()) {
@@ -151,7 +175,40 @@ bool BibleNavigationActivity::loadVerses(const int spineIndex) {
   if (!SpineHtmlStream::stream(epub, spineIndex, renderer, feedVerseScanner, &scanner)) return false;
 
   verseAnchors = scanner.take();
+  markVerses();
   return !verseAnchors.empty();
+}
+
+void BibleNavigationActivity::markChapters(const int bookIndex) {
+  GridMarks::markBookmarkChapters(chapterBookmarked, bookmarkPositions.get(), bookmarkCount, chapterSpine,
+                                  chapterCount);
+  if (!STUDY.isOpen()) return;
+  // Unit.book and the navigator's book index both count books in
+  // biblebooknav.xhtml's link order, from 1 and from 0.
+  const auto book = static_cast<uint8_t>(bookIndex + 1);
+  for (const auto& passage : STUDY.passages()) {
+    GridMarks::VerseSpan span;
+    if (GridMarks::spanFor(passage.start, passage.end, book, span)) {
+      GridMarks::markPassageChapters(chapterTagged, span, chapterCount);
+    }
+  }
+}
+
+void BibleNavigationActivity::markVerses() {
+  const int count = static_cast<int>(verseAnchors.size());
+  if (count > GridMarks::CAPACITY) {
+    LOG_DBG("BNV", "Verse marks cover %d of %d cells", GridMarks::CAPACITY, count);
+  }
+  GridMarks::markBookmarkVerses(verseBookmarked, bookmarkPositions.get(), bookmarkCount, verseSpine,
+                                verseAnchors.data(), count);
+  if (!STUDY.isOpen() || selectedBook < 0) return;
+  const auto book = static_cast<uint8_t>(selectedBook + 1);
+  for (const auto& passage : STUDY.passages()) {
+    GridMarks::VerseSpan span;
+    if (GridMarks::spanFor(passage.start, passage.end, book, span)) {
+      GridMarks::markPassageVerses(verseTagged, span, verseAnchors.data(), count);
+    }
+  }
 }
 
 void BibleNavigationActivity::enterAtPosition() {
@@ -486,7 +543,66 @@ void BibleNavigationActivity::buildGrid(UiScreen& screen) {
   props.labelText = screen.theme().bodyText;
   props.labelText.align = fui::TextAlign::Center;
   props.keyStyles = screen.theme().key;
-  fui::keyGrid(screen.frame(), body, props);
+
+  const NumberGrid::Geometry pageGeometry{cols, rows};
+  const NumberGrid::Box gridBox = NumberGrid::gridRect(body.x, body.y, body.width, body.height, pageGeometry);
+  const bool squareGrid = level != Level::Book && gridBox.width > 0;
+  if (!squareGrid) {
+    fui::keyGrid(screen.frame(), body, props);
+    return;
+  }
+  fui::keyGrid(screen.frame(),
+               fui::Rect{static_cast<int16_t>(gridBox.x), static_cast<int16_t>(gridBox.y),
+                         static_cast<int16_t>(gridBox.width), static_cast<int16_t>(gridBox.height)},
+               props);
+  drawCellMarks(screen, gridBox, pageGeometry, pageFirst, pageCells, props);
+}
+
+void BibleNavigationActivity::drawCellMarks(UiScreen& screen, const NumberGrid::Box& gridBox,
+                                            const NumberGrid::Geometry& geometry, const int pageFirst,
+                                            const int pageCells, const fui::KeyGridProps& props) {
+  const GridMarks::Bits& tagged = level == Level::Verse ? verseTagged : chapterTagged;
+  const GridMarks::Bits& bookmarked = level == Level::Verse ? verseBookmarked : chapterBookmarked;
+  auto& frame = screen.frame();
+
+  fui::BitmapRef ribbon;
+  ribbon.data = BookmarkStatusIcon + RIBBON_TOP_CROP * (RIBBON_W / 8);
+  ribbon.width = RIBBON_W;
+  ribbon.height = RIBBON_H;
+  ribbon.format = fui::BitmapFormat::BW1;
+
+  fui::TextStyle dotStyle = screen.theme().smallText;
+  dotStyle.align = fui::TextAlign::Center;
+  const int16_t dotHeight = frame.target().lineHeight(dotStyle.font);
+
+  for (int i = 0; i < pageCells; i++) {
+    const int row = pageFirst + i;
+    const bool hasTag = tagged.test(row);
+    const bool hasBookmark = bookmarked.test(row);
+    if (!hasTag && !hasBookmark) continue;
+
+    const NumberGrid::Box cell = NumberGrid::cellRect(gridBox, geometry, i);
+    // Resolved as keyGrid resolves the key itself (key-grid.h:86), so pressed
+    // and tap-flash states ink the mark too.
+    const fui::State base = props.selectedIndex == i ? fui::StateSelected : fui::StateNormal;
+    const fui::Paint ink =
+        props.keyStyles.resolve(frame.stateFor(props.action, static_cast<int16_t>(row), base)).foreground;
+
+    int markRight = cell.x + cell.width - MARK_INSET;
+    const int markTop = cell.y + MARK_INSET;
+    if (hasBookmark) {
+      frame.target().bitmap(
+          fui::Rect{static_cast<int16_t>(markRight - RIBBON_W), static_cast<int16_t>(markTop), RIBBON_W, RIBBON_H},
+          ribbon, fui::BitmapMode::Center, ink);
+      markRight -= RIBBON_W;
+    }
+    if (hasTag) {
+      dotStyle.color = ink.color;
+      frame.target().text(
+          fui::Rect{static_cast<int16_t>(markRight - DOT_W), static_cast<int16_t>(markTop), DOT_W, dotHeight},
+          "\xE2\x80\xA2", dotStyle);
+    }
+  }
 }
 
 void BibleNavigationActivity::rebuildBookLayout(const int width, const int height) {

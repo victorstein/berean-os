@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "PassageActions.h"
+#include "TagChipRow.h"
 #include "activities/ActivityResult.h"
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
@@ -20,14 +21,14 @@
 // coined in another publication appears in the filter and simply matches
 // nothing here.
 //
-// Row 0 is a persistent filter control, not a highlight: tapping/confirming
-// it opens TagFilterActivity ("All", "Unlabelled", then each tag), narrowing
-// which highlights rows 1.. show. It does NOT
-// reuse TagPickerActivity: that picker enforces
-// HighlightDoc::MAX_TAGS_PER_HIGHLIGHT (8) and offers "New tag...", both
-// correct for tagging one highlight but wrong for a filter, which has no
-// reason to cap how many tags narrow the list and has nothing to gain from
-// minting a tag no highlight has yet.
+// Above the list sits a wrapping row of tag chips with counts ("All 37", "hope 12", ...,
+// "Unlabeled 4"), at most two lines; when they do not fit, a trailing ellipsis chip opens
+// TagFilterActivity ("All", "Unlabelled", then each tag). Tapping a chip filters the list, and the
+// selected chip is inverted. Buttons reach the chips as ring position 0 (Confirm there opens the
+// picker), mirroring UiTabListActivity's tab band. The picker does NOT reuse TagPickerActivity:
+// that picker enforces HighlightDoc::MAX_TAGS_PER_HIGHLIGHT (8) and offers "New tag...", both
+// correct for tagging one highlight but wrong for a filter, which has no reason to cap how many
+// tags narrow the list and has nothing to gain from minting a tag no highlight has yet.
 //
 // A long-press (touch) or a held Confirm release (physical buttons) on a
 // highlight row opens an OptionPopup (actionChooser_) whose rows come from
@@ -95,18 +96,43 @@ class HighlightsActivity final : public UiListActivity {
   void onBackButton() override;
   const char* headerTitle() const override;
 
+  static constexpr freeink::ui::ActionId ACTION_CHIP = ACTION_USER;
+  static constexpr freeink::ui::ActionId ACTION_MORE = ACTION_USER + 1;
+
+  // One candidate chip. The label is owned here because ButtonProps borrows it during the render.
+  struct ChipEntry {
+    TagChips::Kind kind = TagChips::Kind::All;
+    study::TagId id = study::UNLABELLED;
+    char label[40] = {};
+  };
+
+  // Rebuilds chips_ from the passages and palette; called from rebuildRowItems().
+  void rebuildChips();
+  bool chipIsSelected(const ChipEntry& chip) const;
+  void buildChipRow(UiScreen& screen);
+  void selectChip(int chipIndex);
+  static void onChipEvent(const freeink::ui::ActionEvent& event, void* user);
+  static void onMoreEvent(const freeink::ui::ActionEvent& event, void* user);
+
+  // Ring navigation: position 0 is the chip row, 1..N are the passages (listCount() is the ring
+  // size), mirroring UiTabListActivity's tab-band ring.
+  void moveRingTo(int ringIndex, bool fromButton = false);
+  void syncRingViewport(UiScreen& screen, freeink::ui::ListProps& props);
+  void confirmRingFollow();
+  void navigateButtons() override;
+  void onRowAction(const freeink::ui::ActionEvent& event) override;
+
   // Rebuilds visibleIndices_ from STUDY.passages() + filterTagId_.
   // Indices only, most-recent-first (reverse insertion order) -- never the
   // findBySpine-style raw HighlightEntry* pointers, which addHighlight's
   // push_back (rollback on a failed delete-save) or removeHighlight's erase
   // would invalidate out from under a held pointer.
   void rebuildVisibleIndices();
-  // Rebuilds rowTagValues_/rowItems_ from visibleIndices_ + filterTagId_.
-  // Called only when the underlying data changes (onEnter, filter cycle,
+  // Rebuilds rowTagValues_/rowItems_ and chips_ from visibleIndices_ + filterTagId_.
+  // Called only when the underlying data changes (onEnter, chip tap, picker result, retag,
   // delete), not on every repaint -- mirrors
   // EpubReaderBookmarksActivity::rebuildBookmarkRowItems.
   void rebuildRowItems();
-  std::string computeFilterSubtitle() const;
   void dropRetiredFilter();
   // Tag names for one passage, joined and capped for the row's value slot.
   std::string tagsValueFor(size_t passageIndex) const;
@@ -138,8 +164,7 @@ class HighlightsActivity final : public UiListActivity {
   // pointers.
   std::vector<size_t> visibleIndices_;
 
-  // Row 0 mirrors the filter control; rows 1.. mirror visibleIndices_.
-  std::string filterSubtitle_;
+  // rowItems_[i] is the passage at ring position i + 1; ring position 0 is the chip row.
   // Backing storage for each row's tag text; ListItem borrows a const char*.
   std::vector<std::string> rowTagValues_;
   std::vector<freeink::ui::ListItem> rowItems_;
@@ -162,4 +187,18 @@ class HighlightsActivity final : public UiListActivity {
   // The rows actionChooser_ is showing, so its callback maps the chosen row back
   // to the action it displayed.
   PassageActions::Menu pendingMenu_;
+
+  // Candidates in display order (All, active tags, Unlabelled), at most MAX_CHIPS + 1: layout()
+  // places at most MAX_CHIPS, so the extra slot is what makes a longer palette show the ellipsis.
+  std::vector<ChipEntry> chips_;
+  // Filled on the render task; members rather than locals to keep its stack frame small.
+  int chipWidths_[TagChips::MAX_CHIPS + 1] = {};
+  TagChips::Layout chipLayout_;
+  // The chip band is outlined only when a button step put the focus there; ring 0 is also where
+  // every touch session starts, and an outline there would be on screen almost all the time.
+  bool buttonFocus_ = false;
+  // A ring move sizes the viewport from the previous build's row count, which is only an estimate
+  // with variable-height rows; the build confirms it or advances it, as ListNav::follow does for
+  // row-indexed lists.
+  bool ringFollowPending_ = false;
 };

@@ -9,6 +9,8 @@
 
 #include "BibleBookNameTable.h"
 #include "BookGridLayout.h"
+#include "BookmarkEntry.h"
+#include "GridMarks.h"
 #include "NumberGridLayout.h"
 #include "activities/UiListActivity.h"
 
@@ -30,7 +32,7 @@
 class BibleNavigationActivity final : public UiListActivity {
  public:
   BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::shared_ptr<Epub>& epub,
-                          int currentSpineIndex);
+                          int currentSpineIndex, const std::vector<BookmarkEntry>& bookmarks);
   void onEnter() override;
 
  private:
@@ -46,10 +48,21 @@ class BibleNavigationActivity final : public UiListActivity {
   static constexpr int MAX_GRID_CELLS = NumberGrid::MAX_CELLS;
   // "176" plus its NUL: no chapter or verse number reaches four digits.
   static constexpr int CELL_LABEL_BYTES = 4;
+  // BookmarkStatusIcon (components/icons/bookmark.h) is 16x16; BaseTheme draws
+  // it without its top two rows, and so does the grid.
+  static constexpr int RIBBON_W = 16;
+  static constexpr int RIBBON_H = 14;
+  static constexpr int RIBBON_TOP_CROP = 2;
+  static constexpr int DOT_W = 12;
+  static constexpr int MARK_INSET = 3;
 
   std::shared_ptr<Epub> epub;
   // The reader's spine item when the navigator was opened; decides the entry level.
   const int entrySpine;
+  // A copy of the open book's bookmark positions, so nothing here points into
+  // the reader underneath.
+  std::unique_ptr<GridMarks::BookmarkPosition[]> bookmarkPositions;
+  int bookmarkCount = 0;
   Level level = Level::Book;
 
   // Only the display name and the resolved spine target are kept: chapter rows
@@ -90,6 +103,15 @@ class BibleNavigationActivity final : public UiListActivity {
 
   std::vector<VerseAnchors::VerseAnchor> verseAnchors;
   int verseSpine = -1;
+  // Built by loadChapters() and loadVerses() on the loop task before
+  // enterLevel() publishes the level, the same hand-off chapterSpine and
+  // verseAnchors use; buildGrid() only reads them.
+  GridMarks::Bits chapterTagged;
+  GridMarks::Bits chapterBookmarked;
+  GridMarks::Bits verseTagged;
+  GridMarks::Bits verseBookmarked;
+  void markChapters(int bookIndex);
+  void markVerses();
 
   // `grid` carries the last number-grid build's geometry, which the loop task
   // reads to page and to step the selection by a row.
@@ -97,6 +119,10 @@ class BibleNavigationActivity final : public UiListActivity {
   char cellLabels[MAX_GRID_CELLS][CELL_LABEL_BYTES] = {};
   NumberGrid::Geometry grid{};
   void buildGrid(UiScreen& screen);
+  // The page's tag and bookmark marks, top-right in each cell, inked by the
+  // cell's resolved state so they stay visible on the inverted current cell.
+  void drawCellMarks(UiScreen& screen, const NumberGrid::Box& gridBox, const NumberGrid::Geometry& geometry,
+                     int pageFirst, int pageCells, const freeink::ui::KeyGridProps& props);
   // Page arithmetic that differs by level: the book level pages by section
   // (bookLayout), the number levels by NumberGrid's uniform pages.
   int gridPageCount() const;

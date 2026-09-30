@@ -347,12 +347,13 @@ if (parsedSize != fileSize) {
 }
 ```
 
-## `/.berean/completion/<pubkey>.json`
+## `/.berean/completion/<pubkey>.json` (retired)
 
-Which Bible chapters the user has paged through. Owned by
-`lib/StudyStore/StudyStore/ChapterCompletion.cpp` (format) and
-`src/study/ChapterCompletionFile.cpp` (storage). Only the shared Bible key
-(`bible`) is written today, so in practice the file is
+Which Bible chapters the user had paged through. **No longer written or read** since #195: the
+firmware never opens this path, and it never deletes existing files either. They stay on the card,
+are harmless, and are safe to delete by hand. The path is reserved (`sdpaths::COMPLETION_DIR`), so
+no new format may reuse it. It was written by the removed `ChapterCompletion` code (#78, retired in
+#195). Only the shared Bible key (`bible`) was ever written, so in practice the file is
 `/.berean/completion/bible.json`.
 
 ### Version 1
@@ -361,18 +362,17 @@ Which Bible chapters the user has paged through. Owned by
 {"v":1,"b":{"1":"0102","19":"ff"}}
 ```
 
-- `v` — format version. A build that finds a larger number refuses the file and
-  records nothing for the session rather than overwriting it.
+- `v` — format version.
 - `b` — one entry per canonical book (1-66, `biblebooknav.xhtml` order) with at
   least one chapter read. Books with nothing read are omitted.
 - Each value is lowercase hex, two digits per byte, trailing zero bytes trimmed.
   Byte `k`, bit `j` (LSB = 0) is chapter `8k + j + 1`. `"0102"` above is Genesis
   1 and 10; `"ff"` is Psalms 1-8.
 
-Any key or value this firmware would not write — a book outside 1-66, a bit past
-the book's last chapter (English versification, 1,189 chapters), non-hex, an
-odd length — rejects the whole file. Every chapter read serialises to under
-1 KB; the save budget is 4,096 bytes.
+Firmware from #78 to #195 refused a larger version rather than overwrite it, rejected the whole file
+for any key or value it would not write (a book outside 1-66, a bit past the book's last chapter
+under English versification, 1,189 chapters, non-hex, an odd length), and budgeted saves at 4,096
+bytes. Every chapter read serialises to under 1 KB.
 
 ## The `/.crosspoint/*.json` stores (shared rules)
 
