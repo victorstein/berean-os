@@ -15,10 +15,13 @@ gtest_discover_tests(ListRowHeightTest)
 
 add_executable(BibleReferenceTest
   BibleReferenceTest.cpp
+  ${REPO_ROOT}/src/util/BibleReference.cpp
+  ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
 target_include_directories(BibleReferenceTest PRIVATE
   ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/Utf8
 )
 
 target_link_libraries(BibleReferenceTest PRIVATE
