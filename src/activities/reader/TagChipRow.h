@@ -82,8 +82,8 @@ Counts countIn(const Passages& passages, const std::vector<size_t>& scope, const
 }
 
 constexpr int MAX_LINES = 2;
-// Chip hit rects share UiAppHost's 64-interaction table with the visible passage rows; past it,
-// hits are dropped silently and the chip becomes untappable.
+// Chip hit rects share UiAppHost's 96-interaction table (UiAppHost::MAX_INTERACTIONS) with the
+// visible passage rows; past it, hits are dropped and the chip becomes untappable.
 constexpr int MAX_CHIPS = 24;
 
 enum class Kind : uint8_t { All, Tag, Unlabelled };
@@ -200,16 +200,21 @@ struct Pad {
 };
 
 // Splits each gap between the two chips facing across it, so hit rects tile without overlapping.
-inline Pad hitPadding(const Layout& layout, const int index, const int gap) {
+// `lines` and each Placed::line count from the top of the placed block.
+inline Pad hitPadding(const Placed* placed, const int placedCount, const int lines, const int index, const int gap) {
   Pad pad;
-  const Placed& p = layout.placed[index];
+  const Placed& p = placed[index];
   const int before = gap / 2;
   const int after = gap - before;
   if (p.x > 0) pad.left = before;
-  if (index + 1 < layout.placedCount && layout.placed[index + 1].line == p.line) pad.right = after;
+  if (index + 1 < placedCount && placed[index + 1].line == p.line) pad.right = after;
   if (p.line > 0) pad.top = before;
-  if (p.line + 1 < layout.lines) pad.bottom = after;
+  if (p.line + 1 < lines) pad.bottom = after;
   return pad;
+}
+
+inline Pad hitPadding(const Layout& layout, const int index, const int gap) {
+  return hitPadding(layout.placed, layout.placedCount, layout.lines, index, gap);
 }
 
 }  // namespace TagChips

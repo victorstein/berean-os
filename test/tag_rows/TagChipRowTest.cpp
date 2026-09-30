@@ -414,3 +414,15 @@ TEST(TagChipGeometry, ChipHeightIsNeverBelowTheTouchMinimum) {
   EXPECT_EQ(TagChips::chipHeight(30, 8, 44), 46) << "text plus padding wins once it is taller";
   for (int line = 0; line <= 60; ++line) EXPECT_GE(TagChips::chipHeight(line, 8, 44), 44) << line;
 }
+
+TEST(TagChipGeometry, ArrayHitPaddingMatchesTheLayoutOverload) {
+  const auto layout = layoutOf({100, 100, 100, 100, 100}, 250);
+  for (int i = 0; i < layout.placedCount; ++i) {
+    const auto viaLayout = TagChips::hitPadding(layout, i, GAP);
+    const auto viaArray = TagChips::hitPadding(layout.placed, layout.placedCount, layout.lines, i, GAP);
+    EXPECT_EQ(viaArray.top, viaLayout.top) << i;
+    EXPECT_EQ(viaArray.right, viaLayout.right) << i;
+    EXPECT_EQ(viaArray.bottom, viaLayout.bottom) << i;
+    EXPECT_EQ(viaArray.left, viaLayout.left) << i;
+  }
+}
