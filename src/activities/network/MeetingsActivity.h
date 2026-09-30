@@ -86,6 +86,10 @@ class MeetingsActivity final : public UiListActivity {
   void activateIndex(int index) override;
   const char* headerTitle() const override;
   bool handleCustomInput() override;
+  // The masthead replaces the header: nothing in drawChrome, the band once per
+  // paint in drawFooter.
+  void drawChrome() override;
+  void drawFooter() override;
 
   // What the range band, strip and legend show. Built off to the side and
   // swapped in whole, like the cards.
@@ -124,6 +128,8 @@ class MeetingsActivity final : public UiListActivity {
   freeink::ui::ListItem refreshItem_{};
 
   WeekHeader week_{};
+  // Thumbnail for the masthead, "" for none. Swapped in with the cards.
+  std::string mastheadCover_;
 
   // Set when the cache does not cover the current ISO week. Consumed by the
   // first loop() pass, after the cached cards have been forced onto the panel.

@@ -14,6 +14,8 @@
 #include "BibleEntryPosition.h"
 #include "MappedInputManager.h"
 #include "SpineHtmlStream.h"
+#include "components/CoverBandGeometry.h"
+#include "components/Masthead.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/icons/bookmark.h"
@@ -60,6 +62,13 @@ void BibleNavigationActivity::onEnter() {
   // EpubReaderChapterSelectionActivity.
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->clearCache();
+  }
+
+  // Cached only: generating one would decode the cover under the reader's
+  // loaded book. The launcher caches this exact file on every visit home.
+  if (epub) {
+    const std::string cover = epub->getThumbBmpPath(Masthead::thumbHeight(renderer));
+    if (Masthead::fits(renderer, cover)) mastheadCover = cover;
   }
 
   if (!loadBooks()) {
@@ -272,11 +281,16 @@ int BibleNavigationActivity::subHeaderHeight() const {
   return level == Level::Book && sectionCount > 0 ? UITheme::getInstance().getMetrics().tabBarHeight : 0;
 }
 
+bool BibleNavigationActivity::hasMasthead() const { return level != Level::Book && !mastheadCover.empty(); }
+
 void BibleNavigationActivity::enterLevel(const Level next, const int selected) {
   {
     // The render task reads level/nav mid-build, so the whole switch has to
     // land before it can see any part of it.
     RenderLock lock;
+    // Back from the chapter grid replaces the cover art with paper, which a
+    // differential refresh would leave ghosted.
+    if (next == Level::Book && hasMasthead()) halfRefreshPending.store(true);
     level = next;
     nav.reset();
     nav.selected = selected < 0 || selected >= listCount() ? 0 : selected;
@@ -455,11 +469,12 @@ void BibleNavigationActivity::onBackButton() {
 void BibleNavigationActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  // Content: the safe area minus the header band drawChrome paints the title in,
-  // and the section band drawFooter paints below it at the book level.
+  // Content: the safe area minus the masthead, or else the header band plus the
+  // section band drawFooter paints below it at the book level.
+  const int contentTop = hasMasthead() ? Masthead::contentTop(renderer)
+                                       : safe.y + metrics.topPadding + metrics.headerHeight + subHeaderHeight();
   screen.setContentMargin(fui::Insets{
-      static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight + subHeaderHeight()),
-      static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
+      static_cast<int16_t>(contentTop), static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
@@ -650,7 +665,7 @@ const char* BibleNavigationActivity::cellLabel(const int row, const int cell) {
   return cellLabels[cell];
 }
 
-void BibleNavigationActivity::drawChrome() {
+const char* BibleNavigationActivity::levelTitle() {
   const char* bookName = selectedBook < bookCount ? bookNames.at(selectedBook) : "";
   const bool hasBook = bookName[0] != '\0';
   const char* title = tr(STR_SELECT_BOOK);
@@ -665,15 +680,25 @@ void BibleNavigationActivity::drawChrome() {
       title = tr(STR_SELECT_VERSE);
     }
   }
+  return title;
+}
 
+void BibleNavigationActivity::drawChrome() {
+  // drawFooter draws the masthead once per paint, after the rebuild passes,
+  // so a rebuild does not stream the cover again.
+  if (hasMasthead()) return;
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  GUI.drawHeader(renderer, Rect{safe.x, safe.y + metrics.topPadding, safe.width, metrics.headerHeight}, title);
+  GUI.drawHeader(renderer, Rect{safe.x, safe.y + metrics.topPadding, safe.width, metrics.headerHeight}, levelTitle());
 }
 
 void BibleNavigationActivity::drawFooter() {
   UiListActivity::drawFooter();
 
+  if (hasMasthead()) {
+    Masthead::draw(renderer, mastheadCover, CoverBandGeometry::BOOK_TITLE_BAND, levelTitle());
+    return;
+  }
   if (subHeaderHeight() == 0 || bookLayout.pageCount == 0) return;
   const int page = BookGrid::pageOf(bookLayout, nav.selected);
   const int section = bookLayout.pages[page].section;
