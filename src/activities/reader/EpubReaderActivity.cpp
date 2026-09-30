@@ -995,15 +995,20 @@ ReaderMenuSheetLayout::RecentChipLabels EpubReaderActivity::collectRecentChips(c
                             recentShown.data(), recentShown.size()));
   if (recentShownCount == 0) return labels;
 
-  // Transient (~4.2 KB, PSRAM by size) and never allowed to inflate: an inflate lends the
-  // framebuffer out and hands it back blank, just before the menu snapshots the page. Without the
-  // table each chip shows its full reference.
-  auto names = makeUniqueNoThrow<BibleBookNameTable>();
-  const bool haveNames = names && names->load(epub, renderer, SpineHtmlStream::WhenMissing::Fail);
-  if (!names) LOG_ERR("ERS", "OOM: book name table for Recent chips");
+  // A Go to this session has already read the names; the cached table carries the same
+  // abbreviations load() gives. Otherwise a transient table (~4.2 KB, PSRAM by size) that is never
+  // allowed to inflate: an inflate lends the framebuffer out and hands it back blank, just before
+  // the menu snapshots the page. Without a table each chip shows its full reference.
+  const BibleBookNameTable* table = navCache && navCache->hasBooks() ? &navCache->books()->names : nullptr;
+  std::unique_ptr<BibleBookNameTable> loaded;
+  if (!table) {
+    loaded = makeUniqueNoThrow<BibleBookNameTable>();
+    if (!loaded) LOG_ERR("ERS", "OOM: book name table for Recent chips");
+    if (loaded && loaded->load(epub, renderer, SpineHtmlStream::WhenMissing::Fail)) table = loaded.get();
+  }
   for (int i = 0; i < recentShownCount; ++i) {
     const Place& place = recentShown[i];
-    PlacesDoc::formatChipLabel(haveNames ? names->abbreviationFor(place.unit.book) : "", place, labels.text[i],
+    PlacesDoc::formatChipLabel(table ? table->abbreviationFor(place.unit.book) : "", place, labels.text[i],
                                sizeof(labels.text[i]));
   }
   labels.count = recentShownCount;
