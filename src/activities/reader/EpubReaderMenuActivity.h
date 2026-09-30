@@ -2,80 +2,80 @@
 #include <Epub.h>
 #include <I18n.h>
 
+#include <atomic>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "ReaderMenuModel.h"
+#include "ReaderMenuSheetLayout.h"
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
 
+// The reader menu as a sheet over the lower part of the page. Over the page
+// when the framebuffer still holds it, otherwise the same sheet on a cleared
+// screen; never a scrolling list.
 class EpubReaderMenuActivity final : public UiListActivity {
  public:
-  // Menu actions available from the reader menu.
-  enum class MenuAction {
-    SELECT_CHAPTER,
-    SEARCH_BIBLE,
-    FOOTNOTES,
-    TEXT_SETTINGS,
-    NIGHT_MODE,
-    FRONTLIGHT,
-    GO_TO_PERCENT,
-    AUTO_PAGE_TURN,
-    ROTATE_SCREEN,
-    BOOKMARKS,
-    TOGGLE_BOOKMARK,
-    SCREENSHOT,
-    GO_HOME,
-    DELETE_CACHE,
-    HIGHLIGHT_PASSAGE,
-    HIGHLIGHTS
-  };
+  using MenuAction = ReaderMenuAction;
 
+  // pageOnScreen: the framebuffer holds the reading page, not a sub-screen's
+  // last frame, so the sheet may be drawn over it.
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
-                                  const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks,
-                                  bool hasHighlights, bool isBible);
+                                  uint8_t currentOrientation, bool hasFootnotes, bool hasBookmarks, bool hasHighlights,
+                                  bool isBible, int tagsHereCount, bool pageOnScreen);
 
+  void onEnter() override;
+  void onExit() override;
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
 
  private:
-  struct MenuItem {
-    MenuAction action;
-    StrId labelId;
-  };
+  // Decided on the first render, when the framebuffer is known to hold the
+  // last completed frame. Only ever degrades, OverPage -> Cleared, via
+  // Undecided after a rotation.
+  enum class SheetMode : uint8_t { Undecided, OverPage, Cleared };
 
-  static std::vector<MenuItem> buildMenuItems(bool hasFootnotes, bool hasBookmarks, bool hasHighlights, bool isBible);
+  static constexpr freeink::ui::ActionId ACTION_CLOSE = ACTION_USER;
+  static constexpr freeink::ui::ActionId ACTION_CHROME = ACTION_USER + 1;
+  static constexpr int COLUMN_CAPACITY = ReaderMenuModel::MAX_ROWS / 2;
 
-  // Row storage: menuItems is at most MAX_MENU_ITEMS, so a
-  // fixed-capacity array avoids any heap allocation for the row list. Labels
-  // are set once in the constructor (buildMenuRowItems()); buildScreen()
-  // only refreshes rows whose values reflect live state.
-  // 9 unconditional items (10 where BEREAN_CAP_ROTATION adds ROTATE_SCREEN;
-  // the X4 Pro compiles it out) + up to 6 conditional ones (SEARCH_BIBLE,
-  // FOOTNOTES, BOOKMARKS, HIGHLIGHTS, HIGHLIGHT_PASSAGE, FRONTLIGHT) reaches at
-  // most 15 on an X4 Pro, 16 with rotation. Sized with room to grow; the loops
-  // below clamp regardless, so this is a capacity, not a contract.
-  static constexpr size_t MAX_MENU_ITEMS = 24;
-  freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
-  void buildMenuRowItems();
-
-  int listCount() const override { return static_cast<int>(menuItems.size()); }
+  int listCount() const override { return model.count(); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
-  // Popup input runs before any button or touch handling.
   bool handleCustomInput() override;
-  // Back closes on RELEASE and Confirm activates on RELEASE; everything else
-  // (row navigation, page jumps) falls through to the base handler.
   bool handleButtons() override;
-  // Header via GUI.drawHeader inside the safe area for the battery indicator.
-  void drawChrome() override;
+  void navigateButtons() override;
 
+  static void closeTrampoline(const freeink::ui::ActionEvent& event, void* user);
   void closeCancelled();
+  void buildRowItems();
+  void refreshRowStates();
+  void decideMode();
+  void logHeap(const char* phase) const;
+  void drawTile(UiScreen& screen, int index, const ReaderMenuSheetLayout::Box& box);
 
-  // Fixed menu layout
-  const std::vector<MenuItem> menuItems;
+  const ReaderMenuModel::Model model;
+  const std::string title;
+  const bool pageOnScreen;
+
+  // Rows split row-major: row i sits in column i % 2, slot i / 2. ListProps
+  // has no stride, so each column needs its own contiguous array.
+  freeink::ui::ListItem columnItems[2][COLUMN_CAPACITY]{};
+  int columnCount[2]{};
+  char tagsHereValue[8]{};
+
+  ReaderMenuSheetLayout::Layout layout{};
+  // Written on the render task, read on the loop task.
+  std::atomic<SheetMode> mode{SheetMode::Undecided};
+  bool rotated = false;
+  bool firstPaintDone = false;
+  // The page region above the sheet (PSRAM), restored on every render so a
+  // popup drawn over it never lingers.
+  std::unique_ptr<uint8_t[]> pageSnapshot;
 
   OptionPopup optionPopup;
-  std::string title = "Reader Menu";
   uint8_t pendingOrientation = 0;
   uint8_t selectedPageTurnOption = 0;
   const std::vector<StrId> orientationLabels = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED,
