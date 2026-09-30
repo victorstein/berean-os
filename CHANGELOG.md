@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.2](https://github.com/victorstein/berean-os/compare/v1.29.1...v1.29.2) (2026-09-30)
+
+
+### Refactor
+
+* address the status-bar and formatter run's review ([#233](https://github.com/victorstein/berean-os/issues/233)) ([b93d24d](https://github.com/victorstein/berean-os/commit/b93d24d145c18f24920b4f4dd02ecc2492968929))
+
 ## [1.29.1](https://github.com/victorstein/berean-os/compare/v1.29.0...v1.29.1) (2026-09-30)
 
 
