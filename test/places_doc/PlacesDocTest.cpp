@@ -311,6 +311,19 @@ TEST(PlacesDocDisplay, AChipWithoutAnAbbreviationShowsTheReference) {
   EXPECT_STREQ(label, "Revelation 21:4");
 }
 
+TEST(PlacesDocDisplay, AChipCutsOnACodepointBoundary) {
+  char label[3];
+  PlacesDoc::formatChipLabel("G\xc3\xa9n.", makePlace(1, 1, 1, "G\xc3\xa9nesis 1:1"), label, sizeof(label));
+  EXPECT_STREQ(label, "G");
+}
+
+TEST(PlacesDocDisplay, AStoredReferenceCollapsesWhitespaceBeforeCapping) {
+  const std::string book = "A  " + std::string(46, 'b');
+  const std::string reference = PlacesDoc::formatReference(book, Unit{UnitKind::Verse, 1, 1, 1, 0}, false);
+  EXPECT_EQ(reference.size(), PlacesDoc::MAX_REFERENCE_BYTES);
+  EXPECT_EQ(reference.rfind("A b", 0), 0u);
+}
+
 TEST(PlacesDocDisplay, DescribeJoinsTheReferencesNewestFirst) {
   EXPECT_EQ(PlacesDoc::describe({makePlace(1, 1, 1, "Genesis 1", true), makePlace(66, 21, 4, "Revelation 21:4")}),
             "Genesis 1 | Revelation 21:4");

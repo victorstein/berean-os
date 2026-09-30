@@ -1,6 +1,7 @@
 add_executable(PlacesDocTest
   PlacesDocTest.cpp
   ${REPO_ROOT}/src/util/PlacesDoc.cpp
+  ${REPO_ROOT}/src/util/BibleReference.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitAnchors.cpp
