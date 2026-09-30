@@ -946,8 +946,17 @@ void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
   // at most once for the life of the Epub.
   std::unique_ptr<Activity> chapterList;
   if (isBible()) {
+    if (!navCache) {
+      // unique_ptr to shared_ptr, as loadBook() hands the Epub over.
+      auto cache = makeUniqueNoThrow<BibleNavCache>();
+      if (cache) {
+        navCache = std::move(cache);
+      } else {
+        LOG_ERR("ERS", "OOM: Go to cache");
+      }
+    }
     chapterList = std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx, bookmarks.entries(),
-                                                            goToStartMs);
+                                                            navCache, goToStartMs);
   } else {
     chapterList = std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx);
   }
