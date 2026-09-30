@@ -186,6 +186,12 @@ inline int bandHeight(const int lines, const int chipHeight, const int gap) {
   return lines > 0 ? lines * chipHeight + (lines - 1) * gap : 0;
 }
 
+// The chip itself meets the touch minimum; its hit rect is never grown past it, because that would
+// overlap the next line (hitPadding tiles the gaps instead).
+inline int chipHeight(const int textLineHeight, const int padY, const int minTouch) {
+  return std::max(textLineHeight + 2 * padY, minTouch);
+}
+
 struct Pad {
   int top = 0;
   int right = 0;

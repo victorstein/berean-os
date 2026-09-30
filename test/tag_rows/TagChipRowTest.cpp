@@ -408,3 +408,9 @@ TEST(TagChipCandidates, OnlyTagCandidatesNameAPaletteSlot) {
     EXPECT_EQ(tags, filter == NAME ? 2 : 1);
   }
 }
+
+TEST(TagChipGeometry, ChipHeightIsNeverBelowTheTouchMinimum) {
+  EXPECT_EQ(TagChips::chipHeight(20, 8, 44), 44) << "20 + 16 is short of 44";
+  EXPECT_EQ(TagChips::chipHeight(30, 8, 44), 46) << "text plus padding wins once it is taller";
+  for (int line = 0; line <= 60; ++line) EXPECT_GE(TagChips::chipHeight(line, 8, 44), 44) << line;
+}
