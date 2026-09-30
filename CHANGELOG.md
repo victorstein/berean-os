@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.1](https://github.com/victorstein/berean-os/compare/v1.29.0...v1.29.1) (2026-09-30)
+
+
+### Refactor
+
+* unify the Bible reference formatters ([#231](https://github.com/victorstein/berean-os/issues/231)) ([66cc071](https://github.com/victorstein/berean-os/commit/66cc071c777c3f796828ae4df0cfed91301d8d6f)), closes [#225](https://github.com/victorstein/berean-os/issues/225)
+
 ## [1.29.0](https://github.com/victorstein/berean-os/compare/v1.28.1...v1.29.0) (2026-09-30)
 
 
