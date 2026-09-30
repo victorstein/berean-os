@@ -11,6 +11,4 @@ TEST(ForwardTurn, OnlyAForwardTurnFromTheLastBuiltPageLeavesTheDocument) {
 
 // While the section is still being laid out the reader stays in it and waits for
 // more pages, so "the last page so far" is not the chapter's end.
-TEST(ForwardTurn, DoesNotLeaveWhileTheSectionIsStillBuilding) {
-  EXPECT_FALSE(forwardTurnLeavesDocument(4, 5, true));
-}
+TEST(ForwardTurn, DoesNotLeaveWhileTheSectionIsStillBuilding) { EXPECT_FALSE(forwardTurnLeavesDocument(4, 5, true)); }
