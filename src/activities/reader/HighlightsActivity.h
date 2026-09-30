@@ -10,6 +10,7 @@
 
 #include "PassageActions.h"
 #include "TagChipRow.h"
+#include "TagChipView.h"
 #include "activities/ActivityResult.h"
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
@@ -23,7 +24,7 @@
 //
 // Above the list sits a wrapping row of tag chips with counts ("All 37", "hope 12", ...,
 // "Unlabeled 4"), at most two lines; when they do not fit, a trailing ellipsis chip opens
-// TagFilterActivity ("All", "Unlabelled", then each tag). Tapping a chip filters the list, and the
+// TagFilterActivity, a full-screen grid of the same chips. Tapping a chip filters the list, and the
 // selected chip is inverted. Buttons reach the chips as ring position 0 (Confirm there opens the
 // picker), mirroring UiTabListActivity's tab band. The picker does NOT reuse TagPickerActivity:
 // that picker enforces HighlightDoc::MAX_TAGS_PER_HIGHLIGHT (8) and offers "New tag...", both
@@ -102,16 +103,8 @@ class HighlightsActivity final : public UiListActivity {
   static constexpr freeink::ui::ActionId ACTION_CHIP = ACTION_USER;
   static constexpr freeink::ui::ActionId ACTION_MORE = ACTION_USER + 1;
 
-  // One candidate chip. The label is owned here because ButtonProps borrows it during the render.
-  struct ChipEntry {
-    TagChips::Kind kind = TagChips::Kind::All;
-    study::TagId id = study::UNLABELLED;
-    char label[40] = {};
-  };
-
   // Rebuilds chips_ from the passages and palette; called from rebuildRowItems().
   void rebuildChips();
-  bool chipIsSelected(const ChipEntry& chip) const;
   void buildChipRow(UiScreen& screen);
   void selectChip(int chipIndex);
   static void onChipEvent(const freeink::ui::ActionEvent& event, void* user);
@@ -198,7 +191,7 @@ class HighlightsActivity final : public UiListActivity {
 
   // Candidates in display order (All, active tags, Unlabelled), at most MAX_CHIPS + 1: layout()
   // places at most MAX_CHIPS, so the extra slot is what makes a longer palette show the ellipsis.
-  std::vector<ChipEntry> chips_;
+  std::vector<TagChipView::ChipEntry> chips_;
   // Filled on the render task; members rather than locals to keep its stack frame small.
   int chipWidths_[TagChips::MAX_CHIPS + 1] = {};
   TagChips::Layout chipLayout_;
