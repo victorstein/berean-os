@@ -50,7 +50,7 @@ std::optional<PlaceUnit> placeUnit(const study::DocumentUnits& units, const uint
 
 std::string formatReference(const std::string_view book, const study::Unit& unit, const bool chapterOnly) {
   std::string reference(book);
-  reference += ' ';
+  if (!reference.empty()) reference += ' ';
   reference += std::to_string(unit.major);
   if (!chapterOnly) {
     reference += ':';
