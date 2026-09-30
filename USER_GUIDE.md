@@ -378,7 +378,9 @@ The **Settings** icon on Home, four tabs.
 - **Night mode** — invert the reading surface.
 - **Customise status bar** — what the reading status bar shows: chapter page count, book percentage,
   progress bar style and thickness, title, battery, and the clock. On a device with a real-time clock
-  this is also where the clock format, the UTC offset, and **Sync now** live.
+  this is also where the clock format, the UTC offset, and **Sync now** live. In a Bible the status
+  bar shows chapter position only: the book percentage is never shown, and a book progress bar
+  tracks the chapter instead.
 
 ### Controls
 
