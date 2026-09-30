@@ -18,9 +18,12 @@ constexpr HomeLayout::Insets INSETS{9, 3, 3, 3};
 // getLineHeight is the regular face's advanceY: notosans_8 23, ubuntu_10 24,
 // notoserif_12 34, notoserif_14 40.
 constexpr HomeLayout::LineHeights LINES{23, 24, 34, 40};
+// getTextWidth is ink width: ubuntu_10_regular's digits have advance 188/16,
+// which snaps to 12, and a 10 px bitmap at left 1, so "0" is 11 and "00" is 12 + 1 + 10 = 23.
+constexpr HomeLayout::TextWidths WIDTHS{11, 23};
 
 HomeLayout::Layout layoutFor(const ThemeMetrics& metrics) {
-  return HomeLayout::compute(SCREEN_W, SCREEN_H, INSETS, metrics, LINES);
+  return HomeLayout::compute(SCREEN_W, SCREEN_H, INSETS, metrics, LINES, WIDTHS);
 }
 
 using HomeLayout::bottomOf;
@@ -30,12 +33,18 @@ bool within(const HomeLayout::Box& inner, const HomeLayout::Box& outer) {
          bottomOf(inner) <= bottomOf(outer);
 }
 
+// Where a day number's ink starts and ends when centred in its cell, as drawMeetings centres it.
+int numberInkLeft(const HomeLayout::Box& cell) { return cell.x + (cell.width - WIDTHS.twoDigits) / 2; }
+int numberInkRight(const HomeLayout::Box& cell) { return numberInkLeft(cell) + WIDTHS.twoDigits; }
+
+constexpr int STRIP_DAY_HEIGHT = LINES.small + LINES.ui10;
+
 }  // namespace
 
 TEST(HomeLayout, TheHeroSharesTheMastheadThumbnail) {
   const auto layout = layoutFor(LyraMetrics::values);
   EXPECT_EQ(layout.hero.x, 8);
-  EXPECT_EQ(layout.hero.y, 14);
+  EXPECT_EQ(layout.hero.y, 22);
   EXPECT_EQ(layout.hero.width, 464);
   EXPECT_EQ(CoverBandGeometry::thumbHeightFor(layout.hero.width, layout.hero.height), 773);
 }
@@ -47,13 +56,31 @@ TEST(HomeLayout, FixedSectionHeights) {
   EXPECT_EQ(HomeLayout::verseTextHeight(LINES), 102);
   EXPECT_EQ(HomeLayout::recentHeight(LyraMetrics::values, LINES), 143);
   EXPECT_EQ(HomeLayout::recentHeight(BaseMetrics::values, LINES), 113);
-  EXPECT_EQ(HomeLayout::plateHeight(LyraMetrics::values, LINES), 93);
-  EXPECT_EQ(HomeLayout::plateHeight(BaseMetrics::values, LINES), 94);
+  EXPECT_EQ(HomeLayout::plateHeight(LyraMetrics::values, LINES), 101);
+  EXPECT_EQ(HomeLayout::plateHeight(BaseMetrics::values, LINES), 102);
 }
 
 TEST(HomeLayout, TheHeroTakesTheRemainder) {
-  EXPECT_EQ(layoutFor(LyraMetrics::values).hero.height, 258);
-  EXPECT_EQ(layoutFor(BaseMetrics::values).hero.height, 280);
+  EXPECT_EQ(layoutFor(LyraMetrics::values).hero.height, 250);
+  EXPECT_EQ(layoutFor(BaseMetrics::values).hero.height, 272);
+}
+
+TEST(HomeLayout, TheTopLeavesAGapAboveTheHero) {
+  for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
+    const auto layout = layoutFor(*metrics);
+    EXPECT_EQ(layout.hero.y - (INSETS.top + metrics->topPadding), HomeLayout::PAD);
+    EXPECT_EQ(layout.fallbackHeader.x, 0);
+    EXPECT_EQ(layout.fallbackHeader.y, metrics->topPadding + HomeLayout::PAD);
+    EXPECT_EQ(layout.fallbackHeader.width, SCREEN_W);
+    EXPECT_EQ(layout.fallbackHeader.height, metrics->headerHeight);
+  }
+}
+
+TEST(HomeLayout, TheGapsLeaveTheSectionsBelowTheHeroInPlace) {
+  for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
+    const auto layout = layoutFor(*metrics);
+    EXPECT_EQ(bottomOf(layout.hero), INSETS.top + metrics->topPadding + (metrics == &LyraMetrics::values ? 258 : 280));
+  }
 }
 
 TEST(HomeLayout, TheHeroKeepsItsArtAboveThePlate) {
@@ -89,7 +116,9 @@ TEST(HomeLayout, ThePlateHoldsTheHeaderAndTheButtons) {
   EXPECT_TRUE(within(layout.continueButton, layout.plate));
   EXPECT_TRUE(within(layout.goToButton, layout.plate));
   EXPECT_TRUE(within(layout.buttonRow, layout.plate));
-  EXPECT_EQ(layout.continueButton.y, bottomOf(layout.plateHeader));
+  EXPECT_EQ(layout.continueButton.y, bottomOf(layout.plateHeader) + HomeLayout::PAD);
+  EXPECT_EQ(layout.goToButton.y, layout.continueButton.y);
+  EXPECT_EQ(layout.buttonRow.y, layout.continueButton.y);
   EXPECT_LT(layout.continueButton.x + layout.continueButton.width, layout.goToButton.x);
   EXPECT_EQ(bottomOf(layout.buttonRow) + HomeLayout::PAD, bottomOf(layout.plate));
 }
@@ -108,8 +137,9 @@ TEST(HomeLayout, TheVerseTextBoxHoldsTwoThreeOrFourLines) {
 
 TEST(HomeLayout, TheMeetingsCardKeepsTheRangeBelowTheStrip) {
   const auto layout = layoutFor(LyraMetrics::values);
-  EXPECT_EQ(layout.strip.width, 182);
-  EXPECT_EQ(layout.meetingsTitle.width, 218);
+  EXPECT_EQ(layout.stripCell, 34);
+  EXPECT_EQ(layout.strip.width, 238);
+  EXPECT_EQ(layout.meetingsTitle.width, 162);
   EXPECT_EQ(layout.meetingsRange.width, 448);
   EXPECT_EQ(layout.meetingsRange.y, bottomOf(layout.strip));
   EXPECT_EQ(bottomOf(layout.meetingsRange) + HomeLayout::PAD, bottomOf(layout.meetings));
@@ -118,6 +148,59 @@ TEST(HomeLayout, TheMeetingsCardKeepsTheRangeBelowTheStrip) {
   EXPECT_TRUE(within(layout.strip, layout.meetings));
   EXPECT_TRUE(within(layout.meetingsPercent, layout.meetings));
   EXPECT_LE(bottomOf(layout.meetingsPercent), layout.meetingsRange.y);
+}
+
+TEST(HomeLayout, TheStripCellIsANumberAndADigitWide) {
+  EXPECT_EQ(HomeLayout::stripCellWidth(WIDTHS), WIDTHS.twoDigits + WIDTHS.digit);
+}
+
+TEST(HomeLayout, TheStripCellHasAFloor) {
+  EXPECT_EQ(HomeLayout::stripCellWidth(HomeLayout::TextWidths{0, 0}), HomeLayout::STRIP_CELL_MIN);
+}
+
+TEST(HomeLayout, StripNumbersAreADigitApart) {
+  const auto layout = layoutFor(LyraMetrics::values);
+  for (int i = 0; i + 1 < HomeLayout::STRIP_CELLS; ++i) {
+    const auto left = HomeLayout::stripDay(layout, i, STRIP_DAY_HEIGHT);
+    const auto right = HomeLayout::stripDay(layout, i + 1, STRIP_DAY_HEIGHT);
+    EXPECT_GE(numberInkLeft(right) - numberInkRight(left), WIDTHS.digit) << "between days " << i << " and " << i + 1;
+  }
+}
+
+TEST(HomeLayout, StripDaysTileTheStripSoLettersAndNumbersShareACentre) {
+  const auto layout = layoutFor(LyraMetrics::values);
+  for (int i = 0; i < HomeLayout::STRIP_CELLS; ++i) {
+    const auto cell = HomeLayout::stripDay(layout, i, STRIP_DAY_HEIGHT);
+    EXPECT_EQ(cell.x, layout.strip.x + i * layout.stripCell);
+    EXPECT_EQ(cell.y, layout.strip.y);
+    EXPECT_EQ(cell.width, layout.stripCell);
+    EXPECT_EQ(cell.height, STRIP_DAY_HEIGHT);
+  }
+  const auto last = HomeLayout::stripDay(layout, HomeLayout::STRIP_CELLS - 1, STRIP_DAY_HEIGHT);
+  EXPECT_EQ(last.x + last.width, layout.strip.x + layout.strip.width);
+}
+
+TEST(HomeLayout, TheTodayBoxClearsItsNeighbours) {
+  const auto layout = layoutFor(LyraMetrics::values);
+  for (int i = 0; i < HomeLayout::STRIP_CELLS; ++i) {
+    const auto cell = HomeLayout::stripDay(layout, i, STRIP_DAY_HEIGHT);
+    const auto box = HomeLayout::stripHighlight(cell);
+    EXPECT_TRUE(within(box, cell));
+    EXPECT_LE(box.x + box.width - 1, cell.x + cell.width - 2);
+    if (i > 0) {
+      EXPECT_GT(box.x, numberInkRight(HomeLayout::stripDay(layout, i - 1, STRIP_DAY_HEIGHT)));
+    }
+    if (i + 1 < HomeLayout::STRIP_CELLS) {
+      EXPECT_LT(box.x + box.width, numberInkLeft(HomeLayout::stripDay(layout, i + 1, STRIP_DAY_HEIGHT)));
+    }
+  }
+}
+
+TEST(HomeLayout, TheMeetingsTitleFitsTheWidestTranslation) {
+  // "Reuniones" (spanish.yaml STR_MEETINGS) in UI_10 bold is ~104 px, the widest title.
+  for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
+    EXPECT_GE(layoutFor(*metrics).meetingsTitle.width, 104);
+  }
 }
 
 TEST(HomeLayout, FourIconTilesFillTheWidth) {
