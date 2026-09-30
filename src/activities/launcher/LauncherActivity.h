@@ -5,21 +5,23 @@
 #include <string>
 #include <vector>
 
+#include "Place.h"
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
+#include "activities/launcher/HomeLayout.h"
+#include "activities/launcher/HomeTargets.h"
+#include "activities/network/MeetingWeekView.h"
 #include "util/ButtonNavigator.h"
 
-// bereanOS's home screen: four sections and a resume strip.
+// bereanOS's home screen (issue #203, Direction B v2): the Bible's cover with
+// Continue and Go to on its plate, the recent places, a verse from the user's
+// tags, this week's meetings, and Tags, Search, Publications and Settings.
 //
 // A launcher is a screen you pass THROUGH, and on e-ink every pass costs a full
-// panel refresh. The resume strip is what pays for that -- the common case,
-// waking the device to carry on reading, is one tap and never touches a tile.
-//
-// Tiles carry no denormalised counts. An earlier design put "12 etiquetas - 248
-// pasajes" here, which needs counters that nothing reconciles; for a device
-// whose value is being a trustworthy record, a visibly wrong number is worse
-// than no number. Live state that cannot drift stays, such as which meeting week
-// is loaded.
+// panel refresh, so getting back to a place is one tap. There is no Bible
+// reading progress anywhere here: the Bible is a reference you return to, not a
+// book you finish. Live state that cannot drift, such as this week's workbook
+// progress, stays.
 class LauncherActivity final : public Activity {
  public:
   explicit LauncherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool cleanInitialRefresh = false)
@@ -31,68 +33,61 @@ class LauncherActivity final : public Activity {
   bool isHomeActivity() const override { return true; }
 
  private:
-  // Order is the navigation order, and the layout order: Bible spans the width,
-  // Meetings and Search share a row, Settings spans the width again.
-  enum class Tile : uint8_t { Bible, Meetings, Search, Settings, Resume, COUNT };
-
-  struct TileRect {
-    int x = 0;
-    int y = 0;
-    int w = 0;
-    int h = 0;
-    bool contains(int px, int py) const { return px >= x && px < x + w && py >= y && py < y + h; }
-  };
+  using Target = HomeTargets::Target;
 
   void computeLayout();
-  void activate(Tile tile);
-  void openBible();
+  // Resolved on entry and after a sub-screen returns: the Bible, its cover, the
+  // places, this week's meetings, the date and whether the verse needs a scan.
+  void resolveTargets();
+  void resolveMeetings();
+  HomeTargets::State targetState() const;
+  const HomeLayout::Box* boxFor(Target target) const;
+  void activate(Target target);
+  void openReader(const HomeTargets::Route& route, Target target);
+  void openBibleDownload();
   void openMeetings();
   void openPublications();
-  void openSettings();
-  void drawTile(const TileRect& rect, const char* title, const char* subtitle, bool selected, bool emphasised,
-                const std::string& coverPath, const uint8_t* icon) const;
-  // A publication's own cover when the card has one, else the tile's icon.
-  // Covers are what make the launcher legible at a glance -- a shelf of books
-  // rather than a list of words -- so the icon is the fallback, not the default.
-  void drawTileArt(int x, int y, int w, int h, const std::string& coverPath, const uint8_t* icon) const;
-  void drawCoverTile(const TileRect& rect, const std::string& coverPath, const char* title, const char* subtitle,
-                     const uint8_t* icon, bool selected, float focusBand) const;
-  void drawCenteredIn(int x, int w, int top, const char* title, const char* subtitle) const;
-  int tileArtHeight(const TileRect& rect, bool hasSubtitle) const;
-  // Finds a meeting publication the registry does not know about, for downloads
-  // that predate it. Keyed on the downloader's own filename convention.
-  // This week's publication, from the cache the meetings screen fills.
-  static std::optional<std::string> thisWeeksMeetingPublication();
-  static std::optional<std::string> findMeetingPublicationOnCard();
+  void logMemory(const char* when) const;
+
+  void drawHero() const;
+  void drawButton(const HomeLayout::Box& box, const char* label, bool inverted, bool selected) const;
+  void drawRecent() const;
+  void drawVerse() const;
+  void drawMeetings() const;
+  void drawIconTile(const HomeLayout::Box& box, const uint8_t* icon, const char* label, bool selected) const;
+  bool isSelected(Target target) const;
+
   // A Bible that did not come through Buscar, recognised by the CDN's filename.
   static std::optional<std::string> findBibleOnCard();
   // A guess over recently opened books, for a Bible that was opened without
   // ever being registered. Only asked when the registry and the card scan
   // both miss.
   static std::optional<std::string> findBibleInRecents(const std::vector<RecentBook>& recents);
-  // The edition's name for the tile, from what is already in memory or in the
-  // path; empty when neither says anything worth showing.
-  static std::string bibleTitleFor(const std::string& path, const std::vector<RecentBook>& recents);
-  // Height of a tile's text block, so computeLayout can size a tile around its
-  // contents and drawTile can centre the same block inside it.
-  int tileTextHeight(int titleFont, bool hasSubtitle) const;
-
-  // Resolved once on entry: the resume strip needs a book, and the Bible tile
-  // needs to know whether one is on the card before offering to open it.
-  void resolveTargets();
 
   ButtonNavigator buttonNavigator;
-  int selected = 0;
-  TileRect rects[static_cast<size_t>(Tile::COUNT)];
+  HomeLayout::Layout layout{};
+  Target selected = Target::Continue;
 
   std::string biblePath;
-  std::string bibleSubtitle;
   std::string bibleCoverPath;
-  std::string meetingsSubtitle;
-  std::string meetingsCoverPath;
-  std::string resumePath;
-  std::string resumeTitle;
-  bool hasResume = false;
+  bool hasPlace = false;
+  Place newestPlace;
+  Place recentPlaces[HomeLayout::RECENT_SLOTS];
+  uint8_t recentCount = 0;
+  char continueLabel[96] = {};
+  char dateLine[48] = {};
+  bool hasDateLine = false;
+
+  // This week's meetings card. The strip is drawn only with a date; a day is
+  // marked only with the local time as well (MeetingsActivity's rule).
+  bool hasWeek = false;
+  WeekStrip strip{};
+  char stripLetters[7][8] = {};
+  char rangeLine[64] = {};
+  char percentLine[48] = {};
+
+  // Set on entry when the verse has to be scanned; the loop paints first.
+  bool versePending = false;
 
   // Wake-path flag, consumed by the first paint only -- see LauncherRefresh.h.
   const bool cleanInitialRefresh;

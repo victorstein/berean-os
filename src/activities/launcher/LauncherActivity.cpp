@@ -1,83 +1,105 @@
 #include "LauncherActivity.h"
 
-#include <Epub.h>
-#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
-#include <SdPaths.h>
-#include <Utf8.h>
+#include <esp_heap_caps.h>
 
 #include <algorithm>
-#include <cctype>
 #include <cstdio>
 #include <optional>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
+#include "PlacesStore.h"
 #include "RecentBooksStore.h"
-#include "StudyStore/PubKey.h"
 #include "activities/PostedMessage.h"
+#include "activities/boot_sleep/StudySleepScreen.h"
 #include "activities/catalog/PublicationsActivity.h"
+#include "activities/launcher/HomeVerse.h"
 #include "activities/launcher/LauncherBible.h"
 #include "activities/launcher/LauncherRefresh.h"
 #include "activities/network/BibleDownloadActivity.h"
 #include "activities/network/MeetingsActivity.h"
+#include "activities/reader/ReaderEntryIntent.h"
 #include "components/CoverBand.h"
 #include "components/UITheme.h"
-#include "components/icons/book.h"
+#include "components/icons/bookmark.h"
+#include "components/icons/folder.h"
 #include "components/icons/library.h"
 #include "components/icons/search.h"
 #include "components/icons/settings2.h"
 #include "components/themes/BaseTheme.h"
 #include "fontIds.h"
-#include "network/MeetingFilename.h"
 #include "network/MeetingLibrary.h"
 #include "network/MeetingWeekCache.h"
+#include "network/MeetingWeekTable.h"
 #include "study/PubKeyRegistry.h"
+#include "util/BookCacheUtils.h"
 #include "util/CardBooks.h"
-#include "util/CoverThumb.h"
 #include "util/LocalDate.h"
+#include "util/PlacesDoc.h"
+#include "util/WeekdayNames.h"
 
 namespace {
 
 constexpr const char* MODULE = "LAUNCH";
 
-constexpr int TILE_GAP = 10;
-constexpr int TILE_PADDING = 8;
-constexpr int TILE_ICON_SIZE = 32;
-constexpr int TILE_RADIUS = 8;
-// Below this a cover is a smudge and an icon is cramped, so the tile drops its
-// art and centres the label instead.
-constexpr int MIN_ART_HEIGHT = TILE_ICON_SIZE + 4;
-// The Bible is the centre of the device, so its tile is taller than the pair
-// beneath it rather than merely wider.
-constexpr int BIBLE_TILE_WEIGHT = 2;
+using HomeLayout::Box;
+using HomeLayout::PAD;
+using HomeLayout::RADIUS;
+
+Rect toRect(const Box& box) { return Rect{box.x, box.y, box.width, box.height}; }
+
+// Text vertically centred in a box, left-aligned at its x plus `inset`.
+void drawTextIn(const GfxRenderer& renderer, const int font, const Box& box, const char* text, const int inset,
+                const bool black, const EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
+  const std::string fitted = renderer.truncatedText(font, text, box.width - 2 * inset, style);
+  const int y = box.y + (box.height - renderer.getLineHeight(font)) / 2;
+  renderer.drawText(font, box.x + inset, y, fitted.c_str(), black, style);
+}
+
+void drawCentredIn(const GfxRenderer& renderer, const int font, const Box& box, const int y, const char* text,
+                   const bool black, const EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
+  const std::string fitted = renderer.truncatedText(font, text, box.width - 2 * PAD, style);
+  const int width = renderer.getTextWidth(font, fitted.c_str(), style);
+  renderer.drawText(font, box.x + (box.width - width) / 2, y, fitted.c_str(), black, style);
+}
 
 }  // namespace
 
 void LauncherActivity::onEnter() {
   Activity::onEnter();
-  // Layout first: a cover thumbnail is generated at exactly the height it will
-  // be drawn at, so resolveTargets needs the tile geometry to ask for.
+  // Layout first: the cover thumbnail is generated at exactly the hero's size.
   computeLayout();
   resolveTargets();
-  requestUpdate();
+  logMemory("on entry");
+  // With the verse pending, loop()'s requestUpdateAndWait() is the first and only
+  // paint before the scan, so no render runs while the scan measures text.
+  if (!versePending) requestUpdate();
+}
+
+void LauncherActivity::computeLayout() {
+  int marginTop = 0;
+  int marginRight = 0;
+  int marginBottom = 0;
+  int marginLeft = 0;
+  renderer.getOrientedViewableTRBL(&marginTop, &marginRight, &marginBottom, &marginLeft);
+  const HomeLayout::LineHeights lines{renderer.getLineHeight(SMALL_FONT_ID), renderer.getLineHeight(UI_10_FONT_ID),
+                                      renderer.getLineHeight(NOTOSERIF_12_FONT_ID),
+                                      renderer.getLineHeight(NOTOSERIF_14_FONT_ID)};
+  layout = HomeLayout::compute(renderer.getScreenWidth(), renderer.getScreenHeight(),
+                               HomeLayout::Insets{marginTop, marginRight, marginBottom, marginLeft},
+                               UITheme::getInstance().getMetrics(), lines);
 }
 
 void LauncherActivity::resolveTargets() {
   RECENT_BOOKS.loadFromFile();
-  bool generatedAny = false;
   const auto& recents = RECENT_BOOKS.getBooks();
-  hasResume = !recents.empty();
-  if (hasResume) {
-    resumePath = recents[0].path;
-    resumeTitle = utf8SafeSummary(recents[0].title, 48);
-  }
 
   // The registry knows every Buscar download and every Bible the reader has
   // opened; the card scan finds a copy that arrived under the CDN's own name.
@@ -85,7 +107,7 @@ void LauncherActivity::resolveTargets() {
   // "New World", and it covers a Bible that was opened without ever being
   // registered.
   biblePath.clear();
-  bibleSubtitle = tr(STR_BIBLE_SUBTITLE_NONE);
+  bibleCoverPath.clear();
   BibleLookup foundBy = BibleLookup::Registry;
   auto foundBible = resolveBible([&](const BibleLookup step) -> std::optional<std::string> {
     foundBy = step;
@@ -103,9 +125,9 @@ void LauncherActivity::resolveTargets() {
           foundBible ? bibleLookupName(foundBy) : "-");
   if (foundBible) {
     biblePath = std::move(*foundBible);
-    bibleSubtitle = bibleTitleFor(biblePath, recents);
-    const TileRect& bibleTile = rects[static_cast<size_t>(Tile::Bible)];
-    bibleCoverPath = CoverBand::thumbPathFor(biblePath, bibleTile.w, bibleTile.h, generatedAny);
+    bool generatedAny = false;
+    bibleCoverPath = CoverBand::thumbPathFor(biblePath, layout.hero.width, layout.hero.height, generatedAny);
+    if (generatedAny) LOG_INF(MODULE, "Generated a missing cover thumbnail");
     // The sleep screen paints this too, and it runs while the device is shutting
     // down -- far too late to search for the Bible or open it.
     if (APP_STATE.bibleCoverPath != bibleCoverPath) {
@@ -114,56 +136,63 @@ void LauncherActivity::resolveTargets() {
     }
   }
 
-  // The meeting tile shows THIS WEEK's publication when the week cache knows
-  // which issue that is, preferring the Watchtower. Falling back to "whichever
-  // meeting publication is on the card" is what this used to do on its own, and
-  // it happily showed a months-old issue.
-  //
-  // Neither fallback is redundant. The registry only knows downloads made since
-  // it existed; the card scan reads the dated filename, which is all that
-  // survives for a download older than that. Recents is no use to either: it
-  // holds books that have been OPENED, and a publication downloaded and not yet
-  // read is precisely what this tile exists to advertise.
-  auto meetingPath = thisWeeksMeetingPublication();
-  if (!meetingPath) meetingPath = PubKeyRegistry::findBySymbol({"w", "mwb"});
-  if (!meetingPath) meetingPath = findMeetingPublicationOnCard();
-  LOG_INF(MODULE, "Meeting publication: %s", meetingPath ? meetingPath->c_str() : "(none found)");
-  if (meetingPath) {
-    const TileRect& meetingsTile = rects[static_cast<size_t>(Tile::Meetings)];
-    meetingsCoverPath = CoverBand::thumbPathFor(*meetingPath, meetingsTile.w, meetingsTile.h, generatedAny);
-    const auto opened =
-        std::find_if(recents.begin(), recents.end(), [&](const RecentBook& book) { return book.path == *meetingPath; });
-    if (opened != recents.end()) meetingsSubtitle = utf8SafeSummary(opened->title, 30);
+  const std::vector<Place>& places = PLACES.getPlaces();
+  hasPlace = !places.empty();
+  recentCount = 0;
+  if (hasPlace) {
+    newestPlace = places.front();
+    // Places are one per (book, chapter), so skipping the newest's chapter skips
+    // exactly the newest.
+    recentCount =
+        static_cast<uint8_t>(PlacesDoc::pickRecent(places, newestPlace.unit, recentPlaces, HomeLayout::RECENT_SLOTS));
+    snprintf(continueLabel, sizeof(continueLabel), tr(STR_HOME_CONTINUE_AT), newestPlace.reference.c_str());
+  } else {
+    snprintf(continueLabel, sizeof(continueLabel), "%s", tr(STR_CONTINUE_READING));
   }
 
-  // Building a thumbnail leaves the popup's pixels in the framebuffer, and the
-  // launcher paints over a cleared screen anyway -- but the panel still shows
-  // the popup until the first render lands, which is the point of drawing it.
-  if (generatedAny) LOG_INF(MODULE, "Generated a missing cover thumbnail");
+  hasDateLine = study_sleep_screen::formatDate(dateLine, sizeof(dateLine));
+  resolveMeetings();
+
+  // No Bible, nothing to open: the card stays empty and nothing is scanned.
+  versePending = !biblePath.empty() && !HOME_VERSE.isCurrent();
 }
 
-// The current week's Watchtower, or its workbook when no Watchtower is held.
-// Empty when the clock is unset or the cache does not cover this week -- the
-// meetings screen is what fills that cache, and it is one tap away.
-std::optional<std::string> LauncherActivity::thisWeeksMeetingPublication() {
+// This week, from the clock: the strip, its range and the workbook's progress.
+// The strip needs a date; a day is marked only with the local time as well,
+// because a UTC date would mark the wrong day for part of every day.
+void LauncherActivity::resolveMeetings() {
+  hasWeek = false;
+  rangeLine[0] = '\0';
+  percentLine[0] = '\0';
+
   CivilDate today;
   bool todayIsLocal = false;
   IsoWeek week;
-  if (!readLocalDate(today, todayIsLocal) || !isoWeekFromUtcDate(today.year, today.month, today.day, week)) {
-    return std::nullopt;
+  CivilDate monday;
+  if (!readLocalDate(today, todayIsLocal) || !isoWeekFromUtcDate(today.year, today.month, today.day, week) ||
+      !mondayOfIsoWeek(week, monday)) {
+    return;
+  }
+  hasWeek = true;
+  strip =
+      buildWeekStrip(monday, todayIsLocal ? &today : nullptr, SETTINGS.midweekMeetingDay, SETTINGS.weekendMeetingDay);
+  for (size_t i = 0; i < strip.size(); ++i) {
+    copyInitial(I18N.get(WEEKDAY_NAME_IDS[i]), stripLetters[i], sizeof(stripLetters[i]));
+  }
+  if (!formatWeekRange(monday, tr(STR_MEETING_WEEK_RANGE), tr(STR_MEETING_WEEK_RANGE_SPAN), tr(STR_MONTHS_LONG),
+                       rangeLine, sizeof(rangeLine))) {
+    LOG_ERR(MODULE, "Week range for %u/%02u did not fit", static_cast<unsigned>(week.year),
+            static_cast<unsigned>(week.week));
   }
 
   MeetingWeekTable table;
   MeetingWeekCache::load(table);
   const MeetingWeekEntry* entry = table.find(meetingWeekKey(week));
-  if (entry == nullptr) return std::nullopt;
-
-  for (const MeetingPub pub : {MeetingPub::Watchtower, MeetingPub::Workbook}) {
-    const std::string& issue = pub == MeetingPub::Watchtower ? entry->watchtower : entry->workbook;
-    const std::string path = MeetingLibrary::findPublication(pub, issue);
-    if (!path.empty()) return path;
-  }
-  return std::nullopt;
+  if (entry == nullptr || entry->workbook.empty()) return;
+  const std::string workbookPath = MeetingLibrary::findPublication(MeetingPub::Workbook, entry->workbook);
+  if (workbookPath.empty()) return;
+  const std::optional<int> percent = readBookProgressPercent(workbookPath);
+  if (percent) snprintf(percentLine, sizeof(percentLine), tr(STR_MEETING_PROGRESS), *percent);
 }
 
 // A Bible the registry does not know is one that did not come through Buscar,
@@ -178,7 +207,7 @@ std::optional<std::string> LauncherActivity::findBibleOnCard() {
 }
 
 // recent.json can still list a deleted file; the existence check keeps that
-// from putting a Bible on the tile that opens nothing.
+// from putting a Bible on Home that opens nothing.
 std::optional<std::string> LauncherActivity::findBibleInRecents(const std::vector<RecentBook>& recents) {
   for (const RecentBook& book : recents) {
     if (!looksLikeBibleInRecents(book.path, book.title)) continue;
@@ -188,212 +217,182 @@ std::optional<std::string> LauncherActivity::findBibleInRecents(const std::vecto
   return std::nullopt;
 }
 
-// Never opens the EPUB for this: its title lives in book.bin, and loading that
-// reads the whole spine table -- nearly four thousand entries for the NWT.
-// Buscar names the file after the publication, so the filename is the title;
-// only a CDN name like "nwt_S" is not worth showing.
-std::string LauncherActivity::bibleTitleFor(const std::string& path, const std::vector<RecentBook>& recents) {
-  const auto opened =
-      std::find_if(recents.begin(), recents.end(), [&](const RecentBook& book) { return book.path == path; });
-  if (opened != recents.end() && !opened->title.empty()) return utf8SafeSummary(opened->title, 40);
-  if (isCdnNamedCopyOf(path, BIBLE_SYMBOL)) return {};
-  return utf8SafeSummary(CardBooks::displayStem(path), 40);
+HomeTargets::State LauncherActivity::targetState() const {
+  return HomeTargets::State{!biblePath.empty(), hasPlace, recentCount, !versePending && HOME_VERSE.hasPick()};
 }
 
-// Publications downloaded before PubKeyRegistry existed carry no symbol entry,
-// so the card itself is the fallback. The Watchtower outranks the workbook
-// outright rather than on issue date: it is the publication the meeting tile is
-// recognisable as, and a newer workbook should not displace it.
-std::optional<std::string> LauncherActivity::findMeetingPublicationOnCard() {
-  std::string folder = SETTINGS.downloadFolder[0] != '\0' ? SETTINGS.downloadFolder : "/";
-  while (folder.size() > 1 && folder.back() == '/') folder.pop_back();
-  // Epub derives its cache directory from a hash of the path, so a stray double
-  // slash here would key a DIFFERENT cache than the reader uses for the same
-  // file -- the thumbnail would be built somewhere nothing else looks.
-  const std::string prefix = folder == "/" ? "/" : folder + "/";
-
-  std::string bestPath;
-  std::string bestIssue;
-  bool bestIsWatchtower = false;
-  for (const String& entry : Storage.listFiles(folder.c_str(), 200)) {
-    const std::string name = entry.c_str();
-    const std::string issue = meetingIssueSuffixOf(name);
-    if (issue.empty()) continue;
-
-    const bool isWatchtower = name.find("talaya") != std::string::npos || name.find("atchtower") != std::string::npos;
-    const bool better = bestPath.empty() || (isWatchtower && !bestIsWatchtower) ||
-                        (isWatchtower == bestIsWatchtower && issue > bestIssue);
-    if (!better) continue;
-
-    bestIssue = issue;
-    bestIsWatchtower = isWatchtower;
-    bestPath = name.find('/') == std::string::npos ? prefix + name : name;
+const HomeLayout::Box* LauncherActivity::boxFor(const Target target) const {
+  switch (target) {
+    case Target::Continue:
+      // With no Bible the one button spans the row.
+      return biblePath.empty() ? &layout.buttonRow : &layout.continueButton;
+    case Target::GoTo:
+      return &layout.goToButton;
+    case Target::Recent0:
+      return &layout.recent[0];
+    case Target::Recent1:
+      return &layout.recent[1];
+    case Target::Recent2:
+      return &layout.recent[2];
+    case Target::Verse:
+      return &layout.verseCard;
+    case Target::Meetings:
+      return &layout.meetings;
+    case Target::Tags:
+      return &layout.icons[0];
+    case Target::Search:
+      return &layout.icons[1];
+    case Target::Publications:
+      return &layout.icons[2];
+    case Target::Settings:
+      return &layout.icons[3];
+    case Target::COUNT:
+      break;
   }
-
-  if (bestPath.empty()) return std::nullopt;
-  return bestPath;
+  return nullptr;
 }
 
-// The art band of a stacked tile: what is left once the label has its room.
-int LauncherActivity::tileArtHeight(const TileRect& rect, const bool hasSubtitle) const {
-  return rect.h - tileTextHeight(SMALL_FONT_ID, hasSubtitle) - 3 * TILE_PADDING;
+bool LauncherActivity::isSelected(const Target target) const { return selected == target; }
+
+void LauncherActivity::logMemory(const char* when) const {
+  LOG_INF(MODULE, "Memory %s: internal free %u (largest %u), PSRAM free %u", when,
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 }
 
-int LauncherActivity::tileTextHeight(const int titleFont, const bool hasSubtitle) const {
-  return renderer.getLineHeight(titleFont) + (hasSubtitle ? renderer.getLineHeight(SMALL_FONT_ID) : 0);
+void LauncherActivity::drawButton(const Box& box, const char* label, const bool inverted, const bool selected) const {
+  if (inverted) {
+    renderer.fillRoundedRect(box.x, box.y, box.width, box.height, RADIUS / 2, Color::Black);
+    // Selection on a filled button is a white ring inside the fill.
+    if (selected) renderer.drawRoundedRect(box.x + 3, box.y + 3, box.width - 6, box.height - 6, 2, RADIUS / 2, false);
+  } else {
+    renderer.fillRoundedRect(box.x, box.y, box.width, box.height, RADIUS / 2, Color::White);
+    renderer.drawRoundedRect(box.x, box.y, box.width, box.height, selected ? 3 : 1, RADIUS / 2, true);
+  }
+  drawCentredIn(renderer, UI_10_FONT_ID, box, box.y + (box.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2, label,
+                !inverted, EpdFontFamily::BOLD);
 }
 
-void LauncherActivity::computeLayout() {
+void LauncherActivity::drawHero() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = renderer.getScreenWidth();
-  const int pageHeight = renderer.getScreenHeight();
+  const CoverBand::Style style{CoverBandGeometry::BOOK_TITLE_BAND, RADIUS, layout.plate.height};
+  const bool drawn = !bibleCoverPath.empty() && CoverBand::draw(renderer, bibleCoverPath, toRect(layout.hero), style);
+  const char* subtitle = hasDateLine ? dateLine : nullptr;
+  if (drawn) {
+    GUI.drawHeader(renderer, toRect(layout.plateHeader), tr(STR_BIBLE), subtitle);
+  } else {
+    // CoverBand has left the band as paper, so the header never sits on dither.
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
+                   tr(STR_BIBLE), subtitle);
+  }
+  // Outlined only around a drawn cover: the fallback header sits across the band's top rows, as Masthead's does.
+  if (drawn) {
+    renderer.drawRoundedRect(layout.hero.x, layout.hero.y, layout.hero.width, layout.hero.height, 1, RADIUS, true);
+  }
 
-  // The panel's viewable area is inset from its addressable area by a physical
-  // bezel. Laying out against the raw screen size puts the bottom strip under
-  // that bezel, which is where the resume subtitle used to disappear.
-  int marginTop = 0;
-  int marginRight = 0;
-  int marginBottom = 0;
-  int marginLeft = 0;
-  renderer.getOrientedViewableTRBL(&marginTop, &marginRight, &marginBottom, &marginLeft);
-
-  const int left = marginLeft + metrics.topPadding;
-  const int right = pageWidth - marginRight - metrics.topPadding;
-  const int width = right - left;
-
-  const int top = std::max(metrics.topPadding + metrics.headerHeight, marginTop) + TILE_GAP;
-
-  // Height from the fonts, not a constant: the strip carries a title over a
-  // subtitle, and a fixed height silently clips both at a larger UI scale.
-  const int resumeHeight = tileTextHeight(SMALL_FONT_ID, true) + 2 * TILE_PADDING;
-  const int resumeTop = pageHeight - marginBottom - metrics.topPadding - resumeHeight;
-
-  const int available = resumeTop - TILE_GAP - top;
-
-  // Three rows: Bible (double weight), the Meetings/Search pair, then Tags.
-  const int unitHeight = (available - 2 * TILE_GAP) / (BIBLE_TILE_WEIGHT + 2);
-  // The Bible tile absorbs the division remainder so the rows fill the column
-  // exactly rather than leaving a ragged gap above the resume strip.
-  const int bibleHeight = available - 2 * TILE_GAP - 2 * unitHeight;
-  const int halfWidth = (width - TILE_GAP) / 2;
-
-  int y = top;
-  rects[static_cast<size_t>(Tile::Bible)] = {left, y, width, bibleHeight};
-  y += bibleHeight + TILE_GAP;
-  rects[static_cast<size_t>(Tile::Meetings)] = {left, y, halfWidth, unitHeight};
-  // Width from the remainder, not a second halfWidth: an odd column width would
-  // otherwise leave this tile a pixel short of the ones above and below it.
-  rects[static_cast<size_t>(Tile::Search)] = {left + halfWidth + TILE_GAP, y, width - halfWidth - TILE_GAP, unitHeight};
-  y += unitHeight + TILE_GAP;
-  rects[static_cast<size_t>(Tile::Settings)] = {left, y, width, unitHeight};
-
-  rects[static_cast<size_t>(Tile::Resume)] = {left, resumeTop, width, resumeHeight};
-}
-
-void LauncherActivity::drawTileArt(const int x, const int y, const int w, const int h, const std::string& coverPath,
-                                   const uint8_t* icon) const {
-  if (CoverThumb::drawNative(renderer, coverPath, x + TILE_PADDING, y, w - 2 * TILE_PADDING, h, TILE_RADIUS / 2) > 0) {
+  if (biblePath.empty()) {
+    drawButton(layout.buttonRow, tr(STR_DOWNLOAD), /*inverted=*/true, isSelected(Target::Continue));
     return;
   }
-  if (icon == nullptr) return;
-  renderer.drawIcon(icon, x + (w - TILE_ICON_SIZE) / 2, y + (h - TILE_ICON_SIZE) / 2, TILE_ICON_SIZE);
+  drawButton(layout.continueButton, continueLabel, /*inverted=*/true, isSelected(Target::Continue));
+  drawButton(layout.goToButton, tr(STR_GO_TO), /*inverted=*/false, isSelected(Target::GoTo));
 }
 
-// Cover as the tile's background with the label over it. Drawing order is the
-// z-order here, so the caption plate and its text simply go down last; the
-// plate is opaque because a dithered cover underneath would otherwise shred the
-// glyphs on a 1-bit panel. Falls back to the stacked icon-over-label tile when
-// the card has no cover large enough to fill this one.
-void LauncherActivity::drawCoverTile(const TileRect& rect, const std::string& coverPath, const char* title,
-                                     const char* subtitle, const uint8_t* icon, const bool selected,
-                                     const float focusBand) const {
-  const bool hasSubtitle = subtitle != nullptr && subtitle[0] != '\0';
-  const int plateHeight = tileTextHeight(UI_10_FONT_ID, hasSubtitle) + 2 * TILE_PADDING;
-  const Rect band{rect.x, rect.y, rect.w, rect.h};
-  const CoverBand::Style style{focusBand, TILE_RADIUS, plateHeight};
-
-  if (!CoverBand::draw(renderer, coverPath, band, style)) {
-    drawTile(rect, title, subtitle, selected, /*emphasised=*/true, {}, icon);
-    return;
-  }
-
-  drawCenteredIn(rect.x, rect.w, CoverBand::plateRect(band, style).y + TILE_PADDING, title, subtitle);
-  renderer.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, selected ? 3 : 1, TILE_RADIUS, true);
-}
-
-void LauncherActivity::drawCenteredIn(const int x, const int w, const int top, const char* title,
-                                      const char* subtitle) const {
-  const int innerWidth = w - 2 * TILE_PADDING;
-  const std::string fittedTitle = renderer.truncatedText(UI_10_FONT_ID, title, innerWidth, EpdFontFamily::BOLD);
-  const int titleWidth = renderer.getTextWidth(UI_10_FONT_ID, fittedTitle.c_str(), EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, x + (w - titleWidth) / 2, top, fittedTitle.c_str(), true, EpdFontFamily::BOLD);
-
-  if (subtitle == nullptr || subtitle[0] == '\0') return;
-  const std::string fitted = renderer.truncatedText(SMALL_FONT_ID, subtitle, innerWidth);
-  const int subtitleWidth = renderer.getTextWidth(SMALL_FONT_ID, fitted.c_str());
-  renderer.drawText(SMALL_FONT_ID, x + (w - subtitleWidth) / 2, top + renderer.getLineHeight(UI_10_FONT_ID),
-                    fitted.c_str());
-}
-
-void LauncherActivity::drawTile(const TileRect& rect, const char* title, const char* subtitle, const bool selected,
-                                const bool emphasised, const std::string& coverPath, const uint8_t* icon) const {
-  // Selection is a thicker border rather than an inversion: a full-tile inversion
-  // on a 1-bit panel costs a visibly slower redraw for the same information.
-  const int borderWidth = selected ? 3 : 1;
-  renderer.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, borderWidth, TILE_RADIUS, true);
-
-  const int titleFont = emphasised ? UI_10_FONT_ID : SMALL_FONT_ID;
-  const bool hasSubtitle = subtitle != nullptr && subtitle[0] != '\0';
-  const int innerWidth = rect.w - 2 * TILE_PADDING;
-  const int textHeight = tileTextHeight(titleFont, hasSubtitle);
-
-  // Centre the text block as a whole. Offsetting each line from the tile's
-  // midpoint by a constant overflows a short tile, and drawText anchors on the
-  // line box's top, so the overflow lands off the bottom of the panel.
-  int textTop = rect.y + (rect.h - textHeight) / 2;
-
-  const int artHeight = tileArtHeight(rect, hasSubtitle);
-  if (artHeight >= MIN_ART_HEIGHT) {
-    drawTileArt(rect.x, rect.y + TILE_PADDING, rect.w, artHeight, coverPath, icon);
-    textTop = rect.y + TILE_PADDING + artHeight + TILE_PADDING;
-  }
-
-  // drawCenteredText centres on the SCREEN, so a tile that is not full width
-  // needs its own centring.
-  const std::string fittedTitle = renderer.truncatedText(titleFont, title, innerWidth, EpdFontFamily::BOLD);
-  const int titleWidth = renderer.getTextWidth(titleFont, fittedTitle.c_str(), EpdFontFamily::BOLD);
-  renderer.drawText(titleFont, rect.x + (rect.w - titleWidth) / 2, textTop, fittedTitle.c_str(), true,
+void LauncherActivity::drawRecent() const {
+  renderer.drawText(SMALL_FONT_ID, layout.recentLabel.x + PAD, layout.recentLabel.y, tr(STR_RECENT), true,
                     EpdFontFamily::BOLD);
+  if (biblePath.empty()) return;
+  for (uint8_t i = 0; i < recentCount; ++i) {
+    const Box& row = layout.recent[i];
+    const auto target = static_cast<Target>(static_cast<uint8_t>(Target::Recent0) + i);
+    drawTextIn(renderer, UI_10_FONT_ID, row, recentPlaces[i].reference.c_str(), PAD, true);
+    const int rule = isSelected(target) ? 3 : 1;
+    renderer.fillRect(row.x, row.y + row.height - rule, row.width, rule, true);
+  }
+}
 
-  if (!hasSubtitle) return;
-  const std::string fittedSubtitle = renderer.truncatedText(SMALL_FONT_ID, subtitle, innerWidth);
-  const int subtitleWidth = renderer.getTextWidth(SMALL_FONT_ID, fittedSubtitle.c_str());
-  renderer.drawText(SMALL_FONT_ID, rect.x + (rect.w - subtitleWidth) / 2, textTop + renderer.getLineHeight(titleFont),
-                    fittedSubtitle.c_str());
+void LauncherActivity::drawVerse() const {
+  const Box& card = layout.verseCard;
+  renderer.drawRoundedRect(card.x, card.y, card.width, card.height, isSelected(Target::Verse) ? 3 : 1, RADIUS, true);
+  renderer.drawText(SMALL_FONT_ID, layout.verseLabel.x, layout.verseLabel.y, tr(STR_FROM_YOUR_TAGS), true,
+                    EpdFontFamily::BOLD);
+  // Pending: label only, filled once the loop's scan lands. No Bible: nothing to open.
+  if (versePending || biblePath.empty()) return;
+
+  if (!HOME_VERSE.hasPick()) {
+    const char* hint =
+        HOME_VERSE.empty() == home_verse::Empty::TooLong ? tr(STR_HOME_TAGS_TOO_LONG) : tr(STR_HOME_TAGS_EMPTY);
+    drawTextIn(renderer, SMALL_FONT_ID, layout.verseText, hint, 0, true);
+    return;
+  }
+
+  const home_verse::Pick& pick = HOME_VERSE.pick();
+  const int font = HomeVerse::FONT_IDS[pick.rung];
+  const EpdFontFamily::Style style = HomeVerse::FONT_STYLES[pick.rung];
+  const int lineHeight = renderer.getLineHeight(font);
+  for (uint8_t i = 0; i < pick.lineCount; ++i) {
+    renderer.drawText(font, layout.verseText.x, layout.verseText.y + i * lineHeight, pick.line(i), true, style);
+  }
+  const int referenceWidth = renderer.getTextWidth(SMALL_FONT_ID, pick.reference, EpdFontFamily::BOLD);
+  renderer.drawText(SMALL_FONT_ID, layout.verseReference.x + layout.verseReference.width - referenceWidth,
+                    layout.verseReference.y, pick.reference, true, EpdFontFamily::BOLD);
+}
+
+void LauncherActivity::drawMeetings() const {
+  const Box& card = layout.meetings;
+  renderer.drawRoundedRect(card.x, card.y, card.width, card.height, isSelected(Target::Meetings) ? 3 : 1, RADIUS, true);
+  renderer.drawIcon(LibraryIcon, layout.meetingsIcon.x, layout.meetingsIcon.y, HomeLayout::ICON);
+  renderer.drawText(UI_10_FONT_ID, layout.meetingsTitle.x, layout.meetingsTitle.y, tr(STR_MEETINGS), true,
+                    EpdFontFamily::BOLD);
+  if (percentLine[0] != '\0') {
+    drawTextIn(renderer, SMALL_FONT_ID, layout.meetingsPercent, percentLine, 0, true);
+  }
+  if (!hasWeek) return;
+
+  if (rangeLine[0] != '\0') drawTextIn(renderer, SMALL_FONT_ID, layout.meetingsRange, rangeLine, 0, true);
+
+  const int letterHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  const int dayHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  for (size_t i = 0; i < strip.size(); ++i) {
+    const WeekStripCell& cell = strip[i];
+    const Box cellBox{layout.strip.x + static_cast<int>(i) * HomeLayout::STRIP_CELL, layout.strip.y,
+                      HomeLayout::STRIP_CELL, letterHeight + dayHeight};
+    const bool black = !cell.today;
+    if (cell.today) {
+      renderer.fillRoundedRect(cellBox.x + 1, cellBox.y, cellBox.width - 2, cellBox.height, RADIUS / 2, Color::Black);
+    }
+    drawCentredIn(renderer, SMALL_FONT_ID, Box{cellBox.x - PAD, cellBox.y, cellBox.width + 2 * PAD, letterHeight},
+                  cellBox.y, stripLetters[i], black);
+    char day[4];
+    snprintf(day, sizeof(day), "%u", static_cast<unsigned>(cell.day));
+    drawCentredIn(renderer, UI_10_FONT_ID, Box{cellBox.x - PAD, cellBox.y, cellBox.width + 2 * PAD, dayHeight},
+                  cellBox.y + letterHeight, day, black);
+    if (cell.meeting) {
+      const int dotX = cellBox.x + (cellBox.width - HomeLayout::STRIP_DOT) / 2;
+      const int dotY = cellBox.y + cellBox.height + (PAD - HomeLayout::STRIP_DOT) / 2;
+      renderer.fillRoundedRect(dotX, dotY, HomeLayout::STRIP_DOT, HomeLayout::STRIP_DOT, HomeLayout::STRIP_DOT / 2,
+                               Color::Black);
+    }
+  }
+}
+
+void LauncherActivity::drawIconTile(const Box& box, const uint8_t* icon, const char* label, const bool selected) const {
+  renderer.drawRoundedRect(box.x, box.y, box.width, box.height, selected ? 3 : 1, RADIUS, true);
+  renderer.drawIcon(icon, box.x + (box.width - HomeLayout::ICON) / 2, box.y + PAD, HomeLayout::ICON);
+  drawCentredIn(renderer, SMALL_FONT_ID, box, box.y + 2 * PAD + HomeLayout::ICON, label, true, EpdFontFamily::BOLD);
 }
 
 void LauncherActivity::render(RenderLock&&) {
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = renderer.getScreenWidth();
-
   renderer.clearScreen();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_BEREAN));
-
-  drawCoverTile(rects[0], bibleCoverPath, tr(STR_BIBLE), bibleSubtitle.c_str(), BookIcon, selected == 0,
-                CoverBandGeometry::BOOK_TITLE_BAND);
-  drawCoverTile(rects[1], meetingsCoverPath, tr(STR_MEETINGS),
-                meetingsSubtitle.empty() ? nullptr : meetingsSubtitle.c_str(), LibraryIcon, selected == 1,
-                CoverBandGeometry::MAGAZINE_MASTHEAD_BAND);
-  // Buscar has landed, so the tile no longer carries a "coming soon" subtitle.
-  drawTile(rects[2], tr(STR_PUBLICATIONS), nullptr, selected == 2, false, {}, SearchIcon);
-  drawTile(rects[3], tr(STR_SETTINGS_TITLE), nullptr, selected == 3, false, {}, Settings2Icon);
-
-  // The resume strip is deliberately a one-line label over its book's title:
-  // it is the fast path out of the launcher, not another shelf.
-  const TileRect& resume = rects[4];
-  if (hasResume) {
-    drawTile(resume, tr(STR_CONTINUE_READING), resumeTitle.c_str(), selected == 4, false, {}, nullptr);
-  }
+  drawHero();
+  drawRecent();
+  drawVerse();
+  drawMeetings();
+  drawIconTile(layout.icons[0], BookmarkIcon, tr(STR_TAGS), isSelected(Target::Tags));
+  drawIconTile(layout.icons[1], SearchIcon, tr(STR_SEARCH), isSelected(Target::Search));
+  drawIconTile(layout.icons[2], FolderIcon, tr(STR_PUBLICATIONS), isSelected(Target::Publications));
+  drawIconTile(layout.icons[3], Settings2Icon, tr(STR_SETTINGS_TITLE), isSelected(Target::Settings));
 
   const bool cleanPaint = launcherNeedsCleanPaint(cleanInitialRefresh, firstRenderDone);
   const auto mode = cleanPaint ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
@@ -404,91 +403,117 @@ void LauncherActivity::render(RenderLock&&) {
   firstRenderDone = true;
 }
 
-void LauncherActivity::activate(const Tile tile) {
-  switch (tile) {
-    case Tile::Bible:
-      openBible();
-      break;
-    case Tile::Meetings:
+void LauncherActivity::activate(const Target target) {
+  const HomeTargets::Route route = HomeTargets::route(target, targetState());
+  switch (route.action) {
+    case HomeTargets::Action::None:
+      return;
+    case HomeTargets::Action::OpenReader:
+      openReader(route, target);
+      return;
+    case HomeTargets::Action::DownloadBible:
+      openBibleDownload();
+      return;
+    case HomeTargets::Action::OpenMeetings:
       openMeetings();
-      break;
-    case Tile::Search:
+      return;
+    case HomeTargets::Action::OpenPublications:
       openPublications();
-      break;
-    case Tile::Settings:
-      openSettings();
-      break;
-    case Tile::Resume:
-      if (hasResume) activityManager.goToReader(resumePath, /*allowFastInitialRefresh=*/true);
-      break;
-    default:
-      break;
+      return;
+    case HomeTargets::Action::OpenSettings:
+      activityManager.goToSettings();
+      return;
   }
 }
 
-void LauncherActivity::openBible() {
-  if (!biblePath.empty()) {
-    activityManager.goToReader(biblePath);
-    return;
+void LauncherActivity::openReader(const HomeTargets::Route& route, const Target target) {
+  ReaderEntryIntent intent = ReaderEntryIntent::of(route.intent);
+  if (route.intent == ReaderEntryIntent::Kind::OpenAt) {
+    if (target == Target::Continue) {
+      intent = ReaderEntryIntent::openAt(newestPlace);
+    } else if (target == Target::Verse) {
+      // The passage's own spine is the hint StudyStore::locate passes too: only a
+      // Verse unit can be found without it.
+      intent.unit = HOME_VERSE.pick().start;
+      intent.spineHint = HOME_VERSE.pick().spine;
+    } else {
+      const uint8_t slot = static_cast<uint8_t>(target) - static_cast<uint8_t>(Target::Recent0);
+      intent = ReaderEntryIntent::openAt(recentPlaces[slot]);
+    }
   }
+  activityManager.goToReader(biblePath, route.allowFastInitialRefresh, intent);
+}
+
+void LauncherActivity::openBibleDownload() {
   auto download = makeUniqueNoThrow<BibleDownloadActivity>(renderer, mappedInput);
   if (!download) {
     LOG_ERR(MODULE, "OOM: Bible download activity");
     return;
   }
-  // Back to the launcher rather than into the Bible: the tile then shows what
-  // arrived, and a first open's indexing popup does not follow straight on
-  // from a screen the user just watched download.
-  startActivityForResult(std::move(download), [this](const ActivityResult&) {
-    resolveTargets();
-    requestUpdate();
-  });
+  // Back to Home rather than into the Bible: Home then shows what arrived, and a
+  // first open's indexing popup does not follow straight on from a screen the
+  // user just watched download.
+  startActivityForResult(std::move(download), [this](const ActivityResult&) { resolveTargets(); });
 }
 
 void LauncherActivity::openMeetings() {
   startActivityForResult(std::make_unique<MeetingsActivity>(renderer, mappedInput),
-                         [this](const ActivityResult&) { requestUpdate(); });
+                         [this](const ActivityResult&) { resolveMeetings(); });
 }
 
 void LauncherActivity::openPublications() {
-  startActivityForResult(std::make_unique<PublicationsActivity>(renderer, mappedInput), [this](const ActivityResult&) {
-    // A download changes what the Bible and resume tiles can offer.
-    resolveTargets();
-    requestUpdate();
-  });
+  // A download changes what the Bible and its cover can offer.
+  startActivityForResult(std::make_unique<PublicationsActivity>(renderer, mappedInput),
+                         [this](const ActivityResult&) { resolveTargets(); });
 }
 
-void LauncherActivity::openSettings() { activityManager.goToSettings(); }
-
 void LauncherActivity::loop() {
+  if (versePending) {
+    // Home goes on the panel before the scan, so the first tap never waits on it.
+    requestUpdateAndWait();
+    HOME_VERSE.ensure(renderer, layout.verseText.width, layout.verseText.height);
+    versePending = false;
+    logMemory("after the verse");
+    requestUpdate();
+    return;
+  }
+
   // No mappedInput.update() here. main.cpp's loop already ticked HalGPIO this
   // frame, and InputManager::update() clears every one-shot edge it latched
   // (InputManager.cpp:434-442) -- a second tick wipes the tap and the button
   // release before this function can read them.
+  const HomeTargets::State state = targetState();
   int touchX = 0;
   int touchY = 0;
   if (mappedInput.wasScreenTapped(touchX, touchY)) {
-    for (size_t i = 0; i < static_cast<size_t>(Tile::COUNT); ++i) {
-      if (i == static_cast<size_t>(Tile::Resume) && !hasResume) continue;
-      if (!rects[i].contains(touchX, touchY)) continue;
-      selected = static_cast<int>(i);
-      activate(static_cast<Tile>(i));
+    for (uint8_t i = 0; i < static_cast<uint8_t>(Target::COUNT); ++i) {
+      const auto target = static_cast<Target>(i);
+      const Box* box = boxFor(target);
+      if (box == nullptr || !HomeTargets::isActive(target, state) || !HomeLayout::contains(*box, touchX, touchY)) {
+        continue;
+      }
+      selected = target;
+      activate(target);
       return;
     }
     return;
   }
 
-  const int tileCount = hasResume ? static_cast<int>(Tile::COUNT) : static_cast<int>(Tile::COUNT) - 1;
-  buttonNavigator.onNextRelease([this, tileCount] {
-    selected = ButtonNavigator::nextIndex(selected, tileCount);
+  Target ring[static_cast<size_t>(Target::COUNT)];
+  const int count = static_cast<int>(HomeTargets::ring(state, ring, static_cast<size_t>(Target::COUNT)));
+  if (count == 0) return;
+  int position = 0;
+  for (int i = 0; i < count; ++i) {
+    if (ring[i] == selected) position = i;
+  }
+  buttonNavigator.onNextRelease([this, &ring, position, count] {
+    selected = ring[ButtonNavigator::nextIndex(position, count)];
     requestUpdate();
   });
-  buttonNavigator.onPreviousRelease([this, tileCount] {
-    selected = ButtonNavigator::previousIndex(selected, tileCount);
+  buttonNavigator.onPreviousRelease([this, &ring, position, count] {
+    selected = ring[ButtonNavigator::previousIndex(position, count)];
     requestUpdate();
   });
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    activate(static_cast<Tile>(selected));
-  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) activate(ring[position]);
 }
