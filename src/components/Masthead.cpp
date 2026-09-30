@@ -80,7 +80,7 @@ bool draw(const GfxRenderer& renderer, const std::string& coverPath, const float
   const MastheadLayout::Box band = bandBox(renderer);
   const CoverBand::Style style{focusBand, /*cornerRadius=*/0, metrics.headerHeight + 1};
 
-  const unsigned long startMs = millis();
+  [[maybe_unused]] const unsigned long startMs = millis();
   const bool drawn = CoverBand::draw(renderer, coverPath, toRect(band), style);
   LOG_DBG(MODULE, "Band %s in %lu ms", drawn ? "drawn" : "declined", millis() - startMs);
 
