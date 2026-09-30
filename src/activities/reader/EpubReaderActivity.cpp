@@ -44,6 +44,7 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SpineHtmlStream.h"
+#include "activities/PostedMessage.h"
 #include "activities/SettingsSave.h"
 #include "activities/launcher/LauncherBible.h"
 #include "activities/settings/TextSettingsActivity.h"
@@ -1495,7 +1496,9 @@ std::optional<Place> EpubReaderActivity::captureLeftPlace() {
 }
 
 void EpubReaderActivity::recordPlace(std::optional<Place> place) {
-  if (place) PLACES.record(std::move(*place));
+  // Posted, not drawn: every caller goes on to render or leave the reader, which would paint over
+  // an immediate popup (as saveSettingsOrReport does).
+  if (place && !PLACES.record(std::move(*place))) PostedMessage::post(tr(STR_PLACES_SAVE_FAILED));
 }
 
 void EpubReaderActivity::onExit() {

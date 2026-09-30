@@ -37,7 +37,8 @@ class PlacesStore : public PersistableStore<PlacesStore> {
 
   // Moves the place to the front and saves. A no-op while the file on the card is a format this
   // build refused: that file must survive, and a list the card will never hold would mislead.
-  void record(Place place);
+  // False only when the save failed, so the caller can tell the user.
+  bool record(Place place);
 
   const std::vector<Place>& getPlaces();
 };

@@ -28,21 +28,22 @@ void PlacesStore::ensureLoaded() {
   if (!loadAttempted) load();
 }
 
-void PlacesStore::record(Place place) {
+bool PlacesStore::record(Place place) {
   ensureLoaded();
   if (loadRefused) {
     if (!refusalLogged) {
       LOG_ERR("PLC", "Not recording places: %s is a format this build refused", getFilePath());
       refusalLogged = true;
     }
-    return;
+    return true;
   }
-  if (!PlacesDoc::record(places, std::move(place))) return;
+  if (!PlacesDoc::record(places, std::move(place))) return true;
   if (!saveToFileAtomic()) {
     LOG_ERR("PLC", "Failed to persist place %s", places.front().reference.c_str());
-    return;
+    return false;
   }
   LOG_DBG("PLC", "saved: %s", PlacesDoc::describe(places).c_str());
+  return true;
 }
 
 const std::vector<Place>& PlacesStore::getPlaces() {
