@@ -1,6 +1,5 @@
 #include "LauncherActivity.h"
 
-#include <Bitmap.h>
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -28,6 +27,7 @@
 #include "activities/launcher/LauncherRefresh.h"
 #include "activities/network/BibleDownloadActivity.h"
 #include "activities/network/MeetingsActivity.h"
+#include "components/CoverBand.h"
 #include "components/UITheme.h"
 #include "components/icons/book.h"
 #include "components/icons/library.h"
@@ -51,17 +51,6 @@ constexpr int TILE_GAP = 10;
 constexpr int TILE_PADDING = 8;
 constexpr int TILE_ICON_SIZE = 32;
 constexpr int TILE_RADIUS = 8;
-// A cover must be at least as large as the tile in both axes to fill it without
-// upscaling. Covers run roughly 0.6-0.75 wide-to-tall, so asking for a
-// thumbnail this many times the tile's width in height clears the tile's width
-// for anything in that range; a narrower cover is declined rather than blown up.
-constexpr float NARROWEST_COVER_ASPECT = 0.6f;
-// Where a cover's identifying mark sits, as a fraction of its height -- what the
-// crop aims to put in the middle of the visible artwork. A book prints its title
-// a little below the top edge; a magazine's masthead runs right along the top,
-// so it wants 0 and the crop simply starts at the first row.
-constexpr float BOOK_TITLE_BAND = 0.25f;
-constexpr float MAGAZINE_MASTHEAD_BAND = 0.0f;
 // Below this a cover is a smudge and an icon is cramped, so the tile drops its
 // art and centres the label instead.
 constexpr int MIN_ART_HEIGHT = TILE_ICON_SIZE + 4;
@@ -115,8 +104,8 @@ void LauncherActivity::resolveTargets() {
   if (foundBible) {
     biblePath = std::move(*foundBible);
     bibleSubtitle = bibleTitleFor(biblePath, recents);
-    bibleCoverPath =
-        CoverThumb::pathFor(biblePath, coverFillHeight(rects[static_cast<size_t>(Tile::Bible)]), generatedAny);
+    const TileRect& bibleTile = rects[static_cast<size_t>(Tile::Bible)];
+    bibleCoverPath = CoverBand::thumbPathFor(biblePath, bibleTile.w, bibleTile.h, generatedAny);
     // The sleep screen paints this too, and it runs while the device is shutting
     // down -- far too late to search for the Bible or open it.
     if (APP_STATE.bibleCoverPath != bibleCoverPath) {
@@ -140,8 +129,8 @@ void LauncherActivity::resolveTargets() {
   if (!meetingPath) meetingPath = findMeetingPublicationOnCard();
   LOG_INF(MODULE, "Meeting publication: %s", meetingPath ? meetingPath->c_str() : "(none found)");
   if (meetingPath) {
-    meetingsCoverPath =
-        CoverThumb::pathFor(*meetingPath, coverFillHeight(rects[static_cast<size_t>(Tile::Meetings)]), generatedAny);
+    const TileRect& meetingsTile = rects[static_cast<size_t>(Tile::Meetings)];
+    meetingsCoverPath = CoverBand::thumbPathFor(*meetingPath, meetingsTile.w, meetingsTile.h, generatedAny);
     const auto opened =
         std::find_if(recents.begin(), recents.end(), [&](const RecentBook& book) { return book.path == *meetingPath; });
     if (opened != recents.end()) meetingsSubtitle = utf8SafeSummary(opened->title, 30);
@@ -250,16 +239,6 @@ int LauncherActivity::tileArtHeight(const TileRect& rect, const bool hasSubtitle
   return rect.h - tileTextHeight(SMALL_FONT_ID, hasSubtitle) - 3 * TILE_PADDING;
 }
 
-// The Bible tile puts its cover beside the label rather than above it, so the
-// cover gets the tile's full height instead of the third left over under a
-// centred caption.
-// A cover used as a tile background must cover the tile on both axes before
-// anything is cropped away. The tile's WIDTH is what binds: covers are portrait,
-// so a thumbnail tall enough to fill the height is still far too narrow.
-int LauncherActivity::coverFillHeight(const TileRect& tile) {
-  return std::max(tile.h, static_cast<int>(static_cast<float>(tile.w) / NARROWEST_COVER_ASPECT));
-}
-
 int LauncherActivity::tileTextHeight(const int titleFont, const bool hasSubtitle) const {
   return renderer.getLineHeight(titleFont) + (hasSubtitle ? renderer.getLineHeight(SMALL_FONT_ID) : 0);
 }
@@ -320,57 +299,6 @@ void LauncherActivity::drawTileArt(const int x, const int y, const int w, const 
   renderer.drawIcon(icon, x + (w - TILE_ICON_SIZE) / 2, y + (h - TILE_ICON_SIZE) / 2, TILE_ICON_SIZE);
 }
 
-// Blits the cover across the whole tile at 1:1, cropped rather than scaled:
-// anchored to the cover's top so its own title art survives, centred
-// horizontally, and clipped to the tile so it cannot bleed into its neighbours.
-// GfxRenderer has no clip region and drawBitmap only ever scales DOWN, so the
-// row walk is done here. Resampling is deliberately absent -- these thumbnails
-// are dithered 1-bit and any resampling turns them into static.
-bool LauncherActivity::drawCoverFilling(const std::string& coverPath, const TileRect& rect, const int visibleHeight,
-                                        const float focusBand) const {
-  if (coverPath.empty()) return false;
-  HalFile file;
-  if (!Storage.openFileForRead(MODULE, coverPath, file)) return false;
-
-  Bitmap bitmap(file);
-  if (bitmap.parseHeaders() != BmpReaderError::Ok) return false;
-  const int width = bitmap.getWidth();
-  const int height = bitmap.getHeight();
-  if (width < rect.w || height < rect.h) return false;
-
-  auto packedRow = makeUniqueNoThrow<uint8_t[]>((width + 3) / 4);
-  auto rowScratch = makeUniqueNoThrow<uint8_t[]>(bitmap.getRowBytes());
-  if (!packedRow || !rowScratch) {
-    LOG_ERR(MODULE, "OOM: cover row buffers");
-    return false;
-  }
-
-  const int xOffset = (width - rect.w) / 2;
-  // Vertical crop is aimed rather than anchored. A book puts its title in the
-  // upper part of the cover, so centring the whole cover buries the title above
-  // the crop and anchoring at the top strands it down against the plate;
-  // centring the title band on the artwork that is actually visible -- the tile
-  // less the caption plate covering its foot -- keeps it where the eye lands.
-  const int focusRow = static_cast<int>(static_cast<float>(height) * focusBand);
-  const int yOffset = std::clamp(focusRow - visibleHeight / 2, 0, height - rect.h);
-
-  for (int row = 0; row < height; ++row) {
-    if (bitmap.readNextRow(packedRow.get(), rowScratch.get()) != BmpReaderError::Ok) return false;
-    // Rows arrive in file order; a bottom-up BMP delivers the cover's last row
-    // first, so the source row has to be resolved before it can be discarded.
-    const int sourceRow = bitmap.isTopDown() ? row : height - 1 - row;
-    if (sourceRow < yOffset || sourceRow >= yOffset + rect.h) continue;
-
-    const int screenY = rect.y + sourceRow - yOffset;
-    for (int column = 0; column < rect.w; ++column) {
-      const int sourceColumn = column + xOffset;
-      const uint8_t value = packedRow[sourceColumn / 4] >> (6 - ((sourceColumn * 2) % 8)) & 0x3;
-      if (value < 3) renderer.drawPixel(rect.x + column, screenY, true);
-    }
-  }
-  return true;
-}
-
 // Cover as the tile's background with the label over it. Drawing order is the
 // z-order here, so the caption plate and its text simply go down last; the
 // plate is opaque because a dithered cover underneath would otherwise shred the
@@ -381,22 +309,15 @@ void LauncherActivity::drawCoverTile(const TileRect& rect, const std::string& co
                                      const float focusBand) const {
   const bool hasSubtitle = subtitle != nullptr && subtitle[0] != '\0';
   const int plateHeight = tileTextHeight(UI_10_FONT_ID, hasSubtitle) + 2 * TILE_PADDING;
+  const Rect band{rect.x, rect.y, rect.w, rect.h};
+  const CoverBand::Style style{focusBand, TILE_RADIUS, plateHeight};
 
-  if (!drawCoverFilling(coverPath, rect, rect.h - plateHeight, focusBand)) {
+  if (!CoverBand::draw(renderer, coverPath, band, style)) {
     drawTile(rect, title, subtitle, selected, /*emphasised=*/true, {}, icon);
     return;
   }
 
-  // The cover was blitted as a rectangle, so its corners sit outside the rounded
-  // border about to be drawn over them. Masking them back to paper first is what
-  // stops the art poking out past the arc.
-  renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, rect.w, rect.h, TILE_RADIUS);
-
-  const int plateTop = rect.y + rect.h - plateHeight;
-  renderer.fillRoundedRect(rect.x, plateTop, rect.w, plateHeight, TILE_RADIUS, /*roundTopLeft=*/false,
-                           /*roundTopRight=*/false, /*roundBottomLeft=*/true, /*roundBottomRight=*/true, Color::White);
-  renderer.drawLine(rect.x, plateTop, rect.x + rect.w - 1, plateTop, true);
-  drawCenteredIn(rect.x, rect.w, plateTop + TILE_PADDING, title, subtitle);
+  drawCenteredIn(rect.x, rect.w, CoverBand::plateRect(band, style).y + TILE_PADDING, title, subtitle);
   renderer.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, selected ? 3 : 1, TILE_RADIUS, true);
 }
 
@@ -459,10 +380,10 @@ void LauncherActivity::render(RenderLock&&) {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_BEREAN));
 
   drawCoverTile(rects[0], bibleCoverPath, tr(STR_BIBLE), bibleSubtitle.c_str(), BookIcon, selected == 0,
-                BOOK_TITLE_BAND);
+                CoverBandGeometry::BOOK_TITLE_BAND);
   drawCoverTile(rects[1], meetingsCoverPath, tr(STR_MEETINGS),
                 meetingsSubtitle.empty() ? nullptr : meetingsSubtitle.c_str(), LibraryIcon, selected == 1,
-                MAGAZINE_MASTHEAD_BAND);
+                CoverBandGeometry::MAGAZINE_MASTHEAD_BAND);
   // Buscar has landed, so the tile no longer carries a "coming soon" subtitle.
   drawTile(rects[2], tr(STR_PUBLICATIONS), nullptr, selected == 2, false, {}, SearchIcon);
   drawTile(rects[3], tr(STR_SETTINGS_TITLE), nullptr, selected == 3, false, {}, Settings2Icon);
