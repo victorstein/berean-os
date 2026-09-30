@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.0](https://github.com/victorstein/berean-os/compare/v1.26.0...v1.27.0) (2026-09-30)
+
+
+### Features
+
+* add recent bible places and reader entry intents ([#221](https://github.com/victorstein/berean-os/issues/221)) ([75c65e9](https://github.com/victorstein/berean-os/commit/75c65e9375538a705065c101bcf1bf0bf49a7a2e)), closes [#201](https://github.com/victorstein/berean-os/issues/201)
+
 ## [1.26.0](https://github.com/victorstein/berean-os/compare/v1.25.0...v1.26.0) (2026-09-30)
 
 
