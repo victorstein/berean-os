@@ -208,7 +208,8 @@ TEST(ReaderMenuModel, NonBibleWithoutABibleHidesBothTagEntries) {
 TEST(ReaderMenuModel, BibleIgnoresBibleReachable) {
   Flags without = BIBLE_ALL;
   without.bibleReachable = false;
-  EXPECT_EQ(allOf(ReaderMenuModel::build(inputsFor(BIBLE_ALL, 2))), allOf(ReaderMenuModel::build(inputsFor(without, 2))));
+  EXPECT_EQ(allOf(ReaderMenuModel::build(inputsFor(BIBLE_ALL, 2))),
+            allOf(ReaderMenuModel::build(inputsFor(without, 2))));
 }
 
 TEST(ReaderMenuModel, BibleReachableDefaultsToHidden) {
