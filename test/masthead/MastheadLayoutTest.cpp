@@ -4,6 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+#include <vector>
+
 #include "activities/reader/NumberGridLayout.h"
 #include "components/CoverBandGeometry.h"
 #include "components/MastheadLayout.h"
@@ -94,4 +97,28 @@ TEST(MastheadLayout, ChapterGridKeepsSevenByTenOnBothThemes) {
     EXPECT_EQ(grid.rows, 10) << "body height " << bodyHeight;
     EXPECT_GE(NumberGrid::cellSizeFor(SCREEN_W, bodyHeight, grid), NumberGrid::MIN_CELL);
   }
+}
+
+TEST(MastheadCandidates, OpenedListedBooksLeadThenListOrder) {
+  const std::vector<std::string> recents{"/b.epub", "/gone.epub", "/c.epub"};
+  const std::vector<std::string> listed{"/a.epub", "/b.epub", "/c.epub", "/d.epub"};
+  EXPECT_EQ(MastheadLayout::coverCandidates(recents, listed, 8),
+            (std::vector<std::string>{"/b.epub", "/c.epub", "/a.epub", "/d.epub"}));
+}
+
+TEST(MastheadCandidates, DuplicatesAreDropped) {
+  const std::vector<std::string> recents{"/b.epub", "/b.epub"};
+  const std::vector<std::string> listed{"/a.epub", "/b.epub"};
+  EXPECT_EQ(MastheadLayout::coverCandidates(recents, listed, 8), (std::vector<std::string>{"/b.epub", "/a.epub"}));
+}
+
+TEST(MastheadCandidates, CapHolds) {
+  const std::vector<std::string> recents{"/c.epub", "/b.epub"};
+  const std::vector<std::string> listed{"/a.epub", "/b.epub", "/c.epub"};
+  EXPECT_EQ(MastheadLayout::coverCandidates(recents, listed, 2), (std::vector<std::string>{"/c.epub", "/b.epub"}));
+  EXPECT_EQ(MastheadLayout::coverCandidates({}, listed, 1), (std::vector<std::string>{"/a.epub"}));
+}
+
+TEST(MastheadCandidates, AnEmptyCardHasNone) {
+  EXPECT_TRUE(MastheadLayout::coverCandidates({"/b.epub"}, {}, 8).empty());
 }
