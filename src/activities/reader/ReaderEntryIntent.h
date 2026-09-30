@@ -32,7 +32,7 @@ struct ReaderEntryIntent {
     return intent;
   }
 
-  // Places and verse search exist only in the Bible; outside it the grid is the TOC list.
+  // Places, verse search and tags exist only in the Bible; outside it the grid is the TOC list.
   static constexpr Route route(const Kind kind, const bool isBible) {
     switch (kind) {
       case Kind::OpenAt:
@@ -42,7 +42,7 @@ struct ReaderEntryIntent {
       case Kind::Search:
         return isBible ? Route::Search : Route::None;
       case Kind::Tags:
-        return Route::Highlights;
+        return isBible ? Route::Highlights : Route::None;
       case Kind::None:
         return Route::None;
     }
