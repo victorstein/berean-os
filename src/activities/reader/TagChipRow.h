@@ -96,7 +96,7 @@ struct Candidate {
 
 // The chips to offer, in display order: All, each active tag with a non-zero count, then
 // Unlabelled when non-zero. A zero-count chip stays while it is the active filter, so an empty list
-// still shows why (the palette is global, so most zeros are tags of other publications or chapters).
+// still shows why (the palette is global, so in Tags here most zeros are tags from other chapters).
 inline void candidates(const Counts& counts, const std::vector<study::TagId>& activeIds,
                        const std::optional<study::TagId> filter, const size_t cap, std::vector<Candidate>& out) {
   out.clear();
