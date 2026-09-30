@@ -37,6 +37,9 @@ struct ThemeMetrics {
   int contentSidePadding;
   int listRowHeight;
   int listWithSubtitleRowHeight;
+  // Touch height for one-line list rows; 0 keeps FreeInkUI's label-plus-
+  // subtitle rowHeight token.
+  int touchListRowHeight = 0;
   // FreeInkUI list shape, consumed by uiThemeTokens() for screens rendered
   // through FreeInkApp: the theme supplies geometry and selection style, the
   // uiScale fonts supply the sizes. Plain data by design — the eventual
@@ -55,8 +58,8 @@ struct ThemeMetrics {
   int headerTitleAlign;     // 0 = left, 1 = center, 2 = right (fui::TextAlign order)
   int headerBatterySide;    // 0 = right edge, 1 = left edge
   // Battery in its own corner strip (batteryBarHeight tall) with the title on
-  // the lower sub-band spanning the full width (Lyra), vs sharing the title
-  // line with a width reserve (Classic).
+  // the lower sub-band spanning the full width, vs sharing the title line
+  // with a width reserve.
   bool headerBatteryDetached;
 
   int tabSpacing;

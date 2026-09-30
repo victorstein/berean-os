@@ -7,6 +7,7 @@
 
 #include "MappedInputManager.h"
 #include "PostedMessage.h"
+#include "components/ListRowHeight.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -121,19 +122,20 @@ void UiListActivity::navigateButtons() {
 }
 
 void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, const bool hasSubtitle) {
-  int16_t rowHeight = screen.theme().rowHeight;
-  if (!mappedInput.hasTouch()) {
-    // Non-touch hardware (X3/X4) keeps the original, denser per-theme row
-    // height instead of FreeInkUI's touch-target-sized default, so lists fit
-    // as many rows per screen as they did before the FreeInkUI migration.
-    // props.rowHeight must be set explicitly: screen.list() otherwise falls
-    // back to the (touch-friendly) theme token, not this local value.
-    // A label that must wrap (labelText.maxLines > 1) grows only its own row:
-    // list() sizes wrapped items per-row, so the dense height stays.
-    const auto& metrics = UITheme::getInstance().getMetrics();
-    rowHeight = static_cast<int16_t>(hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight);
-    props.rowHeight = rowHeight;
-  }
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  // props.rowHeight is always written: screen.list() otherwise falls back to
+  // the theme's label-plus-subtitle token, not the height paged by here. A
+  // label that must wrap (labelText.maxLines > 1) grows only its own row.
+  ListRowHeight::Inputs in;
+  in.touch = mappedInput.hasTouch();
+  in.hasSubtitle = hasSubtitle;
+  in.tokenRowHeight = screen.theme().rowHeight;
+  in.minTouchSize = screen.theme().minTouchSize;
+  in.denseRow = metrics.listRowHeight;
+  in.denseSubtitleRow = metrics.listWithSubtitleRowHeight;
+  in.touchSingleRow = metrics.touchListRowHeight;
+  const int16_t rowHeight = ListRowHeight::resolve(in);
+  props.rowHeight = rowHeight;
   activeNav().syncToProps(screen.body(), rowHeight, screen.theme().listRowGap, listCount(), props);
 }
 

@@ -26,7 +26,6 @@
 #include "CrossPointState.h"
 #include "StudySleepFit.h"
 #include "StudySleepPick.h"
-#include "StudyStore/ChapterCompletion.h"
 #include "StudyStore/PassageDoc.h"
 #include "StudyStore/PubKey.h"
 #include "StudyStore/TagPalette.h"
@@ -51,10 +50,6 @@ constexpr int SIDE_MARGIN = 24;
 constexpr int SECTION_GAP = 18;
 constexpr int PILL_PAD_X = 12;
 constexpr int PILL_PAD_Y = 4;
-constexpr int STRIP_MAX_BAR = 48;
-constexpr int STRIP_MIN_BAR = 3;
-constexpr int STRIP_BAR_GAP = 2;
-constexpr int STRIP_CAPTION_GAP = 6;
 constexpr int MARK_SIZE = 40;
 constexpr int MARK_TEXT_GAP = 4;
 constexpr int FOOTER_BOTTOM_GAP = 16;
@@ -75,7 +70,6 @@ constexpr uint8_t FLOOR_SIZE = 4;
 struct Chrome {
   bool date;
   bool tag;
-  bool progress;
 };
 
 struct Rung {
@@ -85,13 +79,8 @@ struct Rung {
 
 // Largest first; the first rung that holds the whole passage wins (issue #188).
 constexpr Rung RUNGS[] = {
-    {0, {true, true, true}},
-    {1, {true, true, true}},
-    {2, {true, true, true}},
-    {SERIF_12, {true, true, true}},
-    {SERIF_12, {true, true, false}},
-    {SERIF_12, {false, false, false}},
-    {FLOOR_SIZE, {false, false, false}},
+    {0, {true, true}},        {1, {true, true}},          {2, {true, true}},
+    {SERIF_12, {true, true}}, {SERIF_12, {false, false}}, {FLOOR_SIZE, {false, false}},
 };
 constexpr uint8_t RUNG_COUNT = sizeof(RUNGS) / sizeof(RUNGS[0]);
 constexpr uint8_t FLOOR_RUNG = RUNG_COUNT - 1;
@@ -116,11 +105,9 @@ struct ScreenContent {
   const study_sleep::Candidate* passage = nullptr;
   const char* dateLine = nullptr;
   std::string tagName;
-  const study::ChapterCompletion* progress = nullptr;
 };
 
 struct Layout {
-  int left = 0;
   int width = 0;
   int pageWidth = 0;
   int viewTop = 0;
@@ -148,10 +135,6 @@ int measurePassage(const void* ctx, const uint8_t sizeIndex, const char* text) {
                                                             PASSAGE_FONT_STYLES[sizeIndex]);
 }
 
-int progressHeight(const GfxRenderer& renderer) {
-  return STRIP_MAX_BAR + STRIP_CAPTION_GAP + renderer.getLineHeight(SMALL_FONT_ID);
-}
-
 Layout measureLayout(const GfxRenderer& renderer) {
   int viewTop = 0;
   int viewRight = 0;
@@ -161,7 +144,6 @@ Layout measureLayout(const GfxRenderer& renderer) {
 
   Layout layout;
   layout.pageWidth = renderer.getScreenWidth();
-  layout.left = viewLeft + SIDE_MARGIN;
   layout.width = layout.pageWidth - viewLeft - viewRight - 2 * SIDE_MARGIN;
   layout.viewTop = viewTop;
   layout.serifLine = renderer.getLineHeight(NOTOSERIF_18_FONT_ID);
@@ -175,22 +157,20 @@ Layout measureLayout(const GfxRenderer& renderer) {
 }
 
 // Everything but the passage lines, the quote mark included.
-int chromeHeight(const GfxRenderer& renderer, const Layout& layout, const Chrome& chrome, const bool hasDate,
-                 const bool hasReference, const bool hasTag, const bool hasProgress) {
+int chromeHeight(const Layout& layout, const Chrome& chrome, const bool hasDate, const bool hasReference,
+                 const bool hasTag) {
   int height = layout.serifLine;
   if (chrome.date && hasDate) height += layout.uiLine + SECTION_GAP;
   if (hasReference) height += SECTION_GAP + layout.uiLine;
   if (chrome.tag && hasTag) height += SECTION_GAP + layout.pillHeight;
-  if (chrome.progress && hasProgress) height += SECTION_GAP * 2 + progressHeight(renderer);
   return height;
 }
 
 study_sleep::FitRung fitRung(const GfxRenderer& renderer, const Layout& layout, const uint8_t rung, const bool hasDate,
-                             const bool hasReference, const bool hasTag, const bool hasProgress) {
+                             const bool hasReference, const bool hasTag) {
   const uint8_t sizeIndex = RUNGS[rung].sizeIndex;
   return {sizeIndex, renderer.getLineHeight(PASSAGE_FONT_IDS[sizeIndex]),
-          layout.areaBottom - layout.viewTop -
-              chromeHeight(renderer, layout, RUNGS[rung].chrome, hasDate, hasReference, hasTag, hasProgress)};
+          layout.areaBottom - layout.viewTop - chromeHeight(layout, RUNGS[rung].chrome, hasDate, hasReference, hasTag)};
 }
 
 bool fitsFloorRung(const FitGate& gate, const std::string_view text) {
@@ -341,75 +321,19 @@ std::string tagName(const uint16_t rawTag) {
   return palette.name(study::toTagId(rawTag));
 }
 
-// A missing record is an empty strip: the user has not read yet. Only a record
-// that exists but cannot be trusted hides the strip.
-bool loadCompletion(study::ChapterCompletion& record) {
-  char path[64];
-  snprintf(path, sizeof(path), "%s/%s.json", sdpaths::COMPLETION_DIR, study::BIBLE_PUB_KEY);
-  JsonDocument doc;
-  switch (PersistableStoreBase::readDocFromFileChecked(path, doc)) {
-    case DocReadStatus::Missing:
-      return true;
-    case DocReadStatus::Ok:
-      if (record.fromJson(doc.as<JsonVariantConst>())) return true;
-      LOG_ERR(MODULE, "Chapter record rejected; no progress strip");
-      return false;
-    default:
-      LOG_ERR(MODULE, "Chapter record unreadable; no progress strip");
-      return false;
-  }
-}
-
-void drawProgress(const GfxRenderer& renderer, const study::ChapterCompletion& record, const int left, const int width,
-                  const int top) {
-  const int slot = width / study::BIBLE_BOOK_COUNT;
-  const int barWidth = std::max(1, slot - STRIP_BAR_GAP);
-  const int stripLeft = left + (width - slot * study::BIBLE_BOOK_COUNT) / 2;
-
-  uint8_t longestBook = 1;
-  for (uint8_t book = 1; book <= study::BIBLE_BOOK_COUNT; ++book) {
-    longestBook = std::max(longestBook, study::canonicalChapterCount(book));
-  }
-
-  unsigned finishedBooks = 0;
-  for (uint8_t book = 1; book <= study::BIBLE_BOOK_COUNT; ++book) {
-    const int chapters = study::canonicalChapterCount(book);
-    const int read = record.readCountInBook(book);
-    const int barHeight = std::max(STRIP_MIN_BAR, STRIP_MAX_BAR * chapters / longestBook);
-    const int x = stripLeft + (book - 1) * slot;
-    const int barTop = top + STRIP_MAX_BAR - barHeight;
-    if (read >= chapters) {
-      renderer.fillRect(x, barTop, barWidth, barHeight, true);
-      ++finishedBooks;
-      continue;
-    }
-    renderer.drawRect(x, barTop, barWidth, barHeight, true);
-    const int filled = barHeight * read / chapters;
-    if (filled > 0) renderer.fillRect(x, barTop + barHeight - filled, barWidth, filled, true);
-  }
-
-  char finished[48];
-  snprintf(finished, sizeof(finished), tr(STR_BOOKS_FINISHED), finishedBooks);
-  char caption[96];
-  snprintf(caption, sizeof(caption), "%u / %u   %s", static_cast<unsigned>(record.readCount()),
-           static_cast<unsigned>(study::CANONICAL_CHAPTER_TOTAL), finished);
-  renderer.drawCenteredText(SMALL_FONT_ID, top + STRIP_MAX_BAR + STRIP_CAPTION_GAP, caption);
-}
-
 void drawScreen(const GfxRenderer& renderer, const Layout& layout, const ScreenContent& content,
                 const study_sleep::FitResult& passage) {
   const Chrome& chrome = RUNGS[passage.rung].chrome;
   const bool hasReference = content.passage->reference[0] != '\0';
   const bool showDate = chrome.date && content.dateLine != nullptr;
   const bool showTag = chrome.tag && !content.tagName.empty();
-  const bool showProgress = chrome.progress && content.progress != nullptr;
   const uint8_t sizeIndex = RUNGS[passage.rung].sizeIndex;
   const int passageFont = PASSAGE_FONT_IDS[sizeIndex];
   const int passageLine = renderer.getLineHeight(passageFont);
 
-  const int blockHeight = chromeHeight(renderer, layout, chrome, content.dateLine != nullptr, hasReference,
-                                       !content.tagName.empty(), content.progress != nullptr) +
-                          static_cast<int>(passage.lines.size()) * passageLine;
+  const int blockHeight =
+      chromeHeight(layout, chrome, content.dateLine != nullptr, hasReference, !content.tagName.empty()) +
+      static_cast<int>(passage.lines.size()) * passageLine;
   int y = layout.viewTop + std::max(0, (layout.areaBottom - layout.viewTop - blockHeight) / 2);
 
   // The "Entering sleep" popup is still in the framebuffer.
@@ -439,10 +363,6 @@ void drawScreen(const GfxRenderer& renderer, const Layout& layout, const ScreenC
     renderer.drawCenteredText(SMALL_FONT_ID, y + PILL_PAD_Y, content.tagName.c_str());
     y += layout.pillHeight;
   }
-  if (showProgress) {
-    y += SECTION_GAP * 2;
-    drawProgress(renderer, *content.progress, layout.left, layout.width, y);
-  }
 
   berean_mark::draw(renderer, (layout.pageWidth - MARK_SIZE) / 2, layout.markY, MARK_SIZE);
   renderer.drawCenteredText(SMALL_FONT_ID, layout.footerTextY, tr(STR_BEREAN));
@@ -464,7 +384,7 @@ bool render(const GfxRenderer& renderer) {
   FitGate gate;
   gate.renderer = &renderer;
   gate.width = layout.width;
-  gate.floor = fitRung(renderer, layout, FLOOR_RUNG, false, true, false, false);
+  gate.floor = fitRung(renderer, layout, FLOOR_RUNG, false, true, false);
   // Logged so a tester can compare what the floor rung really holds against FIT_PREFILTER_BYTES.
   constexpr const char* SAMPLE_TEN = "abcdefghij";
   const int sampleWidth = measurePassage(&renderer, gate.floor.sizeIndex, SAMPLE_TEN);
@@ -489,17 +409,11 @@ bool render(const GfxRenderer& renderer) {
   char dateLine[48];
   if (formatDate(dateLine, sizeof(dateLine))) content.dateLine = dateLine;
   content.tagName = tagName(passage.tag);
-  auto completion = makeUniqueNoThrow<study::ChapterCompletion>();
-  if (!completion) {
-    LOG_ERR(MODULE, "OOM: chapter record; no progress strip");
-  } else if (loadCompletion(*completion)) {
-    content.progress = completion.get();
-  }
 
   study_sleep::FitRung rungs[RUNG_COUNT];
   for (uint8_t rung = 0; rung < RUNG_COUNT; ++rung) {
     rungs[rung] = fitRung(renderer, layout, rung, content.dateLine != nullptr, passage.reference[0] != '\0',
-                          !content.tagName.empty(), content.progress != nullptr);
+                          !content.tagName.empty());
   }
   const auto fitted =
       study_sleep::fitPassage(passage.text, rungs, RUNG_COUNT, layout.width, &measurePassage, &renderer);

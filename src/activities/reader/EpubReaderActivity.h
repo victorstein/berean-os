@@ -75,6 +75,10 @@ class EpubReaderActivity final : public ReaderActivity {
   int bibleChapterNumber = -1;
   int bibleChapterNumberSpine = -1;
   void resolveBibleChapterNumber();
+  // bibleChapterNumber when it was resolved for the current spine, else -1.
+  int currentBibleChapter() const;
+  // The reference ("Isaiah 40") in a Bible, the publication's title otherwise.
+  std::string readerMenuTitle() const;
 
   // Called with the RenderLock held as a forward turn leaves the current
   // document: that is what "read" means here -- paged through, no dwell time.

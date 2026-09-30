@@ -18,9 +18,8 @@
 // Tiles carry no denormalised counts. An earlier design put "12 etiquetas - 248
 // pasajes" here, which needs counters that nothing reconciles; for a device
 // whose value is being a trustworthy record, a visibly wrong number is worse
-// than no number. Live state that cannot drift stays: which meeting week is
-// loaded, and chapters read -- counted from the completion record itself each
-// time the launcher opens, never kept as a separate tally.
+// than no number. Live state that cannot drift stays, such as which meeting week
+// is loaded.
 class LauncherActivity final : public Activity {
  public:
   explicit LauncherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool cleanInitialRefresh = false)
@@ -83,10 +82,6 @@ class LauncherActivity final : public Activity {
   // Resolved once on entry: the resume strip needs a book, and the Bible tile
   // needs to know whether one is on the card before offering to open it.
   void resolveTargets();
-  // Replaces the edition title once any chapter is recorded: the title is the
-  // same every day and the cover already names the edition, while this is the
-  // one thing on the tile that changes as the user reads.
-  void applyChaptersReadSubtitle();
 
   ButtonNavigator buttonNavigator;
   int selected = 0;

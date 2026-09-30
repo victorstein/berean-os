@@ -2,7 +2,7 @@
 
 class GfxRenderer;
 
-// One of the user's tagged passages, the date and the Bible progress strip, as
+// One of the user's tagged passages, with its reference and tag and the date, as
 // the sleep image. Reads /.berean/ and never writes to it.
 namespace study_sleep_screen {
 

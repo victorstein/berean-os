@@ -100,7 +100,7 @@ raise the timeout, while one is running.
 
 The launcher is the device's home. Under the **bereanOS** header it shows four tiles:
 
-- **Bible** — opens your Bible and shows how many chapters you have read. If no Bible has been found
+- **Bible** — opens your Bible. If no Bible has been found
   on the card, the tile reads **Not on the card · tap to download**, and tapping it offers to
   download the New World Translation in your **Publication language** (see
   [Finding the Bible](#finding-the-bible)).
@@ -149,7 +149,9 @@ return stack holds three positions.
 
 ## 6. The reader menu
 
-Tap the centre third of the page. The menu lists, depending on the publication:
+Tap the centre third of the page. The menu's title shows where you are: the book and chapter in a
+Bible (for example **Isaiah 40**), the publication's title otherwise. It lists, depending on the
+publication:
 
 - **Select chapter** — the table of contents, or the Bible drill-down (section 7)
 - **Search verses** — in a Bible only
@@ -368,7 +370,7 @@ The **Settings** tile on the launcher, four tabs.
 | **Quick resume** | the last page read, so waking returns to it without reloading the book |
 | **Transparent** | an overlay drawn over whatever is on screen |
 | **None** | blank |
-| **Study** | one of your marked passages, with the date when the clock is set, its reference, its first tag, and your Bible reading progress |
+| **Study** | one of your marked passages, with the date when the clock is set, its reference and its first tag |
 
 **Study** picks a different passage each time the device sleeps, favouring ones it has not shown
 recently. With no marked passages it falls back to the default screen.

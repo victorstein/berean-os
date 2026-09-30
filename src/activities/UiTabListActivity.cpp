@@ -5,6 +5,7 @@
 #include <cassert>
 
 #include "MappedInputManager.h"
+#include "components/ListRowHeight.h"
 #include "components/UITheme.h"
 
 namespace fui = freeink::ui;
@@ -73,17 +74,19 @@ void UiTabListActivity::navigateButtons() {
 void UiTabListActivity::syncTabListViewport(UiScreen& screen, fui::ListProps& props, const bool hasSubtitle) {
   const int count = listCount();
   auto& n = activeNav();
-  int16_t rowHeight = screen.theme().rowHeight;
-  if (!mappedInput.hasTouch()) {
-    // Non-touch hardware (X3/X4) keeps the original, denser per-theme row
-    // height instead of FreeInkUI's touch-target-sized default (see
-    // UiListActivity::syncListViewport, the non-tab counterpart of this).
-    const auto& metrics = UITheme::getInstance().getMetrics();
-    rowHeight = static_cast<int16_t>(hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight);
-    // Wrapped (maxLines > 1) labels grow only their own row: list() sizes
-    // wrapped items per-row, so the dense height stays for the rest.
-    props.rowHeight = rowHeight;
-  }
+  // Same row-height rule and props.rowHeight contract as
+  // UiListActivity::syncListViewport, the non-tab counterpart of this.
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  ListRowHeight::Inputs in;
+  in.touch = mappedInput.hasTouch();
+  in.hasSubtitle = hasSubtitle;
+  in.tokenRowHeight = screen.theme().rowHeight;
+  in.minTouchSize = screen.theme().minTouchSize;
+  in.denseRow = metrics.listRowHeight;
+  in.denseSubtitleRow = metrics.listWithSubtitleRowHeight;
+  in.touchSingleRow = metrics.touchListRowHeight;
+  const int16_t rowHeight = ListRowHeight::resolve(in);
+  props.rowHeight = rowHeight;
   const uint16_t rows = fui::listVisibleRows(screen.body(), rowHeight, screen.theme().listRowGap);
   n.visibleRows = rows > 0 ? rows : 1;
   if (n.followOnBuild) {

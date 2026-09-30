@@ -99,6 +99,7 @@ add_subdirectory(bible_search_scanner)
 add_subdirectory(bible_search_index)
 
 add_subdirectory(number_grid)
+add_subdirectory(ui_layout)
 
 add_subdirectory(ota_version)
 

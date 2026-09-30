@@ -325,12 +325,14 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   const bool batteryLeft = metrics.headerBatterySide == 1;
   const bool batteryDetached = metrics.headerBatteryDetached;
   // Shared-line headers with the battery on the right: the header component
-  // places rightLabel inside the battery reserve, so it sits mid-band next to
-  // the icon and shifts with the percent label's width. Draw it manually below
-  // instead, pinned at the fixed side inset in the band's lower half — the
-  // same corner the detached (Lyra) layout puts it — so the label holds one
-  // position across themes and battery states.
-  const bool manualRightLabel = subtitle != nullptr && !batteryDetached && !batteryLeft;
+  // places rightLabel beside the battery reserve, so it shifts with the
+  // percent label's width. While the battery sits in a top strip shorter than
+  // the band, draw the label manually below instead, pinned in the band's
+  // lower-right corner, so it holds one position across battery states. A
+  // strip as tall as the band fills that corner, so the label stays with the
+  // component on the title line.
+  const bool batteryLeavesCornerFree = metrics.batteryBarHeight < rect.height;
+  const bool manualRightLabel = subtitle != nullptr && !batteryDetached && !batteryLeft && batteryLeavesCornerFree;
   if (manualRightLabel) {
     props.rightLabel = nullptr;
   }
@@ -342,7 +344,7 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   props.sidePadding = tokens.headerSidePadding;
   if (batteryDetached) {
     // Battery in its own corner strip; the title owns the full width of the
-    // lower sub-band, so long book titles span the header (Lyra layout).
+    // lower sub-band, so long book titles span the header.
     // Anchor the title with explicit clearance above the band's bottom rule
     // instead of naive sub-band centering, which left the glyphs nearly
     // touching it.
@@ -375,9 +377,9 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   battery.gap = batteryPercentSpacing;
   // Detached: hug the corner (12px, the legacy inset) within the battery
   // strip; shared line: sit on the content grid. Both anchor to the band's top
-  // strip (batteryBarHeight) — the legacy shared-line headers drew the battery
-  // at the top edge, and it keeps the lower-right corner free for the manual
-  // right label below.
+  // strip (batteryBarHeight). A strip shorter than the band keeps the
+  // lower-right corner free for the manual right label below; one as tall as
+  // the band centres the battery on the title line.
   const int16_t batteryEdgeInset = batteryDetached ? 12 : tokens.headerSidePadding;
   const int16_t batteryX = batteryLeft ? static_cast<int16_t>(band.x + batteryEdgeInset)
                                        : static_cast<int16_t>(band.right() - batteryEdgeInset - batteryReserve);
