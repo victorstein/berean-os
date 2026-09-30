@@ -102,3 +102,18 @@ target_link_libraries(SpineSearchTest PRIVATE
 )
 
 gtest_discover_tests(SpineSearchTest)
+
+add_executable(BibleNavCacheTest
+  BibleNavCacheTest.cpp
+)
+
+target_include_directories(BibleNavCacheTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(BibleNavCacheTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(BibleNavCacheTest)
