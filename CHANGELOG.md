@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.6](https://github.com/victorstein/berean-os/compare/v1.29.5...v1.29.6) (2026-09-30)
+
+
+### Bug Fixes
+
+* replace the paged tag filter with a chip grid ([#245](https://github.com/victorstein/berean-os/issues/245)) ([b542581](https://github.com/victorstein/berean-os/commit/b5425810fc1814eb85a19c929dca8fa79953a0eb)), closes [#240](https://github.com/victorstein/berean-os/issues/240)
+
 ## [1.29.5](https://github.com/victorstein/berean-os/compare/v1.29.4...v1.29.5) (2026-09-30)
 
 
