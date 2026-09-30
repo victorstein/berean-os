@@ -2,17 +2,14 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <FormatVersion.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <HalDisplay.h>
-#include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <PersistableStore.h>
 #include <SdPaths.h>
-#include <Utf8.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -24,12 +21,11 @@
 #include "BereanMark.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "StudyPassageScan.h"
 #include "StudySleepFit.h"
 #include "StudySleepPick.h"
 #include "StudyStore/PassageDoc.h"
-#include "StudyStore/PubKey.h"
 #include "StudyStore/TagPalette.h"
-#include "StudyStore/Unit.h"
 #include "fontIds.h"
 #include "study/PsramJsonAllocator.h"
 #include "util/WeekdayNames.h"
@@ -38,13 +34,6 @@ namespace study_sleep_screen {
 namespace {
 
 constexpr const char* MODULE = "SLP";
-
-constexpr size_t MAX_FILE_BYTES = study::PassageDoc::SAVE_BYTE_BUDGET + 4096;
-// Bounds the work done on the way to sleep; a scan that reaches it keeps the
-// pick it has, which the random start makes a uniform draw over a random window.
-constexpr size_t MAX_TOTAL_BYTES = 262144;
-constexpr uint32_t MAX_ENTRIES = 512;
-constexpr size_t MAX_NAME_BYTES = 256;
 
 constexpr int SIDE_MARGIN = 24;
 constexpr int SECTION_GAP = 18;
@@ -87,20 +76,6 @@ constexpr uint8_t FLOOR_RUNG = RUNG_COUNT - 1;
 
 static_assert(study_sleep::REFERENCE_CAPACITY == study::PassageDoc::MAX_REFERENCE_BYTES + 1);
 
-struct ScanBuffers {
-  char name[MAX_NAME_BYTES];
-  char path[sizeof(sdpaths::PASSAGES_DIR) + MAX_NAME_BYTES + 1];
-};
-
-struct ScanTotals {
-  uint32_t entries = 0;
-  size_t bytesParsed = 0;
-  bool capHit = false;
-  uint32_t rowsNotWhole = 0;
-  uint32_t rowsOverPrefilter = 0;
-  uint32_t rowsUnfit = 0;
-};
-
 struct ScreenContent {
   const study_sleep::Candidate* passage = nullptr;
   const char* dateLine = nullptr;
@@ -117,15 +92,6 @@ struct Layout {
   int serifLine = 0;
   int uiLine = 0;
   int pillHeight = 0;
-};
-
-// Decides, before sampling, whether a passage can be shown whole at all: at the
-// floor rung, every optional piece of chrome dropped and a reference line
-// assumed. A pick that then failed to fit would leave nothing to show.
-struct FitGate {
-  const GfxRenderer* renderer = nullptr;
-  study_sleep::FitRung floor{};
-  int width = 0;
 };
 
 uint32_t hardwareRandom(void*, const uint32_t bound) { return static_cast<uint32_t>(random(static_cast<long>(bound))); }
@@ -173,122 +139,7 @@ study_sleep::FitRung fitRung(const GfxRenderer& renderer, const Layout& layout, 
           layout.areaBottom - layout.viewTop - chromeHeight(layout, RUNGS[rung].chrome, hasDate, hasReference, hasTag)};
 }
 
-bool fitsFloorRung(const FitGate& gate, const std::string_view text) {
-  return study_sleep::fitPassage(text, &gate.floor, 1, gate.width, &measurePassage, gate.renderer).fits;
-}
-
-std::optional<std::string_view> readPassageFileName(HalFile& entry, char* name) {
-  if (entry.isDirectory()) return std::nullopt;
-  entry.getName(name, MAX_NAME_BYTES);
-  return study_sleep::pubKeyFromFileName(name);
-}
-
-// Drops a row PassageDoc::fromJson would drop -- an unaddressable start -- and any
-// row whose text is not its whole verse(s): a legacy row waits for the repair
-// rather than showing cut (issue #188). "k" is never read.
-void offerRow(const JsonVariantConst row, const std::string_view pubKey, study_sleep::Sampler& sampler,
-              const study_sleep::RingView& ring, const FitGate& gate, ScanTotals& totals) {
-  const char* startUnit = row["u"] | "";
-  if (!study::unitFromCompact(startUnit)) return;
-
-  const std::string_view wholeText = row["w"] | "";
-  if (!study_sleep::rowIsWhole(row["h"] | false, wholeText)) {
-    ++totals.rowsNotWhole;
-    return;
-  }
-  const bool underPrefilter = study_sleep::withinPrefilter(wholeText);
-  const bool fits = underPrefilter && fitsFloorRung(gate, wholeText);
-  if (!underPrefilter) {
-    ++totals.rowsOverPrefilter;
-  } else if (!fits) {
-    ++totals.rowsUnfit;
-  }
-
-  const char* storedEnd = row["e"] | "";
-  const std::string_view endUnit =
-      study_sleep::endUnitOrStart(startUnit, storedEnd, study::unitFromCompact(storedEnd).has_value());
-  const std::string reference = utf8SafeSummary(row["r"] | "", study::PassageDoc::MAX_REFERENCE_BYTES);
-
-  uint16_t tag = 0;
-  for (const JsonVariantConst id : row["t"].as<JsonArrayConst>()) {
-    const uint32_t raw = id | 0u;
-    if (raw >= 1 && raw <= UINT16_MAX) {
-      tag = static_cast<uint16_t>(raw);
-      break;
-    }
-  }
-
-  const uint32_t key = study_sleep::passageKey(pubKey, startUnit, endUnit);
-  sampler.offer(wholeText, reference, tag, key, study_sleep::ageOf(ring, key), fits);
-}
-
-// False when the byte budget stops the scan.
-bool offerFile(const char* path, const size_t bytes, const std::string_view pubKey, study_sleep::Sampler& sampler,
-               const study_sleep::RingView& ring, const FitGate& gate, ScanTotals& totals) {
-  if (bytes > MAX_FILE_BYTES) {
-    LOG_ERR(MODULE, "Skipping %s: %u bytes exceeds the %u-byte cap", path, static_cast<unsigned>(bytes),
-            static_cast<unsigned>(MAX_FILE_BYTES));
-    return true;
-  }
-  if (totals.bytesParsed + bytes > MAX_TOTAL_BYTES) {
-    totals.capHit = true;
-    return false;
-  }
-  totals.bytesParsed += bytes;
-
-  // Not PassageFile::load: that promotes a leftover .tmp, a rename, and this
-  // path must never write to the study store. PSRAM, as the store keeps it: the
-  // whole texts would otherwise be copied into internal SRAM on the way to sleep.
-  JsonDocument doc(PsramJsonAllocator::json());
-  const DocReadStatus status = PersistableStoreBase::readDocFromFileStreamed(path, doc);
-  if (status != DocReadStatus::Ok) {
-    LOG_ERR(MODULE, "Skipping %s: passages unreadable (status %u)", path, static_cast<unsigned>(status));
-    return true;
-  }
-  const int version = doc["v"] | 0;
-  if (!persist::isKnownFormatVersion(version, study::PassageDoc::FORMAT_VERSION) || !doc["p"].is<JsonArrayConst>()) {
-    LOG_ERR(MODULE, "Skipping %s: unknown passage format v%d", path, version);
-    return true;
-  }
-  for (const JsonVariantConst row : doc["p"].as<JsonArrayConst>()) offerRow(row, pubKey, sampler, ring, gate, totals);
-  return true;
-}
-
-bool pickPassage(study_sleep::Sampler& sampler, ScanBuffers& buffers, const FitGate& gate, ScanTotals& totals) {
-  auto dir = Storage.open(sdpaths::PASSAGES_DIR);
-  if (!dir || !dir.isDirectory()) return false;
-
-  uint32_t count = 0;
-  for (auto entry = dir.openNextFile(); entry && count < MAX_ENTRIES; entry = dir.openNextFile()) {
-    if (readPassageFileName(entry, buffers.name)) ++count;
-  }
-  totals.entries = count;
-  if (count == 0) return false;
-  if (count == MAX_ENTRIES)
-    LOG_INF(MODULE, "Passage scan stopped counting at %u files", static_cast<unsigned>(MAX_ENTRIES));
-
-  const study_sleep::RingView ring{APP_STATE.recentStudySleep, CrossPointState::SLEEP_RECENT_COUNT,
-                                   APP_STATE.recentStudySleepPos, APP_STATE.recentStudySleepFill};
-  const uint32_t start = hardwareRandom(nullptr, count);
-
-  for (uint8_t sweep = 0; sweep < 2; ++sweep) {
-    dir.rewindDirectory();
-    uint32_t index = 0;
-    for (auto entry = dir.openNextFile(); entry && index < count; entry = dir.openNextFile()) {
-      const auto pubKey = readPassageFileName(entry, buffers.name);
-      if (!pubKey) continue;
-      const uint32_t current = index++;
-      if (!study_sleep::inSweep(sweep, current, start)) continue;
-
-      snprintf(buffers.path, sizeof(buffers.path), "%s/%s", sdpaths::PASSAGES_DIR, buffers.name);
-      if (!offerFile(buffers.path, entry.size(), *pubKey, sampler, ring, gate, totals)) {
-        LOG_INF(MODULE, "Passage scan stopped at the %u-byte budget", static_cast<unsigned>(MAX_TOTAL_BYTES));
-        return sampler.result() != nullptr;
-      }
-    }
-  }
-  return sampler.result() != nullptr;
-}
+}  // namespace
 
 bool formatDate(char* out, const size_t outSize) {
   study_sleep::ClockReading clock;
@@ -304,6 +155,8 @@ bool formatDate(char* out, const size_t outSize) {
                                        I18N.get(WEEKDAY_NAME_IDS[6])};
   return study_sleep::formatDateLine(clock, SETTINGS.clockUtcOffsetQ, weekdayNames, tr(STR_MONTHS_SHORT), out, outSize);
 }
+
+namespace {
 
 std::string tagName(const uint16_t rawTag) {
   if (rawTag == 0) return {};
@@ -374,15 +227,15 @@ void drawScreen(const GfxRenderer& renderer, const Layout& layout, const ScreenC
 bool render(const GfxRenderer& renderer) {
   PsramJsonAllocator::logMemory("Study pick start");
   auto sampler = makeUniqueNoThrow<study_sleep::Sampler>(&hardwareRandom, nullptr);
-  auto buffers = makeUniqueNoThrow<ScanBuffers>();
-  if (!sampler || !buffers) {
+  if (!sampler) {
     LOG_ERR(MODULE, "OOM: study sleep pick");
     return false;
   }
 
   const Layout layout = measureLayout(renderer);
-  FitGate gate;
-  gate.renderer = &renderer;
+  study_passage_scan::FitGate gate;
+  gate.measure = &measurePassage;
+  gate.measureCtx = &renderer;
   gate.width = layout.width;
   gate.floor = fitRung(renderer, layout, FLOOR_RUNG, false, true, false);
   // Logged so a tester can compare what the floor rung really holds against FIT_PREFILTER_BYTES.
@@ -392,9 +245,11 @@ bool render(const GfxRenderer& renderer) {
           gate.floor.lineHeight > 0 ? gate.floor.maxHeight / gate.floor.lineHeight : 0,
           sampleWidth > 0 ? gate.width * 10 / sampleWidth : 0, static_cast<unsigned>(study_sleep::FIT_PREFILTER_BYTES));
 
-  ScanTotals totals;
+  study_passage_scan::ScanTotals totals;
   const unsigned long scanStarted = millis();
-  const bool picked = pickPassage(*sampler, *buffers, gate, totals);
+  const study_sleep::RingView ring{APP_STATE.recentStudySleep, CrossPointState::SLEEP_RECENT_COUNT,
+                                   APP_STATE.recentStudySleepPos, APP_STATE.recentStudySleepFill};
+  const bool picked = study_passage_scan::pickFromAll(*sampler, gate, ring, totals);
   LOG_DBG(
       MODULE, "Study pick: %u files, %u bytes parsed, cap %s, %u rows not whole, %u over prefilter, %u unfit, %lu ms",
       static_cast<unsigned>(totals.entries), static_cast<unsigned>(totals.bytesParsed),
