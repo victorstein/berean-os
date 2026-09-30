@@ -266,20 +266,19 @@ void EpubReaderActivity::openReaderMenu() {
   constexpr bool hasHighlights = false;
 #endif
   const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
-  startActivityForResult(
-      std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
-                                               !currentPageFootnotes.empty(), !bookmarks.empty(), hasHighlights,
-                                               isBible),
-      [this](const ActivityResult& result) {
-        const auto& menu = std::get<MenuResult>(result.data);
-        if (SETTINGS.orientation != menu.orientation) {
-          applyOrientation(menu.orientation);
-        }
-        toggleAutoPageTurn(menu.pageTurnOption);
-        if (!result.isCancelled) {
-          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
-        }
-      });
+  startActivityForResult(std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(),
+                                                                  SETTINGS.orientation, !currentPageFootnotes.empty(),
+                                                                  !bookmarks.empty(), hasHighlights, isBible),
+                         [this](const ActivityResult& result) {
+                           const auto& menu = std::get<MenuResult>(result.data);
+                           if (SETTINGS.orientation != menu.orientation) {
+                             applyOrientation(menu.orientation);
+                           }
+                           toggleAutoPageTurn(menu.pageTurnOption);
+                           if (!result.isCancelled) {
+                             onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+                           }
+                         });
 }
 
 bool EpubReaderActivity::buildTickHeapGate() {
