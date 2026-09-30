@@ -31,10 +31,22 @@ bool feedVerseScanner(void* ctx, const char* chunk, const size_t length, const b
 }  // namespace
 
 BibleNavigationActivity::BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                                 const std::shared_ptr<Epub>& epub, const int currentSpineIndex)
+                                                 const std::shared_ptr<Epub>& epub, const int currentSpineIndex,
+                                                 const std::vector<BookmarkEntry>& bookmarks)
     : UiListActivity("BibleNavigation", renderer, mappedInput, /*wantsTouchLongPress=*/false),
       epub(epub),
-      entrySpine(currentSpineIndex) {}
+      entrySpine(currentSpineIndex) {
+  if (bookmarks.empty()) return;
+  bookmarkPositions = makeUniqueNoThrow<GridMarks::BookmarkPosition[]>(bookmarks.size());
+  if (!bookmarkPositions) {
+    LOG_ERR("BNV", "OOM: %u bookmark positions", static_cast<unsigned>(bookmarks.size()));
+    return;
+  }
+  for (const auto& bookmark : bookmarks) {
+    bookmarkPositions[bookmarkCount++] = GridMarks::BookmarkPosition{
+        bookmark.computedSpineIndex, bookmark.hasVisibleTextOffset, bookmark.visibleTextOffset};
+  }
+}
 
 void BibleNavigationActivity::onEnter() {
   UiListActivity::onEnter();

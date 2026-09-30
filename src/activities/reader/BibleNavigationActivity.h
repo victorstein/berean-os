@@ -9,6 +9,8 @@
 
 #include "BibleBookNameTable.h"
 #include "BookGridLayout.h"
+#include "BookmarkEntry.h"
+#include "GridMarks.h"
 #include "NumberGridLayout.h"
 #include "activities/UiListActivity.h"
 
@@ -30,7 +32,7 @@
 class BibleNavigationActivity final : public UiListActivity {
  public:
   BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::shared_ptr<Epub>& epub,
-                          int currentSpineIndex);
+                          int currentSpineIndex, const std::vector<BookmarkEntry>& bookmarks);
   void onEnter() override;
 
  private:
@@ -50,6 +52,10 @@ class BibleNavigationActivity final : public UiListActivity {
   std::shared_ptr<Epub> epub;
   // The reader's spine item when the navigator was opened; decides the entry level.
   const int entrySpine;
+  // A copy of the open book's bookmark positions, so nothing here points into
+  // the reader underneath.
+  std::unique_ptr<GridMarks::BookmarkPosition[]> bookmarkPositions;
+  int bookmarkCount = 0;
   Level level = Level::Book;
 
   // Only the display name and the resolved spine target are kept: chapter rows
