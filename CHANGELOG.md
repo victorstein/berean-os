@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0](https://github.com/victorstein/berean-os/compare/v1.25.0...v1.26.0) (2026-09-30)
+
+
+### Features
+
+* cover mastheads on the chapter grid, Meetings and Publications ([#219](https://github.com/victorstein/berean-os/issues/219)) ([06e52c8](https://github.com/victorstein/berean-os/commit/06e52c849375e3e1cea48aeb18866b072c7a31fe)), closes [#204](https://github.com/victorstein/berean-os/issues/204)
+
 ## [1.25.0](https://github.com/victorstein/berean-os/compare/v1.24.0...v1.25.0) (2026-09-30)
 
 
