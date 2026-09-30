@@ -479,8 +479,8 @@ TEST(TagChipGrid, AFullPaletteSplitsIntoPagesThatCoverEveryChipOnce) {
 
   int expected = 0;
   int seenPages = 0;
-  for (int first = 0; first < count; first = TagChips::nextPageStart(widths.data(), count, first, GRID_LINE, GRID_GAP,
-                                                                     lines)) {
+  for (int first = 0; first < count;
+       first = TagChips::nextPageStart(widths.data(), count, first, GRID_LINE, GRID_GAP, lines)) {
     TagChips::GridPage page;
     TagChips::layoutPage(widths.data(), count, first, GRID_LINE, GRID_GAP, lines, page);
     ++seenPages;

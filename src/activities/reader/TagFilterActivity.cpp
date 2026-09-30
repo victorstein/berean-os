@@ -246,8 +246,8 @@ void TagFilterActivity::turnPage(const int direction, const bool fromButton) {
     int target = -1;
     if (direction > 0 && span.next < count) target = span.next;
     if (direction < 0 && span.first > 0) {
-      target =
-          TagChips::pageHolding(widths_.data(), count, span.first - 1, gridLineWidth_, gridGap_, gridLinesPerPage_).first;
+      target = TagChips::pageHolding(widths_.data(), count, span.first - 1, gridLineWidth_, gridGap_, gridLinesPerPage_)
+                   .first;
     }
     if (target >= 0) {
       nav.selected = target;

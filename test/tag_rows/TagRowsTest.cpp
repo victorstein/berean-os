@@ -54,4 +54,3 @@ TEST(TagRows, RowCountLeavesRoomForDoneAndNewTag) {
   EXPECT_EQ(TagRows::rowCount(0), 2);
   EXPECT_EQ(TagRows::rowCount(100), 102);
 }
-

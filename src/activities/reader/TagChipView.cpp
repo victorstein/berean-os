@@ -14,8 +14,8 @@ namespace TagChipView {
 void buildEntries(const std::optional<std::vector<size_t>>& scope, const std::optional<study::TagId> filter,
                   const size_t cap, std::vector<ChipEntry>& out) {
   const std::vector<study::TagId> activeIds = STUDY.palette().activeIds();
-  const TagChips::Counts counts = scope ? TagChips::countIn(STUDY.passages(), *scope, activeIds)
-                                        : TagChips::count(STUDY.passages(), activeIds);
+  const TagChips::Counts counts =
+      scope ? TagChips::countIn(STUDY.passages(), *scope, activeIds) : TagChips::count(STUDY.passages(), activeIds);
   std::vector<TagChips::Candidate> picked;
   TagChips::candidates(counts, activeIds, filter, cap, picked);
 
