@@ -29,6 +29,7 @@ inline constexpr char SEARCH_INDEX_FILE[] = "/.berean/search/bible.idx";
 inline constexpr char SEARCH_CHECKPOINT_FILE[] = "/.berean/search/bible.partial";
 inline constexpr char PASSAGES_DIR[] = "/.berean/passages";
 inline constexpr char UNITS_DIR[] = "/.berean/units";
+// Retired (#195): old files stay on cards, so no new format may reuse it.
 inline constexpr char COMPLETION_DIR[] = "/.berean/completion";
 
 constexpr bool isUnder(std::string_view path, std::string_view dir) {

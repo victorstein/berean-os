@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.1](https://github.com/victorstein/berean-os/compare/v1.21.0...v1.21.1) (2026-09-30)
+
+
+### Refactor
+
+* retire Bible chapter-completion recording ([#207](https://github.com/victorstein/berean-os/issues/207)) ([7ed964d](https://github.com/victorstein/berean-os/commit/7ed964d3818d175c14103686eec89c4292afead7)), closes [#195](https://github.com/victorstein/berean-os/issues/195)
+
 ## [1.21.0](https://github.com/victorstein/berean-os/compare/v1.20.2...v1.21.0) (2026-09-30)
 
 
