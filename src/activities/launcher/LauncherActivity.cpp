@@ -20,6 +20,7 @@
 #include "activities/PostedMessage.h"
 #include "activities/boot_sleep/StudySleepScreen.h"
 #include "activities/catalog/PublicationsActivity.h"
+#include "activities/launcher/BibleFinder.h"
 #include "activities/launcher/HomeVerse.h"
 #include "activities/launcher/LauncherBible.h"
 #include "activities/launcher/LauncherRefresh.h"
@@ -99,7 +100,6 @@ void LauncherActivity::computeLayout() {
 
 void LauncherActivity::resolveTargets() {
   RECENT_BOOKS.loadFromFile();
-  const auto& recents = RECENT_BOOKS.getBooks();
 
   // The registry knows every Buscar download and every Bible the reader has
   // opened; the card scan finds a copy that arrived under the CDN's own name.
@@ -108,23 +108,11 @@ void LauncherActivity::resolveTargets() {
   // registered.
   biblePath.clear();
   bibleCoverPath.clear();
-  BibleLookup foundBy = BibleLookup::Registry;
-  auto foundBible = resolveBible([&](const BibleLookup step) -> std::optional<std::string> {
-    foundBy = step;
-    switch (step) {
-      case BibleLookup::Registry:
-        return PubKeyRegistry::findBySymbol({BIBLE_SYMBOL});
-      case BibleLookup::CardScan:
-        return findBibleOnCard();
-      case BibleLookup::Recents:
-        return findBibleInRecents(recents);
-    }
-    return std::nullopt;
-  });
-  LOG_INF(MODULE, "Bible: %s (%s)", foundBible ? foundBible->c_str() : "(none found)",
-          foundBible ? bibleLookupName(foundBy) : "-");
+  const auto foundBible = BibleFinder::find();
+  LOG_INF(MODULE, "Bible: %s (%s)", foundBible ? foundBible->path.c_str() : "(none found)",
+          foundBible ? bibleLookupName(foundBible->by) : "-");
   if (foundBible) {
-    biblePath = std::move(*foundBible);
+    biblePath = foundBible->path;
     bool generatedAny = false;
     bibleCoverPath = CoverBand::thumbPathFor(biblePath, layout.hero.width, layout.hero.height, generatedAny);
     if (generatedAny) LOG_INF(MODULE, "Generated a missing cover thumbnail");
@@ -193,28 +181,6 @@ void LauncherActivity::resolveMeetings() {
   if (workbookPath.empty()) return;
   const std::optional<int> percent = readBookProgressPercent(workbookPath);
   if (percent) snprintf(percentLine, sizeof(percentLine), tr(STR_MEETING_PROGRESS), *percent);
-}
-
-// A Bible the registry does not know is one that did not come through Buscar,
-// and the only name it can be recognised by is the CDN's. When several
-// languages are on the card the download folder's copy wins, then the root's.
-std::optional<std::string> LauncherActivity::findBibleOnCard() {
-  const std::vector<std::string> books = CardBooks::list();
-  const auto bible = std::find_if(books.begin(), books.end(),
-                                  [](const std::string& path) { return isCdnNamedCopyOf(path, BIBLE_SYMBOL); });
-  if (bible == books.end()) return std::nullopt;
-  return *bible;
-}
-
-// recent.json can still list a deleted file; the existence check keeps that
-// from putting a Bible on Home that opens nothing.
-std::optional<std::string> LauncherActivity::findBibleInRecents(const std::vector<RecentBook>& recents) {
-  for (const RecentBook& book : recents) {
-    if (!looksLikeBibleInRecents(book.path, book.title)) continue;
-    if (!Storage.exists(book.path.c_str())) continue;
-    return book.path;
-  }
-  return std::nullopt;
 }
 
 HomeTargets::State LauncherActivity::targetState() const {
