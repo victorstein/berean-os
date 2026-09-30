@@ -766,7 +766,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     bookmarks.load(renderer, epub, section.get(), currentSpineIndex);
     if (result.isCancelled) {
-      openReaderMenu(false);
+      reopenReaderMenu();
     } else {
       const auto& sync = std::get<ProgressChangeResult>(result.data);
 
@@ -812,7 +812,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
       startActivityForResult(std::make_unique<EpubReaderFootnotesActivity>(renderer, mappedInput, currentPageFootnotes),
                              [this](const ActivityResult& result) {
                                if (result.isCancelled) {
-                                 openReaderMenu(false);
+                                 reopenReaderMenu();
                                  return;
                                }
                                const auto& footnoteResult = std::get<FootnoteResult>(result.data);
@@ -826,7 +826,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
                                                                     TextSettingsActivity::Tab::Family),
                              [this](const ActivityResult&) {
                                releaseSectionKeepingPosition();
-                               openReaderMenu(false);
+                               reopenReaderMenu();
                              });
       break;
     }
@@ -853,7 +853,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
           std::make_unique<EpubReaderPercentSelectionActivity>(renderer, mappedInput, initialPercent),
           [this](const ActivityResult& result) {
             if (result.isCancelled) {
-              openReaderMenu(false);
+              reopenReaderMenu();
             } else {
               jumpToPercent(std::get<PercentResult>(result.data).percent);
             }
@@ -948,7 +948,7 @@ void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
   startActivityForResult(std::move(chapterList), [this, cancelTo](const ActivityResult& result) {
     if (result.isCancelled) {
       // From an entry intent the page is re-rendered when this screen pops.
-      if (cancelTo == CancelTo::Menu) openReaderMenu(false);
+      if (cancelTo == CancelTo::Menu) reopenReaderMenu();
       return;
     }
     const auto& chapterResult = std::get<ChapterResult>(result.data);
@@ -965,7 +965,7 @@ void EpubReaderActivity::openBibleSearch(const CancelTo cancelTo) {
   startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub),
                          [this, cancelTo](const ActivityResult& result) {
                            if (result.isCancelled) {
-                             if (cancelTo == CancelTo::Menu) openReaderMenu(false);
+                             if (cancelTo == CancelTo::Menu) reopenReaderMenu();
                              return;
                            }
                            const auto& verse = std::get<ChapterResult>(result.data);
