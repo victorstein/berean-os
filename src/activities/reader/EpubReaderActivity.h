@@ -15,6 +15,7 @@
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
 #include "ReaderBookmarks.h"
+#include "ReaderEntryIntent.h"
 #include "ReturnStack.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -44,6 +45,8 @@ class EpubReaderActivity final : public ReaderActivity {
   AutoPageTurn autoTurn;
   bool recentsEntryRemoved = false;
   bool pendingReadFolderMove = false;
+  // Consumed once by onBookLoaded(); None thereafter.
+  ReaderEntryIntent entryIntent;
 
   // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
   // two live JsonDocuments are a real risk against the C3's ~50KB free heap
@@ -159,8 +162,9 @@ class EpubReaderActivity final : public ReaderActivity {
 
  public:
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
-                              bool allowFastInitialRefresh)
-      : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
+                              bool allowFastInitialRefresh, const ReaderEntryIntent& intent = {})
+      : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh),
+        entryIntent(intent) {}
   ~EpubReaderActivity() override;
 
   void loop() override;

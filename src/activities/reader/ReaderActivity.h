@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "EndOfBookOptions.h"
+#include "ReaderEntryIntent.h"
 #include "activities/Activity.h"
 
 class ReaderActivity : public Activity {
@@ -33,6 +34,9 @@ class ReaderActivity : public Activity {
   virtual void renderBook() = 0;
   virtual void applyInitialOrientation();
   virtual void onEndOfBookRendered() {}
+  // After the book loaded and recents were updated, before the first render: where an entry intent
+  // is consumed.
+  virtual void onBookLoaded() {}
 
   bool handleBackNavigation();
   bool handleEndOfBookMenu(bool suppressConfirmRelease = false);
@@ -44,7 +48,8 @@ class ReaderActivity : public Activity {
   ~ReaderActivity() override = default;
 
   static std::unique_ptr<ReaderActivity> create(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                                std::string path, bool allowFastInitialRefresh);
+                                                std::string path, bool allowFastInitialRefresh,
+                                                const ReaderEntryIntent& intent = {});
 
   void onEnter() override;
   void onExit() override;

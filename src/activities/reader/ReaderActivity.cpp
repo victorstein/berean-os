@@ -23,10 +23,12 @@ ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedIn
 }
 
 std::unique_ptr<ReaderActivity> ReaderActivity::create(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                                       std::string path, const bool allowFastInitialRefresh) {
+                                                       std::string path, const bool allowFastInitialRefresh,
+                                                       const ReaderEntryIntent& intent) {
   // ActivityManager requires heap ownership; each branch allocates exactly one screen-lifetime object.
   std::unique_ptr<ReaderActivity> activity;
-  activity = makeUniqueNoThrow<EpubReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
+  activity =
+      makeUniqueNoThrow<EpubReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh, intent);
 
   if (!activity) {
     LOG_ERR("READER", "OOM: reader activity");
@@ -58,6 +60,7 @@ void ReaderActivity::onEnter() {
   APP_STATE.openEpubPath = bookPath;
   APP_STATE.saveToFileAtomic();
   RECENT_BOOKS.addBook(bookPath, getBookTitle(), getBookAuthor());
+  onBookLoaded();
   requestUpdate();
 }
 
