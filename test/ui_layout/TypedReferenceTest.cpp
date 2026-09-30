@@ -1,12 +1,11 @@
+#include <BibleSearch/IndexBuilder.h>
+#include <BibleSearch/IndexFormat.h>
+#include <BibleSearch/IndexReader.h>
 #include <gtest/gtest.h>
 
 #include <cstdio>
 #include <cstring>
 #include <vector>
-
-#include <BibleSearch/IndexBuilder.h>
-#include <BibleSearch/IndexFormat.h>
-#include <BibleSearch/IndexReader.h>
 
 #include "activities/reader/TypedReference.h"
 
@@ -48,7 +47,10 @@ const Books& spanish() {
         .add(13, "1 Cr\xC3\xB3nicas", "1 Cr\xC3\xB3n.")
         .add(19, "Salmos", "Sal.")
         .add(22, "El Cantar de los Cantares", "Cant.")
-        .add(23, "Isa\xC3\xAD" "as", "Is.")
+        .add(23,
+             "Isa\xC3\xAD"
+             "as",
+             "Is.")
         .add(25, "Lamentaciones", "Lam.")
         .add(30, "Am\xC3\xB3s", "Am\xC3\xB3s")
         .add(40, "Mateo", "Mat.")
@@ -95,7 +97,10 @@ void expectReference(const TypedReference& r, const int book, const int chapter,
 
 TEST(TypedReferenceParse, FullNames) {
   expectReference(parse("Juan 3:16", spanish()), 43, 3, 16);
-  expectReference(parse("Isa\xC3\xAD" "as 40:31", spanish()), 23, 40, 31);
+  expectReference(parse("Isa\xC3\xAD"
+                        "as 40:31",
+                        spanish()),
+                  23, 40, 31);
   expectReference(parse("El Cantar de los Cantares 2:1", spanish()), 22, 2, 1);
   expectReference(parse("Isaiah 40:31", english()), 23, 40, 31);
   expectReference(parse("1 John 4:8", english()), 62, 4, 8);
@@ -131,7 +136,10 @@ TEST(TypedReferenceParse, ChapterVerseAndRange) {
   expectReference(parse("Gen 1:1", english()), 1, 1, 1);
   expectReference(parse("Juan 3:16-18", spanish()), 43, 3, 16, 18);
   expectReference(parse("Juan 3:16 - 18", spanish()), 43, 3, 16, 18);
-  expectReference(parse("Juan 3:16\xE2\x80\x93" "18", spanish()), 43, 3, 16, 18);
+  expectReference(parse("Juan 3:16\xE2\x80\x93"
+                        "18",
+                        spanish()),
+                  43, 3, 16, 18);
   expectReference(parse("  Juan 3 : 16  ", spanish()), 43, 3, 16);
 }
 
@@ -178,9 +186,9 @@ TEST(TypedReferenceParse, OrdinaryWordsAreNotReferences) {
 }
 
 TEST(TypedReferenceParse, MalformedInputIsNotAReference) {
-  for (const char* query : {"", "   ", "Gen", "Gen1", "Gen 0", "Gen 1:0", "Gen 256", "Gen 1000", "Gen 1:3-2",
-                            "Gen 1:", "Gen :3", "Gen 1-3", "Gen 1:1:1", "Gen 1:2-", "3:16", "1234", "a 3",
-                            "1 3", "Juan 3.16", "Juan 3,16"}) {
+  for (const char* query : {"",         "   ",       "Gen",    "Gen1",   "Gen 0",     "Gen 1:0",   "Gen 256",
+                            "Gen 1000", "Gen 1:3-2", "Gen 1:", "Gen :3", "Gen 1-3",   "Gen 1:1:1", "Gen 1:2-",
+                            "3:16",     "1234",      "a 3",    "1 3",    "Juan 3.16", "Juan 3,16"}) {
     expectNotAReference(query, spanish());
   }
 }
@@ -198,8 +206,13 @@ TEST(TypedReferenceFormat, NameChapterVerseAndRange) {
   ref.book = 23;
   ref.chapter = 40;
   ref.verse = 31;
-  formatTypedReference(out, sizeof(out), "Isa\xC3\xAD" "as", ref);
-  EXPECT_STREQ(out, "Isa\xC3\xAD" "as 40:31");
+  formatTypedReference(out, sizeof(out),
+                       "Isa\xC3\xAD"
+                       "as",
+                       ref);
+  EXPECT_STREQ(out,
+               "Isa\xC3\xAD"
+               "as 40:31");
 
   ref.verse = 0;
   formatTypedReference(out, sizeof(out), "Isaiah", ref);
@@ -270,9 +283,8 @@ struct Place {
 // Genesis with two chapters, Exodus 1, single-chapter Jude, Revelation 1. The
 // offset of each verse is verse * 100.
 constexpr Place INDEXED[] = {
-    {1, 1, 1, 10},  {1, 1, 2, 10},  {1, 1, 3, 10},  {1, 2, 1, 11},  {1, 2, 2, 11},  {2, 1, 1, 20},
-    {2, 1, 2, 20},  {65, 1, 1, 30}, {65, 1, 2, 30}, {65, 1, 3, 30}, {65, 1, 4, 30}, {65, 1, 5, 30},
-    {66, 1, 1, 40}, {66, 1, 2, 40},
+    {1, 1, 1, 10},  {1, 1, 2, 10},  {1, 1, 3, 10},  {1, 2, 1, 11},  {1, 2, 2, 11},  {2, 1, 1, 20},  {2, 1, 2, 20},
+    {65, 1, 1, 30}, {65, 1, 2, 30}, {65, 1, 3, 30}, {65, 1, 4, 30}, {65, 1, 5, 30}, {66, 1, 1, 40}, {66, 1, 2, 40},
 };
 
 const Bytes& placesIndex() {

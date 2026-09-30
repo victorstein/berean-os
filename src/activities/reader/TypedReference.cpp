@@ -145,8 +145,8 @@ size_t normalise(const std::string_view text, std::string& scratch, char (&out)[
     const auto lead = static_cast<unsigned char>(folded[i]);
     const size_t width = std::min(utf8Width(lead), folded.size() - i);
     const std::string_view codepoint = folded.substr(i, width);
-    const bool kept = lead < 0x80 ? (lead >= 'a' && lead <= 'z') || isDigit(folded[i])
-                                  : !isSeparatorSequence(codepoint);
+    const bool kept =
+        lead < 0x80 ? (lead >= 'a' && lead <= 'z') || isDigit(folded[i]) : !isSeparatorSequence(codepoint);
     if (kept && length + width <= KEY_BYTES) {
       memcpy(out + length, codepoint.data(), width);
       length += width;
@@ -218,8 +218,8 @@ bool lowerBound(const BibleSearch::IndexReader& reader, const uint32_t key, uint
 
 // `verse == 0` finds the chapter's first entry. A lower bound at verseCount is
 // checked before reading: verse() reports an index past the end as a failure.
-bool findPlace(const BibleSearch::IndexReader& reader, const uint8_t book, const uint8_t chapter,
-               const uint8_t verse, BibleSearch::VerseEntry& entry, bool& found) {
+bool findPlace(const BibleSearch::IndexReader& reader, const uint8_t book, const uint8_t chapter, const uint8_t verse,
+               BibleSearch::VerseEntry& entry, bool& found) {
   found = false;
   uint32_t index = 0;
   if (!lowerBound(reader, placeKey(book, chapter, verse), index)) return false;
@@ -259,8 +259,8 @@ void formatTypedReference(char* out, const size_t outBytes, const char* bookName
   } else if (ref.verseEnd == 0) {
     snprintf(numbers, sizeof(numbers), "%u:%u", static_cast<unsigned>(ref.chapter), static_cast<unsigned>(ref.verse));
   } else {
-    snprintf(numbers, sizeof(numbers), "%u:%u-%u", static_cast<unsigned>(ref.chapter),
-             static_cast<unsigned>(ref.verse), static_cast<unsigned>(ref.verseEnd));
+    snprintf(numbers, sizeof(numbers), "%u:%u-%u", static_cast<unsigned>(ref.chapter), static_cast<unsigned>(ref.verse),
+             static_cast<unsigned>(ref.verseEnd));
   }
   if (bookName == nullptr || bookName[0] == '\0') {
     snprintf(out, outBytes, "%s", numbers);
@@ -269,8 +269,7 @@ void formatTypedReference(char* out, const size_t outBytes, const char* bookName
   }
 }
 
-bool resolveTypedReference(const BibleSearch::IndexReader& reader, const TypedReference& ref,
-                           ResolvedReference& out) {
+bool resolveTypedReference(const BibleSearch::IndexReader& reader, const TypedReference& ref, ResolvedReference& out) {
   out = ResolvedReference{};
   if (!ref.valid()) return true;
 
