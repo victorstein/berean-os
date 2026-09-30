@@ -57,10 +57,8 @@ class LauncherActivity final : public Activity {
   void drawTileArt(int x, int y, int w, int h, const std::string& coverPath, const uint8_t* icon) const;
   void drawCoverTile(const TileRect& rect, const std::string& coverPath, const char* title, const char* subtitle,
                      const uint8_t* icon, bool selected, float focusBand) const;
-  bool drawCoverFilling(const std::string& coverPath, const TileRect& rect, int visibleHeight, float focusBand) const;
   void drawCenteredIn(int x, int w, int top, const char* title, const char* subtitle) const;
   int tileArtHeight(const TileRect& rect, bool hasSubtitle) const;
-  static int coverFillHeight(const TileRect& tile);
   // Finds a meeting publication the registry does not know about, for downloads
   // that predate it. Keyed on the downloader's own filename convention.
   // This week's publication, from the cache the meetings screen fills.
