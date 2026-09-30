@@ -1,5 +1,6 @@
 #include "BibleNavigationActivity.h"
 
+#include <Arduino.h>
 #include <Epub/BibleNavScanner.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -10,10 +11,13 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
+#include <utility>
 
 #include "BibleEntryPosition.h"
 #include "MappedInputManager.h"
 #include "SpineHtmlStream.h"
+#include "SpineSearch.h"
 #include "components/CoverBandGeometry.h"
 #include "components/Masthead.h"
 #include "components/UIScale.h"
@@ -34,14 +38,27 @@ bool feedVerseScanner(void* ctx, const char* chunk, const size_t length, const b
   return static_cast<VerseAnchors::Scanner*>(ctx)->feed(chunk, length, isFinal);
 }
 
+std::string_view spineHrefAt(const void* ctx, const int spineIndex, std::string& scratch) {
+  scratch = static_cast<const Epub*>(ctx)->getSpineItem(spineIndex).href;
+  return scratch;
+}
+
+void resolveRemaining(const Epub& epub, const std::string* targets, int* out, const int count, const int first) {
+  SpineSearch::resolveFrom(targets, out, count, first, epub.getSpineItemsCount(), spineHrefAt, &epub);
+}
+
 }  // namespace
 
 BibleNavigationActivity::BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                  const std::shared_ptr<Epub>& epub, const int currentSpineIndex,
-                                                 const std::vector<BookmarkEntry>& bookmarks)
+                                                 const std::vector<BookmarkEntry>& bookmarks,
+                                                 std::shared_ptr<BibleNavCache> navCache,
+                                                 const unsigned long goToStartMs)
     : UiListActivity("BibleNavigation", renderer, mappedInput, /*wantsTouchLongPress=*/false),
       epub(epub),
-      entrySpine(currentSpineIndex) {
+      entrySpine(currentSpineIndex),
+      navCache(std::move(navCache)),
+      goToStartMs(goToStartMs) {
   if (bookmarks.empty()) return;
   bookmarkPositions = makeUniqueNoThrow<GridMarks::BookmarkPosition[]>(bookmarks.size());
   if (!bookmarkPositions) {
@@ -71,20 +88,37 @@ void BibleNavigationActivity::onEnter() {
     const std::string cover = epub->getThumbBmpPath(Masthead::thumbHeight(renderer));
     if (Masthead::fits(renderer, cover)) mastheadCover = cover;
   }
+  LOG_DBG("BNV", "Go to: masthead checked +%lu ms", millis() - goToStartMs);
 
   if (!loadBooks()) {
     LOG_ERR("BNV", "Failed to read the book list");
   }
+  LOG_DBG("BNV", "Go to: books ready +%lu ms", millis() - goToStartMs);
   enterAtPosition();
+  LOG_DBG("BNV", "Go to: entry level ready +%lu ms", millis() - goToStartMs);
   LOG_INF("BNV", "Memory with grid open: internal free %u (largest %u), PSRAM free %u, %d bookmarks",
           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
           static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)), bookmarkCount);
 }
 
+void BibleNavigationActivity::render(RenderLock&& lock) {
+  UiListActivity::render(std::move(lock));
+  if (firstFrameLogged) return;
+  firstFrameLogged = true;
+  LOG_DBG("BNV", "Go to: first frame +%lu ms", millis() - goToStartMs);
+}
+
 bool BibleNavigationActivity::loadBooks() {
   bookCount = 0;
   if (!epub) return false;
+
+  if (navCache && navCache->hasBooks()) {
+    adoptBooks(*navCache->books());
+    booksLoadedGeneration.fetch_add(1, std::memory_order_release);
+    LOG_DBG("BNV", "Go to: books from cache");
+    return true;
+  }
 
   BibleNav::Scanner scanner(/*collectText=*/true);
   if (!scanner.valid()) {
@@ -106,9 +140,11 @@ bool BibleNavigationActivity::loadBooks() {
     bookCount = 0;
     return false;
   }
-  epub->resolveFilenamesToSpineIndices(targets.data(), spineIndices.get(), bookCount);
-
-  bookNames.joinToc(*epub, targets.data(), bookCount);
+  for (int i = 0; i < bookCount; i++) spineIndices[i] = -1;
+  bookNames.joinToc(*epub, targets.data(), bookCount, spineIndices.get());
+  bookNames.setAbbreviations(page.labels);
+  // Only a target with no usable TOC entry is left to walk for.
+  resolveRemaining(*epub, targets.data(), spineIndices.get(), bookCount, 0);
 
   for (int i = 0; i < bookCount; i++) {
     bookTargetSpine[i] = static_cast<int16_t>(spineIndices[i]);
@@ -135,7 +171,33 @@ bool BibleNavigationActivity::loadBooks() {
     }
   }
   booksLoadedGeneration.fetch_add(1, std::memory_order_release);
+  if (navCache) {
+    copyBooksTo(navCache->booksToFill());
+    navCache->commitBooks();
+  }
   return true;
+}
+
+void BibleNavigationActivity::copyBooksTo(BibleBookIndex& index) const {
+  index.names = bookNames;
+  std::copy(std::begin(bookTargetSpine), std::end(bookTargetSpine), index.targetSpine);
+  std::copy(std::begin(bookIsDirect), std::end(bookIsDirect), index.isDirect);
+  memcpy(index.abbrev, bookAbbrev, sizeof(index.abbrev));
+  memcpy(index.sectionTitle, sectionTitle, sizeof(index.sectionTitle));
+  std::copy(std::begin(sectionStart), std::end(sectionStart), index.sectionStart);
+  index.sectionCount = sectionCount;
+  index.bookCount = bookCount;
+}
+
+void BibleNavigationActivity::adoptBooks(const BibleBookIndex& index) {
+  bookNames = index.names;
+  std::copy(std::begin(index.targetSpine), std::end(index.targetSpine), bookTargetSpine);
+  std::copy(std::begin(index.isDirect), std::end(index.isDirect), bookIsDirect);
+  memcpy(bookAbbrev, index.abbrev, sizeof(bookAbbrev));
+  memcpy(sectionTitle, index.sectionTitle, sizeof(sectionTitle));
+  std::copy(std::begin(index.sectionStart), std::end(index.sectionStart), sectionStart);
+  sectionCount = index.sectionCount;
+  bookCount = index.bookCount;
 }
 
 bool BibleNavigationActivity::loadChapters(const int bookIndex) {
@@ -143,6 +205,17 @@ bool BibleNavigationActivity::loadChapters(const int bookIndex) {
   chapterTagged.clear();
   chapterBookmarked.clear();
   if (!epub || bookIndex < 0 || bookIndex >= bookCount) return false;
+
+  if (navCache) {
+    int cachedCount = 0;
+    if (const int16_t* cached = navCache->chaptersFor(bookIndex, cachedCount)) {
+      std::copy(cached, cached + cachedCount, chapterSpine);
+      chapterCount = cachedCount;
+      markChapters(bookIndex);
+      LOG_DBG("BNV", "Go to: chapters of book %d from cache", bookIndex);
+      return true;
+    }
+  }
 
   BibleNav::Scanner scanner;
   if (!scanner.valid()) {
@@ -163,10 +236,13 @@ bool BibleNavigationActivity::loadChapters(const int bookIndex) {
     chapterCount = 0;
     return false;
   }
-  epub->resolveFilenamesToSpineIndices(targets.data(), spineIndices.get(), chapterCount);
+  for (int i = 0; i < chapterCount; i++) spineIndices[i] = -1;
+  // A book's chapters follow its chapter-nav page in the spine.
+  resolveRemaining(*epub, targets.data(), spineIndices.get(), chapterCount, bookTargetSpine[bookIndex]);
   for (int i = 0; i < chapterCount; i++) {
     chapterSpine[i] = static_cast<int16_t>(spineIndices[i]);
   }
+  if (navCache) navCache->storeChapters(bookIndex, chapterSpine, chapterCount);
   markChapters(bookIndex);
   return true;
 }

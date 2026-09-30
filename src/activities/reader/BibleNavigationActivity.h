@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "BibleBookIndex.h"
 #include "BibleBookNameTable.h"
 #include "BookGridLayout.h"
 #include "BookmarkEntry.h"
@@ -32,18 +33,22 @@
 // the current chapter selected (see BibleEntryPosition.h for the fallbacks).
 class BibleNavigationActivity final : public UiListActivity {
  public:
+  // goToStartMs: millis() when the reader began opening this navigator; the Go to milestones are
+  // logged relative to it.
   BibleNavigationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::shared_ptr<Epub>& epub,
-                          int currentSpineIndex, const std::vector<BookmarkEntry>& bookmarks);
+                          int currentSpineIndex, const std::vector<BookmarkEntry>& bookmarks,
+                          std::shared_ptr<BibleNavCache> navCache, unsigned long goToStartMs);
   void onEnter() override;
+  void render(RenderLock&& lock) override;
 
  private:
   enum class Level : uint8_t { Book, Chapter, Verse };
 
-  static constexpr int MAX_BOOKS = BibleBookNameTable::MAX_BOOKS;
-  static constexpr int MAX_CHAPTERS = 150;  // Psalms
-  static constexpr int BOOK_NAME_BYTES = BibleBookNameTable::NAME_BYTES;
+  static constexpr int MAX_BOOKS = BibleNavLimits::MAX_BOOKS;
+  static constexpr int MAX_CHAPTERS = BibleNavLimits::MAX_CHAPTERS;
+  static constexpr int BOOK_NAME_BYTES = BibleNavLimits::BOOK_NAME_BYTES;
   // The publication's abbreviation for each book, cell labels at the book level.
-  static constexpr int BOOK_ABBREV_BYTES = 16;
+  static constexpr int BOOK_ABBREV_BYTES = BibleNavLimits::BOOK_ABBREV_BYTES;
   // Room for a full book name, a space and a chapter number.
   static constexpr int HEADER_TITLE_BYTES = BOOK_NAME_BYTES + 8;
   static constexpr int MAX_GRID_CELLS = NumberGrid::MAX_CELLS;
@@ -60,6 +65,12 @@ class BibleNavigationActivity final : public UiListActivity {
   std::shared_ptr<Epub> epub;
   // The reader's spine item when the navigator was opened; decides the entry level.
   const int entrySpine;
+  // The reader's copy of what earlier Go tos resolved; null when it could not be allocated.
+  // Shared rather than borrowed so nothing here points into the reader underneath.
+  std::shared_ptr<BibleNavCache> navCache;
+  const unsigned long goToStartMs;
+  // Written and read only by the render task.
+  bool firstFrameLogged = false;
   // A copy of the open book's bookmark positions, so nothing here points into
   // the reader underneath.
   std::unique_ptr<GridMarks::BookmarkPosition[]> bookmarkPositions;
@@ -160,6 +171,8 @@ class BibleNavigationActivity final : public UiListActivity {
   bool loadBooks();
   bool loadChapters(int bookIndex);
   bool loadVerses(int spineIndex);
+  void copyBooksTo(BibleBookIndex& index) const;
+  void adoptBooks(const BibleBookIndex& index);
   // Moves the fresh navigator to entrySpine's chapter or book, or leaves the
   // unselected book grid when it maps to neither. Runs before the first paint.
   void enterAtPosition();

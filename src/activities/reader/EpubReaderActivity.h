@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "AutoPageTurn.h"
+#include "BibleBookIndex.h"
 #include "EpubReaderMenuActivity.h"
 #include "Place.h"
 #include "ProgressMapper.h"
@@ -44,6 +45,9 @@ class EpubReaderActivity final : public ReaderActivity {
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
   ReaderBookmarks bookmarks;
+  // What the Bible navigator resolved, kept for this reader's life. Allocated on the first Go to in
+  // a Bible, so other books and readers that never use Go to pay nothing.
+  std::shared_ptr<BibleNavCache> navCache;
   AutoPageTurn autoTurn;
   bool recentsEntryRemoved = false;
   bool pendingReadFolderMove = false;
