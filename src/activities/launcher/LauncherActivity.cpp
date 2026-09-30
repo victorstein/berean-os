@@ -93,9 +93,12 @@ void LauncherActivity::computeLayout() {
   const HomeLayout::LineHeights lines{renderer.getLineHeight(SMALL_FONT_ID), renderer.getLineHeight(UI_10_FONT_ID),
                                       renderer.getLineHeight(NOTOSERIF_12_FONT_ID),
                                       renderer.getLineHeight(NOTOSERIF_14_FONT_ID)};
+  const HomeLayout::TextWidths widths{renderer.getTextWidth(UI_10_FONT_ID, "0"),
+                                      renderer.getTextWidth(UI_10_FONT_ID, "00")};
   layout = HomeLayout::compute(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                HomeLayout::Insets{marginTop, marginRight, marginBottom, marginLeft},
-                               UITheme::getInstance().getMetrics(), lines);
+                               UITheme::getInstance().getMetrics(), lines, widths);
+  LOG_DBG(MODULE, "Week strip cell %d px (digit %d, day %d)", layout.stripCell, widths.digit, widths.twoDigits);
 }
 
 void LauncherActivity::resolveTargets() {
@@ -320,11 +323,11 @@ void LauncherActivity::drawMeetings() const {
   const int dayHeight = renderer.getLineHeight(UI_10_FONT_ID);
   for (size_t i = 0; i < strip.size(); ++i) {
     const WeekStripCell& cell = strip[i];
-    const Box cellBox{layout.strip.x + static_cast<int>(i) * HomeLayout::STRIP_CELL, layout.strip.y,
-                      HomeLayout::STRIP_CELL, letterHeight + dayHeight};
+    const Box cellBox = HomeLayout::stripDay(layout, static_cast<int>(i), letterHeight + dayHeight);
     const bool black = !cell.today;
     if (cell.today) {
-      renderer.fillRoundedRect(cellBox.x + 1, cellBox.y, cellBox.width - 2, cellBox.height, RADIUS / 2, Color::Black);
+      const Box today = HomeLayout::stripHighlight(cellBox);
+      renderer.fillRoundedRect(today.x, today.y, today.width, today.height, RADIUS / 2, Color::Black);
     }
     drawCentredIn(renderer, SMALL_FONT_ID, Box{cellBox.x - PAD, cellBox.y, cellBox.width + 2 * PAD, letterHeight},
                   cellBox.y, stripLetters[i], black);

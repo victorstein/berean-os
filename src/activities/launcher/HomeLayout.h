@@ -29,7 +29,8 @@ inline constexpr int MIN_HERO_ART = 96;
 inline constexpr int RECENT_SLOTS = 3;
 inline constexpr int VERSE_TEXT_LINES = 3;
 inline constexpr int STRIP_CELLS = 7;
-inline constexpr int STRIP_CELL = 26;
+// The cell when the UI font cannot be measured.
+inline constexpr int STRIP_CELL_MIN = 26;
 inline constexpr int STRIP_DOT = 6;
 inline constexpr int ICON_TILES = 4;
 
@@ -38,6 +39,13 @@ struct LineHeights {
   int ui10 = 0;
   int serif12 = 0;
   int serif14 = 0;
+};
+
+// Measured ink widths at UI_10, the week strip's day-number font.
+struct TextWidths {
+  int digit = 0;
+  // "00": digits are tabular, so no day number is wider.
+  int twoDigits = 0;
 };
 
 struct Insets {
@@ -68,6 +76,7 @@ struct Layout {
   Box meetingsTitle;
   Box meetingsPercent;
   Box strip;
+  int stripCell = 0;
   Box meetingsRange;
   Box icons[ICON_TILES];
 };
@@ -75,6 +84,11 @@ struct Layout {
 constexpr int iconRowHeight(const LineHeights& lines) { return ICON + lines.small + 3 * PAD; }
 
 constexpr int stripHeight(const LineHeights& lines) { return lines.small + lines.ui10 + PAD; }
+
+// Wide enough for the widest day number plus a digit of space to its neighbour.
+constexpr int stripCellWidth(const TextWidths& widths) {
+  return std::max(STRIP_CELL_MIN, widths.twoDigits + widths.digit);
+}
 
 // Title and % beside the strip, then the full-width range row below the strip's
 // foot, so the meeting-day dots never sit over the range text.
@@ -97,7 +111,7 @@ constexpr int plateHeight(const ThemeMetrics& metrics, const LineHeights& lines)
 }
 
 constexpr Layout compute(const int screenWidth, const int screenHeight, const Insets& insets,
-                         const ThemeMetrics& metrics, const LineHeights& lines) {
+                         const ThemeMetrics& metrics, const LineHeights& lines, const TextWidths& widths) {
   const int gap = metrics.verticalSpacing;
   const int top = insets.top + metrics.topPadding + PAD;
   const int bottom = screenHeight - insets.bottom - metrics.topPadding;
@@ -139,7 +153,8 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
 
   out.meetings = Box{left, y, width, meetingsHeight(lines)};
   out.meetingsIcon = Box{left + PAD, y + PAD, ICON, ICON};
-  const int stripWidth = STRIP_CELLS * STRIP_CELL;
+  out.stripCell = stripCellWidth(widths);
+  const int stripWidth = STRIP_CELLS * out.stripCell;
   out.strip = Box{left + width - PAD - stripWidth, y + PAD, stripWidth, stripHeight(lines)};
   const int textX = left + PAD + ICON + PAD;
   const int textWidth = out.strip.x - PAD - textX;
@@ -157,5 +172,13 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
   }
   return out;
 }
+
+// Day `index`'s column in the strip: its letter and number are both centred in it.
+constexpr Box stripDay(const Layout& layout, const int index, const int height) {
+  return Box{layout.strip.x + index * layout.stripCell, layout.strip.y, layout.stripCell, height};
+}
+
+// The inverted box behind today, a pixel inside its column so it never meets a neighbour.
+constexpr Box stripHighlight(const Box& day) { return Box{day.x + 1, day.y, day.width - 2, day.height}; }
 
 }  // namespace HomeLayout
