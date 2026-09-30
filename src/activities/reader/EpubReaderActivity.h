@@ -5,6 +5,7 @@
 #include <Epub/HighlightDoc.h>
 #include <Epub/Section.h>
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -122,8 +123,15 @@ class EpubReaderActivity final : public ReaderActivity {
   std::optional<Place> captureLeftPlace();
   // Persists a captured place. Called after the lock that captured it is released, except on exit.
   static void recordPlace(std::optional<Place> place);
+
+  // The places behind the Recent chips of the menu that is open, in chip order.
+  std::array<Place, ReaderMenuSheetLayout::MAX_RECENT_CHIPS> recentShown;
+  int recentShownCount = 0;
+  // Fills recentShown from PLACES, skipping the chapter on screen, and returns the chip labels.
+  ReaderMenuSheetLayout::RecentChipLabels collectRecentChips(const std::optional<Place>& onScreen);
+  void openRecentPlace(int index);
   void jumpToPercent(int percent);
-  void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
+  void onReaderMenuConfirm(const MenuResult& menu);
   // pageOnScreen: the framebuffer still holds the reading page. False from a
   // sub-screen's result handler, whose last frame is what the framebuffer holds.
   void openReaderMenu(bool pageOnScreen);

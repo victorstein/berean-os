@@ -21,6 +21,7 @@
 #include <limits>
 #include <utility>
 
+#include "BibleBookNameTable.h"
 #include "BibleNavigationActivity.h"
 #include "BibleReference.h"
 #include "BibleSearchActivity.h"
@@ -271,14 +272,18 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
 #endif
   const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
   int tagsHereCount = 0;
+  std::optional<Place> onScreen;
   if (isBible) {
     RenderLock lock;
     tagsHereCount = chapterPassageCount;
+    onScreen = captureLeftPlace();
   }
+  const ReaderMenuSheetLayout::RecentChipLabels recent =
+      isBible ? collectRecentChips(onScreen) : ReaderMenuSheetLayout::RecentChipLabels{};
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
                                                !currentPageFootnotes.empty(), !bookmarks.empty(), hasHighlights,
-                                               isBible, tagsHereCount, pageOnScreen),
+                                               isBible, tagsHereCount, pageOnScreen, recent),
       [this](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -286,7 +291,7 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
         }
         toggleAutoPageTurn(menu.pageTurnOption);
         if (!result.isCancelled) {
-          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+          onReaderMenuConfirm(menu);
         }
       });
 }
@@ -677,7 +682,8 @@ void EpubReaderActivity::jumpToPercent(int percent) {
   navigateTo({.spineIndex = targetSpineIndex, .spineProgress = spineProgress});
 }
 
-void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
+void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
+  const auto action = static_cast<EpubReaderMenuActivity::MenuAction>(menu.action);
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     bookmarks.load(renderer, epub, section.get(), currentSpineIndex);
     if (result.isCancelled) {
@@ -827,6 +833,10 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       addBookmark();
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::OPEN_RECENT_PLACE: {
+      openRecentPlace(menu.recentIndex);
+      break;
+    }
   }
 }
 
@@ -875,6 +885,51 @@ void EpubReaderActivity::openBibleSearch(const CancelTo cancelTo) {
                            navigateTo({.spineIndex = verse.spineIndex, .offsetJump = verse.offsetJump});
                          });
 }
+
+ReaderMenuSheetLayout::RecentChipLabels EpubReaderActivity::collectRecentChips(const std::optional<Place>& onScreen) {
+  ReaderMenuSheetLayout::RecentChipLabels labels;
+  recentShownCount = static_cast<int>(
+      PlacesDoc::pickRecent(PLACES.getPlaces(), onScreen ? std::optional<study::Unit>(onScreen->unit) : std::nullopt,
+                            recentShown.data(), recentShown.size()));
+  if (recentShownCount == 0) return labels;
+
+  // Transient (~4.2 KB, PSRAM by size) and never allowed to inflate: an inflate lends the
+  // framebuffer out and hands it back blank, just before the menu snapshots the page. Without the
+  // table each chip shows its full reference.
+  auto names = makeUniqueNoThrow<BibleBookNameTable>();
+  const bool haveNames = names && names->load(epub, renderer, SpineHtmlStream::WhenMissing::Fail);
+  if (!names) LOG_ERR("ERS", "OOM: book name table for Recent chips");
+  for (int i = 0; i < recentShownCount; ++i) {
+    const Place& place = recentShown[i];
+    PlacesDoc::formatChipLabel(haveNames ? names->abbreviationFor(place.unit.book) : "", place, labels.text[i],
+                               sizeof(labels.text[i]));
+  }
+  labels.count = recentShownCount;
+  return labels;
+}
+
+void EpubReaderActivity::openRecentPlace(const int index) {
+  if (index < 0 || index >= recentShownCount) return;
+  const Place place = recentShown[index];
+
+  // The hint first, under the lock the render task holds around the same unit cache; it never
+  // builds. The book search only for a stale edition, off-lock: no render has been requested yet
+  // (ActivityManager notifies at the end of its loop, after this handler).
+  std::optional<StudyStore::Location> location;
+  {
+    RenderLock lock;
+    location = STUDY.locatePlaceAtHint(place.unit, place.spineIndex);
+  }
+  if (!location) location = STUDY.locatePlace(place.unit, place.spineIndex);
+  if (!location) {
+    ReaderUtils::showMessage(renderer, tr(STR_LINK_TARGET_NOT_FOUND));
+    return;
+  }
+  navigateTo({.spineIndex = location->spineIndex, .offsetJump = location->offset});
+}
+
+static_assert(ReaderMenuSheetLayout::RECENT_LABEL_BYTES == PlacesDoc::MAX_REFERENCE_BYTES + 1,
+              "a chip label holds a full reference");
 
 void EpubReaderActivity::onBookLoaded() {
   const ReaderEntryIntent intent = entryIntent;

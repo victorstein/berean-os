@@ -24,7 +24,8 @@ class EpubReaderMenuActivity final : public UiListActivity {
   // last frame, so the sheet may be drawn over it.
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   uint8_t currentOrientation, bool hasFootnotes, bool hasBookmarks, bool hasHighlights,
-                                  bool isBible, int tagsHereCount, bool pageOnScreen);
+                                  bool isBible, int tagsHereCount, bool pageOnScreen,
+                                  const ReaderMenuSheetLayout::RecentChipLabels& recent);
 
   void onEnter() override;
   void onExit() override;
@@ -39,6 +40,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
 
   static constexpr freeink::ui::ActionId ACTION_CLOSE = ACTION_USER;
   static constexpr freeink::ui::ActionId ACTION_CHROME = ACTION_USER + 1;
+  static constexpr freeink::ui::ActionId ACTION_RECENT = ACTION_USER + 2;
   static constexpr int COLUMN_CAPACITY = ReaderMenuModel::MAX_ROWS / 2;
 
   int listCount() const override { return model.count(); }
@@ -49,16 +51,19 @@ class EpubReaderMenuActivity final : public UiListActivity {
   void navigateButtons() override;
 
   static void closeTrampoline(const freeink::ui::ActionEvent& event, void* user);
+  static void recentTrampoline(const freeink::ui::ActionEvent& event, void* user);
   void closeCancelled();
   void buildRowItems();
   void refreshRowStates();
   void decideMode();
   void logHeap(const char* phase) const;
   void drawTile(UiScreen& screen, int index, const ReaderMenuSheetLayout::Box& box);
+  void drawRecentBand(UiScreen& screen);
 
   const ReaderMenuModel::Model model;
   const std::string title;
   const bool pageOnScreen;
+  const ReaderMenuSheetLayout::RecentChipLabels recent;
 
   // Rows split row-major: row i sits in column i % 2, slot i / 2. ListProps
   // has no stride, so each column needs its own contiguous array.

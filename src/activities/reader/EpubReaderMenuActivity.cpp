@@ -8,6 +8,7 @@
 #include <Memory.h>
 #include <esp_heap_caps.h>
 
+#include <algorithm>
 #include <cstdio>
 
 #include "CrossPointSettings.h"
@@ -68,6 +69,8 @@ StrId labelFor(const ReaderMenuAction action) {
       return StrId::STR_HIGHLIGHTS;
     case ReaderMenuAction::TAGS_HERE:
       return StrId::STR_TAGS_HERE;
+    case ReaderMenuAction::OPEN_RECENT_PLACE:
+      return StrId::STR_RECENT;
   }
   return StrId::STR_GO_TO;
 }
@@ -103,13 +106,15 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
                                                const std::string& title, const uint8_t currentOrientation,
                                                const bool hasFootnotes, const bool hasBookmarks,
                                                const bool hasHighlights, const bool isBible, const int tagsHereCount,
-                                               const bool pageOnScreen)
+                                               const bool pageOnScreen,
+                                               const ReaderMenuSheetLayout::RecentChipLabels& recent)
     : UiListActivity("EpubReaderMenu", renderer, mappedInput),
       model(ReaderMenuModel::build(ReaderMenuModel::Inputs{isBible, hasFootnotes, hasBookmarks, hasHighlights,
                                                            Frontlight.present(), BEREAN_CAP_ROTATION != 0,
                                                            tagsHereCount})),
       title(title),
       pageOnScreen(pageOnScreen),
+      recent(recent),
       pendingOrientation(currentOrientation) {
   if (model.overflowed) {
     LOG_ERR("MENU", "Reader menu over capacity (%d quick, %d rows); extra items dropped", model.quickCount,
@@ -163,6 +168,7 @@ void EpubReaderMenuActivity::refreshRowStates() {
 void EpubReaderMenuActivity::onEnter() {
   UiListActivity::onEnter();
   app.on(ACTION_CLOSE, &EpubReaderMenuActivity::closeTrampoline, this);
+  app.on(ACTION_RECENT, &EpubReaderMenuActivity::recentTrampoline, this);
 }
 
 void EpubReaderMenuActivity::onExit() {
@@ -175,6 +181,15 @@ void EpubReaderMenuActivity::closeTrampoline(const fui::ActionEvent&, void* user
   auto* self = static_cast<EpubReaderMenuActivity*>(user);
   self->app.clearTapFlash();
   self->closeCancelled();
+}
+
+void EpubReaderMenuActivity::recentTrampoline(const fui::ActionEvent& event, void* user) {
+  auto* self = static_cast<EpubReaderMenuActivity*>(user);
+  self->app.clearTapFlash();
+  MenuResult result{static_cast<int>(ReaderMenuAction::OPEN_RECENT_PLACE), self->pendingOrientation,
+                    self->selectedPageTurnOption, static_cast<int8_t>(event.value)};
+  self->setResult(std::move(result));
+  self->finish();
 }
 
 void EpubReaderMenuActivity::closeCancelled() {
@@ -224,6 +239,8 @@ void EpubReaderMenuActivity::decideMode() {
   in.ruleWidth = metrics.popupFrameThickness;
   in.quickCount = model.quickCount;
   in.rowCount = model.rowCount;
+  in.recentCount = recent.count;
+  in.recentHeight = app.theme().minTouchSize;
   layout = ReaderMenuSheetLayout::compute(in);
   if (!layout.fitsAlone) {
     LOG_ERR("MENU", "Sheet taller than the screen (%d quick, %d rows); rows clipped", model.quickCount, model.rowCount);
@@ -388,6 +405,65 @@ void EpubReaderMenuActivity::drawTile(UiScreen& screen, const int index, const B
   screen.target().text(labelRect, I18N.get(labelFor(action)), labelStyle);
 }
 
+// The mockup's Recent row: a bold caption, then pill chips sized to their labels, as the
+// Highlights tag chips are drawn (HighlightsActivity::buildChipRow).
+void EpubReaderMenuActivity::drawRecentBand(UiScreen& screen) {
+  const auto& theme = screen.theme();
+  const Box& band = layout.recent;
+
+  fui::TextStyle captionStyle = theme.smallText;
+  captionStyle.bold = true;
+  const char* caption = I18N.get(StrId::STR_RECENT);
+  const int captionWidth = screen.target().measureText(theme.smallText.font, caption, captionStyle).width;
+  const int lineHeight = screen.target().lineHeight(theme.smallText.font);
+  screen.target().text(centredLine(Box{band.x, band.y, captionWidth, band.h}, lineHeight), caption, captionStyle);
+
+  const int padX = theme.spaceMd;
+  const int gap = theme.spaceSm;
+  const int chipHeight = lineHeight + 2 * theme.spaceSm;
+  int widths[ReaderMenuSheetLayout::MAX_RECENT_CHIPS] = {};
+  for (int i = 0; i < recent.count; ++i) {
+    const int textWidth = screen.target().measureText(theme.smallText.font, recent.text[i], theme.smallText).width;
+    widths[i] = std::max(textWidth + 2 * padX, chipHeight);
+  }
+  const int shown = ReaderMenuSheetLayout::fitChips(captionWidth, widths, recent.count, band.w, gap);
+
+  fui::StyleSet styles;
+  styles.explicitlySet = true;
+  styles.normal.background = fui::Paint::solid(fui::Color::White);
+  styles.normal.foreground = fui::Paint::solid(fui::Color::Black);
+  styles.normal.border = fui::Paint::solid(fui::Color::Black);
+  styles.normal.borderWidth = 1;
+  styles.normal.radius = static_cast<uint8_t>(std::min(chipHeight / 2, 255));
+  styles.selected = styles.normal;
+  styles.selected.background = fui::Paint::solid(fui::Color::Black);
+  styles.selected.foreground = fui::Paint::solid(fui::Color::White);
+  styles.focused = styles.selected;
+  styles.active = styles.selected;
+  styles.disabled = styles.normal;
+
+  // The pill is drawn at text height; its hit rect fills the band, a touch target tall.
+  const int padY = (band.h - chipHeight) / 2;
+  int x = band.x + captionWidth + gap;
+  for (int i = 0; i < shown; ++i) {
+    fui::ButtonProps props;
+    props.label = recent.text[i];
+    props.action = ACTION_RECENT;
+    props.value = static_cast<int16_t>(i);
+    props.inputMask = fui::InputTouch;
+    props.state = fui::StateNormal;
+    props.text = theme.smallText;
+    props.styles = styles;
+    props.minTouchSize = 0;
+    props.hitPadding = fui::Insets{static_cast<int16_t>(padY), static_cast<int16_t>(gap / 2),
+                                   static_cast<int16_t>(padY), static_cast<int16_t>(gap / 2)};
+    const fui::Rect rect{static_cast<int16_t>(x), static_cast<int16_t>(band.y + padY), static_cast<int16_t>(widths[i]),
+                         static_cast<int16_t>(chipHeight)};
+    fui::button(screen.frame(), rect, props);
+    x += widths[i] + gap;
+  }
+}
+
 void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   refreshRowStates();
   const auto& theme = screen.theme();
@@ -407,6 +483,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   screen.target().bitmap(toFui(layout.close), fui::bitmapFromIcon(icon_close_24), fui::BitmapMode::Center);
 
   for (int i = 0; i < layout.tileCount && i < model.quickCount; i++) drawTile(screen, i, layout.tiles[i]);
+  if (recent.count > 0) drawRecentBand(screen);
 
   const int screenWidth = renderer.getScreenWidth();
   const int screenHeight = renderer.getScreenHeight();

@@ -25,6 +25,8 @@ struct MenuResult {
   int action = -1;
   uint8_t orientation = 0;
   uint8_t pageTurnOption = 0;
+  // OPEN_RECENT_PLACE: which Recent chip, in the order the reader passed them.
+  int8_t recentIndex = -1;
 };
 
 struct ChapterResult {
