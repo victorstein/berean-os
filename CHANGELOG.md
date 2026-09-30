@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.0](https://github.com/victorstein/berean-os/compare/v1.21.2...v1.22.0) (2026-09-30)
+
+
+### Features
+
+* jump to typed Bible references from verse search ([#211](https://github.com/victorstein/berean-os/issues/211)) ([30e3777](https://github.com/victorstein/berean-os/commit/30e3777c5c9965dfe4a155092a0689d658b16cb2)), closes [#206](https://github.com/victorstein/berean-os/issues/206)
+
 ## [1.21.2](https://github.com/victorstein/berean-os/compare/v1.21.1...v1.21.2) (2026-09-30)
 
 
