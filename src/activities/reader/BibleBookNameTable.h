@@ -36,7 +36,9 @@ class BibleBookNameTable {
   // The TOC join alone, for a caller that has already scanned the book-nav
   // page. A book with no matching TOC entry keeps an empty name. Clears every
   // abbreviation; setAbbreviations() fills them afterwards.
-  void joinToc(const Epub& epub, const std::string* targets, int targetCount);
+  // With `tocSpines` (targetCount slots, each -1 or already resolved), also takes each unset
+  // target's spine index from its TOC entry, at no extra SD cost.
+  void joinToc(const Epub& epub, const std::string* targets, int targetCount, int* tocSpines = nullptr);
   // The book-nav page's link text as each book's abbreviation, in link order. A book with no label
   // gets an empty abbreviation, as load() has always left it.
   void setAbbreviations(const std::vector<std::string>& labels);

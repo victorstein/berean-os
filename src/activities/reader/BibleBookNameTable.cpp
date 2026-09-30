@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "SpineHtmlStream.h"
+#include "SpineSearch.h"
 
 namespace {
 
@@ -42,7 +43,7 @@ bool BibleBookNameTable::load(const std::shared_ptr<Epub>& epub, GfxRenderer& re
   return true;
 }
 
-void BibleBookNameTable::joinToc(const Epub& epub, const std::string* targets, const int targetCount) {
+void BibleBookNameTable::joinToc(const Epub& epub, const std::string* targets, const int targetCount, int* tocSpines) {
   bookCount = targetCount < MAX_BOOKS ? targetCount : MAX_BOOKS;
   for (int i = 0; i < bookCount; i++) {
     names[i][0] = '\0';
@@ -50,10 +51,13 @@ void BibleBookNameTable::joinToc(const Epub& epub, const std::string* targets, c
   }
 
   const int tocCount = epub.getTocItemsCount();
+  const int spineCount = epub.getSpineItemsCount();
   for (int i = 0; i < tocCount; i++) {
     const auto tocItem = epub.getTocItem(i);
     const int match = BibleNav::findTargetByHref(targets, bookCount, tocItem.href);
     if (match >= 0 && names[match][0] == '\0') copyUtf8Truncated(names[match], NAME_BYTES, tocItem.title);
+    if (tocSpines)
+      SpineSearch::takeTocSpine(targets, tocSpines, bookCount, tocItem.href, tocItem.spineIndex, spineCount);
   }
 }
 

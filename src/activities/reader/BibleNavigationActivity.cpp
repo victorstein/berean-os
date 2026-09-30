@@ -16,6 +16,7 @@
 #include "BibleEntryPosition.h"
 #include "MappedInputManager.h"
 #include "SpineHtmlStream.h"
+#include "SpineSearch.h"
 #include "components/CoverBandGeometry.h"
 #include "components/Masthead.h"
 #include "components/UIScale.h"
@@ -34,6 +35,15 @@ bool feedNavScanner(void* ctx, const char* chunk, const size_t length, const boo
 
 bool feedVerseScanner(void* ctx, const char* chunk, const size_t length, const bool isFinal) {
   return static_cast<VerseAnchors::Scanner*>(ctx)->feed(chunk, length, isFinal);
+}
+
+std::string_view spineHrefAt(const void* ctx, const int spineIndex, std::string& scratch) {
+  scratch = static_cast<const Epub*>(ctx)->getSpineItem(spineIndex).href;
+  return scratch;
+}
+
+void resolveRemaining(const Epub& epub, const std::string* targets, int* out, const int count, const int first) {
+  SpineSearch::resolveFrom(targets, out, count, first, epub.getSpineItemsCount(), spineHrefAt, &epub);
 }
 
 }  // namespace
@@ -120,9 +130,11 @@ bool BibleNavigationActivity::loadBooks() {
     bookCount = 0;
     return false;
   }
-  epub->resolveFilenamesToSpineIndices(targets.data(), spineIndices.get(), bookCount);
-
-  bookNames.joinToc(*epub, targets.data(), bookCount);
+  for (int i = 0; i < bookCount; i++) spineIndices[i] = -1;
+  bookNames.joinToc(*epub, targets.data(), bookCount, spineIndices.get());
+  bookNames.setAbbreviations(page.labels);
+  // Only a target with no usable TOC entry is left to walk for.
+  resolveRemaining(*epub, targets.data(), spineIndices.get(), bookCount, 0);
 
   for (int i = 0; i < bookCount; i++) {
     bookTargetSpine[i] = static_cast<int16_t>(spineIndices[i]);
@@ -177,7 +189,9 @@ bool BibleNavigationActivity::loadChapters(const int bookIndex) {
     chapterCount = 0;
     return false;
   }
-  epub->resolveFilenamesToSpineIndices(targets.data(), spineIndices.get(), chapterCount);
+  for (int i = 0; i < chapterCount; i++) spineIndices[i] = -1;
+  // A book's chapters follow its chapter-nav page in the spine.
+  resolveRemaining(*epub, targets.data(), spineIndices.get(), chapterCount, bookTargetSpine[bookIndex]);
   for (int i = 0; i < chapterCount; i++) {
     chapterSpine[i] = static_cast<int16_t>(spineIndices[i]);
   }
