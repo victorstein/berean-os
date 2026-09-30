@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/victorstein/berean-os/compare/v1.24.0...v1.25.0) (2026-09-30)
+
+
+### Features
+
+* show the reader menu as a sheet over the page ([#217](https://github.com/victorstein/berean-os/issues/217)) ([a22af1d](https://github.com/victorstein/berean-os/commit/a22af1d14bfa9af7137ac82e0d7f30ad52af0464)), closes [#200](https://github.com/victorstein/berean-os/issues/200)
+
 ## [1.24.0](https://github.com/victorstein/berean-os/compare/v1.23.0...v1.24.0) (2026-09-30)
 
 
