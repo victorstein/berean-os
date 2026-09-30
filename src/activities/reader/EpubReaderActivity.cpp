@@ -303,6 +303,28 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
       });
 }
 
+void EpubReaderActivity::reopenReaderMenu() {
+  // Night mode inverts at output, so the sheet is drawn cleared there whatever
+  // the framebuffer holds; a page render first would only cost a refresh.
+  if (SETTINGS.screenInverted != 0) {
+    LOG_DBG("ERS", "Reopening menu cleared: night");
+    openReaderMenu(false);
+    return;
+  }
+  {
+    RenderLock lock;
+    pageRendered = false;
+  }
+  requestUpdateAndWait();
+  bool onPage;
+  {
+    RenderLock lock;
+    onPage = pageRendered;
+  }
+  LOG_DBG("ERS", "Reopening menu %s", onPage ? "over page" : "cleared: no page");
+  openReaderMenu(onPage);
+}
+
 bool EpubReaderActivity::buildTickHeapGate() {
   const size_t freeHeap = ESP.getFreeHeap();
   const size_t maxBlock = ESP.getMaxAllocHeap();
@@ -399,20 +421,23 @@ void EpubReaderActivity::openHighlightPassage() {
       [this](const ActivityResult&) { requestUpdate(); });
 }
 
-void EpubReaderActivity::openHighlights(const std::optional<uint16_t> spineFilter) {
+void EpubReaderActivity::openHighlights(const CancelTo cancelTo, const std::optional<uint16_t> spineFilter) {
   // Deliberately NOT progressChangeResultHandler (used by the BOOKMARKS case
-  // below): that lambda calls bookmarks.load() and reopens the reader
-  // menu on cancel, both wrong here, and HighlightsActivity's own class
-  // comment already documents that wiring this launch site is Task 7's job.
-  // The result shape (ProgressChangeResult with hasVisibleTextOffset=true) is
-  // genuinely the same alternative progressChangeResultHandler expects, so
-  // reusing its std::get is type-safe -- it is the surrounding side effects
-  // that make reuse wrong, not the ResultVariant alternative.
+  // below): that lambda calls bookmarks.load(), wrong here, and reopens the
+  // menu on every cancel, where this one follows cancelTo (an entry intent
+  // returns to the page). The result shape (ProgressChangeResult with
+  // hasVisibleTextOffset=true) is genuinely the same alternative
+  // progressChangeResultHandler expects, so reusing its std::get is type-safe
+  // -- it is the surrounding side effects that make reuse wrong, not the
+  // ResultVariant alternative.
   startActivityForResult(
       std::make_unique<HighlightsActivity>(renderer, mappedInput, spineFilter,
                                            spineFilter ? readerMenuTitle() : std::string()),
-      [this](const ActivityResult& result) {
-        if (result.isCancelled) return;
+      [this, cancelTo](const ActivityResult& result) {
+        if (result.isCancelled) {
+          if (cancelTo == CancelTo::Menu) reopenReaderMenu();
+          return;
+        }
         const auto& sync = std::get<ProgressChangeResult>(result.data);
         if (!sync.hasVisibleTextOffset || sync.spineIndex < 0 || sync.spineIndex >= epub->getSpineItemsCount()) {
           return;
@@ -744,7 +769,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     bookmarks.load(renderer, epub, section.get(), currentSpineIndex);
     if (result.isCancelled) {
-      openReaderMenu(false);
+      reopenReaderMenu();
     } else {
       const auto& sync = std::get<ProgressChangeResult>(result.data);
 
@@ -790,7 +815,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
       startActivityForResult(std::make_unique<EpubReaderFootnotesActivity>(renderer, mappedInput, currentPageFootnotes),
                              [this](const ActivityResult& result) {
                                if (result.isCancelled) {
-                                 openReaderMenu(false);
+                                 reopenReaderMenu();
                                  return;
                                }
                                const auto& footnoteResult = std::get<FootnoteResult>(result.data);
@@ -804,7 +829,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
                                                                     TextSettingsActivity::Tab::Family),
                              [this](const ActivityResult&) {
                                releaseSectionKeepingPosition();
-                               openReaderMenu(false);
+                               reopenReaderMenu();
                              });
       break;
     }
@@ -831,7 +856,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
           std::make_unique<EpubReaderPercentSelectionActivity>(renderer, mappedInput, initialPercent),
           [this](const ActivityResult& result) {
             if (result.isCancelled) {
-              openReaderMenu(false);
+              reopenReaderMenu();
             } else {
               jumpToPercent(std::get<PercentResult>(result.data).percent);
             }
@@ -851,11 +876,11 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
         openBibleTags();
         return;
       }
-      openHighlights();
+      openHighlights(CancelTo::Menu);
       break;
     }
     case EpubReaderMenuActivity::MenuAction::TAGS_HERE: {
-      openHighlights(static_cast<uint16_t>(currentSpineIndex));
+      openHighlights(CancelTo::Menu, static_cast<uint16_t>(currentSpineIndex));
       break;
     }
     case EpubReaderMenuActivity::MenuAction::GO_HOME: {
@@ -926,7 +951,7 @@ void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
   startActivityForResult(std::move(chapterList), [this, cancelTo](const ActivityResult& result) {
     if (result.isCancelled) {
       // From an entry intent the page is re-rendered when this screen pops.
-      if (cancelTo == CancelTo::Menu) openReaderMenu(false);
+      if (cancelTo == CancelTo::Menu) reopenReaderMenu();
       return;
     }
     const auto& chapterResult = std::get<ChapterResult>(result.data);
@@ -943,7 +968,7 @@ void EpubReaderActivity::openBibleSearch(const CancelTo cancelTo) {
   startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub),
                          [this, cancelTo](const ActivityResult& result) {
                            if (result.isCancelled) {
-                             if (cancelTo == CancelTo::Menu) openReaderMenu(false);
+                             if (cancelTo == CancelTo::Menu) reopenReaderMenu();
                              return;
                            }
                            const auto& verse = std::get<ChapterResult>(result.data);
@@ -1025,7 +1050,7 @@ void EpubReaderActivity::onBookLoaded() {
       openBibleSearch(CancelTo::Page);
       return;
     case ReaderEntryIntent::Route::Highlights:
-      openHighlights();
+      openHighlights(CancelTo::Page);
       return;
   }
 }
@@ -1450,6 +1475,7 @@ void EpubReaderActivity::renderBook() {
     LOG_DBG("ERS", "Rendered page in %lums", millis() - start);
     lastRenderCompleteMs = millis();
     pageShown = true;
+    pageRendered = true;
   }
 
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
