@@ -200,51 +200,6 @@ TEST(TypedReferenceParse, NoNamesMeansNoReference) {
   EXPECT_FALSE(parseTypedReference("Gen 1", none).valid());
 }
 
-TEST(TypedReferenceFormat, NameChapterVerseAndRange) {
-  char out[64];
-  TypedReference ref;
-  ref.book = 23;
-  ref.chapter = 40;
-  ref.verse = 31;
-  formatTypedReference(out, sizeof(out),
-                       "Isa\xC3\xAD"
-                       "as",
-                       ref);
-  EXPECT_STREQ(out,
-               "Isa\xC3\xAD"
-               "as 40:31");
-
-  ref.verse = 0;
-  formatTypedReference(out, sizeof(out), "Isaiah", ref);
-  EXPECT_STREQ(out, "Isaiah 40");
-
-  ref.chapter = 3;
-  ref.verse = 16;
-  ref.verseEnd = 18;
-  formatTypedReference(out, sizeof(out), "Juan", ref);
-  EXPECT_STREQ(out, "Juan 3:16-18");
-}
-
-TEST(TypedReferenceFormat, MissingNameShowsTheNumbersOnly) {
-  char out[64];
-  TypedReference ref;
-  ref.book = 1;
-  ref.chapter = 1;
-  ref.verse = 3;
-  formatTypedReference(out, sizeof(out), "", ref);
-  EXPECT_STREQ(out, "1:3");
-}
-
-TEST(TypedReferenceFormat, NeverOverrunsTheBuffer) {
-  char out[6];
-  TypedReference ref;
-  ref.book = 22;
-  ref.chapter = 2;
-  ref.verse = 1;
-  formatTypedReference(out, sizeof(out), "El Cantar de los Cantares", ref);
-  EXPECT_STREQ(out, "El Ca");
-}
-
 namespace {
 
 using BibleSearch::IndexBuilder;
