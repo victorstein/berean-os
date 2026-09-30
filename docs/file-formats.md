@@ -484,6 +484,31 @@ refuse every recents save. The rule is the one `PassageDoc` follows
 (`lib/StudyStore/StudyStore/PassageDoc.h:20-24`): bump only when an older build would lose or
 misread data.
 
+## `/.berean/places.json`
+
+The last Bible places the reader left, newest first. Owned by `src/util/PlacesDoc.{h,cpp}` (format,
+host-tested in `test/places_doc/`) and `src/PlacesStore.cpp` (storage, atomic writes, host-tested in
+`test/places_store/`).
+
+### Version 1
+
+- `v` — format version. Required: an absent, zero, negative or newer `v` is refused, the store
+  records nothing, and the file is never written until a later load succeeds or finds no file.
+
+```json
+{"v":1,"places":[{"u":"v:66:21:4:17","r":"Revelation 21:4","c":false,"s":1201,"o":2310},
+                 {"u":"v:1:1:1:0","r":"Genesis 1","c":true,"s":12,"o":0}]}
+```
+
+- `u` — the place as a compact `study::Unit` (`kind:book:major:minor:offset`, `Unit.h`), always a
+  Verse unit: book 1–66, chapter, verse. Language-free, so it survives another edition.
+- `r` — display reference in the recording edition's language, ≤ 48 bytes.
+- `c` — chapter-only: the page began before the chapter's first verse.
+- `s`, `o` — spine index and page offset hints in the recording edition.
+
+At most 12 places, one per (book, chapter). The save budget, 2,118 bytes, is derived from the caps
+(`PlacesDoc::worstCaseBytes()`).
+
 ## `/.berean/passages/<pubkey>.json`
 
 One publication's tagged passages. Owned by `lib/StudyStore/StudyStore/PassageDoc.{h,cpp}` (format,

@@ -85,6 +85,28 @@ std::vector<uint16_t> StudyStore::spineIndicesForBook(const uint8_t book) {
   return units_->spineIndicesForBook(book);
 }
 
+std::optional<PlacesDoc::PlaceUnit> StudyStore::placeAt(const uint16_t spineIndex, const uint32_t pageOffset) {
+  if (pubKey_ != study::BIBLE_PUB_KEY || !units_ || !units_->ready()) return std::nullopt;
+  return PlacesDoc::placeUnit(units_->peekUnits(spineIndex), pageOffset);
+}
+
+std::optional<StudyStore::Location> StudyStore::locatePlaceAtHint(const study::Unit& unit, const uint16_t spineHint) {
+  if (pubKey_ != study::BIBLE_PUB_KEY || !units_ || !units_->ready()) return std::nullopt;
+  if (spineHint >= units_->indexedDocumentCount()) return std::nullopt;
+  if (const auto offset = study::documentOffsetOf(units_->peekUnits(spineHint), unit)) {
+    return Location{spineHint, *offset};
+  }
+  return std::nullopt;
+}
+
+std::optional<StudyStore::Location> StudyStore::locatePlace(const study::Unit& unit, const uint16_t spineHint) {
+  if (pubKey_ != study::BIBLE_PUB_KEY) return std::nullopt;
+  return locateUnit(unit, spineHint);
+}
+
+static_assert(PlacesDoc::MAX_REFERENCE_BYTES == study::PassageDoc::MAX_REFERENCE_BYTES,
+              "a place's reference is capped like a passage's");
+
 bool StudyStore::save() {
   if (saveDisabled_) {
     LOG_ERR(MODULE, "Refusing to save: a store failed to load and may still hold data");

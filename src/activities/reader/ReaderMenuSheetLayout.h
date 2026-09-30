@@ -9,6 +9,16 @@
 namespace ReaderMenuSheetLayout {
 
 constexpr int MAX_TILES = 4;
+// The mockup's Recent row shows three places.
+constexpr int MAX_RECENT_CHIPS = 3;
+// A chip label: PlacesDoc::MAX_REFERENCE_BYTES plus a terminator (EpubReaderActivity.cpp asserts it).
+constexpr int RECENT_LABEL_BYTES = 49;
+
+// Labels for the Recent row, newest first, built by the reader when it opens the menu.
+struct RecentChipLabels {
+  char text[MAX_RECENT_CHIPS][RECENT_LABEL_BYTES] = {};
+  int count = 0;
+};
 
 struct Box {
   int x = 0;
@@ -33,6 +43,8 @@ struct Inputs {
   int ruleWidth = 0;
   int quickCount = 0;
   int rowCount = 0;
+  int recentCount = 0;   // places to offer; 0 draws no band
+  int recentHeight = 0;  // the band: at least a touch target
 };
 
 struct Layout {
@@ -43,6 +55,7 @@ struct Layout {
   Box close;
   Box tiles[MAX_TILES];
   int tileCount = 0;
+  Box recent;
   Box columns[2];
   int rowsPerColumn = 0;
   int rowHeight = 0;
@@ -72,8 +85,9 @@ inline Layout compute(const Inputs& in) {
   out.rowsPerColumn = (rows + 1) / 2;
 
   const int tilesBand = quick > 0 ? out.tileHeight + in.gap : 0;
+  const int recentBand = in.recentCount > 0 ? in.recentHeight + in.gap : 0;
   const int sheetHeight =
-      in.ruleWidth + in.titleHeight + in.gap + tilesBand + out.rowsPerColumn * in.rowHeight + in.gap;
+      in.ruleWidth + in.titleHeight + in.gap + tilesBand + recentBand + out.rowsPerColumn * in.rowHeight + in.gap;
   const int safeBottom = in.safeY + in.safeH;
   int sheetTop = safeBottom - sheetHeight;
   out.fitsAlone = sheetTop >= in.safeY;
@@ -100,11 +114,29 @@ inline Layout compute(const Inputs& in) {
     }
     y += out.tileHeight + in.gap;
   }
+  if (in.recentCount > 0) {
+    out.recent = Box{innerX, y, innerW, in.recentHeight};
+    y += in.recentHeight + in.gap;
+  }
   const int columnW = (innerW - in.gap) / 2;
   const int columnH = out.rowsPerColumn * in.rowHeight;
   out.columns[0] = Box{innerX, y, columnW, columnH};
   out.columns[1] = Box{innerX + columnW + in.gap, y, columnW, columnH};
   return out;
+}
+
+// How many chips fit one line after the caption, in order: a chip that does not fit ends the row
+// rather than letting a later, narrower one jump ahead of it.
+constexpr int fitChips(const int captionWidth, const int* chipWidths, const int count, const int bandWidth,
+                       const int gap) {
+  const int limit = count < MAX_RECENT_CHIPS ? count : MAX_RECENT_CHIPS;
+  int x = captionWidth + gap;
+  int fitted = 0;
+  while (fitted < limit && x + chipWidths[fitted] <= bandWidth) {
+    x += chipWidths[fitted] + gap;
+    ++fitted;
+  }
+  return fitted;
 }
 
 // readFramebufferRegion copies the panel-oriented, byte-aligned bounding box of

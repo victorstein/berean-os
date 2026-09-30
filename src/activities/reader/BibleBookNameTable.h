@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 
+#include "SpineHtmlStream.h"
 #include "TypedReference.h"
 
 class GfxRenderer;
@@ -29,9 +30,11 @@ class BibleBookNameTable {
   // Cyrillic/Greek renderings of the same books run to ~42 B.
   static constexpr int NAME_BYTES = 48;
 
-  // Streams the book-nav page and joins its links to the TOC. Slow: it can
-  // inflate the page from the EPUB, so it runs on the loop task.
-  bool load(const std::shared_ptr<Epub>& epub, GfxRenderer& renderer);
+  // Streams the book-nav page and joins its links to the TOC. Slow: it can inflate the page from
+  // the EPUB, so it runs on the loop task. WhenMissing::Fail for a caller that must not lend the
+  // framebuffer to an inflate (the reader menu snapshots it next).
+  bool load(const std::shared_ptr<Epub>& epub, GfxRenderer& renderer,
+            SpineHtmlStream::WhenMissing whenMissing = SpineHtmlStream::WhenMissing::Inflate);
   // The TOC join alone, for a caller that has already scanned the book-nav
   // page. A book with no matching TOC entry keeps an empty name. Clears every
   // abbreviation; load() fills them afterwards.
@@ -42,6 +45,8 @@ class BibleBookNameTable {
   const char* at(int index) const;
   // Name of a 1-based canonical book number, or "" out of range.
   const char* forBook(uint8_t book) const { return at(static_cast<int>(book) - 1); }
+  // The publication's abbreviation for a 1-based canonical book number, or "".
+  const char* abbreviationFor(uint8_t book) const;
   // Names and abbreviations for parseTypedReference.
   BookNameSource nameSource() const;
 

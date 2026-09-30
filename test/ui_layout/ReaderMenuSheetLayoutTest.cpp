@@ -152,3 +152,50 @@ TEST(ReaderMenuSheetLayout, SnapshotBytesCoverBothOrientationsForEveryRowCount) 
     }
   }
 }
+
+namespace {
+
+ReaderMenuSheetLayout::Inputs x4proWithRecent(const int quickCount, const int rowCount) {
+  ReaderMenuSheetLayout::Inputs in = x4pro(quickCount, rowCount);
+  in.recentCount = 3;
+  in.recentHeight = 44;
+  return in;
+}
+
+}  // namespace
+
+TEST(ReaderMenuSheetLayoutRecent, NoPlacesKeepsTodaysLayout) {
+  const auto without = ReaderMenuSheetLayout::compute(x4pro(4, 11));
+  ReaderMenuSheetLayout::Inputs in = x4pro(4, 11);
+  in.recentHeight = 44;  // a height with no places draws no band
+  const auto zero = ReaderMenuSheetLayout::compute(in);
+  EXPECT_EQ(zero.plate.y, without.plate.y);
+  EXPECT_EQ(zero.columns[0].y, without.columns[0].y);
+  EXPECT_EQ(zero.recent.h, 0);
+}
+
+TEST(ReaderMenuSheetLayoutRecent, TheBandSitsBetweenTilesAndColumnsAndStillFitsOverThePage) {
+  const auto l = ReaderMenuSheetLayout::compute(x4proWithRecent(4, 11));
+  EXPECT_EQ(l.plate.y, 800 - (2 + 44 + 8 + 81 + 8 + 44 + 8 + 6 * 50 + 8));
+  EXPECT_TRUE(l.fitsOverPage);
+  EXPECT_EQ(l.recent.y, l.tiles[0].bottom() + 8);
+  EXPECT_EQ(l.recent.h, 44);
+  EXPECT_EQ(l.recent.x, 8);
+  EXPECT_EQ(l.recent.w, 464);
+  EXPECT_EQ(l.columns[0].y, l.recent.bottom() + 8);
+  EXPECT_TRUE(inside(l.recent, l.plate));
+  EXPECT_FALSE(overlaps(l.recent, l.columns[0]));
+}
+
+TEST(ReaderMenuSheetLayoutRecent, ChipsThatDoNotFitAreDropped) {
+  const int widths[3] = {120, 120, 120};
+  // caption 80 + gap 6 = 86; chips at 86..206, 212..332, 338..458.
+  EXPECT_EQ(ReaderMenuSheetLayout::fitChips(80, widths, 3, 464, 6), 3);
+  EXPECT_EQ(ReaderMenuSheetLayout::fitChips(80, widths, 3, 400, 6), 2);
+  EXPECT_EQ(ReaderMenuSheetLayout::fitChips(80, widths, 3, 150, 6), 0);
+}
+
+TEST(ReaderMenuSheetLayoutRecent, NeverMoreThanTheChipCap) {
+  const int widths[5] = {10, 10, 10, 10, 10};
+  EXPECT_EQ(ReaderMenuSheetLayout::fitChips(10, widths, 5, 464, 6), ReaderMenuSheetLayout::MAX_RECENT_CHIPS);
+}

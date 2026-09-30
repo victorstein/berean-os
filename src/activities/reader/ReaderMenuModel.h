@@ -21,7 +21,8 @@ enum class ReaderMenuAction {
   DELETE_CACHE,
   HIGHLIGHT_PASSAGE,
   HIGHLIGHTS,
-  TAGS_HERE
+  TAGS_HERE,
+  OPEN_RECENT_PLACE
 };
 
 // Which reader-menu items exist, which are quick-action tiles and the order of

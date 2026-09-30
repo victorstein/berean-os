@@ -5,6 +5,7 @@
 #include <Epub/HighlightDoc.h>
 #include <Epub/Section.h>
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -12,9 +13,11 @@
 
 #include "AutoPageTurn.h"
 #include "EpubReaderMenuActivity.h"
+#include "Place.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
 #include "ReaderBookmarks.h"
+#include "ReaderEntryIntent.h"
 #include "ReturnStack.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -44,6 +47,12 @@ class EpubReaderActivity final : public ReaderActivity {
   AutoPageTurn autoTurn;
   bool recentsEntryRemoved = false;
   bool pendingReadFolderMove = false;
+  // Consumed once by onBookLoaded(); None thereafter.
+  ReaderEntryIntent entryIntent;
+  // Set by the render task once a page has been drawn this session, read only under RenderLock.
+  // Nothing is recorded before it: an intent's navigateTo would otherwise record the progress.bin
+  // position the reader never saw.
+  bool pageShown = false;
 
   // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
   // two live JsonDocuments are a real risk against the C3's ~50KB free heap
@@ -109,8 +118,20 @@ class EpubReaderActivity final : public ReaderActivity {
   // cached-position rebuild restores it when the overlay is cancelled.
   void releaseSectionKeepingPosition();
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
+  // The Bible place the reader is on, or nullopt. The caller holds RenderLock: the unit cache is
+  // shared with the render task.
+  std::optional<Place> captureLeftPlace();
+  // Persists a captured place. Called after the lock that captured it is released, except on exit.
+  static void recordPlace(std::optional<Place> place);
+
+  // The places behind the Recent chips of the menu that is open, in chip order.
+  std::array<Place, ReaderMenuSheetLayout::MAX_RECENT_CHIPS> recentShown;
+  int recentShownCount = 0;
+  // Fills recentShown from PLACES, skipping the chapter on screen, and returns the chip labels.
+  ReaderMenuSheetLayout::RecentChipLabels collectRecentChips(const std::optional<Place>& onScreen);
+  void openRecentPlace(int index);
   void jumpToPercent(int percent);
-  void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
+  void onReaderMenuConfirm(const MenuResult& menu);
   // pageOnScreen: the framebuffer still holds the reading page. False from a
   // sub-screen's result handler, whose last frame is what the framebuffer holds.
   void openReaderMenu(bool pageOnScreen);
@@ -130,6 +151,12 @@ class EpubReaderActivity final : public ReaderActivity {
   // only without an anchor or a percent jump, which are consumed during a
   // section build and would otherwise leak into the next chapter's.
   enum class SectionMode : uint8_t { Reset, ReuseIfSameSpine };
+
+  // Where cancelling a picker returns: the menu it was opened from, or the page (an entry intent).
+  enum class CancelTo : uint8_t { Menu, Page };
+  void openChapterPicker(CancelTo cancelTo);
+  void openBibleSearch(CancelTo cancelTo);
+  void onBookLoaded() override;
 
   struct NavTarget {
     int spineIndex;
@@ -159,11 +186,13 @@ class EpubReaderActivity final : public ReaderActivity {
 
  public:
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
-                              bool allowFastInitialRefresh)
-      : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
+                              bool allowFastInitialRefresh, const ReaderEntryIntent& intent = {})
+      : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh),
+        entryIntent(intent) {}
   ~EpubReaderActivity() override;
 
   void loop() override;
+  void onExit() override;
 
   bool pageTurn(bool isForward) override;
   bool skipPages(int amount) override;

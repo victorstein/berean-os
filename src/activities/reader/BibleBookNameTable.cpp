@@ -25,7 +25,8 @@ void copyUtf8Truncated(char* dest, const size_t destBytes, const std::string_vie
   dest[safe] = '\0';
 }
 
-bool BibleBookNameTable::load(const std::shared_ptr<Epub>& epub, GfxRenderer& renderer) {
+bool BibleBookNameTable::load(const std::shared_ptr<Epub>& epub, GfxRenderer& renderer,
+                              const SpineHtmlStream::WhenMissing whenMissing) {
   bookCount = 0;
   if (!epub) return false;
   const int bookNavSpine = epub->getBibleBookNavSpineIndex();
@@ -36,7 +37,7 @@ bool BibleBookNameTable::load(const std::shared_ptr<Epub>& epub, GfxRenderer& re
     LOG_ERR("BNAME", "OOM: nav scanner");
     return false;
   }
-  if (!SpineHtmlStream::stream(epub, bookNavSpine, renderer, feedNavScanner, &scanner)) return false;
+  if (!SpineHtmlStream::stream(epub, bookNavSpine, renderer, feedNavScanner, &scanner, whenMissing)) return false;
 
   BibleNav::BookNavPage page = scanner.takeBookNav();
   std::vector<std::string>& targets = page.targets;
@@ -67,6 +68,11 @@ void BibleBookNameTable::joinToc(const Epub& epub, const std::string* targets, c
 const char* BibleBookNameTable::at(const int index) const {
   if (index < 0 || index >= bookCount) return "";
   return names[index];
+}
+
+const char* BibleBookNameTable::abbreviationFor(const uint8_t book) const {
+  const int index = static_cast<int>(book) - 1;
+  return index >= 0 && index < bookCount ? abbreviations[index] : "";
 }
 
 BookNameSource BibleBookNameTable::nameSource() const {

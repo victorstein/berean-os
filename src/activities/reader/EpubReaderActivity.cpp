@@ -21,6 +21,7 @@
 #include <limits>
 #include <utility>
 
+#include "BibleBookNameTable.h"
 #include "BibleNavigationActivity.h"
 #include "BibleReference.h"
 #include "BibleSearchActivity.h"
@@ -36,6 +37,7 @@
 #include "MappedInputManager.h"
 #include "PageTurn.h"
 #include "PassageSelectActivity.h"
+#include "PlacesStore.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
 #include "ReaderUtils.h"
@@ -50,6 +52,7 @@
 #include "study/PubKeyRegistry.h"
 #include "study/StudyStore.h"
 #include "util/BookCacheUtils.h"
+#include "util/PlacesDoc.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
@@ -269,14 +272,18 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
 #endif
   const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
   int tagsHereCount = 0;
+  std::optional<Place> onScreen;
   if (isBible) {
     RenderLock lock;
     tagsHereCount = chapterPassageCount;
+    onScreen = captureLeftPlace();
   }
+  const ReaderMenuSheetLayout::RecentChipLabels recent =
+      isBible ? collectRecentChips(onScreen) : ReaderMenuSheetLayout::RecentChipLabels{};
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
                                                !currentPageFootnotes.empty(), !bookmarks.empty(), hasHighlights,
-                                               isBible, tagsHereCount, pageOnScreen),
+                                               isBible, tagsHereCount, pageOnScreen, recent),
       [this](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -284,7 +291,7 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
         }
         toggleAutoPageTurn(menu.pageTurnOption);
         if (!result.isCancelled) {
-          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+          onReaderMenuConfirm(menu);
         }
       });
 }
@@ -675,7 +682,8 @@ void EpubReaderActivity::jumpToPercent(int percent) {
   navigateTo({.spineIndex = targetSpineIndex, .spineProgress = spineProgress});
 }
 
-void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
+void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
+  const auto action = static_cast<EpubReaderMenuActivity::MenuAction>(menu.action);
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     bookmarks.load(renderer, epub, section.get(), currentSpineIndex);
     if (result.isCancelled) {
@@ -714,49 +722,11 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
 
   switch (action) {
     case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER: {
-      const int spineIdx = currentSpineIndex;
-      // Release the section while the chapter list is up (mirrors the
-      // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
-      // tens-of-KB footprint is the difference between the chapter list
-      // holding its CJK glyph arena (RAM-only repaints) and re-reading
-      // glyphs from SD on every row step. Cancel restores via the same
-      // cached-position rebuild TEXT_SETTINGS uses.
-      releaseSectionKeepingPosition();
-      // A Bible gets the book -> chapter -> verse drill-down instead of the flat
-      // TOC; detection is one memoised spine sweep, so a non-Bible book pays it
-      // at most once for the life of the Epub.
-      std::unique_ptr<Activity> chapterList;
-      if (epub && epub->getBibleBookNavSpineIndex() >= 0) {
-        chapterList =
-            std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx, bookmarks.entries());
-      } else {
-        chapterList = std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx);
-      }
-      startActivityForResult(std::move(chapterList), [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          openReaderMenu(false);
-          return;
-        }
-        const auto& chapterResult = std::get<ChapterResult>(result.data);
-        navigateTo({.spineIndex = chapterResult.spineIndex,
-                    .offsetJump = chapterResult.offsetJump,
-                    .anchor = chapterResult.anchor});
-      });
+      openChapterPicker(CancelTo::Menu);
       break;
     }
     case EpubReaderMenuActivity::MenuAction::SEARCH_BIBLE: {
-      // Same reasoning as SELECT_CHAPTER: a picked verse resets the section
-      // anyway, and search needs the room for its index.
-      releaseSectionKeepingPosition();
-      startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub),
-                             [this](const ActivityResult& result) {
-                               if (result.isCancelled) {
-                                 openReaderMenu(false);
-                                 return;
-                               }
-                               const auto& verse = std::get<ChapterResult>(result.data);
-                               navigateTo({.spineIndex = verse.spineIndex, .offsetJump = verse.offsetJump});
-                             });
+      openBibleSearch(CancelTo::Menu);
       break;
     }
     case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
@@ -863,6 +833,136 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       addBookmark();
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::OPEN_RECENT_PLACE: {
+      openRecentPlace(menu.recentIndex);
+      break;
+    }
+  }
+}
+
+void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
+  const int spineIdx = currentSpineIndex;
+  // Release the section while the chapter list is up (mirrors the
+  // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
+  // tens-of-KB footprint is the difference between the chapter list
+  // holding its CJK glyph arena (RAM-only repaints) and re-reading
+  // glyphs from SD on every row step. Cancel restores via the same
+  // cached-position rebuild TEXT_SETTINGS uses.
+  releaseSectionKeepingPosition();
+  // A Bible gets the book -> chapter -> verse drill-down instead of the flat
+  // TOC; detection is one memoised spine sweep, so a non-Bible book pays it
+  // at most once for the life of the Epub.
+  std::unique_ptr<Activity> chapterList;
+  if (epub && epub->getBibleBookNavSpineIndex() >= 0) {
+    chapterList = std::make_unique<BibleNavigationActivity>(renderer, mappedInput, epub, spineIdx, bookmarks.entries());
+  } else {
+    chapterList = std::make_unique<EpubReaderChapterSelectionActivity>(renderer, mappedInput, epub, spineIdx);
+  }
+  startActivityForResult(std::move(chapterList), [this, cancelTo](const ActivityResult& result) {
+    if (result.isCancelled) {
+      // From an entry intent the page is re-rendered when this screen pops.
+      if (cancelTo == CancelTo::Menu) openReaderMenu(false);
+      return;
+    }
+    const auto& chapterResult = std::get<ChapterResult>(result.data);
+    navigateTo({.spineIndex = chapterResult.spineIndex,
+                .offsetJump = chapterResult.offsetJump,
+                .anchor = chapterResult.anchor});
+  });
+}
+
+void EpubReaderActivity::openBibleSearch(const CancelTo cancelTo) {
+  // Same reasoning as openChapterPicker: a picked verse resets the section
+  // anyway, and search needs the room for its index.
+  releaseSectionKeepingPosition();
+  startActivityForResult(std::make_unique<BibleSearchActivity>(renderer, mappedInput, epub),
+                         [this, cancelTo](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             if (cancelTo == CancelTo::Menu) openReaderMenu(false);
+                             return;
+                           }
+                           const auto& verse = std::get<ChapterResult>(result.data);
+                           navigateTo({.spineIndex = verse.spineIndex, .offsetJump = verse.offsetJump});
+                         });
+}
+
+ReaderMenuSheetLayout::RecentChipLabels EpubReaderActivity::collectRecentChips(const std::optional<Place>& onScreen) {
+  ReaderMenuSheetLayout::RecentChipLabels labels;
+  recentShownCount = static_cast<int>(
+      PlacesDoc::pickRecent(PLACES.getPlaces(), onScreen ? std::optional<study::Unit>(onScreen->unit) : std::nullopt,
+                            recentShown.data(), recentShown.size()));
+  if (recentShownCount == 0) return labels;
+
+  // Transient (~4.2 KB, PSRAM by size) and never allowed to inflate: an inflate lends the
+  // framebuffer out and hands it back blank, just before the menu snapshots the page. Without the
+  // table each chip shows its full reference.
+  auto names = makeUniqueNoThrow<BibleBookNameTable>();
+  const bool haveNames = names && names->load(epub, renderer, SpineHtmlStream::WhenMissing::Fail);
+  if (!names) LOG_ERR("ERS", "OOM: book name table for Recent chips");
+  for (int i = 0; i < recentShownCount; ++i) {
+    const Place& place = recentShown[i];
+    PlacesDoc::formatChipLabel(haveNames ? names->abbreviationFor(place.unit.book) : "", place, labels.text[i],
+                               sizeof(labels.text[i]));
+  }
+  labels.count = recentShownCount;
+  return labels;
+}
+
+void EpubReaderActivity::openRecentPlace(const int index) {
+  if (index < 0 || index >= recentShownCount) return;
+  const Place place = recentShown[index];
+
+  // The hint first, under the lock the render task holds around the same unit cache; it never
+  // builds. The book search only for a stale edition, off-lock: no render has been requested yet
+  // (ActivityManager notifies at the end of its loop, after this handler).
+  std::optional<StudyStore::Location> location;
+  {
+    RenderLock lock;
+    location = STUDY.locatePlaceAtHint(place.unit, place.spineIndex);
+  }
+  if (!location) location = STUDY.locatePlace(place.unit, place.spineIndex);
+  if (!location) {
+    ReaderUtils::showMessage(renderer, tr(STR_LINK_TARGET_NOT_FOUND));
+    return;
+  }
+  navigateTo({.spineIndex = location->spineIndex, .offsetJump = location->offset});
+}
+
+static_assert(ReaderMenuSheetLayout::RECENT_LABEL_BYTES == PlacesDoc::MAX_REFERENCE_BYTES + 1,
+              "a chip label holds a full reference");
+
+void EpubReaderActivity::onBookLoaded() {
+  const ReaderEntryIntent intent = entryIntent;
+  entryIntent = {};
+  const bool isBible = epub->getBibleBookNavSpineIndex() >= 0;
+  switch (ReaderEntryIntent::route(intent.kind, isBible)) {
+    case ReaderEntryIntent::Route::None:
+      if (intent.kind != ReaderEntryIntent::Kind::None) {
+        LOG_INF("ERS", "Entry intent %d does not apply to %s; opening normally", static_cast<int>(intent.kind),
+                epub->getPath().c_str());
+      }
+      return;
+    case ReaderEntryIntent::Route::Locate: {
+      // Off-lock and before the first render is requested, as STUDY.repairTexts() in loadBook is:
+      // locatePlace may build unit index entries.
+      const auto location = STUDY.locatePlace(intent.unit, intent.spineHint);
+      if (!location) {
+        ReaderUtils::showMessage(renderer, tr(STR_LINK_TARGET_NOT_FOUND));
+        return;
+      }
+      navigateTo({.spineIndex = location->spineIndex, .offsetJump = location->offset});
+      return;
+    }
+    case ReaderEntryIntent::Route::ChapterGrid:
+    case ReaderEntryIntent::Route::TocList:
+      openChapterPicker(CancelTo::Page);
+      return;
+    case ReaderEntryIntent::Route::Search:
+      openBibleSearch(CancelTo::Page);
+      return;
+    case ReaderEntryIntent::Route::Highlights:
+      openHighlights();
+      return;
   }
 }
 
@@ -916,16 +1016,26 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
       lastPageTurnTime = millis();
       return true;
     } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
-      RenderLock lock;
-      nextPageNumber = 0;
-      currentSpineIndex++;
-      section.reset();
-      lastPageTurnTime = millis();
+      std::optional<Place> left;
+      {
+        RenderLock lock;
+        left = captureLeftPlace();
+        nextPageNumber = 0;
+        currentSpineIndex++;
+        section.reset();
+        lastPageTurnTime = millis();
+      }
+      recordPlace(std::move(left));
       return true;
     } else {
-      RenderLock lock;
-      currentSpineIndex = epub->getSpineItemsCount();
-      lastPageTurnTime = millis();
+      std::optional<Place> left;
+      {
+        RenderLock lock;
+        left = captureLeftPlace();
+        currentSpineIndex = epub->getSpineItemsCount();
+        lastPageTurnTime = millis();
+      }
+      recordPlace(std::move(left));
       return true;
     }
   } else {
@@ -934,12 +1044,17 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
       lastPageTurnTime = millis();
       return true;
     } else if (currentSpineIndex > 0) {
-      RenderLock lock;
-      nextPageNumber = 0;
-      pendingPageJump = std::numeric_limits<uint16_t>::max();
-      currentSpineIndex--;
-      section.reset();
-      lastPageTurnTime = millis();
+      std::optional<Place> left;
+      {
+        RenderLock lock;
+        left = captureLeftPlace();
+        nextPageNumber = 0;
+        pendingPageJump = std::numeric_limits<uint16_t>::max();
+        currentSpineIndex--;
+        section.reset();
+        lastPageTurnTime = millis();
+      }
+      recordPlace(std::move(left));
       return true;
     }
   }
@@ -949,20 +1064,30 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
 bool EpubReaderActivity::skipPages(int amount) {
   if (!section) return false;
   if (amount > 0) {
-    RenderLock lock;
-    nextPageNumber = 0;
-    currentSpineIndex++;
-    section.reset();
+    std::optional<Place> left;
+    {
+      RenderLock lock;
+      left = captureLeftPlace();
+      nextPageNumber = 0;
+      currentSpineIndex++;
+      section.reset();
+    }
+    recordPlace(std::move(left));
     return true;
   } else {
     if (section->currentPage > 0) {
       section->currentPage = 0;
       return true;
     } else if (currentSpineIndex > 0) {
-      RenderLock lock;
-      nextPageNumber = 0;
-      currentSpineIndex--;
-      section.reset();
+      std::optional<Place> left;
+      {
+        RenderLock lock;
+        left = captureLeftPlace();
+        nextPageNumber = 0;
+        currentSpineIndex--;
+        section.reset();
+      }
+      recordPlace(std::move(left));
       return true;
     }
   }
@@ -1260,6 +1385,7 @@ void EpubReaderActivity::renderBook() {
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     LOG_DBG("ERS", "Rendered page in %lums", millis() - start);
     lastRenderCompleteMs = millis();
+    pageShown = true;
   }
 
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
@@ -1334,6 +1460,49 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
   if (section && section->currentPage >= 0 && section->currentPage < section->pageCount) {
     cachedVisibleTextOffset = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(section->currentPage));
   }
+}
+
+std::optional<Place> EpubReaderActivity::captureLeftPlace() {
+  if (!pageShown || !highlightsLoaded || !epub) return std::nullopt;
+  if (currentSpineIndex < 0 || currentSpineIndex >= epub->getSpineItemsCount()) return std::nullopt;
+
+  uint32_t pageOffset = 0;
+  if (section) {
+    if (currentPageVisibleOffset.has_value()) {
+      pageOffset = *currentPageVisibleOffset;
+    } else if (section->currentPage >= 0 && section->currentPage < section->pageCount) {
+      pageOffset = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(section->currentPage)).value_or(0);
+    }
+  } else if (cachedSpineIndex == currentSpineIndex && cachedVisibleTextOffset.has_value()) {
+    pageOffset = *cachedVisibleTextOffset;
+  }
+
+  const auto placeUnit = STUDY.placeAt(static_cast<uint16_t>(currentSpineIndex), pageOffset);
+  if (!placeUnit) {
+    LOG_DBG("ERS", "No place for spine %d (not an indexed Bible chapter)", currentSpineIndex);
+    return std::nullopt;
+  }
+
+  const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+  const std::string book = tocIndex >= 0 ? epub->getTocItem(tocIndex).title : std::string();
+  Place place;
+  place.unit = placeUnit->unit;
+  place.chapterOnly = placeUnit->chapterOnly;
+  place.reference = PlacesDoc::formatReference(book, placeUnit->unit, placeUnit->chapterOnly);
+  place.spineIndex = static_cast<uint16_t>(currentSpineIndex);
+  place.visibleTextOffset = pageOffset;
+  return place;
+}
+
+void EpubReaderActivity::recordPlace(std::optional<Place> place) {
+  if (place) PLACES.record(std::move(*place));
+}
+
+void EpubReaderActivity::onExit() {
+  // ActivityManager holds RenderLock while it calls onExit, which is what captureLeftPlace needs;
+  // ReaderActivity::onExit saves APP_STATE under the same lock.
+  recordPlace(captureLeftPlace());
+  ReaderActivity::onExit();
 }
 
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
@@ -1661,8 +1830,11 @@ void EpubReaderActivity::navigateTo(NavTarget target, const ReturnPolicy policy)
   assert((target.sectionMode == SectionMode::Reset || (target.anchor.empty() && !target.spineProgress.has_value())) &&
          "ReuseIfSameSpine cannot carry an anchor or a percent jump");
 
+  std::optional<Place> left;
   {
     RenderLock lock;
+    // Before clearDeferredReposition(), which erases the offset a released section left behind.
+    if (target.spineIndex != currentSpineIndex) left = captureLeftPlace();
     switch (policy) {
       case ReturnPolicy::Clear:
         returnStack.clear();
@@ -1698,6 +1870,7 @@ void EpubReaderActivity::navigateTo(NavTarget target, const ReturnPolicy policy)
       section.reset();
     }
   }
+  recordPlace(std::move(left));
   requestUpdate();
 }
 

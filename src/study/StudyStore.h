@@ -12,6 +12,7 @@
 #include "StudyStore/TextRepair.h"
 #include "study/PsramJsonAllocator.h"
 #include "study/UnitIndexCache.h"
+#include "util/PlacesDoc.h"
 
 class GfxRenderer;
 
@@ -83,6 +84,18 @@ class StudyStore {
   // index's book map. Empty unless the open publication is the Bible. The first
   // call may build that map, which streams the 67 navigation pages.
   std::vector<uint16_t> spineIndicesForBook(uint8_t book);
+
+  // The Bible place a page of `spineIndex` starting at `pageOffset` shows (PlacesDoc::placeUnit).
+  // nullopt outside the Bible or before the unit index is ready. Never builds an index entry;
+  // the caller holds RenderLock, as the render task does around unitsFor().
+  std::optional<PlacesDoc::PlaceUnit> placeAt(uint16_t spineIndex, uint32_t pageOffset);
+
+  // Where a place is, trying only its spine hint. Never builds; the caller holds RenderLock.
+  std::optional<Location> locatePlaceAtHint(const study::Unit& unit, uint16_t spineHint);
+
+  // Where a place is, searching its book when the hint misses (locateUnit). May build, so it runs
+  // on the loop task with no lock held and before any render is requested.
+  std::optional<Location> locatePlace(const study::Unit& unit, uint16_t spineHint);
 
   const std::vector<study::TaggedPassage>& passages() const { return passages_.passages(); }
   const std::string& pubKey() const { return pubKey_; }
