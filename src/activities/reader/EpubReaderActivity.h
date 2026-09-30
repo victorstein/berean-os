@@ -157,8 +157,6 @@ class EpubReaderActivity final : public ReaderActivity {
   // Long-press a word to anchor a selection there. Suppressed inside the centre
   // menu zone, where a long contact would be ambiguous with the menu tap.
   void openHighlightPassageAt(int touchX, int touchY);
-  // With a spine, only that chapter's passages ("Tags here").
-  void openHighlights(std::optional<uint16_t> spineFilter = std::nullopt);
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void addBookmark();
 
@@ -174,6 +172,8 @@ class EpubReaderActivity final : public ReaderActivity {
   enum class CancelTo : uint8_t { Menu, Page };
   void openChapterPicker(CancelTo cancelTo);
   void openBibleSearch(CancelTo cancelTo);
+  // With a spine, only that chapter's passages ("Tags here").
+  void openHighlights(CancelTo cancelTo, std::optional<uint16_t> spineFilter = std::nullopt);
   void onBookLoaded() override;
 
   struct NavTarget {

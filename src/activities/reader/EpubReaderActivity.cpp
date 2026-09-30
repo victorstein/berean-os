@@ -421,20 +421,23 @@ void EpubReaderActivity::openHighlightPassage() {
       [this](const ActivityResult&) { requestUpdate(); });
 }
 
-void EpubReaderActivity::openHighlights(const std::optional<uint16_t> spineFilter) {
+void EpubReaderActivity::openHighlights(const CancelTo cancelTo, const std::optional<uint16_t> spineFilter) {
   // Deliberately NOT progressChangeResultHandler (used by the BOOKMARKS case
-  // below): that lambda calls bookmarks.load() and reopens the reader
-  // menu on cancel, both wrong here, and HighlightsActivity's own class
-  // comment already documents that wiring this launch site is Task 7's job.
-  // The result shape (ProgressChangeResult with hasVisibleTextOffset=true) is
-  // genuinely the same alternative progressChangeResultHandler expects, so
-  // reusing its std::get is type-safe -- it is the surrounding side effects
-  // that make reuse wrong, not the ResultVariant alternative.
+  // below): that lambda calls bookmarks.load(), wrong here, and reopens the
+  // menu on every cancel, where this one follows cancelTo (an entry intent
+  // returns to the page). The result shape (ProgressChangeResult with
+  // hasVisibleTextOffset=true) is genuinely the same alternative
+  // progressChangeResultHandler expects, so reusing its std::get is type-safe
+  // -- it is the surrounding side effects that make reuse wrong, not the
+  // ResultVariant alternative.
   startActivityForResult(
       std::make_unique<HighlightsActivity>(renderer, mappedInput, spineFilter,
                                            spineFilter ? readerMenuTitle() : std::string()),
-      [this](const ActivityResult& result) {
-        if (result.isCancelled) return;
+      [this, cancelTo](const ActivityResult& result) {
+        if (result.isCancelled) {
+          if (cancelTo == CancelTo::Menu) reopenReaderMenu();
+          return;
+        }
         const auto& sync = std::get<ProgressChangeResult>(result.data);
         if (!sync.hasVisibleTextOffset || sync.spineIndex < 0 || sync.spineIndex >= epub->getSpineItemsCount()) {
           return;
@@ -873,11 +876,11 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
         openBibleTags();
         return;
       }
-      openHighlights();
+      openHighlights(CancelTo::Menu);
       break;
     }
     case EpubReaderMenuActivity::MenuAction::TAGS_HERE: {
-      openHighlights(static_cast<uint16_t>(currentSpineIndex));
+      openHighlights(CancelTo::Menu, static_cast<uint16_t>(currentSpineIndex));
       break;
     }
     case EpubReaderMenuActivity::MenuAction::GO_HOME: {
@@ -1047,7 +1050,7 @@ void EpubReaderActivity::onBookLoaded() {
       openBibleSearch(CancelTo::Page);
       return;
     case ReaderEntryIntent::Route::Highlights:
-      openHighlights();
+      openHighlights(CancelTo::Page);
       return;
   }
 }
