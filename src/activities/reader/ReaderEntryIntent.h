@@ -10,7 +10,7 @@
 // the book has loaded: open at a place, or straight into the chapter grid, verse search or tags.
 // RAM only. Free of Arduino so test/ui_layout can exercise route().
 struct ReaderEntryIntent {
-  enum class Kind : uint8_t { None, OpenAt, BookGrid, Search, Tags };
+  enum class Kind : uint8_t { None, OpenAt, GoTo, Search, Tags };
   enum class Route : uint8_t { None, Locate, ChapterGrid, TocList, Search, Highlights };
 
   Kind kind = Kind::None;
@@ -37,7 +37,7 @@ struct ReaderEntryIntent {
     switch (kind) {
       case Kind::OpenAt:
         return isBible ? Route::Locate : Route::None;
-      case Kind::BookGrid:
+      case Kind::GoTo:
         return isBible ? Route::ChapterGrid : Route::TocList;
       case Kind::Search:
         return isBible ? Route::Search : Route::None;

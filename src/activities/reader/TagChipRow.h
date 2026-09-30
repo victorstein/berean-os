@@ -25,24 +25,23 @@ struct Counts {
   std::vector<uint16_t> perTag;
 };
 
-// Agrees with passageMatches only because PassageDoc stores each passage's tags without duplicates
-// and UNLABELLED only alone (normaliseTags); EveryCountEqualsTheRowsItsFilterShows pins that.
-template <typename Passages>
-Counts count(const Passages& passages, const std::vector<study::TagId>& activeIds) {
-  Counts out;
-  out.perTag.assign(activeIds.size(), 0);
+namespace detail {
 
-  // Sorted (raw id, slot) so each carried id is a binary search, not a scan of the palette.
-  std::vector<std::pair<uint16_t, uint16_t>> slots;
-  slots.reserve(activeIds.size());
-  for (size_t i = 0; i < activeIds.size(); ++i) {
-    slots.emplace_back(study::toRaw(activeIds[i]), static_cast<uint16_t>(i));
+class Tally {
+ public:
+  explicit Tally(const std::vector<study::TagId>& activeIds) {
+    out.perTag.assign(activeIds.size(), 0);
+    // Sorted (raw id, slot) so each carried id is a binary search, not a scan of the palette.
+    slots.reserve(activeIds.size());
+    for (size_t i = 0; i < activeIds.size(); ++i) {
+      slots.emplace_back(study::toRaw(activeIds[i]), static_cast<uint16_t>(i));
+    }
+    std::sort(slots.begin(), slots.end());
   }
-  std::sort(slots.begin(), slots.end());
 
-  for (const auto& passage : passages) {
+  void add(const std::vector<study::TagId>& tags) {
     ++out.all;
-    for (const study::TagId id : passage.tags) {
+    for (const study::TagId id : tags) {
       if (id == study::UNLABELLED) {
         ++out.unlabelled;
         continue;
@@ -53,7 +52,33 @@ Counts count(const Passages& passages, const std::vector<study::TagId>& activeId
       if (out.perTag[it->second] < UINT16_MAX) ++out.perTag[it->second];
     }
   }
-  return out;
+
+  Counts out;
+
+ private:
+  std::vector<std::pair<uint16_t, uint16_t>> slots;
+};
+
+}  // namespace detail
+
+// Agrees with passageMatches only because PassageDoc stores each passage's tags without duplicates
+// and UNLABELLED only alone (normaliseTags); EveryCountEqualsTheRowsItsFilterShows pins that.
+template <typename Passages>
+Counts count(const Passages& passages, const std::vector<study::TagId>& activeIds) {
+  detail::Tally tally(activeIds);
+  for (const auto& passage : passages) tally.add(passage.tags);
+  return std::move(tally.out);
+}
+
+// Counts only passages[i] for each i in scope, so a chapter-scoped list's chips count the rows that
+// list can show. Out-of-range indices are skipped, as the list skips them.
+template <typename Passages>
+Counts countIn(const Passages& passages, const std::vector<size_t>& scope, const std::vector<study::TagId>& activeIds) {
+  detail::Tally tally(activeIds);
+  for (const size_t i : scope) {
+    if (i < passages.size()) tally.add(passages[i].tags);
+  }
+  return std::move(tally.out);
 }
 
 constexpr int MAX_LINES = 2;

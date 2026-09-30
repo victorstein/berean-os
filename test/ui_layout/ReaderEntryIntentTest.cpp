@@ -15,9 +15,9 @@ TEST(ReaderEntryIntent, OpenAtIsBibleOnly) {
   EXPECT_EQ(ReaderEntryIntent::route(Kind::OpenAt, false), Route::None);
 }
 
-TEST(ReaderEntryIntent, BookGridFallsBackToTheTocOutsideTheBible) {
-  EXPECT_EQ(ReaderEntryIntent::route(Kind::BookGrid, true), Route::ChapterGrid);
-  EXPECT_EQ(ReaderEntryIntent::route(Kind::BookGrid, false), Route::TocList);
+TEST(ReaderEntryIntent, GoToFallsBackToTheTocOutsideTheBible) {
+  EXPECT_EQ(ReaderEntryIntent::route(Kind::GoTo, true), Route::ChapterGrid);
+  EXPECT_EQ(ReaderEntryIntent::route(Kind::GoTo, false), Route::TocList);
 }
 
 TEST(ReaderEntryIntent, SearchIsBibleOnly) {

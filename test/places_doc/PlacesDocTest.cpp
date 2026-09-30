@@ -292,6 +292,11 @@ TEST(PlacesDocDisplay, AChapterReferenceDropsTheVerse) {
   EXPECT_EQ(PlacesDoc::formatReference("Genesis", Unit{UnitKind::Verse, 1, 1, 1, 0}, true), "Genesis 1");
 }
 
+TEST(PlacesDocDisplay, AnEmptyBookNameLeavesNoLeadingSpace) {
+  EXPECT_EQ(PlacesDoc::formatReference("", Unit{UnitKind::Verse, 23, 40, 31, 0}, false), "40:31");
+  EXPECT_EQ(PlacesDoc::formatReference("", Unit{UnitKind::Verse, 23, 40, 31, 0}, true), "40");
+}
+
 TEST(PlacesDocDisplay, ChipLabelsUseTheAbbreviation) {
   char label[PlacesDoc::MAX_REFERENCE_BYTES + 1];
   PlacesDoc::formatChipLabel("Rev.", makePlace(66, 21, 4, "Revelation 21:4"), label, sizeof(label));

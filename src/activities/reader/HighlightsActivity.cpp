@@ -131,7 +131,9 @@ void HighlightsActivity::rebuildChips() {
   chips_.reserve(TagChips::MAX_CHIPS + 1);
 
   const std::vector<study::TagId> activeIds = STUDY.palette().activeIds();
-  const TagChips::Counts counts = TagChips::count(STUDY.passages(), activeIds);
+  const TagChips::Counts counts =
+      spineFilter_ ? TagChips::countIn(STUDY.passages(), computeVisibleIndices(std::nullopt), activeIds)
+                   : TagChips::count(STUDY.passages(), activeIds);
 
   const auto push = [this](const TagChips::Kind kind, const study::TagId id, const char* name, const size_t n) {
     if (chips_.size() >= TagChips::MAX_CHIPS + 1) return;
@@ -145,8 +147,8 @@ void HighlightsActivity::rebuildChips() {
   push(TagChips::Kind::All, study::UNLABELLED, tr(STR_TAG_FILTER_ALL), counts.all);
   for (size_t slot = 0; slot < activeIds.size(); ++slot) {
     const study::TagId id = activeIds[slot];
-    // Zero-count tags come from other publications (the palette is global); the active filter
-    // stays visible even at zero so an empty list still shows why.
+    // Zero-count tags belong to other publications or chapters (the palette is global); the active
+    // filter stays visible even at zero so an empty list still shows why.
     if (counts.perTag[slot] == 0 && filterTagId_ != id) continue;
     if (chips_.size() >= TagChips::MAX_CHIPS + 1) break;
     push(TagChips::Kind::Tag, id, STUDY.tagName(id).c_str(), counts.perTag[slot]);

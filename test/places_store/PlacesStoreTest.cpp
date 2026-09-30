@@ -77,3 +77,16 @@ TEST_F(PlacesStoreTest, RecordingTheHeadAgainDoesNotWrite) {
   PLACES.record(makePlace(66, 21, 4, "Revelation 21:4"));
   EXPECT_NE(bytesOn(PATH), std::string("<absent>")) << "a save was attempted for an unchanged list";
 }
+
+TEST_F(PlacesStoreTest, AFailedSaveReportsFailure) {
+  storage_fake::failWritesTo(PATH + ".tmp");
+  EXPECT_FALSE(PLACES.record(makePlace(66, 21, 4, "Revelation 21:4")));
+}
+
+TEST_F(PlacesStoreTest, ARefusedFileOrAnUnchangedListIsNotAFailure) {
+  EXPECT_TRUE(PLACES.record(makePlace(66, 21, 4, "Revelation 21:4")));
+  EXPECT_TRUE(PLACES.record(makePlace(66, 21, 4, "Revelation 21:4")));
+  storage_fake::putFile(PATH, NEWER);
+  EXPECT_FALSE(PLACES.load());
+  EXPECT_TRUE(PLACES.record(makePlace(1, 1, 1, "Genesis 1")));
+}

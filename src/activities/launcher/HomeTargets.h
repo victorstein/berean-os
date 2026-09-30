@@ -53,7 +53,7 @@ constexpr Route route(const Target target, const State& state) {
       if (!state.hasBible) return Route{Action::DownloadBible};
       return reader(state.hasPlace ? Kind::OpenAt : Kind::None, /*fast=*/true);
     case Target::GoTo:
-      return state.hasBible ? reader(Kind::BookGrid) : Route{};
+      return state.hasBible ? reader(Kind::GoTo) : Route{};
     case Target::Recent0:
     case Target::Recent1:
     case Target::Recent2: {

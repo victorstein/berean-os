@@ -7,7 +7,7 @@ ajustes — and the screens below are replaced when that lands. See [ROADMAP.md]
 - [1. The device](#1-the-device)
 - [2. Controls](#2-controls)
 - [3. Power and startup](#3-power-and-startup)
-- [4. The launcher](#4-the-launcher)
+- [4. Home](#4-home)
 - [5. Reading](#5-reading)
 - [6. The reader menu](#6-the-reader-menu)
 - [7. Bible navigation](#7-bible-navigation)
@@ -49,7 +49,7 @@ a tap, a held **Right**, the Home key, or the Power button when you configure it
 | Swipe right from the left edge | **Back** (on the reading surface, only to return from a link; see below) |
 | Swipe down from the top edge | opens the frontlight panel |
 | Swipe up from the bottom edge | Home, on devices without a Home key |
-| **Home**, short press | the launcher; inside some screens it confirms instead (see below) |
+| **Home**, short press | Home; inside some screens it confirms instead (see below) |
 | **Home**, long press | runs the **Long-press Menu** function while reading |
 | **Power**, short press | configurable: ignore, sleep, page turn, refresh, footnotes, or Confirm |
 | **Power**, long press | power off |
@@ -61,7 +61,7 @@ The left-edge Back swipe works in every screen except the reading surface. There
 you from a followed link (see [5. Reading](#5-reading)), so that in swipe page-turn mode a right
 swipe can turn back a page.
 
-**Home is context-dependent.** Normally it takes you to the launcher. Two screens repurpose it
+**The Home key is context-dependent.** Normally it takes you to Home. Two screens repurpose it
 because they have no other way to confirm: passage selection uses a Home tap to set each end of the
 selection, and the tag picker uses it to finish. Both are described below.
 
@@ -90,33 +90,47 @@ Hold **Power** for about half a second to turn the device on or off. A short pre
 
 To reboot, press and release **Reset**, then press and hold **Power** for a few seconds.
 
-On a first boot you land on the launcher. After that the device reopens the book you were reading.
+On a first boot you land on Home. After that the device reopens the book you were reading.
 
 The device sleeps after the inactivity timeout set in **Settings -> System -> Time to sleep**. A
 download or a firmware update in progress does not count as activity, so leave the screen awake, or
 raise the timeout, while one is running.
 
-## 4. The launcher
+## 4. Home
 
-The launcher is the device's home. Under the **bereanOS** header it shows four tiles:
+Home is built around your Bible. From top to bottom:
 
-- **Bible** — opens your Bible. If no Bible has been found
-  on the card, the tile reads **Not on the card · tap to download**, and tapping it offers to
-  download the New World Translation in your **Publication language** (see
-  [Finding the Bible](#finding-the-bible)).
-- **Meetings** — the week's meeting publications (see
+- **The Bible** — its cover, with today's date when the clock is set, and two buttons:
+  - **Continue · Isaiah 40:31** opens the Bible at the last place you left. Before you have left
+    one, it reads **Continue Reading** and opens the Bible where it was.
+  - **Go to** opens the Bible at the chapter grid of the book you were last in (see
+    [7. Bible navigation](#7-bible-navigation)).
+- **Recent** — up to three more places you recently left in the Bible, newest first. Tap one to
+  go back there.
+- **From your tags** — one of the Bible passages you tagged, shown whole, with its reference. It is
+  the same passage all day and changes the next day. Tap it to open the Bible there. With no tagged
+  passages the card says so, and it says when every one is too long to fit.
+- **Meetings** — this week's dates, a strip of the seven days with today inverted and a dot on
+  each meeting day, and how far you are through the workbook. Tap it for the week view (see
   [10. Meeting publications](#10-meeting-publications)).
-- **Publications** — every publication on the card, with a search of the jw.org catalog to download
-  more.
-- **Settings**
+- A row of four icons:
+  - **Tags** — the passages you tagged in the Bible (see
+    [Browsing what you marked](#browsing-what-you-marked)).
+  - **Search** — verse search (see [Verse search](#verse-search)).
+  - **Publications** — every publication on the card, with a search of the jw.org catalog to
+    download more.
+  - **Settings**
 
-When there is a book to go back to, a **Continue Reading** tile resumes it.
+If no Bible has been found on the card, the cover area shows a single **Download** button, which
+offers to download the New World Translation in your **Publication language** (see
+[Finding the Bible](#finding-the-bible)). **Tags** and **Search** make the same offer, because both
+work in the Bible.
 
-Tap a tile to open it, or move the selection with **Left** / **Right** and confirm.
+Tap anything to open it, or move the selection with **Left** / **Right** and confirm.
 
 ### Finding the Bible
 
-The launcher looks for the Bible in three places, in order:
+Home looks for the Bible in three places, in order:
 
 1. A Bible downloaded on the device, or one you have opened before.
 2. A file named the way jw.org names it, such as `nwt_S.epub` or `nwt_E.epub`, in the download
@@ -124,10 +138,10 @@ The launcher looks for the Bible in three places, in order:
 3. Your recent books.
 
 A Bible you copied onto the card yourself is remembered the first time you open it, so after that
-the tile finds it whatever it is called and wherever it is.
+Home finds it whatever it is called and wherever it is.
 
-With no Bible found, tapping the tile asks **Download the Bible?** and gives its approximate size.
-**Download** connects to Wi-Fi and fetches it, then returns you to the launcher; **Choose a file**
+With no Bible found, tapping **Download** asks **Download the Bible?** and gives its approximate
+size. **Download** connects to Wi-Fi and fetches it, then returns you to Home; **Choose a file**
 opens the file browser (see [12. Browsing files](#12-browsing-files)) so you can open a Bible that is
 already on the card.
 
@@ -160,6 +174,9 @@ Four large buttons sit at the top of the sheet:
 - **Search** — verse search, in a Bible only
 - **Mark** — drop or remove a bookmark at the current page
 - **Tag** — start a passage selection (section 8)
+
+In a Bible, a **Recent** row comes next: up to three places you recently left, by their short
+names, such as **Rev. 21:4**. The chapter on screen is not among them. Tap one to go there.
 
 Below them, in two columns, depending on the publication:
 
@@ -200,6 +217,16 @@ turns to cross.
 
 While you are in a Bible, the status bar shows the chapter number alongside the book name.
 
+### Verse search
+
+**Search**, from the reader menu or Home, finds the verses that contain the words you type. The
+first time, it offers to **Prepare** its index; that takes a while, and it picks up where it left
+off if it is interrupted.
+
+You can also type a reference, such as **Isa 40:31**, **Gén 1** or **Juan 3:16-18**. Book names
+and abbreviations are the ones your Bible uses. When the reference exists, a **Go to Isaiah 40:31**
+row appears above the matching verses; tap it to open the Bible there.
+
 ## 8. Highlights and tags
 
 A **highlight** marks a passage. A **tag** is a label you attach to it. Tags are global: a tag you
@@ -218,17 +245,29 @@ create in one publication is offered in every other.
    - **Tag** opens the tag picker; tick any number of tags, then tap **Home** to apply them.
    - **Cancel** discards the selection.
 
+In a Bible, the text saved with a passage is always the whole verse or verses it touches, even if
+you selected only part of one. The highlight on the page stays exactly what you selected. Passages
+tagged with older firmware are rebuilt as whole verses when their publication is next opened; a
+long list may take a few openings.
+
 Swiping Back at any point cancels the whole selection, including from the final chooser.
 
 ### Browsing what you marked
 
 **Reader menu -> Highlights** lists this publication's highlights, newest first, with the passage
-text. Activating a row jumps to it. The filter row at the top narrows the list to a single tag.
+text. Activating a row jumps to it.
 
-Long-pressing a row offers to delete the highlight, or to change its tags. Long-pressing a tag in
-the filter list retires it: it stops being offered in the tag picker, and it is removed from this
-publication's highlights. A highlight left with no tag shows as **Unlabeled**; no highlight is
-deleted.
+Above the list, a row of tag chips shows each tag with its number of passages, such as **hope 12**.
+**All** comes first and **Unlabeled** last. Tap a chip to show only that tag's passages, and **All**
+to show every passage again. Only tags that have passages here get a chip. **Tags here** in the
+reader menu opens the same screen for the current chapter only, and there the chips count that
+chapter's passages.
+
+Long-pressing a row offers to delete the highlight, or to change its tags. The full tag list
+opens from **…**, shown when there are more tags than fit, or by selecting the chip row and holding
+**Right**. Long-pressing a tag in that list retires it: it stops being offered in the tag picker,
+and it is removed from this publication's highlights. A highlight left with no tag shows as
+**Unlabeled**; no highlight is deleted.
 
 ## 9. Bookmarks and footnotes
 
@@ -250,7 +289,7 @@ applies), fetches that week's meetings page, reads the
 issue numbers out of the publication links, resolves the download URLs, and writes the files. Either
 publication may be missing for a given week, which is a normal outcome and not an error.
 
-The **Meetings** tile on the launcher opens the week view:
+The **Meetings** card on Home opens the week view:
 
 - A header with the week's dates, such as *Week of 21–27 September*.
 - A strip of the seven days, Monday first. Today is shown inverted, and a dot marks each day set in
@@ -297,7 +336,7 @@ Details are in [docs/webserver.md](./docs/webserver.md); the raw endpoints are i
 
 The file browser walks the SD card. It opens from **Browse the card** in **Publications**, which
 reaches books outside the download folder and the card root, and from **Choose a file** in the Bible
-download offer, which the **Bible** tile shows when no Bible has been found on the card. The current
+download offer, which Home shows when no Bible has been found on the card. The current
 path is shown at the top, directories appear in brackets, and file extensions are shown.
 
 - **Left** / **Right** move the selection.
@@ -309,7 +348,7 @@ Hidden files and folders — anything starting with `.` — are not shown.
 
 ## 13. Settings
 
-The **Settings** tile on the launcher, four tabs.
+The **Settings** icon on Home, four tabs.
 
 ### Display
 
@@ -382,7 +421,8 @@ The **Settings** tile on the launcher, four tabs.
 | **Study** | one of your marked passages, with the date when the clock is set, its reference and its first tag |
 
 **Study** picks a different passage each time the device sleeps, favouring ones it has not shown
-recently. With no marked passages it falls back to the default screen.
+recently. A long passage is set in smaller type to fit; one that still cannot fit whole is left out
+of the rotation, never shown cut. With no marked passages it falls back to the default screen.
 
 **Custom images:** create a `.sleep` directory at the root of the card and put any number of `.bmp`
 files in it — one is picked at random each time. A single `sleep.bmp` at the root takes priority.
@@ -440,6 +480,7 @@ Everything is on the SD card, in two hidden directories.
 | `completion/` | left by older firmware; no longer used, safe to delete |
 | `pubkeys.json` | which publication each downloaded file is, and which file is your Bible |
 | `meeting-weeks.json` | the meeting publications for each week looked up |
+| `places.json` | the Bible places you recently left, for Home and the reader menu's **Recent** row |
 | `search/` | the Bible search index |
 | `units/` | per-publication indexes of verses and paragraphs |
 
@@ -457,7 +498,7 @@ copied onto the card yourself finds them only at its original path.
 showing **Preparing your study data** while it works. The originals are left where they are.
 
 Deleting `.crosspoint/` clears settings, reading positions, bookmarks and caches; deleting `.berean/`
-clears your highlights, tags and Bible reading progress. Back them up before you do.
+clears your highlights, tags and recent places. Back them up before you do.
 
 ## 18. Troubleshooting
 
@@ -468,7 +509,7 @@ or lower **Refresh frequency**.
 **Reader menu -> Delete book cache**, or **Settings -> System -> Clear reading cache**.
 
 **The device will not boot.** Press and release **Reset**, then hold the Home key and **Power** to
-come up on the launcher instead of resuming a book. If that fails, a corrupt settings file is the
+come up on Home instead of resuming a book. If that fails, a corrupt settings file is the
 usual cause: delete `.crosspoint/settings.json` and `.crosspoint/state.json` from the card.
 
 **Crash reports.** After a crash the firmware writes a report to the root of the SD card. Attach it

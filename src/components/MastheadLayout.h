@@ -17,9 +17,8 @@ struct Box {
   int height = 0;
 };
 
-// The left edge and width of the launcher's Bible tile
-// (LauncherActivity::computeLayout), so the band asks CoverBand for the
-// thumbnail height the launcher has already cached.
+// Home's hero is placed with this same band (HomeLayout.h), so both ask
+// CoverBand for one cached thumbnail.
 constexpr Box band(const int screenWidth, const int marginTop, const int marginRight, const int marginLeft,
                    const int topPadding, const int height) {
   const int left = marginLeft + topPadding;
