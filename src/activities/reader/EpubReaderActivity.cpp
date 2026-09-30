@@ -1450,6 +1450,7 @@ void EpubReaderActivity::renderBook() {
     LOG_DBG("ERS", "Rendered page in %lums", millis() - start);
     lastRenderCompleteMs = millis();
     pageShown = true;
+    pageRendered = true;
   }
 
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||

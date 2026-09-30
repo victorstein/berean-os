@@ -53,6 +53,9 @@ class EpubReaderActivity final : public ReaderActivity {
   // Nothing is recorded before it: an intent's navigateTo would otherwise record the progress.bin
   // position the reader never saw.
   bool pageShown = false;
+  // Whether the last render drew a reading page, unlike the session-long pageShown. Cleared by
+  // reopenReaderMenu before its render, set by renderBook, both under RenderLock.
+  bool pageRendered = false;
 
   // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
   // two live JsonDocuments are a real risk against the C3's ~50KB free heap
