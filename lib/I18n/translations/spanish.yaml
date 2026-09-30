@@ -420,3 +420,8 @@ STR_NO_WIFI_CONNECTION: "Sin conexión wifi. Revisa la red e inténtalo de nuevo
 STR_BIBLE_DOWNLOAD_FAILED_HINT: "No se pudo descargar. No se guardó nada; inténtalo de nuevo."
 STR_DOWNLOAD_CANCELLED: "Descarga cancelada. No se guardó nada."
 STR_STUDY_SLEEP: "Estudio"
+STR_GO_TO: "Ir a"
+STR_MARK: "Marcar"
+STR_TAGS_HERE: "Etiquetas aquí"
+STR_AUTO_TURN: "Avance auto."
+STR_TAG: "Etiqueta"
