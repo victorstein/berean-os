@@ -20,6 +20,7 @@
 #include "components/UITheme.h"
 #include "components/icons/bookmark.h"
 #include "study/StudyStore.h"
+#include "util/BibleReference.h"
 
 namespace fui = freeink::ui;
 
@@ -674,7 +675,8 @@ const char* BibleNavigationActivity::levelTitle() {
   } else if (level == Level::Verse) {
     if (hasBook) {
       const int chapter = selectedChapterRow >= 0 ? selectedChapterRow + 1 : 1;
-      snprintf(headerTitle, sizeof(headerTitle), "%s %d", bookName, chapter);
+      BibleReference::format(headerTitle, sizeof(headerTitle), bookName,
+                             BibleReference::Verses{static_cast<uint16_t>(chapter), 0, 0});
       title = headerTitle;
     } else {
       title = tr(STR_SELECT_VERSE);
