@@ -1,7 +1,10 @@
 #pragma once
 
+#include <BibleSearch/IndexReader.h>
+
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 // A Bible reference typed into verse search: "Isa 40:31", "Gén 1",
@@ -36,3 +39,16 @@ TypedReference parseTypedReference(std::string_view query, const BookNameSource&
 // "Isaías 40:31", "Génesis 1", "Juan 3:16-18"; "40:31" when `bookName` is
 // empty, as the search hit rows fall back.
 void formatTypedReference(char* out, size_t outBytes, const char* bookName, const TypedReference& ref);
+
+struct ResolvedReference {
+  bool found = false;
+  // As typed, except a single-chapter book's lone number, which becomes its
+  // verse: "Jude 3" resolves to Jude 1:3.
+  TypedReference reference;
+  uint16_t spine = 0;
+  std::optional<uint32_t> offset;  // empty for a whole chapter: open at its top
+};
+
+// Looks `ref` up in the index's verse table. A place the index lacks is
+// `found == false`; the return is false only when the index cannot be read.
+bool resolveTypedReference(const BibleSearch::IndexReader& reader, const TypedReference& ref, ResolvedReference& out);

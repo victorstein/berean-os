@@ -194,6 +194,41 @@ int matchBook(const char* key, const size_t keyLength, const BookNameSource& boo
   return prefixBook;
 }
 
+uint32_t placeKey(const uint8_t book, const uint8_t chapter, const uint8_t verse) {
+  return (static_cast<uint32_t>(book) << 16) | (static_cast<uint32_t>(chapter) << 8) | verse;
+}
+
+// The verse table is in canonical order, so a place's first entry is its lower bound.
+bool lowerBound(const BibleSearch::IndexReader& reader, const uint32_t key, uint32_t& index) {
+  uint32_t low = 0;
+  uint32_t high = reader.verseCount();
+  while (low < high) {
+    const uint32_t mid = low + (high - low) / 2;
+    BibleSearch::VerseEntry entry;
+    if (!reader.verse(mid, entry)) return false;
+    if (placeKey(entry.book, entry.chapter, entry.verse) < key) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  index = low;
+  return true;
+}
+
+// `verse == 0` finds the chapter's first entry. A lower bound at verseCount is
+// checked before reading: verse() reports an index past the end as a failure.
+bool findPlace(const BibleSearch::IndexReader& reader, const uint8_t book, const uint8_t chapter,
+               const uint8_t verse, BibleSearch::VerseEntry& entry, bool& found) {
+  found = false;
+  uint32_t index = 0;
+  if (!lowerBound(reader, placeKey(book, chapter, verse), index)) return false;
+  if (index >= reader.verseCount()) return true;
+  if (!reader.verse(index, entry)) return false;
+  found = entry.book == book && entry.chapter == chapter && (verse == 0 || entry.verse == verse);
+  return true;
+}
+
 }  // namespace
 
 TypedReference parseTypedReference(const std::string_view query, const BookNameSource& books) {
@@ -232,4 +267,35 @@ void formatTypedReference(char* out, const size_t outBytes, const char* bookName
   } else {
     snprintf(out, outBytes, "%s %s", bookName, numbers);
   }
+}
+
+bool resolveTypedReference(const BibleSearch::IndexReader& reader, const TypedReference& ref,
+                           ResolvedReference& out) {
+  out = ResolvedReference{};
+  if (!ref.valid()) return true;
+
+  TypedReference place = ref;
+  BibleSearch::VerseEntry entry;
+  bool found = false;
+  if (!findPlace(reader, place.book, place.chapter, place.verse, entry, found)) return false;
+
+  if (!found && place.verse == 0 && place.chapter > 1) {
+    BibleSearch::VerseEntry secondChapter;
+    bool hasSecondChapter = false;
+    if (!findPlace(reader, place.book, 2, 0, secondChapter, hasSecondChapter)) return false;
+    if (!hasSecondChapter) {
+      if (!findPlace(reader, place.book, 1, place.chapter, entry, found)) return false;
+      if (found) {
+        place.verse = place.chapter;
+        place.chapter = 1;
+      }
+    }
+  }
+  if (!found) return true;
+
+  out.found = true;
+  out.reference = place;
+  out.spine = entry.spine;
+  if (place.verse != 0) out.offset = entry.offset;
+  return true;
 }

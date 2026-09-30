@@ -2,6 +2,11 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
+
+#include <BibleSearch/IndexBuilder.h>
+#include <BibleSearch/IndexFormat.h>
+#include <BibleSearch/IndexReader.h>
 
 #include "activities/reader/TypedReference.h"
 
@@ -225,4 +230,153 @@ TEST(TypedReferenceFormat, NeverOverrunsTheBuffer) {
   ref.verse = 1;
   formatTypedReference(out, sizeof(out), "El Cantar de los Cantares", ref);
   EXPECT_STREQ(out, "El Ca");
+}
+
+namespace {
+
+using BibleSearch::IndexBuilder;
+using BibleSearch::IndexReader;
+using Bytes = std::vector<uint8_t>;
+
+constexpr uint64_t FINGERPRINT = 0x0206020602060206ull;
+
+bool appendToBytes(void* ctx, const void* data, const size_t length) {
+  auto* out = static_cast<Bytes*>(ctx);
+  const auto* p = static_cast<const uint8_t*>(data);
+  out->insert(out->end(), p, p + length);
+  return true;
+}
+
+bool readFromBytes(void* ctx, const uint32_t offset, void* dst, const uint32_t len) {
+  const auto* in = static_cast<const Bytes*>(ctx);
+  if (static_cast<size_t>(offset) + len > in->size()) return false;
+  memcpy(dst, in->data() + offset, len);
+  return true;
+}
+
+// Serves the header and nothing after it: open() succeeds, every verse read fails.
+bool readHeaderOnly(void* ctx, const uint32_t offset, void* dst, const uint32_t len) {
+  if (offset >= BibleSearch::INDEX_HEADER_BYTES) return false;
+  return readFromBytes(ctx, offset, dst, len);
+}
+
+struct Place {
+  uint8_t book;
+  uint8_t chapter;
+  uint8_t verse;
+  uint16_t spine;
+};
+
+// Genesis with two chapters, Exodus 1, single-chapter Jude, Revelation 1. The
+// offset of each verse is verse * 100.
+constexpr Place INDEXED[] = {
+    {1, 1, 1, 10},  {1, 1, 2, 10},  {1, 1, 3, 10},  {1, 2, 1, 11},  {1, 2, 2, 11},  {2, 1, 1, 20},
+    {2, 1, 2, 20},  {65, 1, 1, 30}, {65, 1, 2, 30}, {65, 1, 3, 30}, {65, 1, 4, 30}, {65, 1, 5, 30},
+    {66, 1, 1, 40}, {66, 1, 2, 40},
+};
+
+const Bytes& placesIndex() {
+  static const Bytes bytes = [] {
+    IndexBuilder builder;
+    for (const Place& place : INDEXED) {
+      const uint32_t n = builder.addVerse(place.book, place.chapter, place.verse, place.spine, place.verse * 100u);
+      EXPECT_NE(n, IndexBuilder::INVALID_VERSE);
+      EXPECT_TRUE(builder.addVerseText(n, "texto"));
+    }
+    Bytes out;
+    EXPECT_TRUE(builder.write(appendToBytes, &out, FINGERPRINT));
+    return out;
+  }();
+  return bytes;
+}
+
+BibleSearch::ByteSource sourceOf(const Bytes& bytes, bool (*readAt)(void*, uint32_t, void*, uint32_t)) {
+  BibleSearch::ByteSource source;
+  source.ctx = const_cast<Bytes*>(&bytes);
+  source.readAt = readAt;
+  source.size = static_cast<uint32_t>(bytes.size());
+  return source;
+}
+
+TypedReference referenceTo(const int book, const int chapter, const int verse = 0, const int verseEnd = 0) {
+  TypedReference ref;
+  ref.book = static_cast<uint8_t>(book);
+  ref.chapter = static_cast<uint8_t>(chapter);
+  ref.verse = static_cast<uint8_t>(verse);
+  ref.verseEnd = static_cast<uint8_t>(verseEnd);
+  return ref;
+}
+
+ResolvedReference resolve(const TypedReference& ref) {
+  IndexReader reader;
+  EXPECT_EQ(reader.open(sourceOf(placesIndex(), readFromBytes), FINGERPRINT), IndexReader::Status::Ok);
+  ResolvedReference out;
+  EXPECT_TRUE(resolveTypedReference(reader, ref, out));
+  return out;
+}
+
+}  // namespace
+
+TEST(TypedReferenceResolve, ChapterOnlyOpensTheChapterTop) {
+  const ResolvedReference r = resolve(referenceTo(1, 2));
+  ASSERT_TRUE(r.found);
+  EXPECT_EQ(r.spine, 11);
+  EXPECT_FALSE(r.offset.has_value());
+  expectReference(r.reference, 1, 2);
+}
+
+TEST(TypedReferenceResolve, VerseOpensAtItsOffset) {
+  const ResolvedReference r = resolve(referenceTo(1, 1, 3));
+  ASSERT_TRUE(r.found);
+  EXPECT_EQ(r.spine, 10);
+  ASSERT_TRUE(r.offset.has_value());
+  EXPECT_EQ(*r.offset, 300u);
+}
+
+TEST(TypedReferenceResolve, RangeOpensAtItsFirstVerse) {
+  const ResolvedReference r = resolve(referenceTo(1, 1, 2, 3));
+  ASSERT_TRUE(r.found);
+  ASSERT_TRUE(r.offset.has_value());
+  EXPECT_EQ(*r.offset, 200u);
+  expectReference(r.reference, 1, 1, 2, 3);
+}
+
+TEST(TypedReferenceResolve, MissingPlacesAreNotFound) {
+  EXPECT_FALSE(resolve(referenceTo(1, 1, 9)).found);
+  EXPECT_FALSE(resolve(referenceTo(2, 5)).found);
+  EXPECT_FALSE(resolve(referenceTo(40, 1)).found);
+}
+
+TEST(TypedReferenceResolve, AMultiChapterBooksMissingChapterIsNotReadAsAVerse) {
+  // Genesis 1:3 exists, but Genesis has a second chapter, so "Gen 3" is chapter 3.
+  EXPECT_FALSE(resolve(referenceTo(1, 3)).found);
+}
+
+TEST(TypedReferenceResolve, ASingleChapterBooksLoneNumberIsAVerse) {
+  const ResolvedReference r = resolve(referenceTo(65, 5));
+  ASSERT_TRUE(r.found);
+  expectReference(r.reference, 65, 1, 5);
+  EXPECT_EQ(r.spine, 30);
+  ASSERT_TRUE(r.offset.has_value());
+  EXPECT_EQ(*r.offset, 500u);
+}
+
+TEST(TypedReferenceResolve, ASingleChapterBookKeepsATypedVerse) {
+  EXPECT_FALSE(resolve(referenceTo(65, 3, 1)).found);
+  EXPECT_FALSE(resolve(referenceTo(65, 9)).found);
+}
+
+TEST(TypedReferenceResolve, PastTheLastVerseIsNotFoundNotAnError) {
+  EXPECT_FALSE(resolve(referenceTo(66, 23)).found);
+  EXPECT_FALSE(resolve(referenceTo(66, 1, 22)).found);
+}
+
+TEST(TypedReferenceResolve, AnInvalidReferenceIsNotFound) { EXPECT_FALSE(resolve(TypedReference{}).found); }
+
+TEST(TypedReferenceResolve, AReadFailureIsReported) {
+  IndexReader reader;
+  ASSERT_EQ(reader.open(sourceOf(placesIndex(), readHeaderOnly), FINGERPRINT), IndexReader::Status::Ok);
+  ResolvedReference out;
+  EXPECT_FALSE(resolveTypedReference(reader, referenceTo(1, 1, 1), out));
+  EXPECT_FALSE(out.found);
 }
