@@ -12,11 +12,10 @@ namespace NumberGrid {
 constexpr int GAP = 8;
 constexpr int MIN_COLS = 4;
 constexpr int MAX_COLS = 8;
-// A page must leave interaction slots for the header, footer and any other
-// chrome sharing the frame: UiAppHost budgets 64, and 64 cells would spend all
-// of it -- past the budget hit rects are dropped silently and those cells
-// become untappable.
-constexpr int MAX_CELLS = 48;
+// 7 x 10, so every book but Psalms fits one page. A page must leave interaction
+// slots for any other chrome sharing the frame: UiAppHost budgets 96, and past
+// the budget hit rects are dropped silently and those cells become untappable.
+constexpr int MAX_CELLS = 70;
 // Comfortable tap target on the 800x480 panel; only device iteration settles it.
 constexpr int MIN_CELL = 56;
 
