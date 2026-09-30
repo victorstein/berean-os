@@ -59,3 +59,20 @@ target_link_libraries(GridMarksTest PRIVATE
 )
 
 gtest_discover_tests(GridMarksTest)
+
+add_executable(BookLabelsTest
+  BookLabelsTest.cpp
+  ${REPO_ROOT}/lib/Utf8/Utf8.cpp
+)
+
+target_include_directories(BookLabelsTest PRIVATE
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/Utf8
+)
+
+target_link_libraries(BookLabelsTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(BookLabelsTest)

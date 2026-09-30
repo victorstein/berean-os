@@ -18,13 +18,6 @@ bool feedNavScanner(void* ctx, const char* chunk, const size_t length, const boo
 
 }  // namespace
 
-void copyUtf8Truncated(char* dest, const size_t destBytes, const std::string_view source) {
-  const size_t fit = source.size() < destBytes - 1 ? source.size() : destBytes - 1;
-  const int safe = utf8SafeTruncateBuffer(source.data(), static_cast<int>(fit));
-  memcpy(dest, source.data(), static_cast<size_t>(safe));
-  dest[safe] = '\0';
-}
-
 bool BibleBookNameTable::load(const std::shared_ptr<Epub>& epub, GfxRenderer& renderer,
                               const SpineHtmlStream::WhenMissing whenMissing) {
   bookCount = 0;
@@ -45,8 +38,7 @@ bool BibleBookNameTable::load(const std::shared_ptr<Epub>& epub, GfxRenderer& re
   if (targets.size() > MAX_BOOKS) targets.resize(MAX_BOOKS);
   joinToc(*epub, targets.data(), static_cast<int>(targets.size()));
 
-  const int labelCount = std::min(bookCount, static_cast<int>(page.labels.size()));
-  for (int i = 0; i < labelCount; i++) copyUtf8Truncated(abbreviations[i], ABBREV_BYTES, page.labels[i]);
+  setAbbreviations(page.labels);
   return true;
 }
 
@@ -63,6 +55,10 @@ void BibleBookNameTable::joinToc(const Epub& epub, const std::string* targets, c
     const int match = BibleNav::findTargetByHref(targets, bookCount, tocItem.href);
     if (match >= 0 && names[match][0] == '\0') copyUtf8Truncated(names[match], NAME_BYTES, tocItem.title);
   }
+}
+
+void BibleBookNameTable::setAbbreviations(const std::vector<std::string>& labels) {
+  copyLabelRows(&abbreviations[0][0], ABBREV_BYTES, bookCount, labels.data(), labels.size());
 }
 
 const char* BibleBookNameTable::at(const int index) const {

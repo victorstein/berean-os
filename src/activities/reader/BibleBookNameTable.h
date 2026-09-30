@@ -7,15 +7,13 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
+#include "BookLabels.h"
 #include "SpineHtmlStream.h"
 #include "TypedReference.h"
 
 class GfxRenderer;
-
-// Copies `source` into `dest`, cut on a UTF-8 boundary so drawText never sees
-// an incomplete sequence (which renders as a replacement character).
-void copyUtf8Truncated(char* dest, size_t destBytes, std::string_view source);
 
 // Full book names in canonical order (book 1 at index 0), taken from the TOC
 // entry each biblebooknav.xhtml link resolves to, and the publication's own
@@ -37,8 +35,11 @@ class BibleBookNameTable {
             SpineHtmlStream::WhenMissing whenMissing = SpineHtmlStream::WhenMissing::Inflate);
   // The TOC join alone, for a caller that has already scanned the book-nav
   // page. A book with no matching TOC entry keeps an empty name. Clears every
-  // abbreviation; load() fills them afterwards.
+  // abbreviation; setAbbreviations() fills them afterwards.
   void joinToc(const Epub& epub, const std::string* targets, int targetCount);
+  // The book-nav page's link text as each book's abbreviation, in link order. A book with no label
+  // gets an empty abbreviation, as load() has always left it.
+  void setAbbreviations(const std::vector<std::string>& labels);
 
   int count() const { return bookCount; }
   // Name at a 0-based book-nav index, or "" out of range.
