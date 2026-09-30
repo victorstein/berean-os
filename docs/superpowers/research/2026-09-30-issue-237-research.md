@@ -105,7 +105,7 @@ card width (464) that leaves the title column `212 − 8 − 56 = 148 px`
 (same arithmetic as `HomeLayout.h:137-140`), which still holds the widest
 translated title, "Reuniones" at ~104 px (`lib/I18n/translations/spanish.yaml:9`;
 only English and Spanish define `STR_MEETINGS`). `drawTextIn` truncates the
-percent line to its box (`LauncherActivity.cpp:59`), so a narrower column
+percent line to its box (`LauncherActivity.cpp:61`), so a narrower column
 degrades rather than overflows.
 
 **Measuring rather than hardcoding.** `HomeLayout` is renderer-free by design
