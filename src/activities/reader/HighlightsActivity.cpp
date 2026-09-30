@@ -16,6 +16,7 @@
 #include "TagPickerActivity.h"
 #include "TagChipRow.h"
 #include "activities/PostedMessage.h"
+#include "components/ListRowHeight.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "study/StudyStore.h"
@@ -56,12 +57,6 @@ void HighlightsActivity::rebuildVisibleIndices() {
   }
 }
 
-std::string HighlightsActivity::computeFilterSubtitle() const {
-  if (!filterTagId_) return tr(STR_TAG_FILTER_ALL);
-  const std::string name = STUDY.tagName(*filterTagId_);
-  return name.empty() ? tr(STR_TAG_FILTER_ALL) : name;
-}
-
 void HighlightsActivity::dropRetiredFilter() {
   // A filter on a retired tag would show an empty list forever. UNLABELLED is in
   // no palette, so isActive() is false for it and must not be consulted.
@@ -81,14 +76,7 @@ void HighlightsActivity::rebuildRowItems() {
   rowTagValues_.clear();
   rowItems_.clear();
   rowTagValues_.reserve(visibleIndices_.size());
-  rowItems_.reserve(visibleIndices_.size() + 1);
-
-  filterSubtitle_ = computeFilterSubtitle();
-  fui::ListItem filterRow{};
-  filterRow.label = tr(STR_FILTER_BY_TAG);
-  filterRow.subtitle = filterSubtitle_.c_str();
-  filterRow.actionValue = 0;
-  rowItems_.push_back(filterRow);
+  rowItems_.reserve(visibleIndices_.size());
 
   const auto& passages = STUDY.passages();
   for (size_t i = 0; i < visibleIndices_.size(); ++i) {
@@ -166,6 +154,10 @@ void HighlightsActivity::onChipEvent(const fui::ActionEvent& event, void* user) 
 void HighlightsActivity::onMoreEvent(const fui::ActionEvent&, void* user) {
   auto* self = static_cast<HighlightsActivity*>(user);
   if (self->confirmPopup_.isActive() || self->actionChooser_.isActive()) return;
+  {
+    RenderLock lock(*self);
+    self->buttonFocus_ = false;
+  }
   self->openTagFilter();
 }
 
@@ -176,7 +168,10 @@ void HighlightsActivity::selectChip(const int chipIndex) {
   const ChipEntry& chip = chips_[static_cast<size_t>(chipIndex)];
   std::optional<study::TagId> picked;
   if (chip.kind != TagChips::Kind::All) picked = chip.id;
-  if (picked == filterTagId_) return;
+  if (picked == filterTagId_) {
+    if (buttonFocus_) moveRingTo(0);  // clears the outline; nothing else changed
+    return;
+  }
 
   {
     // chips_ and rowItems_ are borrowed by the render task; rebuild them under its lock.
@@ -185,7 +180,7 @@ void HighlightsActivity::selectChip(const int chipIndex) {
     rebuildVisibleIndices();
     rebuildRowItems();
   }
-  moveSelectionTo(0);
+  moveRingTo(0);
 }
 
 void HighlightsActivity::openTagFilter() {
@@ -215,7 +210,7 @@ void HighlightsActivity::openTagFilter() {
                              rebuildVisibleIndices();
                              rebuildRowItems();
                            }
-                           moveSelectionTo(0);
+                           moveRingTo(0, buttonFocus_);
                          });
 }
 
@@ -256,9 +251,84 @@ void HighlightsActivity::activateIndex(const int index) {
   jumpToHighlight(visibleIndices_[static_cast<size_t>(index - 1)]);
 }
 
+void HighlightsActivity::moveRingTo(const int ringIndex, const bool fromButton) {
+  {
+    // The render task reads nav and buttonFocus_ mid-build.
+    RenderLock lock(*this);
+    auto& n = activeNav();
+    const int rowCount = static_cast<int>(visibleIndices_.size());
+    n.selected = std::clamp(ringIndex, 0, rowCount);
+    buttonFocus_ = fromButton;
+    if (n.selected == 0) {
+      n.top = 0;
+    } else {
+      // ListNav::follow reads selected as a row index, and here it is a ring position.
+      const uint16_t rows = n.visibleRows > 0 ? static_cast<uint16_t>(n.visibleRows) : 1;
+      n.top = fui::listTopIndexFor(static_cast<int16_t>(n.selected - 1), static_cast<uint16_t>(n.top < 0 ? 0 : n.top),
+                                   rows, static_cast<uint16_t>(rowCount));
+    }
+  }
+  requestUpdate();
+}
+
+void HighlightsActivity::navigateButtons() {
+  const int ringSize = listCount();
+  auto& n = activeNav();
+  buttonNavigator.onNextRelease(
+      [this, ringSize, &n] { moveRingTo(ButtonNavigator::nextIndex(n.selected, ringSize), true); });
+  buttonNavigator.onPreviousRelease(
+      [this, ringSize, &n] { moveRingTo(ButtonNavigator::previousIndex(n.selected, ringSize), true); });
+  buttonNavigator.onNextContinuous(
+      [this, ringSize, &n] { moveRingTo(ButtonNavigator::nextPageIndex(n.selected, ringSize, n.pageRows()), true); });
+  buttonNavigator.onPreviousContinuous([this, ringSize, &n] {
+    moveRingTo(ButtonNavigator::previousPageIndex(n.selected, ringSize, n.pageRows()), true);
+  });
+}
+
+void HighlightsActivity::onRowAction(const fui::ActionEvent& event) {
+  {
+    RenderLock lock(*this);
+    buttonFocus_ = false;
+  }
+  UiListActivity::onRowAction(event);
+}
+
+void HighlightsActivity::syncRingViewport(UiScreen& screen, fui::ListProps& props) {
+  // Same row-height rule as UiListActivity::syncListViewport, so rows keep #194's compact metrics.
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  ListRowHeight::Inputs in;
+  in.touch = mappedInput.hasTouch();
+  in.hasSubtitle = true;
+  in.tokenRowHeight = screen.theme().rowHeight;
+  in.minTouchSize = screen.theme().minTouchSize;
+  in.denseRow = metrics.listRowHeight;
+  in.denseSubtitleRow = metrics.listWithSubtitleRowHeight;
+  in.touchSingleRow = metrics.touchListRowHeight;
+  const int16_t rowHeight = ListRowHeight::resolve(in);
+  props.rowHeight = rowHeight;
+
+  auto& n = activeNav();
+  const int rowCount = static_cast<int>(visibleIndices_.size());
+  const uint16_t rows = fui::listVisibleRows(screen.body(), rowHeight, screen.theme().listRowGap);
+  n.visibleRows = rows > 0 ? rows : 1;
+  if (n.followOnBuild) {
+    n.followOnBuild = false;
+    n.top = n.selected > 0 ? static_cast<int>(fui::listTopIndexFor(
+                                 static_cast<int16_t>(n.selected - 1), static_cast<uint16_t>(n.top < 0 ? 0 : n.top),
+                                 static_cast<uint16_t>(n.visibleRows), static_cast<uint16_t>(rowCount)))
+                           : 0;
+  }
+  n.scrollBy(0, rowCount);
+  if (n.selected > rowCount) n.selected = rowCount;
+  props.topIndex = static_cast<uint16_t>(n.top);
+  // -1 while the chip row holds the focus. props.nav stays null: ListNav::onListRendered reads
+  // selected as a row index.
+  props.selectedIndex = static_cast<int16_t>(n.selected - 1);
+}
+
 void HighlightsActivity::onRowLongPress(const int index) {
   if (confirmPopup_.isActive() || actionChooser_.isActive()) return;
-  if (index <= 0 || index >= listCount()) return;  // row 0 is the filter control; nothing to act on
+  if (index <= 0 || index >= listCount()) return;  // ring 0 is the chip row; nothing to act on
   app.clearTapFlash();
   activeNav().selected = index;
   showActionChooser(visibleIndices_[static_cast<size_t>(index - 1)]);
@@ -441,9 +511,9 @@ void HighlightsActivity::applyTagEdit(const size_t docIndex, const ActivityResul
     rebuildRowItems();
   }
   // The rebuild can shrink visibleIndices_ (filter reset above, or the
-  // filtered tag itself deleted); moveSelectionTo issues its own
+  // filtered tag itself deleted); moveRingTo clamps the ring position and issues its own
   // requestUpdate().
-  moveSelectionTo(std::clamp(activeNav().selected, 0, listCount() - 1));
+  moveRingTo(activeNav().selected, buttonFocus_);
 }
 
 void HighlightsActivity::showDeleteConfirmation(const size_t docIndex) {
@@ -488,7 +558,7 @@ void HighlightsActivity::deleteHighlight(const size_t docIndex) {
 
   if (!removed) ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_SAVE_FAILED));
 
-  moveSelectionTo(std::clamp(activeNav().selected, 0, listCount() - 1));
+  moveRingTo(activeNav().selected, buttonFocus_);
 }
 
 bool HighlightsActivity::handleCustomInput() {
@@ -522,7 +592,7 @@ bool HighlightsActivity::handleButtons() {
     const int selected = activeNav().selected;
     if (selected < 0 || selected >= listCount()) return true;
     // Matches EpubReaderBookmarksActivity: a held Confirm release on a
-    // highlight row (not row 0, the filter control, which has nothing to
+    // highlight row (not ring position 0, the chip row, which has nothing to
     // delete) opens the delete confirmation instead of jumping.
     if (selected > 0 && mappedInput.getHeldTime() > ENTER_DELETE_MODE_MS) {
       onRowLongPress(selected);
@@ -551,8 +621,8 @@ void HighlightsActivity::buildScreen(UiScreen& screen) {
                                       static_cast<int16_t>(safe.x)});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  // Nothing to browse or filter: skip the filter row entirely rather than
-  // show a control that can only ever read "All" over an empty list.
+  // Nothing to browse or filter: skip the chip row entirely rather than
+  // show a lone "All 0" over an empty list.
   if (STUDY.passages().empty()) {
     screen.centeredText(tr(STR_NO_HIGHLIGHTS), screen.theme().bodyText);
     return;
@@ -574,7 +644,7 @@ void HighlightsActivity::buildScreen(UiScreen& screen) {
   props.items = rowItems_.data();
   props.count = static_cast<uint16_t>(rowItems_.size());
   props.action = ACTION_ROW;
-  // Tap opens/cycles; long-press deletes (physical buttons stay in loop()).
+  // Tap jumps; long-press opens the action menu (physical buttons stay in loop()).
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   // Theme FIRST: Screen::list only substitutes the theme font into a style that
   // still passes textStyleUnset (FreeInkUICore.h:550-554), and maxLines != 1
@@ -584,7 +654,7 @@ void HighlightsActivity::buildScreen(UiScreen& screen) {
   // The passage owns the subtitle band alone, so two lines of it is the whole
   // budget; tags sit in the value slot on the label line.
   props.subtitleText.maxLines = 2;
-  syncListViewport(screen, props, /*hasSubtitle=*/true);
+  syncRingViewport(screen, props);
   screen.list(props);
 }
 
@@ -663,6 +733,15 @@ void HighlightsActivity::buildChipRow(UiScreen& screen) {
                          static_cast<int16_t>(band.y + TagChips::lineTop(placed.line, chipHeight, gap)),
                          static_cast<int16_t>(placed.width), static_cast<int16_t>(chipHeight)};
     fui::button(screen.frame(), rect, props);
+  }
+
+  if (activeNav().selected == 0 && buttonFocus_) {
+    // Horizontally the outline may only use the list inset (0 on the base theme); vertically it
+    // sits in the spacer above and the takeTop gap below, both at least verticalSpacing.
+    const int outset = std::min(gap, inset);
+    const fui::Rect outline{static_cast<int16_t>(band.x + inset - outset), static_cast<int16_t>(band.y - gap),
+                            static_cast<int16_t>(lineWidth + 2 * outset), static_cast<int16_t>(band.height + 2 * gap)};
+    screen.target().stroke(outline, fui::Paint::solid(fui::Color::Black), 2, theme.listRowRadius);
   }
 }
 
