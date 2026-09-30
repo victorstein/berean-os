@@ -130,4 +130,30 @@ inline void layout(const int* widths, const int count, const int moreWidth, cons
   out.lines = out.placedCount > 0 ? out.placed[out.placedCount - 1].line + 1 : 0;
 }
 
+inline int lineTop(const int line, const int chipHeight, const int gap) { return line * (chipHeight + gap); }
+
+inline int bandHeight(const int lines, const int chipHeight, const int gap) {
+  return lines > 0 ? lines * chipHeight + (lines - 1) * gap : 0;
+}
+
+struct Pad {
+  int top = 0;
+  int right = 0;
+  int bottom = 0;
+  int left = 0;
+};
+
+// Splits each gap between the two chips facing across it, so hit rects tile without overlapping.
+inline Pad hitPadding(const Layout& layout, const int index, const int gap) {
+  Pad pad;
+  const Placed& p = layout.placed[index];
+  const int before = gap / 2;
+  const int after = gap - before;
+  if (p.x > 0) pad.left = before;
+  if (index + 1 < layout.placedCount && layout.placed[index + 1].line == p.line) pad.right = after;
+  if (p.line > 0) pad.top = before;
+  if (p.line + 1 < layout.lines) pad.bottom = after;
+  return pad;
+}
+
 }  // namespace TagChips
