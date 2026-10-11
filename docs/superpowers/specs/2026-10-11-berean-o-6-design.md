@@ -6,8 +6,9 @@ Baseline: `docs/superpowers/notes/responsiveness-baseline.md` (on `main` since `
 Every `file:line` was re-read on this branch at `7c06c2f9`. Nothing under `src/study`,
 `src/activities/reader/BibleSearch*` or `lib/BibleSearch` has changed on `origin/main` since.
 
-**Pending decision D1** (§ "Decisions"): whether to add the persisted fingerprint record. Every
-part of this spec marked **[D1]** depends on its answer. Everything else stands either way.
+**Decision D1 is answered** (§ "Decisions"): the persisted fingerprint record is in scope, as
+option (a). Parts marked **[D1]** are the record and everything that follows from it. They are
+settled and in scope like the rest of this spec.
 
 ## Problem
 
@@ -217,17 +218,25 @@ The causes:
 
 ## Decisions
 
-- **D1 — PENDING (surfaced with `hpipe decide` as the last action of this phase).** Should a new
-  on-disk record (A9-A12) be added? The data-dev rules make a new on-disk format the user's call
-  (`.claude/agents/data-dev.md`, "Prime directive" 2).
-  - **Recommendation: yes,** as specified in A9-A12.
-  - **Alternatives:**
+- **D1 — DECIDED 2026-10-11 by the human: option (a).** The question was whether to add a new
+  on-disk record (A9-A12); the data-dev rules make a new on-disk format the user's call
+  (`.claude/agents/data-dev.md`, "Prime directive" 2). The answer, verbatim:
+
+  "Add the 40-byte version-refusing BSFP record at /.crosspoint/epub_<hash>/search-fingerprint.bin
+  (key = EPUB size + spine count + UNIT_INDEX_VERSION, FNV-64 check), written temp+rename like
+  ProgressFile.h, read with one 40-byte read, serving only the fingerprint and never the build's
+  document list. Document the format in docs/file-formats.md."
+
+  - **Where each part of the answer lives:**
+    - the record: A9-A12 and the `BibleSearchFingerprintFile` section;
+    - the format doc: the § "Docs" section, now a requirement.
+  - **Rejected:**
     - (b) the same record under `/.berean/search/`. It would outlive a same-size replacement on the
       device, which regresses today's recompute-after-reboot.
-    - (c) no record. Goal 2 is dropped, and the first search after boot stays ~2.4 s.
-    - (d) a faster recompute. That needs t3's files and raises the tier to heavy.
-  - **If (c):** delete every [D1] item, the record files and the record tests. The rest stands
-    unchanged.
+    - (c) no record.
+    - (d) a faster recompute through t3's files.
+  - **Settled.** Neither the review nor the plan reopens it. If any part proves impossible as
+    stated, it goes back as a new decision.
 
 ## Architecture
 
@@ -347,9 +356,19 @@ file is registered to this task, so no shared append point is touched.
 
 ### Docs
 
-**[D1]** A `docs/file-formats.md` section for `search-fingerprint.bin`, next to `bible.idx`
-(`:554-596`). That file is on t3's list, so the section text goes to the orchestrator if the lock
-is still held at implement.
+**[D1] Required by the decision:** a `docs/file-formats.md` section for
+`/.crosspoint/epub_<hash>/search-fingerprint.bin`, placed after `bible.idx` (`:554-596`). The
+section covers:
+- the layout table;
+- the key;
+- the version and refusal rules (A11);
+- the temp+rename write;
+- that the record lives and dies with the Bible's cache directory (A9).
+
+`docs/file-formats.md` is also on t3's file list, and this task does not hold it yet. At
+`implement` it is added to this task's files once t3's lock allows. If the lock is still held
+when the PR opens, the exact section text goes in the PR body under "For the orchestrator". It is
+never dropped.
 
 ## Data and control flow
 
@@ -507,3 +526,12 @@ All figures are at the SD clock of the build flashed. Say which, since R2 (t5) c
   left.
 - **For the orchestrator:** no `test/CMakeLists.txt` or `src/main.cpp` lines are needed (A7, and
   new sources go in `test/bible_search_index/CMakeLists.txt`).
+
+## Changes after decision D1
+
+- D1 is now recorded as decided (option a), with the answer quoted in § "Decisions". The "if (c)"
+  fallback is removed.
+- The `docs/file-formats.md` section is now a requirement of the decision, not optional (§ "Docs").
+  Its contents are listed, and so is how it lands while t3 holds that file.
+- No design change. The answer matches A9-A12 as written: the location, the key, the FNV-64 check,
+  the temp+rename write, the single 40-byte read, and fingerprint-only use.
