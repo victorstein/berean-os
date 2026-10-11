@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.13](https://github.com/victorstein/berean-os/compare/v1.29.12...v1.29.13) (2026-10-11)
+
+
+### Performance
+
+* skip the home verse scan on a same-day wake ([#263](https://github.com/victorstein/berean-os/issues/263)) ([89972e1](https://github.com/victorstein/berean-os/commit/89972e1ff78567ed7dd1e55cf2fce129d736d0fc))
+
 ## [1.29.12](https://github.com/victorstein/berean-os/compare/v1.29.11...v1.29.12) (2026-10-11)
 
 
