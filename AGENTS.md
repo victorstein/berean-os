@@ -35,11 +35,27 @@ and DMA-constrained.
 
 | Lives in PSRAM | Lives in internal SRAM |
 |---|---|
-| Catalog index while Buscar is open (~217 KB) | Framebuffer (48 KB) |
-| Unit index pages being built or queried | Selection geometry, render hot path |
-| Download and inflate buffers | ISR state, anything `IRAM_ATTR` touches |
+| Catalog index while Buscar is open (~217 KB) | Selection geometry, render hot path |
+| Unit index pages being built or queried | ISR state, anything `IRAM_ATTR` touches |
+| Download and inflate buffers | |
 | Bible search build (~2.9 MB, while building) | |
-| Search term index (~444 KB, while search is open) | |
+
+Some PSRAM is held across screens until sleep resets the chip: about 570 KB at Home,
+measured 2026-10-11. Budget a new PSRAM item against what is left, not against 8 MB.
+Only the search index has a floor; the others never let go on low PSRAM.
+
+| Held across screens | Size | Owner | Released |
+|---|---|---|---|
+| Bible search term index, posting page, book names | ~444 KB + 4 KB + ~4 KB | `BibleSearchStore::park` (`src/study/BibleSearchStore.cpp`) | at search exit if PSRAM free < 3 MiB or largest block < 1 MiB (`BibleSearchResidency.h`); for another Bible |
+| Cover band ink, 4 slots | ≤ 24 KB each | `CoverBandCache` (`src/components/CoverBandCache.h`) | never; an epoch bump on cover changes invalidates it |
+| Parked Bible: its `Epub` and Go to cache (~6 KB) | — | `ParkedBook` (`src/activities/reader/ParkedBook.h`) | opening another book, deleting its cache; validated when taken back |
+| Reader page frames, while reading | 48,000 B, 144,000 B with AA | `PageFrameCache` (`src/activities/reader/PageFrameCache.h`) | reader `onExit` |
+
+**The framebuffer (48 KB) is probably in PSRAM.** `FREEINK_FB_PSRAM` is off for this
+board (`freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h:295`), so it is a
+plain `malloc` (`FreeInkDisplay.cpp:368-379`), and this build tries PSRAM first for
+any allocation over 4,096 B (`sdkconfig.x4pro:2146-2147`). Not yet confirmed on the
+device (berean-o-11).
 
 Internal SRAM is still a ~380 KB-class resource. Every rule below about stack
 size, heap fragmentation, `constexpr`, and string policy is about internal SRAM
@@ -638,7 +654,8 @@ Port detection — Windows: `mode`. Linux: `ls /dev/ttyUSB* /dev/ttyACM*` or
 ## Cache management and invalidation
 
 **Location**: `/.crosspoint/` on the SD card.
-**Structure**: `/.crosspoint/epub_<hash>/{book.bin, progress.bin, cover.bmp, sections/*.bin}`
+**Structure**: `/.crosspoint/epub_<hash>/{book.bin, progress.bin, cover.bmp, sections/*.bin}`,
+plus `search-fingerprint.bin` for the Bible
 **Hash**: `std::hash<std::string>{}(filepath)` — moving or renaming a book gives a
 new hash and loses its progress. (The study data under `/.berean/` deliberately does
 not work this way; it keys on publication identity.)
@@ -668,8 +685,11 @@ settings in `CrossPointSettings`.
 The constants are the source of truth; `docs/file-formats.md` documents the layout
 and lags behind them.
 
-- `BOOK_CACHE_VERSION` — `lib/Epub/Epub/BookMetadataCache.cpp:14`
+- `BOOK_CACHE_VERSION` — `lib/Epub/Epub/BookMetadataCache.cpp:16`
 - `SECTION_FILE_VERSION` — `lib/Epub/Epub/Section.cpp:50`
+- `BibleSearchFingerprintFile::VERSION` — `src/study/BibleSearchFingerprintFile.h:21`.
+  Bump it with any `BOOK_CACHE_VERSION` change that alters spine hrefs: the record
+  sits beside `book.bin` and survives an in-place rebuild.
 
 **Increment the version *before* changing a binary structure.** A mismatch
 invalidates and regenerates the cache; a changed structure under an unchanged

@@ -99,3 +99,50 @@ hold for touch.
 - An SSD1677 unit. Every SSD1677-specific item stays unranked until one is
   measured.
 - Night mode.
+
+## After the batch
+
+Measured 2026-10-11 on the same unit, `x4pro` dev build of `36920945`
+(`1.29.14-dev-main-36920945`; its code is v1.29.15's), cable-flashed, **anti-aliasing off**. The
+seven fixes are #255 (R20), #257 (R2), #258 (R21), #259 (R11), #262 (R9), #263 (R22) and #266
+(R12 with R5). Every boot logged `[SD] SDMMC clock 40000 kHz (requested 40000 kHz, attempt 1/4)`.
+
+"Before" is the AA-off baseline (run 2) where one exists. The row marked *AA on* only has an
+AA-on baseline, so part of its gain is the gray pass, not the fix. Search, Publications, the
+picker and Home are not anti-aliased, so their baseline holds either way.
+
+| Scenario | n | Before | After | Item, and the line that shows it |
+|---|---|---|---|---|
+| Bible search entry, first frame settled | 6 | 1,579 ms (HALF) | **604–606 ms** (FAST) | R20 |
+| Publications entry | 3 | 1,940 ms (HALF) | **727–728 ms** | R20; band replayed |
+| Bible search → keyboard, first after boot | 1 | 4.6 s | **1,574 ms** | R11: `Fingerprint from record in 3 ms`, `Index opened in 127 ms` |
+| Bible search → keyboard, later | 4 | ~2.7 s | **1,253–1,258 ms** | R11: `Index resumed in 1 ms` |
+| Home → Bible, `Book loaded in` | 9 | 505 ms | **17 ms** parked; 272 ms first after boot | R12 + R5: `Reusing the parked book` |
+| Home → Bible, tap → page readable | 6 | 1,447 ms (n = 1) | **751 ms** parked; 1,064 ms first after boot | R12 + R5 |
+| Reader → Home, settled | 7 | 944 ms | **711 ms** | R9 |
+| Home paint, CPU | 13 | 241–257 ms | **19–22 ms** | R9: `Band replayed`; the three first paints after a boot were 277 ms |
+| Go to picker from the reader menu, first frame | 5 | +866–888 ms | **+660–705 ms** | R9: `Band replayed in 1–2 ms`, books from cache |
+| Each further picker step | — | ~800 ms | **~600 ms** | R9 |
+| Reader menu close | 10 | 1,160 ms, *AA on* | **628–632 ms** | R21: `Page restore: copy=2ms`, no page render; one was the periodic HALF (1,604 ms) |
+| Wake → Home settled, same-day wake | 3 | 4,427 ms from reset | **3,103–3,106 ms** | R22: `Verse restore: restored, current 1, 4 ms`, one paint |
+| Page turn | 34 | 742 ms (n = 9) | 706 ms | none directly; `prewarm` 64 → 21 ms, `bw_render` 44 → 30 ms |
+| Sleep | 3 | ~2.9 s | 2.9–3.0 s | unchanged; `Study pick` still 452 ms (berean-o-13) |
+
+- **Menu close with AA off** would otherwise have re-rendered the page, about a page turn
+  (~710–740 ms), so R21's AA-off gain is ~80–110 ms. Its AA-on gain, where the gray pass is
+  skipped too, was not measured.
+- **Wake** is one HALF paint now. Its 241 ms cover-band decode is the cost left on every wake and
+  on each first masthead after it (berean-o-9).
+- **The first search after the flash** computed the fingerprint (1,463 ms, keyboard at 3,034 ms)
+  and wrote the record. Every later boot read the record.
+- **A section's first page** still builds the section (cache miss → page shown: median 1,613 ms,
+  n = 13, against 2,633 ms with AA on before). The SD clock and AA both moved, so this is not
+  credited to R2 alone.
+- **PSRAM held at Home** with search, bands and the parked Bible resident: free fell from 8,278,216
+  B at boot to 7,707,960 B, about 570 KB. Internal free stayed within 191–262 KB.
+- **Back from the chapter grid to the book grid** is a HALF (1,507 ms,
+  `BibleNavigationActivity.cpp:370`), deliberate since #219 because the cover art would ghost. The
+  baseline never took that path.
+
+Not re-measured: anything with anti-aliasing on (the owner reads with it off), so t1's AA-on ghost
+check and R21's AA-on figure are open; the catalog search; an SSD1677 unit.

@@ -34,6 +34,7 @@
 ### Performance
 
 * run the SD card at 40 MHz high speed ([#257](https://github.com/victorstein/berean-os/issues/257)) ([b1a9f1a](https://github.com/victorstein/berean-os/commit/b1a9f1af0d0502632b250065ce520955a5cc7b75))
+* close the reader menu without re-rendering the page ([#258](https://github.com/victorstein/berean-os/issues/258)) ([9d6f0c0](https://github.com/victorstein/berean-os/commit/9d6f0c0d63de7c219bebbe27541dc7d35e019cd8))
 
 ## [1.29.10](https://github.com/victorstein/berean-os/compare/v1.29.9...v1.29.10) (2026-10-11)
 

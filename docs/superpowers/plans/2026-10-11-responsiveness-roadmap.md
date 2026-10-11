@@ -8,6 +8,8 @@ A map for making bereanOS feel faster, written so that another agent can pick it
   `victorstein/freeink-sdk`).
 - **State:** research done. Device baseline taken 2026-10-11 on a UC8179 unit
   (`docs/superpowers/notes/responsiveness-baseline.md`) and the items re-ranked from it below.
+  The seven re-ranked items landed the same day (#255–#266, v1.29.10–v1.29.15) and were measured
+  on the device afterwards ("After the batch" in the baseline note).
 
 ## What this roadmap is, and is not
 
@@ -37,13 +39,13 @@ supersedes the phase order below for that unit.
 
 | Rank | Item | Measured cost it removes |
 |---|---|---|
-| 1 | **R20** FAST, not HALF, on entering Bible search and Publications | ~950 ms per entry (HALF 1,506 ms vs FAST ~560 ms) |
-| 2 | **R9** band cache, Home cover and mastheads | `Band drawn in` 225 ms per masthead paint; Home paints 241–257 ms of CPU |
-| 3 | **R12**, or a cheaper `BookMetadataCache::load`, plus **R5** | `Book loaded in` 505 ms on every Home → Bible; ~70 ms of saves before the first frame |
-| 4 | **R21** menu close without a full re-render | 1,160 ms per close with AA on |
-| 5 | **R2** SD card at 40 MHz | book load, section build, search index open, verse scans |
-| 6 | **R11** keep the Bible search index open | ~500 ms per re-entry; 2.2 s on the first search after every boot |
-| 7 | **R22** parse the verse file once per sleep cycle | 445 ms at sleep + 405 ms at wake |
+| 1 | **R20** FAST, not HALF, on entering Bible search and Publications — done, #255 | ~950 ms per entry (HALF 1,506 ms vs FAST ~560 ms) |
+| 2 | **R9** band cache, Home cover and mastheads — done, #262 | `Band drawn in` 225 ms per masthead paint; Home paints 241–257 ms of CPU |
+| 3 | **R12**, or a cheaper `BookMetadataCache::load`, plus **R5** — done, #266 | `Book loaded in` 505 ms on every Home → Bible; ~70 ms of saves before the first frame |
+| 4 | **R21** menu close without a full re-render — done, #258 | 1,160 ms per close with AA on |
+| 5 | **R2** SD card at 40 MHz — done, #257 | book load, section build, search index open, verse scans |
+| 6 | **R11** keep the Bible search index open — done, #259 | ~500 ms per re-entry; 2.2 s on the first search after every boot |
+| 7 | **R22** parse the verse file once per sleep cycle — done, #263 | 445 ms at sleep + 405 ms at wake |
 
 **Dropped for UC8179 units:** R1, R15, R16 (SSD1677 driver only) and R4 (the overlap path is
 SSD1677-only, F6). **Dropped for SD-card reading fonts:** R8 (`prewarm=` is 8 ms in-chapter).
@@ -183,6 +185,8 @@ Each is independent and touches a different file. They can run in parallel.
 
 ### R2. SD card at 40 MHz (SDK)
 
+- **Done:** #257 (v1.29.11). Every boot logs `SDMMC clock 40000 kHz … attempt 1/4`. Not isolated
+  from the other six; page-turn `prewarm` (SD font) 64 → 21 ms.
 - **Evidence:** F16.
 - **Change:** in `freeink-sdk/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp:25`, set
   `SDMMC_FREQ_DEFAULT` → `SDMMC_FREQ_HIGHSPEED` and correct the comment. Then bump the submodule
@@ -238,6 +242,7 @@ Each is independent and touches a different file. They can run in parallel.
 
 ### R5. No redundant writes before a book's first frame
 
+- **Done:** #266 (v1.29.15), with R12; measured there.
 - **Evidence:** F18.
 - **Change:**
   - `RecentBooksStore::addBook` (`src/RecentBooksStore.cpp:27-50`) skips the save, and the
@@ -314,6 +319,9 @@ Each is independent and touches a different file. They can run in parallel.
 
 ### R9. Home cover band cache
 
+- **Done:** #262 (v1.29.14). Home paint 241–257 → 19–22 ms of CPU; masthead band 225 → 1–2 ms
+  (`Band replayed`); Reader → Home 944 → 711 ms. The first paint after each boot still decodes
+  (berean-o-9).
 - **Evidence:** F17.
 - **Change:** reuse #238's gated Task 9 design: a band-exact 1-bit ink bitset recorded during the
   blit, held in explicit PSRAM (`docs/superpowers/plans/2026-09-30-issue-238-plan.md:1465-1480`).
@@ -337,6 +345,8 @@ Each is independent and touches a different file. They can run in parallel.
 
 ### R11. Keep the Bible search index open
 
+- **Done:** #259 (v1.29.12). Search → keyboard 4.6 s → 1,574 ms on the first search after boot
+  (`Fingerprint from record in 3 ms`) and ~2.7 s → 1,255 ms later (`Index resumed in 1 ms`).
 - **Evidence:** F17.
 - **Change:** `BibleSearchActivity::onExit` closes `BibleSearchStore`
   (`src/activities/reader/BibleSearchActivity.cpp:117-125`). Keep the ~444 KB term index open in
@@ -348,6 +358,8 @@ Each is independent and touches a different file. They can run in parallel.
 
 ### R12. Home ↔ Bible session retention (_Spec_)
 
+- **Done:** #266 (v1.29.15), with R5. `Book loaded in` 505 → 17 ms parked, 272 ms first after boot;
+  Home → Bible page readable 1,447 → 751 ms.
 - **Evidence:** F17.
 - **Problem:** going Home destroys the reader. Re-entering re-runs `Epub::load`, progress,
   bookmarks and `STUDY.openPublication`, and loses `BibleNavCache`
@@ -477,6 +489,8 @@ Each is independent and touches a different file. They can run in parallel.
 
 ### R20. FAST, not HALF, on entering Bible search and Publications
 
+- **Done:** #255 (v1.29.10). Bible search entry 1,579 → 605 ms; Publications entry 1,940 → 728 ms.
+  The AA-on ghost check was not run.
 - **Evidence:** baseline. Both screens' first paint is a HALF (1,506 ms on UC8179).
   - Bible search: `enterState(State::Opening, /*fullRefresh=*/true)`
     (`src/activities/reader/BibleSearchActivity.cpp:114`), resolved to `HALF_REFRESH` at `:1032`.
@@ -493,6 +507,8 @@ Each is independent and touches a different file. They can run in parallel.
 
 ### R21. Close the reader menu without a full re-render
 
+- **Done:** #258 (v1.29.11). Menu close with AA off is a 2 ms frame copy and one FAST, 628–632 ms.
+  The AA-on figure (1,160 ms before) was not re-measured.
 - **Evidence:** baseline. The menu logs `sheet mode: over-page (page saved)`
   (`src/activities/reader/EpubReaderMenuActivity.cpp:286`), yet closing it re-renders the page and,
   with AA on, its whole gray pass: `total=` 1,160 ms.
@@ -503,6 +519,8 @@ Each is independent and touches a different file. They can run in parallel.
 
 ### R22. Parse the verse file once per sleep cycle
 
+- **Done (wake side):** #263 (v1.29.13). A same-day wake restores the verse in 4 ms; Home settles
+  4,427 → 3,105 ms from reset. Sleep still parses (`Study pick` 452 ms, berean-o-13).
 - **Evidence:** baseline. Sleep runs `Study pick` over a 43,864-byte file (445 ms,
   `src/activities/boot_sleep/StudySleepScreen.cpp:254`). Every wake then runs Home's
   `Verse scan` over the same file (405 ms, `src/activities/launcher/HomeVerse.cpp:98`), because

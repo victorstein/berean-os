@@ -11,6 +11,8 @@
 #include "FsHelpers.h"
 
 namespace {
+// A bump that changes spine hrefs must also bump BibleSearchFingerprintFile::VERSION: the search
+// fingerprint record lives beside book.bin and survives an in-place rebuild.
 constexpr uint8_t BOOK_CACHE_VERSION = 10;  // v10: ignore ambiguous guide text references
 constexpr char bookBinFile[] = "/book.bin";
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
