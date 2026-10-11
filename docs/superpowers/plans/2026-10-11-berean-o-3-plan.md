@@ -19,6 +19,16 @@ FILES: src/activities/reader/BibleNavCache.h, src/activities/reader/BibleBookInd
 FILES: src/study/StudyStore.h, src/study/StudyStore.cpp, src/study/StudyReuse.h
 FILES: src/util/RecentBooksDoc.h, src/util/RecentBooksDoc.cpp, src/RecentBooksStore.cpp
 FILES: test/book_metadata_cache/, test/parked_book/, test/recent_books_doc/RecentBooksDocTest.cpp
+FILES: build/o3-tests/
+
+**Revised after plan review 0** (`docs/superpowers/reviews/berean-o-3-plan-review-0.md`, CLEAR, five
+MINORs, all applied):
+
+- the regression `ctest` filter now names the gtest suites in `StorageIoTest` and `PassageText`;
+- pushing and opening the PR are the worker's job, so the implementer stops after Step 12.3;
+- a fix found by the firmware build gets its own `fix:` commit;
+- the gitignored local test wrapper is declared;
+- the parked-book suite checks that `skipLoadingCss = false` also reaches `reopenCache`.
 
 ## Ground rules for every task
 
@@ -79,9 +89,11 @@ include(GoogleTest)
 ```bash
 cmake -S build/o3-tests -B build/o3-tests/out
 cmake --build build/o3-tests/out -j8 --target RecentBooksDocTest StorageIoTest BibleNavCacheTest PassageDocTest CrossPointStateTest PubKeyTest
-ctest --test-dir build/o3-tests/out -R 'RecentBooksDoc|StorageIo|BibleNavCache|PassageDoc|CrossPointState|PubKey' --output-on-failure
+ctest --test-dir build/o3-tests/out -R 'RecentBooksDoc|AdoptingRead|AtomicWrite|HalStorageFake|LoadAdopting|PassageFileIo|TagPaletteFileIo|BibleNavCache|PassageDoc|PassageText|CrossPointState|PubKey' --output-on-failure
 ```
 
+ctest names tests after their gtest suites, not their executables, which is why the filter lists
+`StorageIoTest`'s suites (`AdoptingRead` … `TagPaletteFileIo`) and `PassageDocTest`'s `PassageText`.
 Expect every test to pass. If any fails before you change anything, stop and report it. Nothing to commit.
 
 ---
@@ -1042,6 +1054,7 @@ TEST(ParkedBook, ACacheThatNoLongerMatchesMissesAndReleases) {
   EXPECT_EQ(slot.take(PATH, SIZE, false, miss).book, nullptr);
   EXPECT_EQ(miss, Slot::Miss::CacheChanged);
   EXPECT_EQ(book->reopenCalls, 1);
+  EXPECT_FALSE(book->lastSkipLoadingCss);
   EXPECT_EQ(book.use_count(), 1);
   EXPECT_EQ(nav.use_count(), 1);
 }
@@ -1937,7 +1950,8 @@ git commit -m "perf: keep the loaded book across a Home round trip" -- src/activ
 ```
 
 Expect `SUCCESS` and no warning from a file this task touched. Fix any error or warning in the file it
-names, and re-run. The likely ones, and their fixes:
+names, commit each fix on its own with explicit paths (`git commit -m "fix: <what>" -- <paths>`), and
+re-run. The likely ones, and their fixes:
 
 - **Missing `millis` in `StudyStore.cpp`:** it includes `<Arduino.h>` (`StudyStore.cpp:3`); re-check that
   the include survived.
@@ -1964,12 +1978,15 @@ Check that `git status --short` lists neither `test/CMakeLists.txt` nor anything
 
 ```bash
 cmake --build build/o3-tests/out -j8 --target BookMetadataCacheTest ParkedBookTest StudyReuseTest RecentBooksDocTest StorageIoTest BibleNavCacheTest PassageDocTest CrossPointStateTest PubKeyTest
-ctest --test-dir build/o3-tests/out -R 'BookMetadataCache|ParkedBook|StudyReuse|RecentBooksDoc|StorageIo|BibleNavCache|PassageDoc|CrossPointState|PubKey' --output-on-failure
+ctest --test-dir build/o3-tests/out -R 'BookMetadataCache|ParkedBook|StudyReuse|RecentBooksDoc|AdoptingRead|AtomicWrite|HalStorageFake|LoadAdopting|PassageFileIo|TagPaletteFileIo|BibleNavCache|PassageDoc|PassageText|CrossPointState|PubKey' --output-on-failure
 ```
 
 Expect all to pass. If the firmware build in 12.1 changed any code, re-run 12.1 after formatting.
 
-**Step 12.4 — Push:**
+**The implementer stops here.** Report the Step 12.1 `SUCCESS` and RAM/Flash lines and the Step 12.3
+`ctest` summary. Step 12.4 and Task 13 belong to the worker, after it has verified that output itself.
+
+**Step 12.4 — Push (worker only, after verifying Task 12):**
 
 ```bash
 git push
@@ -1977,7 +1994,7 @@ git push
 
 ---
 
-## Task 13 — Open the PR
+## Task 13 — Open the PR (worker only, after Step 12.4)
 
 Title (conventional, lowercase, imperative): `perf: make opening the Bible from Home cheap`. Target `main`.
 
