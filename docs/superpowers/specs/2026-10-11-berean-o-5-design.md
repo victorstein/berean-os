@@ -7,8 +7,9 @@ Branch `perf/r2-sd-40mhz`, bead `berean-o-5`, run task `t5`, surface `hal`, revi
   landed through the fork and a gitlink bump (PR #190, commit `2822662d`). This spec follows its
   shape: numbered labelled assumptions, the fork mechanics in their own section, device checks
   written for the owner, and a review log.
-- **Pass 1:** this pass answers `docs/superpowers/reviews/berean-o-5-spec-review-0.md`. What
-  changed is in the review log at the end.
+- **Passes:** pass 1 answers `docs/superpowers/reviews/berean-o-5-spec-review-0.md` (BLOCKER).
+  Pass 2 applies the inline fixes from `berean-o-5-spec-review-2.md` (CLEAR). What changed is in
+  the review log at the end.
 
 ESP-IDF paths use R's abbreviations:
 
@@ -90,8 +91,8 @@ Baseline costs this touches, from the owner's X4 Pro, `x4pro` build of `1ba1cd34
 2. **No card that mounts today ends up slower, or on a link ESP-IDF rejected:**
    - a card without high speed falls back to 20 MHz inside ESP-IDF (A1);
    - a 40 MHz attempt mounts only after a clean init, with ESP-IDF's SCR check passed (A5);
-   - otherwise the loop moves on, and the last two attempts run today's 20 MHz path unchanged
-     (A3, A5).
+   - otherwise the loop moves on to the last two attempts, which run at 20 MHz under today's
+     acceptance rule, unchanged (A3, A5).
 3. Print the clock the card really runs at, once, after the boot mount, on the line that
    `if (Serial)` lines in the SDK already use. When the loop needed a retry, the line also says
    why.
@@ -157,13 +158,18 @@ of 20 (`sdmmc_host.c:261-263`). The clock call also re-arms the data timeout for
 
 - **Why both, before the pulse.** Attempt 1 today powers up and identifies the card under exactly
   what slot init left: 400 kHz and 1-bit (`SdmmcBlockDevice.cpp:40`, `sdmmc_host.c:822-831`).
-  Restoring both first makes every later attempt start from that same state, on every board that
-  shares this class.
+  Restoring both first makes every later attempt start with the same clock and bus-width register
+  as attempt 1.
   - On the X4 Pro the width call never changes anything: the slot is 1-bit
     (`BoardConfig.h:1450`) and `sdmmc_init_host_bus_width` only widens the bus past 1 bit
     (`sdmmc_common.c:212-231`).
   - On a 4-bit `FREEINK_SD_SDMMC` board, an attempt that fails after `sdmmc_init_host_bus_width`
     (`sdmmc_init.c:150`) would otherwise leave the next attempt's identification on a 4-bit host.
+  - The width call writes only the width register (`sdmmc_host.c:991-992`). Slot init on a 4-bit
+    slot also holds D3 as a GPIO driven high until the 4-bit switch hands it to the peripheral
+    (`sdmmc_host.c:766-779`, `:996`). That is not restored. The internal pull-up keeps D3 high
+    anyway (`SdmmcBlockDevice.cpp:37`, `sdmmc_host.c:735-738`), so this is noted, not fixed. It
+    can't arise on the 1-bit X4 Pro.
 - **On attempt 1 they change nothing.** The host is already at 400 kHz and 1-bit.
 - **It already matters today.** An attempt that fails after `sdmmc_init_host_frequency`
   (`sdmmc_init.c:163`) leaves the bus at 20 MHz for the next identification. This fixes that at
@@ -192,6 +198,13 @@ with the loop bound computed from its length:
 - **The naming.** It follows the SDK's `k`-prefixed constants (`SdmmcBlockDevice.h:42-43`).
 - **The total stays four.** Today's budget is `attempt < 4` (`SdmmcBlockDevice.cpp:84`). That
   keeps the time to the SD error screen with no card in the slot as it is.
+  - **The consequence:** a card whose 40 MHz attempts fail gets two 20 MHz attempts where today it
+    gets four. The power-cycled retry exists for cards that need more than one try
+    (`SdmmcBlockDevice.cpp:78-82`). If such a card also fails both HS attempts, it has two
+    sequencing retries left instead of four. So more cards can reach the existing SD error
+    screen, even though no new `return false` is added.
+  - This is the trade the rejected alternatives below weigh, and it is taken knowingly. The
+    clock line (A6) names the reason for any retry, so a device run would show it.
 - **Why two at high speed.** The power-cycled retry exists for a mount-sequencing problem
   (`SdmmcBlockDevice.cpp:22-23`). That conclusion was reached at 20 MHz, the only clock the code
   has run (§1). Giving HS a second attempt keeps one sequencing retry before 20 MHz.
@@ -241,12 +254,18 @@ Why:
 - **A mount at 40 MHz now implies a clean init.** The SCR check passed (`sdmmc_init.c:169`, the
   last step before `return ESP_OK` at `:175`) and so did a real block read. That is ESP-IDF's own
   test of a raised clock, plus ours.
-- **The 20 MHz attempts change nothing.** They reproduce today's behaviour, including its
-  tolerance, which is the reason the tolerance was kept. A card that mounts today through a
-  partial init still does, on attempt 3 or 4.
-- **The cost.** A card whose HS attempts both fail reaches 20 MHz two attempts later than today
-  reached it on attempt 1. That is about 2 × 200 ms of GPIO5 delays (`:87-89`), paid only on such
-  a card.
+- **The 20 MHz attempts keep today's acceptance rule, unchanged.** That includes its tolerance,
+  which is why the tolerance was kept. A card that mounts today through a partial init still
+  does, on attempt 3 or 4. What A2 changes for them is only where they start: at 400 kHz and
+  1-bit.
+- **The cost, paid only by a card whose HS attempts both fail:**
+  - It reaches 20 MHz two attempts later than today reached it on attempt 1.
+  - That costs at least 2 × 200 ms of GPIO5 delays (`:87-89`), plus the 400 kHz identification
+    and the failed HS steps of each attempt. Not measured.
+  - It is paid on **every boot, and so on every wake.** Wake is a reset out of deep sleep
+    (`SDK/libs/hardware/PowerManager/src/PowerManager.cpp:96`), and the baseline measures wake
+    "from reset" (baseline note `:51`).
+  - It has two 20 MHz attempts left instead of four (A3, "The consequence").
 
 A 400 kHz mount can still come from today's path: a 20 MHz attempt whose init fails after the CSD
 but before the frequency step, for example at SSR (`sdmmc_init.c:160`). A6 prints it. It is not
@@ -259,6 +278,7 @@ dividers.** It goes just before `_card = card;` (`SdmmcBlockDevice.cpp:110`). Fo
 
     [<millis>] [SD] SDMMC clock <real> kHz (requested <requested> kHz, attempt <n>/<total>)
     [<millis>] [SD] SDMMC clock <real> kHz (requested <requested> kHz, attempt <n>/<total>, after <last error>)
+    [<millis>] [SD] SDMMC clock <real> kHz (requested <requested> kHz, attempt <n>/<total>[, after <last error>], partial init <init error>)
 
 The fields:
 
@@ -273,6 +293,12 @@ The fields:
   keeps its name table (`CONFIG_ESP_ERR_TO_NAME_LOOKUP 1`, `LIBS/qio_opi/include/sdkconfig.h`).
   The last error is a separate `esp_err_t`, because `mountErr` is `ESP_OK` once the read succeeds
   (`:98`).
+- **The `partial init` suffix** appears only when the successful attempt's own `sdmmc_card_init`
+  returned an error, and the mount came through today's sector-0 fallthrough. `<init error>` is
+  its `esp_err_to_name`. By A5 this can only happen on a 20 MHz attempt. The init result is kept
+  in its own `esp_err_t`, because the read overwrites `mountErr` (`:97-98`). Without it, a 20 MHz
+  mount on a link that just failed ESP-IDF's SCR check at 20 MHz (`sdmmc_init.c:163`, then `:169`)
+  would print the same line as a clean 20 MHz fallback.
 
 How the line is built and what it tells apart:
 
@@ -292,10 +318,11 @@ How the line is built and what it tells apart:
   | `40000 … requested 40000 … attempt 1/4` | HS, first try |
   | `40000 … requested 40000 … attempt 2/4, after …` | HS after one retry, with the reason |
   | `20000 … requested 40000` | the card refused HS |
-  | `20000 … requested 20000 … attempt 3/4` or `4/4`, `after …` | the loop fell back, with the reason |
-  | `400 … requested 20000` | today's partial-init path |
+  | `20000 … requested 20000 … attempt 3/4` or `4/4`, `after …` | the loop fell back cleanly, with the reason |
+  | `… requested 20000 …, partial init <error>` | today's partial-init path, at whatever clock init reached: `20000` if it failed after the frequency step, `400` if before |
 
-  `400 … requested 40000` can't occur, because A5 refuses partial inits at 40 MHz.
+  `400 … requested 40000` and `requested 40000 …, partial init` can't occur, because A5 refuses
+  partial inits at 40 MHz.
 - **Once.** `begin` runs once per boot: the only caller is `src/main.cpp:406` via
   `HalStorage.cpp:26` (R§Who owns).
 - **Visibility.** `if (Serial)` is `HWCDC::isCDC_Connected()` (`HWCDC.cpp:271-273`). Its first
@@ -368,8 +395,16 @@ unchanged. The PR body names:
 - the "For existing clones" line from the brief;
 - the device checks in §7.3.
 
-The branch is rebased onto `origin/main` (`478cf1ed`, docs and a release only, R preamble) before
-the PR opens, so the PR diff is this bead's files alone.
+The branch is rebased onto the latest `origin/main` before the PR opens, so the PR diff is this
+bead's files alone.
+
+- Today that is `478cf1ed`, which adds only docs and a release to this branch's base (R
+  preamble).
+- Siblings in this run change the same figures §7.3 compares (berean-o-3/R12, berean-o-6/R11,
+  berean-o-7/R22; `hpipe show --task t3|t6|t7`).
+- So at rebase time the implementer runs `git log --oneline 478cf1ed..origin/main -- src lib`.
+  The PR body says which comparison §7.3 uses: the baseline if that log is empty, the A/B builds
+  otherwise.
 
 ## 5. Data and control flow after the change
 
@@ -379,18 +414,20 @@ the PR opens, so the PR diff is this bead's files alone.
    (`:24-25`).
 2. Slot config and `sdmmc_host_init_slot`, which leaves 400 kHz and a 1-bit bus (`:29-43`).
 3. The card struct, the GPIO5 `pinMode`, and the DMA buffer (`:51-76`). Unchanged.
-4. **`mountedAttempt` is unset, and `lastFailure` is `ESP_OK`.** For each attempt `i` in
+4. **`mountedAttempt` is unset, and `lastFailure` and `initErr` are `ESP_OK`.** Below, "record
+   the error" always sets **both** `mountErr` and `lastFailure`. For each attempt `i` in
    `0 .. kMountAttempts-1`:
-   1. **Restore the probing clock and the 1-bit bus (A2). On error, record it in `mountErr` and
-      `lastFailure`, and go to the next attempt.**
+   1. **Restore the probing clock and the 1-bit bus (A2). On error, record it and go to the next
+      attempt.**
    2. GPIO5 HIGH 80 ms, then LOW 120 ms (`:85-90`). Unchanged.
    3. **`host.max_freq_khz = kAttemptClockKhz[i]`.**
-   4. `sdmmc_card_init(&host, card)`. On HS-capable cards with `i < 2`, it switches the card to
-      SDR25 and the host to 40 MHz. Otherwise it runs at 20 MHz.
+   4. `initErr = sdmmc_card_init(&host, card)`. On HS-capable cards with `i < 2`, it switches the
+      card to SDR25 and the host to 40 MHz. Otherwise it runs at 20 MHz.
    5. **If init failed and `!acceptsPartialInit(host.max_freq_khz)`, record the error and go to
       the next attempt (A5).** Otherwise, unchanged: if init failed and `capacity == 0`, record
-      it and retry. Otherwise read sector 0. On success set `mountedAttempt = i` and stop; on
-      failure **record the error in `lastFailure` too** (`:92-99`).
+      it and retry. Otherwise read sector 0. On success set `mountedAttempt = i` and stop, with
+      `initErr` still holding this attempt's init result. On failure, record the error
+      (`:92-99`).
 5. On failure: the unchanged failure line and cleanup (`:101-109`).
 6. On success: **query the real clock and print the A6 line**, then `_card = card` (`:110`).
 
@@ -399,8 +436,9 @@ the PR opens, so the PR diff is this bead's files alone.
 
 **Resources.**
 
-- No new allocation in the SDK. `kAttemptClockKhz` is 16 bytes of `constexpr` data. Two
-  `esp_err_t`/`int` locals hold the attempt index and the last failure.
+- No new allocation in the SDK. `kAttemptClockKhz` is 16 bytes of `constexpr` data. Three
+  locals hold the attempt index (`int`), the last failure and the successful attempt's init result
+  (both `esp_err_t`).
 - The HS switch makes ESP-IDF allocate one transient 64-byte `MALLOC_CAP_DMA` buffer, freed in the
   same call (`sdmmc_sd.c:245`, `:316`; `sd_protocol_types.h:108`).
 - The printed line uses no buffer of ours. It is a `Serial.printf` with integer and
@@ -418,7 +456,7 @@ the PR opens, so the PR diff is this bead's files alone.
 | HS-capable card, link fails the SCR re-read at 40 MHz | Init fails on attempt 1. A5 skips the read and goes to attempt 2, which restores 400 kHz and 1-bit (A2) and tries HS again. Attempts 3–4 run today's 20 MHz path. A success prints `requested 20000 kHz, attempt 3/4, after <error>`. |
 | A CMD6 exchange errors on attempt 1 or 2 | The same as the row above: init fails, A5 skips the read, and the loop moves on to attempts 3–4 at 20 MHz, which send no CMD6. |
 | HS init clean, sector-0 read fails at 40 MHz | Unchanged rule: the attempt fails and the loop retries. |
-| A 20 MHz attempt fails init after the CSD | Unchanged: the sector-0 read runs. If it succeeds, the card mounts at whatever clock init reached, and A6 prints it, `400 … requested 20000` included. |
+| A 20 MHz attempt fails init after the CSD | Unchanged: the sector-0 read runs. If it succeeds, the card mounts at whatever clock init reached. A6 prints that clock with `partial init <error>`, `400 … requested 20000` included. |
 | A2's reset calls fail | That attempt is spent and its error recorded. If every attempt fails, today's `SDMMC mount failed after retries: <err>` prints (`:101-103`), `begin` returns false, and `src/main.cpp:406-410` shows the SD error screen. |
 | `sdmmc_host_get_real_freq` fails | The line prints `card->real_freq_khz` instead (A6). The mount is unaffected. |
 | No card | Unchanged: four attempts and the SD error screen. Each attempt adds the two A2 calls. |
@@ -480,36 +518,77 @@ The order makes each red a real failure of the assert, not a missing name:
 
 ### 7.3 Device checks (owner)
 
-Flash an `x4pro` dev build of the PR branch, by cable or by the side-load in `CLAUDE.md`
-"Flashing". Capture serial from boot with `cat /dev/cu.usbmodem* > serial.log`. Then:
+**What the figures are compared against (A/B rule).** The measured build and its comparator must
+differ by the gitlink alone, or the comparison credits the SD clock with someone else's change.
+
+- **If `git log --oneline 478cf1ed..origin/main -- src lib` is empty at rebase time (A10):**
+  compare against the baseline figures as written.
+- **Otherwise:** the owner flashes two builds of the same rebased base, one after the other:
+  1. **A:** the PR branch with the gitlink back at `67f7e012` (`git -C freeink-sdk checkout
+     67f7e012` before building);
+  2. **B:** the PR branch as pushed.
+  Steps 2–5 compare B with A. The baseline figures become context only.
+
+Flash an `x4pro` dev build, by cable or by the side-load in `CLAUDE.md` "Flashing".
+
+- **Capture.** Start a reconnecting capture **before** the device boots and leave it running. A
+  single `cat` exits when the USB node disappears at a reset, and it expands its glob only once:
+
+      while :; do cat /dev/cu.usbmodem* 2>/dev/null; sleep 0.1; done >> serial.log
+
+- **Why not a cold boot.** A cold boot is the worst case for the clock line: `src/main.cpp:343-347`
+  records that cold boot races USB enumeration, and the line prints about 0.5 s after reset (the
+  250 ms at `:348`, then at least one 200 ms pulse).
+
+Then:
 
 1. **Boot.** Read the one `[SD] SDMMC clock` line and grade it with A6's table:
    - **Pass:** `SDMMC clock 40000 kHz (requested 40000 kHz, attempt 1/4)`.
    - **Pass, to note:** `SDMMC clock 40000 kHz (requested 40000 kHz, attempt 2/4, after <error>)`.
      That is a sequencing retry at 40 MHz. Record the error.
-   - **Finding to report:** any `20000` or `400` line, with its `after` reason if it has one.
+   - **Finding to report:** any `20000` or `400` line, or any `partial init`, with its `after`
+     reason if it has one.
    - **Capture gap, not a result:** neither the clock line nor `[SD] SDMMC card mounted` is in the
-     log. Re-capture from a cold boot.
-2. **Open the Bible.** Compare `[BMC] Loaded cache data` (against `Loading ePub`) with 276 ms, and
-   `[READER] Book loaded in` with 505 ms (`BookMetadataCache.cpp:497`, `Epub.cpp:362`,
-   `ReaderActivity.cpp:60`).
-3. **Go to a chapter not yet built.** Compare the section build span from the `[SCT]` timestamps
-   with 1.2–1.8 s.
-4. **Open Bible search, first after boot.** Compare the open, ending at
-   `[BSEARCH] 1189 verse documents` (`BibleSearchStore.cpp:198`), with 2.2 s. A later reopen
-   compares with ~500 ms.
+     log. With the capture loop running, reboot from any state and read it again.
+2. **Open the Bible.** Compare `[BMC] Loaded cache data` (against `[EBP] Loading ePub`) with 276 ms,
+   and `[READER] Book loaded in` with 505 ms (`BookMetadataCache.cpp:497`, `Epub.cpp:362`,
+   `ReaderActivity.cpp:60`). §7.4 sets the expectation.
+3. **Go to a chapter not yet built.** The span runs:
+   - from `[ERS] Cache not found, building...` (`src/activities/reader/EpubReaderActivity.cpp:1286`);
+   - through `[SCT] Streamed temp HTML to … (N bytes)` (`lib/Epub/Epub/Section.cpp:315`);
+   - to `[EHP] Time to parse and build pages: N ms`
+     (`lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp:1647`).
+   Record the whole span and the stream part (start to `Streamed temp HTML`), which is the most
+   SD-bound share. Compare the span with 1.2–1.8 s. The baseline did not record these start points
+   (baseline note `:47`), so when the A/B rule applies, measure both builds this way.
+4. **Open Bible search, first after boot.** The index is opened only once the Opening frame is on
+   screen (`src/activities/reader/BibleSearchActivity.cpp:178`, `:189-193`), so the span runs:
+   - from that frame's `Wait complete:  8179_DRF (~1507 ms)` (`SDK/libs/display/FreeInkDisplay/src/bus/EpdBus.cpp:293`,
+     `:375`; baseline note `:73`);
+   - to `[BSEARCH] 1189 verse documents, fingerprint …` (`src/study/BibleSearchStore.cpp:198`).
+   Compare it with 2.2 s. A later reopen compares the same span with ~500 ms. The same A/B caveat
+   as step 3 applies.
 5. **Sleep and wake, a no-regression check.** `[SLP] Study pick … ms` against 445 ms and
    `[HOMEV] Verse scan … ms` against 405 ms (`StudySleepScreen.cpp:254`, `HomeVerse.cpp:98`)
-   should not get worse. §7.4 explains why they barely move.
-6. **A day of use.** None of these in the log:
-   - `SDMMC mount failed`;
-   - SdFat or `sdmmc_read_sectors` read errors;
-   - store write failures. The atomic writer's errors are `[PERSIST] Failed to open … for write`,
-     `Failed to write …` and `Failed to rename … into place` (`lib/Serialization/PersistableStore.cpp:77`,
-     `:85`, `:98`, `:118`). `writeSectors` itself fails silently (`SdmmcBlockDevice.cpp:144-156`),
-     so writes at 40 MHz only show up there.
-7. **An older card**, if one is at hand: record its clock line, including any `after` reason, and
-   whether it boots.
+   should not get worse. §7.4 explains why they barely move. If berean-o-7 (R22) has landed, a
+   same-day wake logs no `Verse scan`, and only `Study pick` remains.
+6. **A day of use.** Copy `/.berean/` off the card first: nothing lowers the clock after mount
+   (`SdmmcBlockDevice.cpp:130-156`), so a runtime error has no fallback.
+   - **The pass:** the log has none of the following:
+     - any `[ERR]` line;
+     - any `[SD]` line other than the clock and mount lines;
+     - any `[SCT] Retrying stream (attempt N)...` (`Section.cpp:282`). This DBG-only retry
+       (`:277-284`, "Retry logic for SD card timing issues") is the signal a marginal 40 MHz link
+       would leave.
+   - **What `[ERR]` includes:** the store writers' errors, from both the atomic and the
+     non-atomic writer (`lib/Serialization/PersistableStore.cpp:77`, `:85`, `:118`, and `:98` in
+     `writeDocToFile`, `:91-100`).
+   - **Why the logs, not the driver:** `writeSectors` fails silently (`SdmmcBlockDevice.cpp:144-156`).
+     Write failures only show up in those callers' logs, under `[PERSIST]`, `[SCT]` and others.
+   - **The remedy:** if any of these lines appears, reflash the previous build and restore
+     `/.berean/` if it was damaged.
+7. **An older card**, if one is at hand: record its clock line, including any `after` or
+   `partial init` reason, and whether it boots.
 
 ### 7.4 What only the device can show
 
@@ -520,6 +599,14 @@ Flash an `x4pro` dev build of the PR branch, by cable or by the side-load in `CL
   That is about 17.5 ms of raw transfer at 1-bit 20 MHz and about 8.8 ms at 40 MHz, so they
   should change by about 10 ms at most. A flat result there is expected, not a failure. They stay
   as no-regression checks because the brief lists verse scans among the costs.
+- **The book-load figures drop only a little.** The sibling R12 research measured the spine block
+  of `book.bin` at 159,467 bytes. That is about 64 ms of transfer at 1-bit 20 MHz, inside the
+  276 ms `BMC Loaded cache data` (`W/perf-r12-bible-open/docs/superpowers/research/2026-10-11-berean-o-3-research.md:130`,
+  `:319`, where `W/` = `/Volumes/stein/.herdr/worktrees/berean-os/`). The rest is per-entry read
+  overhead.
+  - So `BMC Loaded cache data` and `Book loaded in` should drop by about 30 ms at most.
+  - The largest SD-bound shares are the section build's HTML stream (§7.3 step 3) and the search
+    index read (step 4).
 - Whether the fallback path ever runs.
 
 The fallback path (A3), the clean-init rule (A5) and the reset (A2) are verified by reading the
@@ -544,7 +631,7 @@ available. This is stated in the PR, not claimed as tested.
       at 20 MHz exactly as today.
     - §1.1 now lists both new paths.
     - Goal 2 states the guarantee.
-    - §5 step 4.5, both §6 rows, A6's table and §8's closing claim all follow the rule.
+    - §5 step 4.5, both §6 rows, A6's table and §6's closing paragraph all follow the rule.
     - A11 asserts the predicate.
   - **MINOR 1, a vacuous red: fixed.** §7.1 now refactors to today's values first, then adds
     asserts that fail on values, then changes the values.
@@ -565,6 +652,38 @@ available. This is stated in the PR, not claimed as tested.
   - **MINOR 7, the three slips: fixed.**
     - §5 no longer counts the SCR re-read as new.
     - A3 names `send_scr`'s CRC or timeout as the likely margin failure.
-    - A2 now restores the 1-bit bus as well as the clock, mirroring slot init. That makes "every
-      attempt starts where slot init left the host" true on every board sharing the class,
-      rather than scoping the claim to the X4 Pro.
+    - A2 now restores the 1-bit bus as well as the clock, mirroring slot init. Pass 2 narrows the
+      claim that followed (see below).
+- **Pass 2** applies the inline fixes from `docs/superpowers/reviews/berean-o-5-spec-review-2.md`
+  (CLEAR, 1 major, 7 minors). It changes no decision and no scope. Every finding was accepted.
+  - **MAJOR 1, sibling tasks confound the device comparison: fixed.**
+    - A10 re-checks `478cf1ed..origin/main -- src lib` at rebase time.
+    - §7.3 opens with an A/B rule: compare against the baseline only if that log is empty.
+      Otherwise flash the PR branch with the gitlink at `67f7e012` (A) and as pushed (B).
+    - Step 5 says the wake `Verse scan` may be gone once R22 lands.
+  - **MINOR 1, a 20 MHz partial init prints like a clean fallback: fixed.**
+    - The successful attempt's init result is kept (`initErr`, §5).
+    - A6 prints `partial init <error>` when it isn't `ESP_OK`, and the table has that row.
+    - §5 says every "record the error" sets both `mountErr` and `lastFailure`.
+  - **MINOR 2, A5 understated the cost: fixed.**
+    - A5's cost bullet now says the cost is a floor, paid on every boot and so every wake, with
+      two 20 MHz attempts left instead of four.
+    - A3's "The total stays four" states that more cards can reach the SD error screen.
+  - **MINOR 3, the capture could not follow a reset: fixed.** §7.3 gives a reconnecting `cat`
+    loop started before boot. Step 1's capture-gap remedy no longer says "cold boot", and §7.3 says
+    why.
+  - **MINOR 4, unnamed span markers: fixed.**
+    - Step 3 names `[ERS] Cache not found, building...`, `[SCT] Streamed temp HTML` and
+      `[EHP] Time to parse and build pages`.
+    - Step 4 names the Opening frame's `Wait complete` and `[BSEARCH] 1189 verse documents`.
+  - **MINOR 5, no expectation for book load: fixed.** §7.4 gives the ~30 ms ceiling, from the
+    sibling R12 research.
+  - **MINOR 6, step 6's error list: fixed.**
+    - `:98` is attributed to `writeDocToFile`.
+    - Step 6 now grades on any `[ERR]` line, any unexpected `[SD]` line, and `[SCT] Retrying stream`.
+    - It says to back up `/.berean/` first.
+  - **MINOR 7, slips from the revision: fixed.**
+    - A2's claim is scoped to the clock and the bus-width register, with the 4-bit D3 difference
+      named.
+    - Goal 2 and A5 say "today's acceptance rule, unchanged" rather than "unchanged".
+    - The pass-1 log entry cites §6, not §8.
