@@ -14,6 +14,26 @@
     `LauncherRefresh.h` with `test/launcher_refresh/`;
   - a cache that lives for the reader's life: `navCache` (`EpubReaderActivity.h:48-50`).
 
+## Changes after review 1
+
+Review: `docs/superpowers/reviews/berean-o-4-spec-review-1.md`, verdict CLEAR with 9 MINORs, all applied here.
+(Pass 0's reviewer stopped on an API rate limit before writing anything, so there is no review-0 file.)
+
+| # | Finding | Applied |
+|---|---|---|
+| 1 | The record's lifecycle was unspecified and untested | `CapturedPage` gains `reset`/`beginPage`/`markPlane`/`markGrayShown` in the pure header; A-8 says `invalidate()` resets the whole record; T-7 added; T-5 builds records through the methods. |
+| 2 | Gray captures were not gated on `!pageHasImages` | One `capture` flag gates every capture call (data flow §1, A-6). |
+| 3 | A skipped gray pass restored flat, against AC3 | `grayExpected` recorded; `fit()` → `GrayMissing` when grays were expected but not shown (A-5, error table, T-5). |
+| 4 | A build changes the status bar and the progress save | Accepted and stated (A-20, A-21, Risks, Non-goals). |
+| 5 | UC8279 not mentioned | A-17 evidence, G-4, V-9, Risks. |
+| 6 | V-5 could not measure 2–6 ms | New `Page cache: N planes in Xms` line (A-23); V-5 reads it. |
+| 7 | A-4's reason for the one-buffer branch was wrong | Reason corrected: left out by choice, not for lack of a plane. |
+| 8 | The `fit()` pseudo-code dereferenced a null section | Position built conditionally (data flow §3). |
+| 9 | Two citations | `HalDisplay.h:88`; A-7's precedent is `src/main.cpp:228-240`. |
+
+Also, while applying 2: nothing is captured while night mode is on (A-12), because those pages are never
+restored.
+
 ## Problem
 
 Closing the reader menu without choosing anything re-renders the page from scratch. On the owner's
@@ -40,7 +60,7 @@ the reader runs (research note, "What 'page saved' is").
 | G-1 | A cancelled close that changed nothing shows the page from a copy the reader kept. No SD page load, no B/W render, no gray render. It logs `Page restore:` and no `Page render`. | AC1 |
 | G-2 | Every other close, and every menu action, re-renders exactly as today. | AC2 |
 | G-3 | With AA on, the restored page runs its gray pass from planes saved when the page was rendered. | AC3 |
-| G-4 | Correct on SSD1677 units, through the same branches those units already run. | brief |
+| G-4 | Correct on SSD1677 and UC8279 units, through the same branches those units already run. | brief |
 | G-5 | Time to settled drops. The PR quotes the measured `Page restore: ... total=` line against the baseline's 1,160 ms. | AC1 |
 
 ## Non-goals
@@ -54,18 +74,18 @@ the reader runs (research note, "What 'page saved' is").
   refresh stay as they are.
 - **Image pages, night mode and the SSD1677 overlap gate** (F9/R4). Each keeps today's behaviour; see A-6, A-12
   and A-4.
-- **Refreshing the status bar's battery on close** (A-21).
+- **Refreshing the status bar on close**: battery, and the estimated page count during a build (A-21).
 - **Any `freeink-sdk` or `ReaderActivity.cpp` change.** `ReaderActivity` is sibling t3's file.
 
 ## Architecture
 
 | File | Change |
 |---|---|
-| `src/activities/reader/MenuCloseRestore.h` | **New.** Pure, header-only, no firmware includes. It holds two things. `decide()` answers "may this close restore?" from what the menu changed. `fit()` answers "does the saved page match where the reader is?" Each returns an enum with a log name. |
-| `src/activities/reader/PageFrameCache.{h,cpp}` | **New.** Owns up to three 48,000 B PSRAM planes: B/W, gray LSB, gray MSB. It also owns the `MenuCloseRestore::CapturedPage` record describing them. Capture, invalidate, release, read-only accessors. No renderer calls. |
+| `src/activities/reader/MenuCloseRestore.h` | **New.** Pure, header-only, no firmware includes. It holds three things. `decide()` answers "may this close restore?" from what the menu changed. `CapturedPage` is the record of what was saved, with every state change it can make: `reset()`, `beginPage(spine, page, grayExpected)`, `markPlane(lsbPlane)`, `markGrayShown()`. `fit()` answers "does the saved page match where the reader is?" `decide()` and `fit()` each return an enum with a log name. |
+| `src/activities/reader/PageFrameCache.{h,cpp}` | **New.** Owns up to three 48,000 B PSRAM planes: B/W, gray LSB, gray MSB. It also owns one `CapturedPage`. It only allocates, copies, and calls the record's methods; it makes no decision of its own and no renderer calls. |
 | `src/activities/reader/EpubReaderActivity.h` | **Changed.** New members `PageFrameCache pageCache;` and `bool pageRestoreRequested = false;`, plus one private method `bool restorePageFromCache();`. |
 | `src/activities/reader/EpubReaderActivity.cpp` | **Changed.** Capture calls in `renderContents`. Before-state and the decision in `openReaderMenu`'s handler. The restore attempt and the invalidation at the top of `renderBook`. `pageCache.release()` in `onExit`. |
-| `lib/GfxRenderer/GfxRenderer.{h,cpp}` | **Changed.** One pass-through: `void copyGrayscaleBuffers(const uint8_t* lsb, const uint8_t* msb) const` → `display.copyGrayscaleBuffers(lsb, msb)`. Mirrors the no-argument `copyGrayscaleLsbBuffers()` (`GfxRenderer.cpp:2267`) and `HalDisplay::copyGrayscaleBuffers` (`HalDisplay.h:87`, `.cpp:102-104`). |
+| `lib/GfxRenderer/GfxRenderer.{h,cpp}` | **Changed.** One pass-through: `void copyGrayscaleBuffers(const uint8_t* lsb, const uint8_t* msb) const` → `display.copyGrayscaleBuffers(lsb, msb)`. Mirrors the no-argument `copyGrayscaleLsbBuffers()` (`GfxRenderer.cpp:2267`) and `HalDisplay::copyGrayscaleBuffers` (`HalDisplay.h:88`, `.cpp:102-104`). |
 | `test/ui_layout/MenuCloseRestoreTest.cpp`, `test/ui_layout/CMakeLists.txt` | **New test and its block.** Copies the `ReaderMenuSheetLayoutTest` block (`test/ui_layout/CMakeLists.txt`). This is the suite's own file, not the shared `test/CMakeLists.txt`. |
 
 Unchanged: `EpubReaderMenuActivity.*`, `ReaderMenuSheetLayout.h`, `ReaderActivity.*`, `ActivityManager.*`,
@@ -79,17 +99,20 @@ Unchanged: `EpubReaderMenuActivity.*`, `ReaderMenuSheetLayout.h`, `ReaderActivit
 renderBook
   pageRestoreRequested consumed (always, first statement)            A-14
   ... restore attempt (section 3) ...
-  pageCache.invalidate()                                             A-8
+  pageCache.invalidate()            (record reset to its default)    A-8
   ... section load/build, unchanged ...
   renderContents
+    capture = !pageHasImages && SETTINGS.screenInverted == 0        A-6, A-12
     page->render + highlights + renderStatusBar        (:1700-1704)
-    if !pageHasImages: pageCache.captureBw(fb, spine, page)          A-3, A-6
+    if capture: pageCache.captureBw(fb, spine, page, needsTextGrayscale)   A-3, A-5
     display (B/W)                                      (:1707-1719)
+    every call below is also gated on `capture`:
     tiled, planes buffered (both):  after renderPlaneToBuffer x2 (:1749-1750)
         pageCache.captureGrayPlane(lsb, lsbPlaneBuf); (msb, msbPlaneBuf)   A-4
     non-tiled: after the LSB pass (:1839-1840) captureGrayPlane(lsb, fb)
                after the MSB pass (:1845-1846) captureGrayPlane(msb, fb)    A-4
     at every displayGrayBuffer() (:1766, :1815, :1849): pageCache.noteGrayShown()  A-5
+    if capture: LOG_DBG("ERS", "Page cache: %d planes in %lums")               A-23
 ```
 
 ### 2. Close decision: the menu's result handler (loop task)
@@ -124,7 +147,9 @@ renderBook
   ... today's path ...
 
 restorePageFromCache
-  fit = MenuCloseRestore::fit(pageCache.captured(), {section != nullptr, currentSpineIndex, section->currentPage})
+  position = section ? Position{true, currentSpineIndex, section->currentPage}
+                     : Position{false, currentSpineIndex, -1}        (never dereference a null section)
+  fit = MenuCloseRestore::fit(pageCache.captured(), position)
   if fit != Fits or !renderer.hasFrameBuffer(): LOG_DBG refused (reason); return false     A-22
   memcpy(renderer.getFrameBuffer(), pageCache.bw(), renderer.getBufferSize())             A-7
   ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh)                   A-18
@@ -180,22 +205,34 @@ Each one is a decision a reviewer can attack.
     (`:1837-1846`). It is copied after the `copyGrayscale*Buffers()` call that reads it.
   - **Tiled with both plane buffers** (SSD1677, internal-heap gate passed, `:1739-1746`): both buffers are copied
     after they are rendered (`:1749-1750`).
-  - **Tiled with one buffer** (`:1759-1761`), **or with the strip scratch** (`:1777-1827`): no full plane exists,
-    so nothing is captured. `fit()` returns `GrayMissing` and the close re-renders, as today. The SSD1677 overlap
-    gate itself is not touched (F9/R4 stay out of scope).
+  - **Tiled with one buffer** (`:1759-1761`): not captured, by choice. Its single buffer does hold each plane in
+    full, one after the other (LSB after `:1749`, MSB after `:1760`). But the branch exists only under
+    internal-heap pressure on SSD1677, and capturing there would mean a third set of capture points for a rare
+    case. `fit()` returns `GrayMissing` and the close re-renders, as today.
+  - **Tiled with the strip scratch** (`:1777-1827`): no full plane ever exists, so nothing is captured. Same
+    outcome. The SSD1677 overlap gate itself is not touched (F9/R4 stay out of scope).
 
-- **A-5: "gray shown" is recorded where the gray waveform is requested.** `noteGrayShown()` sits beside each
-  `displayGrayBuffer()` (`:1766`, `:1815`, `:1849`).
-  - A page whose gray pass was skipped is shown flat: `storeBwBuffer` failed (`:1831-1834`) or the strip scratch
-    was OOM (`:1778-1790`). Its `grayShown` stays false, and the restore shows it flat, as the panel showed it.
-  - A page shown with grays restores only if both planes were captured (`fit()` → `GrayMissing` otherwise).
-  - The restore runs the gray pass if and only if `grayShown` (`restoresGray()`).
+- **A-5: the record says whether grays were expected, shown and saved.**
+  - `grayExpected` is set by `captureBw` to `needsTextGrayscale` (`:1642`). Captures run only on non-image pages
+    with night mode off (A-6, A-12), so that is the page's whole gray requirement.
+  - `grayShown` is set by `noteGrayShown()`, which sits beside each `displayGrayBuffer()` (`:1766`, `:1815`,
+    `:1849`).
+  - The plane flags are set by `captureGrayPlane`, and only when the copy happened.
+  - `fit()` returns `GrayMissing` when `grayExpected` and not (`grayShown` and both planes). That covers a gray
+    pass skipped for lack of memory (`storeBwBuffer` failed, `:1831-1834`; strip scratch OOM, `:1778-1790`). Today's
+    close would re-render and retry those grays, so the restore refuses and the close does the same (AC3: no flat
+    page left behind).
+  - The restore runs the gray pass if and only if `grayExpected` (`restoresGray()`); when it fits, all three
+    flags agree.
 
-- **A-6: image pages are not captured.**
+- **A-6: image pages are not captured at all, B/W or gray.**
   - They have their own sequence: a placeholder FAST (`:1659-1664`), then a HALF or FAST base (`:1707-1712`),
     then a gray pass for images even with AA off (`:1643`, `:1655`).
   - Replaying that faithfully is a second design for pages the Bible rarely has. With no B/W capture, `fit()`
     returns `Empty` and the close re-renders.
+  - Every capture call is gated on the same `capture` flag, not only `captureBw`. Otherwise an image page in an
+    AA-off session would run the non-tiled gray branch (`needsAnyGrayscale`, `:1643`, `:1829-1849`). That would
+    allocate the 96,000 B gray pair and copy into it on every image page, for a record `fit()` always rejects.
 
 - **A-7: raw full-frame copies through `getFrameBuffer()`/`getBufferSize()`** (`GfxRenderer.h:371-372`,
   `GfxRenderer.cpp:2236-2238`). The region API is not used.
@@ -203,10 +240,13 @@ Each one is a decision a reviewer can attack.
   - A full-screen region copy would move the same 48,000 B row by row, through an orientation transform that
     does nothing here.
   - Precedent for raw framebuffer access outside the renderer: `ScreenshotUtil.cpp:72` reads it, and
-    `restoreBwBuffer` writes it with `memcpy` (`GfxRenderer.cpp:2346-2350`).
+    `loadSleepFrameBuffer` writes a whole frame straight into `display.getFrameBuffer()` (`src/main.cpp:228-240`).
 
-- **A-8: invalidate at the top of every `renderBook` that does not restore.** Then any render that does not end
-  in a captured page leaves nothing to restore:
+- **A-8: invalidate at the top of every `renderBook` that does not restore.** `invalidate()` calls
+  `CapturedPage::reset()`, which returns the **whole** record to its default: B/W, both plane flags,
+  `grayExpected`, `grayShown` and the position. `captureBw` then calls `beginPage`, which also starts from that
+  default. So a page that captures B/W but no planes can never inherit the previous page's planes (T-7). Then any
+  render that does not end in a captured page leaves nothing to restore:
   - an empty chapter or an out-of-bounds page (`:1445-1461`);
   - a build error (`:1221-1225`);
   - a page-load retry (`:1466-1484`);
@@ -265,8 +305,9 @@ Each one is a decision a reviewer can attack.
   - The reader's next refresh is a HALF either way, because the render task switches polarity between the menu
     and the reader (`ActivityManager.cpp:58`, `FreeInkDisplay.cpp:316-324`, `:573-575`).
   - The facade skips every gray step while inverted (`FreeInkDisplay.cpp:773-781`, `:825-835`).
-  - A restore would save only the ~50 ms render under a ~1.5 s HALF. Excluding it keeps the gray bookkeeping
-    honest: `noteGrayShown()` would otherwise record a gray pass that never reached the panel.
+  - A restore would save only the ~50 ms render under a ~1.5 s HALF.
+  - So nothing is captured while `SETTINGS.screenInverted` is set (the `capture` flag, data flow §1). Those
+    pages are never restored, and `noteGrayShown()` would otherwise record a gray pass the facade skipped.
 
 - **A-13: Frontlight does not block a restore.** It changes the light, not the page (`EpubReaderMenuActivity.cpp:339-346`).
   If its settings save fails, the posted message is drawn after `renderBook` by `ReaderActivity::render`
@@ -312,6 +353,12 @@ Each one is a decision a reviewer can attack.
     `displayGrayBuffer()` and `cleanupGrayscaleWithFrameBuffer()`.
   - The UC8179 driver re-snapshots the B/W base from the displayed frame (`Uc8179Driver.cpp:273-276`) and folds
     the masks against it (`:473-515`). That is why replaying the same calls with saved masks is equivalent.
+  - **UC8279**, the X4 Pro's third controller (`FREEINK_DRIVER_UC8279_X4 1`,
+    `freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h:130`; selected at boot,
+    `FreeInkDisplay.cpp:153-158`). It has no strip support (no override of `PanelDriver.h:103`), so it takes the
+    no-strip branch, like UC8179. Its `copyGrayscaleLsb`/`Msb` stream the given masks straight to DTM1/DTM2
+    (`Uc8279X4Driver.cpp:276-282`). `displayGray` ignores `fb` (`:329`), and cleanup re-seeds DTM1 from the B/W
+    frame (`:333-343`). So the saved masks give it the same bytes a render would.
 
 - **A-18: the B/W step goes through `displayWithRefreshCycle`, blocking.** A close keeps counting toward the HALF
   every `refreshFrequency` pages, as today's re-render does (`ReaderUtils.h:165-177`). When that HALF is due, the
@@ -321,28 +368,39 @@ Each one is a decision a reviewer can attack.
   - `GfxRenderer::copyGrayscaleLsbBuffers()` always passes the framebuffer (`GfxRenderer.cpp:2267-2269`).
   - Without the pass-through, the restore would have to copy each mask into the framebuffer, upload it, and
     copy the B/W page back: three extra 48,000 B copies.
-  - `HalDisplay` already takes both pointers (`HalDisplay.h:87`).
+  - `HalDisplay` already takes both pointers (`HalDisplay.h:88`).
 
 - **A-20: after a restore, the reader's state is left as a render leaves it.**
   - `lastRenderCompleteMs`, `pageShown` and `pageRendered` are set as at `:1493-1495`.
   - The bookmark toast is drawn if it is still showing (`:1512-1514`). The toast does not expire while the menu
     is up, because the reader's loop does not run then (`:574`).
   - Posted messages are drawn by `ReaderActivity::render` after `renderBook` (`ReaderActivity.cpp:190`).
-  - The progress save is skipped, because the page did not change (`:1498-1505` would find nothing to save).
+  - The progress-save block (`:1498-1505`) does not run. On a finished section it would find nothing to save.
+    While a section is building or partial, it compares `pageCount` with a stored `estimatedTotalPages()`
+    (`:1498`, `:1503`), so today's close does save a new estimated page count. The restore leaves that save to
+    the next page turn. The spine, the page and the visible offset it records are unchanged. Accepted with A-21.
   - `pendingScreenshot` cannot be set: only a confirmed action sets it (`:908-915`).
   - `chapterPassageCount`, `currentPageFootnotes` and `currentPageVisibleOffset` keep the values the captured
     render set (`:1487-1488`, `:1683`).
 
-- **A-21: the status bar's battery level and charging icon are shown as they were when the page was rendered**
-  (`BaseTheme.cpp:642-660`). Any page left on screen behaves the same. The next page turn refreshes it. The clock
-  is X3-only (`:661-663`).
+- **A-21: the status bar is shown as it was when the page was rendered.** Two parts of it can change between
+  that render and the close:
+  - the battery level and charging icon (`BaseTheme.cpp:642-660`);
+  - while a section is still building, the `~`-prefixed estimated page count. The reader's loop advances builds
+    between renders without re-rendering (`EpubReaderActivity.cpp:496-509`), and the status bar shows
+    `estimatedTotalPages()` while `isBuilding()` (`:1904`, `:1930-1931`).
+
+  Accepted, rather than refusing the restore. Any page left on screen behaves the same, and the next page turn
+  refreshes both. The clock is X3-only (`BaseTheme.cpp:661-663`).
 
 - **A-22: a refused restore falls through to today's render.** It logs `LOG_DBG` with the `fit()` reason. The
   `Menu closed: restore` line followed by `Page restore refused: <reason>` makes a mismatch visible on serial.
 
 ### Logging
 
-- **A-23: three lines, all `LOG_DBG("ERS", ...)`.** Timings follow `renderContents`' style (`:1856-1860`).
+- **A-23: four lines, all `LOG_DBG("ERS", ...)`.** Timings follow `renderContents`' style (`:1856-1860`).
+  - `Page cache: %d planes in %lums`, once per capturing render, timing only the copies. V-5 reads A-2's
+    per-turn cost from it directly, rather than from a page-turn `total=` that varies by more than the cost.
   - `Menu closed: <restore|action|end-of-book|orientation|auto-turn|night>`.
   - `Page restore: copy=%lums display=%lums gray_write=%lums gray_display=%lums total=%lums`. Its field names
     deliberately avoid `bw_render` and `gray_lsb` (AC1). `gray_*` fields read 0 when the page has no grays.
@@ -355,7 +413,7 @@ Each one is a decision a reviewer can attack.
 | Failure | Behaviour | Log |
 |---|---|---|
 | PSRAM allocation fails | Latch for the session. B/W: the cache never fits. Gray pair: AA pages refuse (`gray-missing`), pages shown without grays still restore | `LOG_ERR` once |
-| `renderContents` skips its gray pass (store or scratch OOM) | `grayShown` false; the restore shows the page flat, as it was shown | existing `LOG_ERR` lines (`:1832`, `:1781`) |
+| `renderContents` skips its gray pass (store or scratch OOM) | `grayExpected` without `grayShown`: `fit()` → `GrayMissing`; the close re-renders and retries the grays, as today | existing `LOG_ERR` lines (`:1832`, `:1781`), then `Page restore refused: gray-missing` |
 | Gray shown but planes not captured (one-buffer or strip tiled branch) | `fit()` → `GrayMissing`; normal render | `Page restore refused: gray-missing` |
 | The reader moved, the section was released, or the last render was not a page | `fit()` → `Moved` / `NoSection` / `Empty`; normal render | `Page restore refused: ...` |
 | No framebuffer (`!renderer.hasFrameBuffer()`) | Normal render | `Page restore refused: no-fb` |
@@ -377,12 +435,14 @@ stubs):
 | T-2 | Each single change, alone, blocks the restore with its own verdict: not cancelled; end of book; orientation; auto turn before only; auto turn after only; night before only; night after only. |
 | T-3 | A non-cancelled close reports `Action` whatever else changed (the log reason is stable). |
 | T-4 | `fit()`: a default record → `Empty`; B/W at the same position → `Fits`; no section → `NoSection`; another spine → `Moved`; another page → `Moved`. |
-| T-5 | `fit()` with grays: shown with both planes → `Fits` and `restoresGray`; shown with one plane → `GrayMissing`; planes without `grayShown` → `Fits` and not `restoresGray`. |
+| T-5 | `fit()` with grays, records built through `CapturedPage`'s methods: expected, shown, both planes → `Fits` and `restoresGray`; expected, shown, one plane → `GrayMissing`; expected, both planes, not shown (gray pass skipped) → `GrayMissing`; not expected → `Fits` and not `restoresGray`. |
 | T-6 | Every `Verdict` and `Fit` has a distinct, non-empty name. |
+| T-7 | Record lifecycle: `beginPage` + both `markPlane` + `markGrayShown`, then `reset()` → `Empty`. Then `beginPage(..., grayExpected=true)` + `markGrayShown` with no planes → `GrayMissing`: a new page never inherits the previous page's planes. Also: `beginPage` on a record that still holds planes clears them. |
 
 `PageFrameCache` itself is not host-built: it calls `heap_caps_malloc`, and `test/stubs/` has no
-`esp_heap_caps.h`. Adding one would be a new stub pattern for three trivial `memcpy`s. Its logic is the record
-`fit()` reads, which T-4 and T-5 cover.
+`esp_heap_caps.h`. Adding one would be a new stub pattern. What is left in it after the record moved to the pure
+header is allocation, the OOM latch and `memcpy`; every state change goes through `CapturedPage`, which T-5 and
+T-7 cover.
 
 ### Build and checks
 
@@ -398,11 +458,11 @@ stubs):
 | V-2 | AA off (the owner's setting). Same as V-1. | Same lines, `gray_*=0`. The after figure has no baseline; also record one close on the pre-change build. |
 | V-3 | From the menu: Mark; Night mode on, then close; Night mode off, then close; Auto turn 1; Go to then cancel, then close the reopened sheet; Text settings with a font change; Screenshot; a Recent chip; Tag. | Each logs `Menu closed: <reason>` other than `restore` (except the final close after Go to cancel, which restores). The page shows the change: bookmark icon and toast, inverted page, auto-turn title, new font, screenshot border, the new place. |
 | V-4 | With the long-press set to Mark, mark a page with a Home-key hold, then open and close the menu while the toast still shows. | The toast reappears over the restored page and then expires as usual. |
-| V-5 | Ten page turns each with AA on and off. | `Page render ... total=` medians within ~10 ms of the baseline (1,378 / 741 ms). More than that means A-2's copies cost more than estimated. |
+| V-5 | Ten page turns each with AA on and off. | `Page cache: N planes in Xms`: X ≤ 2 ms per plane (1 plane AA off, 3 AA on). More than that means A-2's copies cost more than estimated, and the follow-up that removes them should be built. |
 | V-6 | Watch `[MENU] heap before/open/closed` and `MEM` across entering the reader, ten closes, and leaving to Home. | PSRAM down by 48,000 B (AA off) or 144,000 B (AA on) after the first page, steady across closes, and back after leaving. Internal heap unchanged by the closes. |
 | V-7 | Set the refresh frequency to its smallest value, then open and close the menu repeatedly. | When the HALF is due, the restore's `display=` is a HALF (~1.5 s); otherwise FAST. |
 | V-8 | At the end-of-book screen, open the menu with a Home-key hold and close it. | `Menu closed: end-of-book`, and the end-of-book screen is shown again. |
-| V-9 | SSD1677. | No unit available. A-17's SSD1677 branch is reasoned from the live strip branch only; the PR flags it as untested. |
+| V-9 | SSD1677 and UC8279. | No unit of either available. A-17's SSD1677 branch is reasoned from the live strip branch, and the UC8279 case from its driver; the PR flags both as untested. |
 
 ## Expected effect (estimate, not measured)
 
@@ -415,10 +475,12 @@ stubs):
 ## Risks
 
 - **A-2's per-turn copies.** If PSRAM copies are slower than `bw_store=2ms` suggests, every turn pays for it. V-5
-  catches it. The follow-up below removes the copies.
-- **SSD1677 is untested** (V-9). The branch mirrors live code (`:1779-1819`, `:1756-1758`). A wrong replay would
-  show as a ghosted sheet or a flat page on close only, never on a page turn, and the next page turn repaints.
-- **A stale battery icon** after a long menu visit (A-21). Accepted.
+  times them directly. The follow-up below removes the copies.
+- **SSD1677 and UC8279 are untested** (V-9). The SSD1677 branch mirrors live code (`:1779-1819`, `:1756-1758`).
+  A wrong replay would show as a ghosted sheet or a flat page on close only, never on a page turn, and the next
+  page turn repaints.
+- **A stale status bar** (A-21): the battery after a long menu visit, and the estimated page count while a
+  section builds. Accepted, along with the deferred progress save (A-20).
 - **Gain is modest.** The panel waveforms are ~851 ms of the 1,160 ms, and no restore removes them on this panel
   (research note).
 
