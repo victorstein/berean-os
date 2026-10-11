@@ -68,6 +68,19 @@ match and compile.
   the local SDK commits.
 - **`pio` is not on `PATH`.** Use `/Volumes/stein/.platformio/penv/bin/pio`. Run builds one at a
   time, never two `pio run`s at once.
+- **Sibling worktrees share the packages.** They all use `~/.platformio/packages`, and a sibling's
+  build can rewrite `framework-arduinoespressif32/idf_component.yml` under yours. So a `FAILED`
+  with no `error:` line in `SdmmcBlockDevice.cpp` is environmental, not a code result.
+  - Re-run the same command once.
+  - If it fails again, read the unfiltered tail (`… 2>&1 | tail -40`) before concluding anything
+    about the code.
+- **`SCRATCH` must be set in every shell call that uses it.** Shell variables do not survive from
+  one tool call to the next. Each block that uses `$SCRATCH` starts with
+  `: "${SCRATCH:?set SCRATCH to the session scratchpad}"`, so it stops rather than writing to `/`.
+  Prefix the block with `SCRATCH=<this session's scratchpad directory>` when you run it.
+- **Rebase conflicts stop the plan.** If any `git rebase` stops on a conflict, run
+  `git rebase --abort` and report. A conflict on `freeink-sdk` means `main` moved the gitlink. The
+  SDK commit would then have to move onto `main`'s gitlink, and that needs a fresh decision.
 - **No direct `clang-format`.** Never invoke or probe `clang-format` directly; only
   `./bin/clang-format-fix`. It does not reach files inside `freeink-sdk/` (spec §7.2), so every SDK
   edit below is already formatted: 2-space indent, at most 120 columns.
@@ -113,8 +126,10 @@ git ls-tree HEAD freeink-sdk
 ```
 
 Expected: the rebase succeeds (the branch carries only this bead's docs), and the gitlink still
-reads `67f7e012e3554106062bc52a3131523339a8ac4e`. If `origin/main` moved the gitlink, stop and
-report: the SDK work must then start from the new gitlink.
+reads `67f7e012e3554106062bc52a3131523339a8ac4e`.
+- **If the rebase stops on a conflict,** run `git rebase --abort` and report.
+- **If `origin/main` moved the gitlink,** stop and report: the SDK work must then start from the
+  new gitlink.
 
 - [ ] **Step 3: Put the SDK on a local work branch**
 
@@ -264,6 +279,10 @@ device later (Task 10).
   the success path)
 
 - [ ] **Step 1: Add the reset and the bookkeeping at the top of the loop**
+
+This step alone does not compile. It declares `esp_err_t e` at the top of the loop body, and
+Task 1's `esp_err_t e = sdmmc_card_init(…)` is still in the same scope until Step 2 replaces it.
+The result is `error: redeclaration of 'esp_err_t e'`. Build only at Step 4.
 
 Replace this:
 
@@ -453,10 +472,15 @@ SdmmcBlockDevice.cpp:<line>:<col>: error: static assertion failed: a high-speed 
 
 They are followed by a line containing `x4pro` and `FAILED`.
 
-- **A different set of failures means a check is wrong.** For example, an error about an
-  undeclared name, or the 4-entry, last-entry, no-UHS or 20 MHz-tolerance assertion. Stop and fix
-  the check before going on.
-- **Do not commit this state.**
+Read the result in this order:
+
+1. **`FAILED` with no `static assertion failed` line at all** is environmental (see "Sibling
+   worktrees share the packages"). Re-run once, then read
+   `/Volumes/stein/.platformio/penv/bin/pio run -e x4pro 2>&1 | tail -40` before going further.
+2. **A different set of `SdmmcBlockDevice.cpp` errors means a check is wrong.** For example, an
+   error about an undeclared name, or the 4-entry, last-entry, no-UHS or 20 MHz-tolerance
+   assertion. Stop and fix the check before going on.
+3. **Do not commit this state.**
 
 - [ ] **Step 3: Set the schedule and the predicate to the spec's values**
 
@@ -705,11 +729,18 @@ Expected: three files changed:
 - [ ] **Step 1: Squash onto `67f7e012`**
 
 Write the message to the session scratchpad (any file outside the repo), then run the commit.
+The `&&` chain matters. If the message file can't be written, the reset must not run, or the SDK
+would be left at `67f7e012` with the whole diff staged and no commit. If that happens anyway,
+`git -C freeink-sdk commit -F <message file>` once the file exists restores it.
 
-Run:
+The message carries no assistant trailer, matching the fork's previous commit (`67f7e01`, whose
+body has none).
+
+Run, with `SCRATCH=<this session's scratchpad directory>` prefixed:
 
 ```bash
-cat > "$SCRATCH/sdk-commit-msg.txt" <<'EOF'
+: "${SCRATCH:?set SCRATCH to the session scratchpad}"
+cat > "$SCRATCH/sdk-commit-msg.txt" <<'EOF' &&
 perf: clock the SDMMC card at 40 MHz high speed
 
 The mount asked for SDMMC_FREQ_DEFAULT, which ESP-IDF 5.5 defines as
@@ -720,13 +751,10 @@ clean init, each attempt first restores the probing clock and 1-bit bus,
 and the boot log prints the clock the card really runs at (bereanOS
 berean-o-5).
 EOF
-git -C freeink-sdk reset --soft 67f7e012e3554106062bc52a3131523339a8ac4e
-git -C freeink-sdk commit -F "$SCRATCH/sdk-commit-msg.txt"
+git -C freeink-sdk reset --soft 67f7e012e3554106062bc52a3131523339a8ac4e &&
+git -C freeink-sdk commit -F "$SCRATCH/sdk-commit-msg.txt" &&
 git -C freeink-sdk log --oneline -2
 ```
-
-Set `SCRATCH` to the session's scratchpad directory first. The message carries no assistant
-trailer, matching the fork's previous commit (`67f7e01`, whose body has none).
 
 Expected: two lines. The new `perf: clock the SDMMC card at 40 MHz high speed` is on top of
 `67f7e01 fix: confirm X4 Pro VBUS detect on GPIO21`.
@@ -819,14 +847,19 @@ Spec A10.
 
 - [ ] **Step 1: Commit the gitlink**
 
-Run:
+The trailer is the implementing session's own attribution link. Use the URL your session's
+attribution instructions give for commit messages ("End git commit messages with:
+Claude-Session: …"), not the planning session's. Implementers run in their own sessions.
+
+Run, with `SESSION_LINK=<that URL>` prefixed:
 
 ```bash
+: "${SESSION_LINK:?set SESSION_LINK to the Claude-Session URL of this session}"
 SDK_SHA=$(git -C freeink-sdk rev-parse HEAD)
 git add freeink-sdk
 git commit -m "perf: run the SD card at 40 MHz high speed" -m "Bumps freeink-sdk 67f7e01..${SDK_SHA:0:7} on the fork's berean branch: the
 SDMMC mount now requests 40 MHz high speed with a 20 MHz fallback, and
-the boot log prints the clock the card actually runs at (berean-o-5)." -m "Claude-Session: https://claude.ai/code/session_01VhpzfHuP4rYAEH5mENk1BZ"
+the boot log prints the clock the card actually runs at (berean-o-5)." -m "Claude-Session: ${SESSION_LINK}"
 git show --stat HEAD | tail -3
 git ls-tree HEAD freeink-sdk
 ```
@@ -848,11 +881,18 @@ git log --oneline 478cf1ed..origin/main -- src lib
 git diff --stat "$BEFORE_REBASE" HEAD -- . ':(exclude)docs'
 ```
 
+**If the rebase stops on a conflict,** run `git rebase --abort` and report. The SDK commit is
+already on the fork (Task 8). So a `freeink-sdk` conflict means `main` moved the gitlink: the SDK
+commit has to be rebased onto `main`'s gitlink and pushed again, and that needs a fresh decision.
+
 Expected: the rebase succeeds. Then record which case applies, for the PR body (Task 10):
 - **Case BASELINE:** the `git log` prints nothing. The device figures are compared with the
   2026-10-11 baseline.
 - **Case A/B:** the `git log` prints one or more commits. The owner compares two builds of this
   branch, with the gitlink at `67f7e012` (A) and as pushed (B).
+
+As of this plan, `origin/main` already carries `106dfc4b` (#255, Bible search and Publications
+enter with a FAST refresh) under `src/`, so expect Case A/B.
 
 Also record whether the final `git diff --stat` printed anything. It lists what this rebase
 brought outside `docs/`, and Step 3 depends on it.
@@ -890,11 +930,16 @@ pushed with the docs commits. It refuses if someone else pushed to this branch i
 - [ ] **Step 2: Write the PR body**
 
 Write the template with a **quoted** heredoc, so nothing in it is expanded. Write the two
-comparison paragraphs the same way. Then fill the four `@…@` tokens with the script below. The
-tokens are filled from the tree, never by hand.
+comparison paragraphs the same way. Then fill the six `@…@` tokens with the script below. Four
+are read from the tree. The other two come from this session: the host-test result from Task 5
+Step 2, and the session's own attribution link.
+
+The device-check step 4 marker drops the spec's "(~1507 ms)" (spec §7.3 step 4). #255, already on
+`main`, paints Bible search's Opening frame with a FAST refresh, so that duration no longer holds.
+The `Wait complete:  8179_DRF` line itself still marks the end of the frame.
 
 ```bash
-SCRATCH=${SCRATCH:-$(mktemp -d)}
+: "${SCRATCH:?set SCRATCH to the session scratchpad}"
 cat > "$SCRATCH/pr-body.template.md" <<'EOF'
 ## What this changes
 
@@ -932,7 +977,7 @@ The design is in `docs/superpowers/specs/2026-10-11-berean-o-5-design.md`.
   - a 20 MHz attempt still does.
 
   They were run red first. With today's values in place, only "the first attempt asks for high speed" and "a high-speed attempt mounts only on a clean init" failed. Then they went green.
-- **Host tests:** they pass. No host code changed, and no host test reaches `freeink-sdk/`.
+- **Host tests:** @HOST_TESTS@
 - **Format:** `./bin/clang-format-fix` over the whole tree leaves no diff. It does not reach SDK files, which were formatted by hand to the file's style.
 - **Not tested on a device:** the 20 MHz fallback, the per-attempt reset and the partial-init marker. No card that triggers them on demand was available. They are verified by reading the code, the compile-time checks and the log format.
 
@@ -947,11 +992,11 @@ Flash an `x4pro` dev build of this branch (`@BUILD_SHA@`), by cable or by the SD
 1. **Boot.** Find the one `[SD] SDMMC clock` line.
    - **Pass:** `SDMMC clock 40000 kHz (requested 40000 kHz, attempt 1/4)`.
    - **Pass, to note:** `attempt 2/4, after <error>` at 40000 kHz. Record the error.
-   - **Report:** any `20000` or `400` line, or any `partial init`.
+   - **Report:** any `20000` or `400` line, or any `partial init`, with its `after` reason if it has one.
    - **Capture gap, not a result:** neither the clock line nor `[SD] SDMMC card mounted` is in the log. With the loop running, reboot and look again.
 2. **Open the Bible.** Compare `[BMC] Loaded cache data` (against `[EBP] Loading ePub`) with the baseline's 276 ms, and `[READER] Book loaded in` with 505 ms. Expect a small drop, about 30 ms at most: the spine block is about 159 KB, and the rest is per-entry overhead.
 3. **Go to a chapter not yet built.** Time the span from `[ERS] Cache not found, building...` through `[SCT] Streamed temp HTML to …` to `[EHP] Time to parse and build pages`. Compare it with 1.2–1.8 s, and note the stream part on its own, which is the most SD-bound share.
-4. **Open Bible search, first after boot.** Time the span from the Opening frame's `Wait complete:  8179_DRF (~1507 ms)` to `[BSEARCH] 1189 verse documents`. Compare it with 2.2 s; a later reopen compares with ~500 ms.
+4. **Open Bible search, first after boot.** Time the span from the `Wait complete:  8179_DRF` line that ends the Opening frame to `[BSEARCH] 1189 verse documents`. Compare it with 2.2 s; a later reopen compares with ~500 ms.
 5. **Sleep and wake, a no-regression check.** `[SLP] Study pick … ms` (baseline 445 ms) and `[HOMEV] Verse scan … ms` (405 ms) should not get worse. Both read about 44 KB, so they move by about 10 ms at most. Once R22 lands, a same-day wake logs no `Verse scan`.
 6. **A day of use.** Copy `/.berean/` off the card first: nothing lowers the clock after mount. The log must show:
    - no `[ERR]` line;
@@ -959,13 +1004,13 @@ Flash an `x4pro` dev build of this branch (`@BUILD_SHA@`), by cable or by the SD
    - no `[SCT] Retrying stream`.
 
    If any appears, reflash the previous build and restore `/.berean/` if needed.
-7. **An older card**, if one is at hand: record its clock line and whether it boots.
+7. **An older card**, if one is at hand: record its clock line, including any `after` or `partial init` reason, and whether it boots.
 
 ## For the orchestrator
 
 No lines for `test/CMakeLists.txt` or `src/main.cpp`. This change touches neither.
 
-https://claude.ai/code/session_01VhpzfHuP4rYAEH5mENk1BZ
+@SESSION_LINK@
 
 Refs berean-o-5
 EOF
@@ -983,51 +1028,88 @@ Each figure is compared B against A.
 EOF
 ```
 
-Then fill the tokens. Set `CASE` to `baseline` or `ab`, from Task 9 Step 2:
+Then fill the tokens. Set the four values first, each prefixed to the same call:
+- `CASE` is `baseline` or `ab`, from Task 9 Step 2.
+- `HOST_TESTS` is the host-test bullet's text.
+  - If Task 5 Step 2 passed, it is exactly the text in this block:
+
+    ```text
+    they pass. No host code changed, and no host test reaches `freeink-sdk/`.
+    ```
+
+  - If Task 5 recorded a pre-existing failure, name the failing tests and say they also fail on
+    `main`.
+- `SESSION_LINK` is this session's own attribution URL for PR descriptions.
+- `SCRATCH` is the session scratchpad, as before.
 
 ```bash
-CASE=baseline   # or: CASE=ab
-python3 -I - "$SCRATCH" "$CASE" "$(git -C freeink-sdk rev-parse HEAD)" "$(git rev-parse --short HEAD)" <<'EOF'
+: "${SCRATCH:?set SCRATCH to the session scratchpad}"
+: "${CASE:?set CASE to baseline or ab}"
+: "${HOST_TESTS:?set HOST_TESTS to the host-test bullet text}"
+: "${SESSION_LINK:?set SESSION_LINK to the attribution URL of this session}"
+python3 -I - "$SCRATCH" "$CASE" "$(git -C freeink-sdk rev-parse HEAD)" "$(git rev-parse --short HEAD)" \
+  "$HOST_TESTS" "$SESSION_LINK" <<'EOF'
 import pathlib, sys
-scratch, case, sdk_sha, build_sha = sys.argv[1:5]
+scratch, case, sdk_sha, build_sha, host_tests, session_link = sys.argv[1:7]
+assert case in ("baseline", "ab"), case
 d = pathlib.Path(scratch)
 body = (d / "pr-body.template.md").read_text()
 comparison = (d / ("comparison-baseline.md" if case == "baseline" else "comparison-ab.md")).read_text().rstrip("\n")
-for token, value in (("@SDK_SHA@", sdk_sha), ("@SDK_SHORT@", sdk_sha[:7]),
-                     ("@BUILD_SHA@", build_sha), ("@COMPARISON@", comparison)):
+for token, value in (("@SDK_SHA@", sdk_sha), ("@SDK_SHORT@", sdk_sha[:7]), ("@BUILD_SHA@", build_sha),
+                     ("@COMPARISON@", comparison), ("@HOST_TESTS@", host_tests),
+                     ("@SESSION_LINK@", session_link)):
     assert body.count(token) == 1, token
     body = body.replace(token, value)
-assert "@" not in body.replace("https://", "")
+assert "@" not in body.replace("https://", ""), "an unfilled token remains"
 (d / "pr-body.md").write_text(body)
 EOF
-grep -n "67f7e01\.\.\|What to compare against\|dev build of this branch" "$SCRATCH/pr-body.md"
+grep -n "67f7e01\.\.\|What to compare against\|dev build of this branch\|Host tests:\|claude.ai/code" "$SCRATCH/pr-body.md"
 ```
 
-Expected: three lines. The first shows the real short SHA after `67f7e01..`, the second the
-chosen comparison paragraph, and the third the bereanOS short SHA.
+Expected: five lines:
+1. the real short SDK SHA after `67f7e01..`;
+2. the chosen comparison paragraph;
+3. the bereanOS short SHA;
+4. the host-test bullet;
+5. this session's link.
 
 - [ ] **Step 3: Open the PR**
 
 Run:
 
 ```bash
+: "${SCRATCH:?set SCRATCH to the session scratchpad}"
 gh pr create --repo victorstein/berean-os --base main --head perf/r2-sd-40mhz \
   --title "perf: run the SD card at 40 MHz high speed" --body-file "$SCRATCH/pr-body.md"
 ```
 
 Expected: the PR URL. The title is conventional, lowercase and imperative, and targets `main`.
 
-- [ ] **Step 4: Watch CI**
+- [ ] **Step 4: Watch CI, then confirm it from two sources**
+
+`gh pr checks` collapses check runs that share a name. A stale FAILURE beside a later SUCCESS
+shows only green, and that has already passed a failed PR on this codebase
+(`docs/contributing/development-workflow.md:121-132`). So the watch is followed by the two
+commands that doc gives.
 
 Run:
 
 ```bash
-gh pr checks --repo victorstein/berean-os --watch
+PR=$(gh pr view perf/r2-sd-40mhz --repo victorstein/berean-os --json number -q .number)
+gh pr checks "$PR" --repo victorstein/berean-os --watch
+gh pr view "$PR" --repo victorstein/berean-os --json statusCheckRollup
+gh run list --repo victorstein/berean-os --commit "$(gh pr view "$PR" --repo victorstein/berean-os --json headRefOid -q .headRefOid)"
 ```
 
-Expected: every check passes. In particular the build job's recursive submodule checkout
-(`ci.yml:46`) fetches the new SDK SHA from the fork. If a check fails, read its log, fix the
-cause, push, and watch again.
+Expected:
+- `statusCheckRollup` lists every check with `"conclusion": "SUCCESS"`;
+- `gh run list` shows every run for the head commit `completed` / `success`.
+
+In particular, the build job's recursive submodule checkout (`ci.yml:46`) fetches the new SDK SHA
+from the fork.
+- **"No checks reported", or a run still `in_progress`,** means not started or not finished, not
+  passed. Wait and run the last two commands again.
+- **If a check fails,** read its log, fix the cause, push, and repeat this step.
 
 ---
 
@@ -1050,3 +1132,28 @@ cause, push, and watch again.
 | §7.2, both builds and the formatter | Tasks 1–5, Task 9 Step 3 |
 | §7.3–7.4, the device checks and expectations, with the A/B rule | Task 10 Step 2 |
 | D1 | Task 7 |
+
+## Review log
+
+- **Pass 0 of the plan review:** `docs/superpowers/reviews/berean-o-5-plan-review-0.md`, CLEAR
+  with six minors, all fixed inline:
+  1. **Builds broken by siblings.** A rule says sibling worktrees share `~/.platformio/packages`.
+     Task 3 Step 2 now treats a `FAILED` with no assertion line as environmental: re-run, then
+     read the unfiltered tail.
+  2. **`$SCRATCH` lost between calls.** Every block that uses `$SCRATCH` starts with a `:?` guard,
+     and the `mktemp -d` fallback is gone. Task 6's write, reset and commit are chained with `&&`,
+     and the recovery is stated. Both shells were checked: an unset or unwritable `SCRATCH` stops
+     before the reset.
+  3. **CI watch.** Task 10 Step 4 adds `statusCheckRollup` and `gh run list` for the head commit,
+     per `docs/contributing/development-workflow.md:121-132`. "No checks reported" means wait.
+  4. **Task 2 Step 1.** It now says it doesn't compile alone (the `esp_err_t e` redeclaration), and
+     to build only at Step 4.
+  5. **Rebase conflicts.** A rule, plus Task 0 Step 2 and Task 9 Step 2, say to abort and report.
+     A `freeink-sdk` conflict needs a fresh decision.
+  6. **PR-body text.**
+     - The host-test bullet and the session link are now tokens (`@HOST_TESTS@`,
+       `@SESSION_LINK@`), and the Task 9 trailer uses `SESSION_LINK` too.
+     - Step 4's marker drops "(~1507 ms)", because #255 made that frame a FAST refresh.
+     - The two "after reason" clauses are restored in device steps 1 and 7.
+     - The PR-body step was re-run end to end in bash and zsh.
+
