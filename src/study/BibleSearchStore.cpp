@@ -7,9 +7,12 @@
 
 #include <algorithm>
 #include <cstring>
+#include <type_traits>
 #include <vector>
 
 #include "StudyStore/UnitIndexFormat.h"
+#include "activities/reader/BibleBookNameTable.h"
+#include "study/BibleSearchResidency.h"
 #include "study/StudyStore.h"
 #include "util/TaskWatchdog.h"
 
@@ -22,6 +25,8 @@ constexpr size_t STREAM_CHUNK_BYTES = 4096;
 // matter if it ever is; the real cost of the long passes is a stalled UI.
 constexpr uint32_t READS_PER_WATCHDOG_RESET = 256;
 constexpr uint32_t SPINE_READS_PER_WATCHDOG_RESET = 64;
+
+static_assert(std::is_trivially_copyable_v<BibleBookNameTable>, "kept book names are copied with memcpy");
 
 void* psramAllocate(const size_t bytes) { return heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); }
 
@@ -105,7 +110,7 @@ bool BibleSearchStore::identify(const std::shared_ptr<Epub>& epub) {
 }
 
 void BibleSearchStore::forgetBible() {
-  close();
+  releaseResident();
   identified_ = false;
   identity_ = Identity{};
   fingerprint_ = 0;
@@ -319,11 +324,15 @@ size_t BibleSearchStore::termIndexBytes() const {
 }
 
 const BibleSearch::IndexReader* BibleSearchStore::open(const std::shared_ptr<Epub>& epub, Status* statusOut) {
-  close();
   uint64_t fingerprint = 0;
   const bool identified = fingerprintFor(epub, fingerprint);
   [[maybe_unused]] const unsigned long started = millis();
-  const Status result = identified ? openIndexFile(fingerprint) : Status::Unreadable;
+  const bool resumed = identified && reader_ && reader_->header().fingerprint == fingerprint && resumeHeldReader();
+  Status result = Status::Ok;
+  if (!resumed) {
+    close();
+    result = identified ? openIndexFile(fingerprint) : Status::Unreadable;
+  }
   if (statusOut) *statusOut = result;
 
   if (result != Status::Ok) {
@@ -331,11 +340,12 @@ const BibleSearch::IndexReader* BibleSearchStore::open(const std::shared_ptr<Epu
     close();
     return nullptr;
   }
+  // A no-op for a held cache; a retry when it could not be allocated before.
   if (!reader_->cacheTermIndex()) {
     // Still correct, only slower: lookups then read the term table from the card.
     LOG_ERR(MODULE, "Term index not cached; lookups will read the card");
   }
-  LOG_DBG(MODULE, "Index opened in %lu ms (term index %u bytes)", millis() - started,
+  LOG_DBG(MODULE, "Index %s in %lu ms (term index %u bytes)", resumed ? "resumed" : "opened", millis() - started,
           static_cast<unsigned>(termIndexBytes()));
   return reader_.get();
 }
@@ -343,6 +353,66 @@ const BibleSearch::IndexReader* BibleSearchStore::open(const std::shared_ptr<Epu
 void BibleSearchStore::close() {
   reader_.reset();
   if (indexFile_.isOpen()) indexFile_.close();
+}
+
+bool BibleSearchStore::resumeHeldReader() {
+  if (indexFile_.isOpen()) indexFile_.close();
+  if (!Storage.openFileForRead(MODULE, INDEX_PATH, indexFile_)) {
+    LOG_INF(MODULE, "Kept index reader dropped: %s cannot be opened", INDEX_PATH);
+    return false;
+  }
+  // The reader seeks before every read, so this header read leaves it no
+  // position to restore.
+  uint8_t raw[BibleSearch::INDEX_HEADER_BYTES];
+  const int got = indexFile_.read(raw, sizeof(raw));
+  const auto fileSize = static_cast<uint32_t>(indexFile_.fileSize());
+  if (got < 0 || !BibleSearchResidency::heldIndexMatches(reader_->header(), raw, static_cast<size_t>(got), fileSize)) {
+    LOG_INF(MODULE, "Kept index reader dropped: %s changed", INDEX_PATH);
+    return false;
+  }
+  return true;
+}
+
+void BibleSearchStore::park() {
+  if (indexFile_.isOpen()) indexFile_.close();
+  if (!reader_ && !names_.get()) return;
+
+  const size_t freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  const size_t largestPsram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+  if (!BibleSearchResidency::keepAfterExit(freePsram, largestPsram)) {
+    LOG_INF(MODULE, "PSRAM low (free %u, largest %u): dropping the kept index and book names",
+            static_cast<unsigned>(freePsram), static_cast<unsigned>(largestPsram));
+    releaseResident();
+    return;
+  }
+  LOG_DBG(MODULE, "Parked: term index %u B, names %u B; PSRAM free %u, largest %u",
+          static_cast<unsigned>(termIndexBytes()), static_cast<unsigned>(names_.size()),
+          static_cast<unsigned>(freePsram), static_cast<unsigned>(largestPsram));
+}
+
+void BibleSearchStore::releaseResident() {
+  close();
+  names_.reset();
+}
+
+bool BibleSearchStore::identifiedAs(const std::shared_ptr<Epub>& epub) const {
+  return epub && identified_ && identity_.path == epub->getPath() &&
+         identity_.spineCount == static_cast<uint32_t>(std::max(epub->getSpineItemsCount(), 0));
+}
+
+bool BibleSearchStore::restoreBookNames(const std::shared_ptr<Epub>& epub, BibleBookNameTable& out) const {
+  if (!names_.get() || !identifiedAs(epub)) return false;
+  memcpy(static_cast<void*>(&out), names_.get(), sizeof(BibleBookNameTable));
+  return true;
+}
+
+void BibleSearchStore::keepBookNames(const std::shared_ptr<Epub>& epub, const BibleBookNameTable& names) {
+  if (!identifiedAs(epub)) return;
+  if (!names_.get() && !names_.allocate(psramAllocator(), sizeof(BibleBookNameTable))) {
+    LOG_ERR(MODULE, "OOM: kept book names (%u bytes)", static_cast<unsigned>(sizeof(BibleBookNameTable)));
+    return;
+  }
+  memcpy(names_.get(), static_cast<const void*>(&names), sizeof(BibleBookNameTable));
 }
 
 bool BibleSearchStore::scanSpine(const Epub& epub, const uint16_t spine, BibleSearch::VerseTextScanner& scanner,

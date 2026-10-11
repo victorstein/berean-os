@@ -16,6 +16,8 @@
 
 #include "study/BibleSearchFingerprintFile.h"
 
+class BibleBookNameTable;
+
 // The Bible search index on the card: /.berean/search/bible.idx, and the build
 // checkpoint bible.partial beside it. Both are derived data -- losing them costs
 // a rebuild, never anything the user made.
@@ -28,6 +30,13 @@
 // on the card -- its path, size and spine count -- and in search-fingerprint.bin
 // in that Bible's cache directory, so a boot does not re-resolve every verse
 // document to find it.
+//
+// Between visits to the search screen it also keeps, for the same Bible, the
+// opened reader -- its ~444 KB term index and 4 KB posting page, in PSRAM -- and
+// a copy of the book names. park() closes the index file and keeps them while
+// PSRAM allows; the next open() re-reads the index header and reuses the reader
+// only if the file is unchanged. Another Bible, close() (a rebuild or a failed
+// query) or a park below the PSRAM floor drops them; sleep is a chip reset.
 //
 // Main task only. Every SD access goes through HalStorage, which holds
 // storageMutex per call; the web server task is a second writer to the card.
@@ -74,11 +83,22 @@ class BibleSearchStore {
   // checkpoint for this Bible exists, so the prompt can say the build will resume.
   Status status(const std::shared_ptr<Epub>& epub);
 
-  // A reader with the term index cached, kept open until close(). Null unless
-  // the index is Ok; `statusOut` then says why.
+  // A reader with the term index cached, kept until close() or a release. Null
+  // unless the index is Ok; `statusOut` then says why.
   const BibleSearch::IndexReader* open(const std::shared_ptr<Epub>& epub, Status* statusOut = nullptr);
-  // Frees the reader, its term cache and its file handle.
+  // Frees the reader, its term cache and its file handle. Kept book names stay:
+  // they belong to the Bible, not to the index.
   void close();
+  // The search screen is leaving: closes the index file, and keeps the reader and
+  // the book names for the next open() unless PSRAM is below the retention floor.
+  void park();
+
+  // Copies the book names kept for the Bible that the last open() or status()
+  // identified into `out`. False when none are kept for it.
+  bool restoreBookNames(const std::shared_ptr<Epub>& epub, BibleBookNameTable& out) const;
+  // Keeps a copy of `names` for the Bible that the last open() or status()
+  // identified. Neither call sizes the EPUB again.
+  void keepBookNames(const std::shared_ptr<Epub>& epub, const BibleBookNameTable& names);
 
   // Streams one spine document through a VerseTextScanner. `malformed` tells a
   // document the scanner rejected from one that could not be read; running out
@@ -109,7 +129,12 @@ class BibleSearchStore {
   // whatever was kept for another. False, with nothing kept, when it cannot be
   // sized.
   bool identify(const std::shared_ptr<Epub>& epub);
+  bool identifiedAs(const std::shared_ptr<Epub>& epub) const;
   void forgetBible();
+  // Re-opens bible.idx under the held reader. True when its header and size are
+  // the ones the reader was opened on.
+  bool resumeHeldReader();
+  void releaseResident();
   // From memory, else from the record, else by resolving the documents.
   bool fingerprintFor(const std::shared_ptr<Epub>& epub, uint64_t& out);
   bool resolveDocuments(const std::shared_ptr<Epub>& epub);
@@ -134,6 +159,9 @@ class BibleSearchStore {
   Documents documents_;
   BibleSearch::AllocatedBuffer documentsBuffer_;
 
+  // The held reader's source. Closed while parked: the reader must not be read
+  // until resumeHeldReader() has re-opened and re-checked it.
   HalFile indexFile_;
   std::unique_ptr<BibleSearch::IndexReader> reader_;
+  BibleSearch::AllocatedBuffer names_;
 };
