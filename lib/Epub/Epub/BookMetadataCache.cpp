@@ -18,6 +18,12 @@ constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
 // Buffer size for the buildBookBin streams. 3 buffers x 4KB, transient (freed on
 // return); 4KB = 8 SD sectors per transfer, enough to stop the sector-cache thrash.
 constexpr size_t BUILD_IO_BUFFER_SIZE = 4096;
+// load()'s spine pass reads through one window this size. Transient, and not above the 4,096-byte
+// PSRAM routing threshold, so it is internal SRAM for the length of the pass.
+constexpr size_t SPINE_PASS_BUFFER_SIZE = 4096;
+// Each spine entry's href is skipped through a stack scratch this size, a chunk at a time, so the
+// pass allocates nothing however long the href is.
+constexpr size_t HREF_SKIP_CHUNK = 64;
 
 // Entry (de)serializers, templated so they run over HalFile and the Buffered*
 // wrappers alike (two instantiations each -- a few hundred bytes of flash, in
@@ -60,6 +66,27 @@ BookMetadataCache::TocEntry readTocEntryFrom(F& file) {
   serialization::readPod(file, entry.level);
   serialization::readPod(file, entry.spineIndex);
   return entry;
+}
+
+// Keeps only each spine entry's cumulativeSize. False on any short read: a truncated book.bin must
+// fail the load, and so be rebuilt, rather than load garbage.
+bool readCumulativeSizes(serialization::BufferedFileReader& in, const uint16_t count, std::vector<uint32_t>& out) {
+  uint8_t scratch[HREF_SKIP_CHUNK];
+  for (uint16_t i = 0; i < count; i++) {
+    uint32_t hrefBytes = 0;
+    if (in.read(&hrefBytes, sizeof(hrefBytes)) != sizeof(hrefBytes)) return false;
+    while (hrefBytes > 0) {
+      const size_t chunk = std::min<size_t>(hrefBytes, sizeof(scratch));
+      if (in.read(scratch, chunk) != chunk) return false;
+      hrefBytes -= static_cast<uint32_t>(chunk);
+    }
+    uint32_t cumulativeSize = 0;
+    int16_t tocIndex = 0;
+    if (in.read(&cumulativeSize, sizeof(cumulativeSize)) != sizeof(cumulativeSize)) return false;
+    if (in.read(&tocIndex, sizeof(tocIndex)) != sizeof(tocIndex)) return false;
+    out.push_back(cumulativeSize);
+  }
+  return true;
 }
 }  // namespace
 
@@ -484,13 +511,22 @@ bool BookMetadataCache::load() {
   // Cache cumulative spine sizes in RAM. The progress bar (every render) and percent
   // jumps otherwise pay 2 seeks + a heap-allocating SpineEntry read per access. Spine
   // entries are stored contiguously in index order immediately after the LUTs, so read
-  // them in a single sequential pass.
+  // them in one buffered sequential pass rather than four mutex-guarded SD calls each.
+  loadedFileSize = bookFile.size();
   cumulativeSizes.clear();
   cumulativeSizes.reserve(spineCount);
   const uint32_t lutSize = (static_cast<uint32_t>(spineCount) + tocCount) * sizeof(uint32_t);
-  bookFile.seek(lutOffset + lutSize);
-  for (uint16_t i = 0; i < spineCount; i++) {
-    cumulativeSizes.push_back(readSpineEntry(bookFile).cumulativeSize);
+  bool spineRead = bookFile.seek(lutOffset + lutSize);
+  if (spineRead) {
+    serialization::BufferedFileReader spineIn(bookFile, SPINE_PASS_BUFFER_SIZE);
+    spineRead = readCumulativeSizes(spineIn, spineCount, cumulativeSizes);
+  }
+  if (!spineRead) {
+    LOG_ERR("BMC", "Spine block in %s%s is short; cache unusable", cachePath.c_str(), bookBinFile);
+    cumulativeSizes.clear();
+    // Explicit close() required: member variable persists beyond function scope
+    bookFile.close();
+    return false;
   }
 
   loaded = true;
