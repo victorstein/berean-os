@@ -83,10 +83,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   // activeNav() in shared code; `nav` is the single-list default storage.
   freeink::ui::ListNav nav;
   ButtonNavigator buttonNavigator;
-  // The next paint is a HALF refresh instead of FAST, then it resets. Set it
-  // where a paint replaces cover art with something else, which a
-  // differential refresh would leave ghosted. Mirrors BibleSearchActivity's
-  // fullRefreshPending.
+  // The next paint is a HALF refresh instead of FAST, then it resets. Each
+  // setter says why. Mirrors BibleSearchActivity's fullRefreshPending.
   std::atomic<bool> halfRefreshPending{false};
 
  private:
