@@ -2,6 +2,7 @@
 # is compiled here with the firmware's flags, as in bible_search_scanner.
 add_executable(BibleSearchIndexTest
   IndexTest.cpp
+  ResidencyTest.cpp
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch/Fold.cpp
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch/IndexFormat.cpp
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch/IndexBuilder.cpp
@@ -17,6 +18,7 @@ add_executable(BibleSearchIndexTest
 
 target_include_directories(BibleSearchIndexTest PRIVATE
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch
+  ${REPO_ROOT}/lib/BibleSearch  # <BibleSearch/...>, as src/study includes it
   ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/Memory
