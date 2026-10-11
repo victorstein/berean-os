@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Bead / task | `berean-o-2` / `t2`, branch `perf/r9-cover-band-cache` |
-| Surface | ui (`src/components`), with three one-line calls in `src/util` |
+| Surface | ui (`src/components`), with one-line calls in three `src/util` files and two activities, and a comment in `lib/GfxRenderer` |
 | Research | `docs/superpowers/research/2026-10-11-berean-o-2-research.md` (cited below as **R§n**) |
 | Prior design reused | #238 Task 9, `docs/superpowers/plans/2026-09-30-issue-238-plan.md:1465-1859` (never built) |
 | Review tier | standard |
@@ -22,7 +22,9 @@ Every paint of a cover band streams the whole thumbnail from SD and decodes it p
   band 120 or 272 rows tall (R§4).
 - It plots each inked pixel with `drawPixel` (`:54`).
 - On the owner's unit this is `[MASTHEAD] Band drawn in 223–229 ms` on every Go to step,
-  Publications paint and Meetings paint, n=11 (baseline note `:44-46,50,72`).
+  Publications paint and Meetings paint, n=11. Those figures are from the bead brief. The baseline
+  note itself states 225 ms for Go to and Publications (`:45-46,50`), with the representative
+  line `[155060] [DBG] [MASTHEAD] Band drawn in 228 ms` (`:72`).
 - Home repaints its hero on entry and on every selection move (`LauncherActivity.cpp:353-355,477-484`).
   The baseline puts Home's paint at 241–257 ms (`:42`), but there is no band log to show how much
   of that the band is.
@@ -71,9 +73,24 @@ What one `drawPixel` costs is read from this branch's firmware:
 
 So one `drawPixel` is ≈ 0.2 µs. #238's replay would cost about **6–12 ms per masthead and 13–26 ms
 on Home**, depending on how much of the cover is ink. That misses G2's "a few ms" on Home. The byte
-replay does ≤ 16 K simple operations over a mask read sequentially from PSRAM, which is well under
-2 ms. Recording during the fill adds at most one bit-set per inked pixel to the first paint: a few
-ms on top of ~225 ms.
+replay does ≤ 16 K simple operations, walking both the mask and the framebuffer in physical-row
+order, which is well under 2 ms.
+
+**The cost of recording on the first paint is unmeasured.** The mask is column-major (A11), but the
+blit walks row-major, so each inked pixel's bit lands `stride` bytes (16 or 35) from the previous
+one, in PSRAM. The framebuffer is probably in PSRAM too:
+
+- `FreeInkDisplay::allocFrameBufferStorage` falls back to `malloc(bufferSize)` unless
+  `FREEINK_FB_PSRAM` is set (`freeink-sdk/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp:368-380`);
+- this build has `CONFIG_SPIRAM_USE_MALLOC=y` and `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096`
+  (`framework-arduinoespressif32-libs/esp32s3/sdkconfig:2259-2260`), so a 48,000 B `malloc` lands
+  in PSRAM.
+
+One blit row can therefore touch about 29.7 KB of mask and framebuffer lines through the 32 KB data
+cache. The PR reports the first paint's `Band drawn in N ms` against the 225 ms baseline (§12).
+
+If recording visibly regresses the first paint, the fallback is to stage 8 rows of a column in one
+internal byte and flush them to the mask once per 8-row group. That cuts mask traffic 8×.
 
 ---
 
@@ -101,16 +118,18 @@ its removal or write completes:
 | `clearBookCache` (`src/util/BookCacheUtils.cpp:23-29`), after `Epub::clearCache()` | Every replace, upload, move or delete over the web server, WebDAV, the file browser or the downloader runs through it (`PublicationDownloader.cpp:110,252`, `CrossPointWebServer.cpp:622,691`, `FileRoutes.cpp:398,549,639,740`, `WebDAVHandler.cpp:376,425,534`, `FileBrowserActivity.cpp:169,227`) |
 | `CardBooks::remove` (`src/util/CardBooks.cpp:57`), after `removeDir` | A delete from Publications drops the cache directory without `clearBookCache` |
 | `CoverThumb::pathFor` (`src/util/CoverThumb.cpp:36-46`), after a successful `generateThumbBmp` | A new thumbnail file now exists at a path |
+| `ClearCacheActivity::clearCache` (`ClearCacheActivity.cpp:97-130`), after its loop | Drops every book's cache directory |
+| The reader's delete-cache action (`EpubReaderActivity.cpp:898`), after `epub->clearCache()` | Drops the open book's cache directory |
 
-A thumbnail is never overwritten in place: generation returns early when the file exists
-(`Epub.cpp:670-674`). So its content changes only after a removal or a directory move. The paths
-that remove or move without a bump each leave the **same book's** cover at that path:
+The last two rows were added after review 1 (MINOR 4). With them, **every removal of a cache
+directory or thumbnail bumps.** A thumbnail is never
+overwritten in place: generation returns early when the file exists (`Epub.cpp:670-674`). So its
+content changes only after a removal, which bumps, or a directory move. The two moves don't need
+their own bump:
 
-- `ClearCacheActivity.cpp:97-130`;
-- the reader's delete-cache action, `EpubReaderActivity.cpp:898`;
-- the move of a finished book into `/Read`, `EpubReaderActivity.cpp:121-134`, which renames to a
-  path that did not exist (`:114-117`);
-- the downloader's cache-directory move, `PublicationDownloader.cpp:116`, which comes after its
+- the move of a finished book into `/Read` (`EpubReaderActivity.cpp:121-134`) renames to a path
+  that did not exist (`:114-117`);
+- the downloader's cache-directory move (`PublicationDownloader.cpp:116`) comes after its
   `clearBookCache(destPath)` at `:110`.
 
 **A4. The bump comes after the change, never before.** The render task reads the epoch before it
@@ -282,6 +301,10 @@ The fast path writes exactly what `drawPixel(x, y, true)` writes for each set bi
 - same bit (`:591`);
 - same polarity (`:593-594`).
 
+A one-line constraint comment at `GfxRenderer::drawPixel` names this replay and
+`test/cover_band/GfxRendererFake.cpp` as copies of its Portrait mapping. A change to `drawPixel`
+must change both (review 1, MINOR 7).
+
 `drawPixel`'s bounds drop (`:572-575`) can never trigger, because the band is inside the screen.
 `drawPixel` ignores `renderMode` and the font-scan state, and so does the fast path. That is unlike
 `DirectPixelWriter` (`:149-166`) and `fillRectImpl` (`:993`).
@@ -316,7 +339,7 @@ class CoverBandCache {
 |---|---|
 | Slot | path, `Rect`, `Style`, epoch, last-use tick, PSRAM buffer and its size, valid flag |
 | `find` | Hit = valid, key equal, epoch equal. Bumps the last-use tick. |
-| `reserve` | Picks an invalid slot, else the least recently used one. Marks it invalid. Frees and reallocates when the size differs. `memset`s to 0. Stores the key and **the epoch read now, before the blit opens the file** (A4). Returns null over the cap or on OOM, both logged. |
+| `reserve` | Picks an invalid slot, else the least recently used one. A slot whose epoch differs from the current one counts as invalid (review 1, MINOR 8). Marks it invalid. Frees and reallocates when the size differs. `memset`s to 0. Stores the key and **the epoch read now, before the blit opens the file** (A4). Returns null over the cap or on OOM, both logged. |
 | `commit` | Marks the reserved slot valid, and logs the slot and the total bytes held. |
 | `abandon` | Leaves it invalid. |
 
@@ -358,7 +381,7 @@ read and `commit`.
 
 | Item | Size | Where | Justification |
 |---|---|---|---|
-| Slot masks | Σ exact sizes, ≤ **4 × 24,576 = 98,304 B** hard cap. Expected 3 × 7,424 + 16,240 = **38,512 B**. | explicit PSRAM | Read only by the render task's replay. Out of internal SRAM, which the framebuffer and render path need. PSRAM free is ~8.2 MB (baseline `:17`). |
+| Slot masks | Σ exact sizes, ≤ **4 × 24,576 = 98,304 B** hard cap. Expected 3 × 7,424 + 16,240 = **38,512 B**. | explicit PSRAM | Read only by the render task's replay. Kept out of internal SRAM, which the render path needs. PSRAM free is ~8.2 MB (baseline `:17`). The framebuffer itself is probably in PSRAM as well (§4). |
 | Singleton | ~4 × (string 32 B + `Rect` 16 + `Style` 12 + epoch, tick, size, flag ~16) ≈ 0.3 KB | internal `.bss` | Lookup state |
 | Slot path strings | ~55 B each, allocated once per slot | internal heap | A14 |
 | Recording | none extra | — | It writes into the slot buffer itself |
@@ -393,8 +416,9 @@ The production sources it compiles are `src/components/CoverBand.cpp`, `src/comp
   - `begin()` points `frameBuffer` at a 48,000 B test buffer and sets the device's panel, 800 × 480
     with a 100 B stride. The host `HalDisplay` stub declares 480 × 800 (`test/stubs/HalDisplay.h:22-25`).
   - `getScreenWidth`/`getScreenHeight` are defined by orientation.
-  - `drawPixel` is a **line-for-line copy of `GfxRenderer.cpp:559-598`**, minus the log call. The
-    file says so and names the lines.
+  - `drawPixel` is a **line-for-line copy of `GfxRenderer.cpp:559-598`**, minus the log call. So is
+    the file-static `rotateCoordinates` (`:283-313`) it calls for non-Portrait orientations, which
+    linking cannot supply. The file says so and names the lines.
   - `beginStripTarget`/`endStripTarget` copy `:1685-1701`.
   - `fillRect`, `maskRoundedRectOutsideCorners`, `fillRoundedRect` and `drawLine` append their
     arguments to a call log.
@@ -410,6 +434,18 @@ The production sources it compiles are `src/components/CoverBand.cpp`, `src/comp
 Fixtures are synthetic 1-bit BMPs built in the test, with no publisher art: 480 × 773, a
 pseudo-random pattern with solid and dithered regions. Each is written top-down **and** bottom-up
 into the fake card.
+
+**The framebuffer is seeded, never blank** (review 1, MAJOR 1). Before the fresh draw and again
+before the replay, every case that compares buffers (1, 2, 4, 5, 7, 9) fills all 48,000 bytes with
+the same seeded pseudo-random pattern. The comparison covers all 48,000 bytes. Against a white
+buffer, a broken replay that stores whole bytes (`dst[k] = ~ink[…]`) or restores paper is
+byte-identical to the correct `&=`. Against a seeded one, it destroys:
+
+- the pre-existing ink inside the band;
+- the head and tail bits that each band column shares with up to 7 rows above and below it.
+
+Case 1 also asserts directly that, with `lead != 0`, a black pixel placed at
+`(band.x, band.y − 1)` before the replay is still black after it.
 
 | # | Case | Asserts |
 |---|---|---|
@@ -442,7 +478,7 @@ cmake -S test -B build/test && cmake --build build/test --target BandInkTest Cov
 
 **Before**, from the baseline (`x4pro` dev build of `1ba1cd34`, UC8179):
 
-- `[MASTHEAD] Band drawn in 223–229 ms` on every masthead paint, n=11. Representative line:
+- `[MASTHEAD] Band drawn in 223–229 ms` on every masthead paint, n=11 (the brief; the note states 225 ms, `:45-46,50`). Representative line (`:72`):
   `[155060] [DBG] [MASTHEAD] Band drawn in 228 ms`.
 - Home has no band line. Its paint is 241–257 ms.
 
@@ -459,6 +495,16 @@ and capture serial. Then, with ≥ 10 samples each:
 6. **By eye:** each replayed cover is identical to its first paint, with no shear, no mirroring, no
    missing plate rule and intact rounded corners on Home. Check both themes. After a theme switch,
    the first paint of each band logs `drawn` again (A5).
+7. **Invalidation** (review 1, MINOR 5). In Publications, delete a publication whose cover is on the
+   masthead (this goes through `CardBooks::remove`), or re-download it. The next paint of that band
+   must log `drawn` and show the current cover, or the fallback header.
+8. **First paint.** Report the first `Band drawn in N ms` against the 225 ms baseline, which shows
+   what recording costs (§4).
+
+Generating any thumbnail flushes every held band (A3, row 3). That includes Publications' row
+thumbnails (`PublicationsActivity.cpp:124`) and Meetings' card cover (`MeetingsActivity.cpp:253`).
+So the first paint after a screen that generated thumbnails logs `drawn`, not `replayed`. That is
+expected, not a failure.
 
 The criterion is that `replayed` reads a few ms on Home and on every masthead. The expected figure is
 ≤ 2 ms (§4). It has not been measured.
@@ -487,7 +533,8 @@ The criterion is that `replayed` reads a few ms on Home and on every masthead. T
 | `src/components/CoverBand.h`, `.cpp` | `Result` (A15), recording, replay, `finishBand`, `noteCoversChanged` |
 | `src/components/Masthead.cpp` | `replayed` in the existing log (`:83-85`) |
 | `src/activities/launcher/LauncherActivity.cpp` | `drawHero` (`:246-267`): `Result`, timing log |
-| `src/util/CoverThumb.cpp`, `src/util/BookCacheUtils.cpp`, `src/util/CardBooks.cpp` | one `CoverBand::noteCoversChanged()` each (A3) |
+| `src/util/CoverThumb.cpp`, `src/util/BookCacheUtils.cpp`, `src/util/CardBooks.cpp`, `src/activities/settings/ClearCacheActivity.cpp`, `src/activities/reader/EpubReaderActivity.cpp` | one `CoverBand::noteCoversChanged()` each (A3) |
+| `lib/GfxRenderer/GfxRenderer.cpp` | a constraint comment at `drawPixel` only (§7) |
 | `test/cover_band/CMakeLists.txt` | two executables |
 | `test/cover_band/BandInkTest.cpp`, `CoverBandReplayTest.cpp`, `GfxRendererFake.cpp`, `CoverThumbStub.cpp`, `esp_heap_caps.h` | new: §11 |
 | `test/stubs/HalStorageFake.cpp` | `HalFile::seekCur` (§11) |
@@ -498,3 +545,18 @@ this one touches only `drawHero`.
 **For the orchestrator.** Neither `test/CMakeLists.txt` nor `src/main.cpp` needs a line.
 `test/stubs/HalStorageFake.cpp` is a shared test stub. The change is one added method, but a sibling
 editing the same file should land first or second, not in parallel.
+
+## 15. Changes after review 1 (`docs/superpowers/reviews/berean-o-2-spec-review-1.md`, CLEAR)
+
+Every finding was accepted and applied.
+
+| Finding | Change |
+|---|---|
+| MAJOR 1: G3 can't tell `&=` from a whole-byte store against a white buffer | §11: the framebuffer is seeded with the same pattern before both draws, the comparison covers all 48,000 bytes, and a black pixel above the band must survive the replay |
+| MINOR 2: the cost of recording on the first paint | §4: labelled unmeasured; caveat that the framebuffer is probably in PSRAM; staged-byte fallback named. §10 corrected. §12 step 8 reports the first paint. |
+| MINOR 3: the fake's `drawPixel` also needs `rotateCoordinates` | §11: copies `:283-313` too |
+| MINOR 4: two removals don't bump | A3: bumps added in `ClearCacheActivity::clearCache` and after `EpubReaderActivity.cpp:898`, so every removal now bumps. §14 updated. |
+| MINOR 5: device verification never tests invalidation | §12 step 7, plus a note that thumbnail generation flushes every held band |
+| MINOR 6: baseline citations | §1 and §12 cite the brief for 223–229 / n=11 / Meetings, and the note for 225 and 228 ms |
+| MINOR 7: no guard against `drawPixel` drifting | §7: a constraint comment at `drawPixel`. §14 lists `GfxRenderer.cpp`. |
+| MINOR 8: `reserve` treats stale-epoch slots as live | §7: a stale-epoch slot counts as invalid |
