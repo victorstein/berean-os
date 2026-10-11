@@ -15,3 +15,18 @@ target_link_libraries(ParkedBookTest PRIVATE
 )
 
 gtest_discover_tests(ParkedBookTest)
+
+add_executable(StudyReuseTest
+  StudyReuseTest.cpp
+)
+
+target_include_directories(StudyReuseTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(StudyReuseTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(StudyReuseTest)
