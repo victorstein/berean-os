@@ -401,3 +401,38 @@ TEST(RecentBooksDocBudget, ARealisticStoreUsesAFractionOfTheBudget) {
       << "ten realistic entries measured " << measured << " bytes against a budget of " << RecentBooksDoc::SAVE_BUDGET
       << "; the headroom is what makes a refusal unreachable in normal use";
 }
+
+// Opening the book already at the top of the list changes nothing, so RecentBooksStore::addBook
+// skips its prune and its save. RecentBook::operator== compares paths only, which is not enough.
+TEST(RecentBooksDocFront, TheFirstEntryWithTheSameTitleAndAuthorIsAlreadyFront) {
+  const std::vector<RecentBook> books = {makeBook("/b.epub", "Biblia", "WTS"), makeBook("/w.epub", "Atalaya", "WTS")};
+  EXPECT_TRUE(RecentBooksDoc::isAlreadyFront(books, makeBook("/b.epub", "Biblia", "WTS")));
+}
+
+TEST(RecentBooksDocFront, AnEmptyListHasNoFront) {
+  EXPECT_FALSE(RecentBooksDoc::isAlreadyFront({}, makeBook("/b.epub", "Biblia", "WTS")));
+}
+
+TEST(RecentBooksDocFront, ABookInSecondPlaceIsNotFront) {
+  const std::vector<RecentBook> books = {makeBook("/b.epub", "Biblia", "WTS"), makeBook("/w.epub", "Atalaya", "WTS")};
+  EXPECT_FALSE(RecentBooksDoc::isAlreadyFront(books, makeBook("/w.epub", "Atalaya", "WTS")));
+}
+
+TEST(RecentBooksDocFront, AChangedTitleOrAuthorIsNotFront) {
+  const std::vector<RecentBook> books = {makeBook("/b.epub", "Biblia", "WTS")};
+  EXPECT_FALSE(RecentBooksDoc::isAlreadyFront(books, makeBook("/b.epub", "Biblia (2019)", "WTS")));
+  EXPECT_FALSE(RecentBooksDoc::isAlreadyFront(books, makeBook("/b.epub", "Biblia", "Watchtower")));
+}
+
+// The stored entry went through normalise() when it was added; a candidate is compared only after
+// the same normalise(), so an over-long title still matches its capped copy.
+TEST(RecentBooksDocFront, AnOverlongTitleMatchesItsStoredCappedCopy) {
+  RecentBook stored = makeBook("/b.epub", "", "WTS");
+  stored.title = std::string(RecentBooksDoc::MAX_TITLE_BYTES + 40, 't');
+  RecentBook candidate = stored;
+  RecentBooksDoc::normalise(stored);
+  ASSERT_LT(stored.title.size(), candidate.title.size());
+
+  RecentBooksDoc::normalise(candidate);
+  EXPECT_TRUE(RecentBooksDoc::isAlreadyFront({stored}, candidate));
+}

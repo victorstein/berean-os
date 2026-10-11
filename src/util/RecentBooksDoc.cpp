@@ -40,6 +40,12 @@ bool normalise(RecentBook& book) {
   return changed;
 }
 
+bool isAlreadyFront(const std::vector<RecentBook>& books, const RecentBook& candidate) {
+  if (books.empty()) return false;
+  const RecentBook& front = books.front();
+  return front.path == candidate.path && front.title == candidate.title && front.author == candidate.author;
+}
+
 void toJson(const std::vector<RecentBook>& books, JsonDocument& doc) {
   doc["v"] = FORMAT_VERSION;
   JsonArray arr = doc["books"].to<JsonArray>();
