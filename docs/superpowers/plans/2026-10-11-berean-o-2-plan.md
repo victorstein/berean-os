@@ -91,7 +91,9 @@ registered at `test/CMakeLists.txt:126`.
   cmake -S test -B build/test
   ```
 
-  Expected: `clang-format 21 already present in .venv/bin`, and CMake ends with
+  Expected: either `clang-format 21 already present in .venv/bin` or
+  `Linking clang-format from the primary checkout (…)...` followed by
+  `Done: clang-format version 21.x`. CMake ends with
   `-- Build files have been written to: …/build/test`.
 
   On a fresh configure the first `cmake --build build/test -j` can fail several suites while they
@@ -402,7 +404,7 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
   Then check that the line numbers the fake cites still hold:
 
   ```bash
-  grep -n "^void GfxRenderer::drawPixel\|^static inline void rotateCoordinates\|^void GfxRenderer::beginStripTarget\|^void GfxRenderer::endStripTarget" lib/GfxRenderer/GfxRenderer.cpp
+  grep -n "^void GfxRenderer::drawPixel(\|^static inline void rotateCoordinates\|^void GfxRenderer::beginStripTarget\|^void GfxRenderer::endStripTarget" lib/GfxRenderer/GfxRenderer.cpp
   ```
 
   Expected: `drawPixel` at 561, `rotateCoordinates` at 283, `beginStripTarget` at 1687,
@@ -794,11 +796,11 @@ class CoverBandReplay : public ::testing::Test {
 };
 
 TEST_F(CoverBandReplay, AReplayLeavesTheFrameAFreshDrawLeavesForEveryStyleAndAlignment) {
-  for (const CoverBand::Style& style : {MASTHEAD, HOME, MEETINGS}) {
+  for (const CoverBand::Style* style : {&MASTHEAD, &HOME, &MEETINGS}) {
     for (int lead = 0; lead < 8; ++lead) {
       CoverBandCache::getInstance().clear();
-      const int height = &style == &HOME ? 272 : 120;
-      expectReplayMatchesFreshDraw(COVER, Rect{8, 16 + lead, 464, height}, style);
+      const int height = style == &HOME ? 272 : 120;
+      expectReplayMatchesFreshDraw(COVER, Rect{8, 16 + lead, 464, height}, *style);
     }
   }
 }
@@ -1003,8 +1005,10 @@ gtest_discover_tests(CoverBandReplayTest)
   cmake -S test -B build/test > /dev/null && cmake --build build/test --target CoverBandReplayTest -j 8
   ```
 
-  Expected: compile errors. `components/CoverBandCache.h` is not found, and `CoverBand::Result`
-  is undeclared.
+  Expected: CMake stops at the generate step, before anything compiles:
+  `Cannot find source file: …/src/components/CoverBandCache.cpp`, then
+  `CMake Generate step failed`. Step 3.3 lists that file as a source, and it does not exist until
+  Step 3.5. That is this task's red.
 
 - [ ] **Step 3.5: The cache.** Create `src/components/CoverBandCache.h`:
 
@@ -1496,9 +1500,11 @@ std::string thumbPathFor(const std::string& bookPath, const int bandWidth, const
 - [ ] **Step 3.8: Run the suites and see them pass.**
 
   ```bash
-  cmake --build build/test --target CoverBandReplayTest BandInkTest CoverBandGeometryTest -j 8
+  cmake -S test -B build/test > /dev/null && cmake --build build/test --target CoverBandReplayTest BandInkTest CoverBandGeometryTest -j 8
   ./build/test/cover_band/CoverBandReplayTest && ./build/test/cover_band/BandInkTest && ./build/test/cover_band/CoverBandGeometryTest
   ```
+
+  The reconfigure is needed: Step 3.4's failed generate left no `CoverBandReplayTest` target behind.
 
   Expected: `[  PASSED  ] 14 tests.`, then `6 tests`, then `16 tests`.
 
@@ -1864,3 +1870,14 @@ Refs berean-o-2
 
   The brief requires the body to end with the line `Refs berean-o-2`, so it goes last, below the
   session link.
+
+---
+
+## Changes after plan review 0 (`docs/superpowers/reviews/berean-o-2-plan-review-0.md`, CLEAR)
+
+| Finding | Change |
+|---|---|
+| MAJOR 1: the replay test never drew a 272-row Home band. `&style == &HOME` compared against an `initializer_list` copy. | Step 3.3: the loop iterates over `&MASTHEAD, &HOME, &MEETINGS`, so 8 of its 24 bands are 272 rows. The reviewer ran it: it passes, and Step 3.9's mutation still fails 4 tests. |
+| MAJOR 2: Step 3.4 fails at CMake generate rather than compile, and Step 3.8 then finds no target | Step 3.4's expected output names the generate failure. Step 3.8 reconfigures first. |
+| MINOR 3: two expected outputs | Task 0 accepts bootstrap's link-branch output. Step 3.1's grep is anchored with `drawPixel(`. |
+
