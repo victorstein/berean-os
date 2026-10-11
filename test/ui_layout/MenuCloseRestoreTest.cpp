@@ -134,6 +134,12 @@ TEST(MenuCloseRestoreFit, GrayPageFitsOnlyWithBothPlanesShown) {
   oneMissing.markGrayShown();
   EXPECT_EQ(MenuCloseRestore::fit(oneMissing, HERE), Fit::GrayMissing);
 
+  CapturedPage lsbMissing;
+  lsbMissing.beginPage(SPINE, PAGE, true);
+  lsbMissing.markPlane(false);
+  lsbMissing.markGrayShown();
+  EXPECT_EQ(MenuCloseRestore::fit(lsbMissing, HERE), Fit::GrayMissing);
+
   CapturedPage notShown;
   notShown.beginPage(SPINE, PAGE, true);
   notShown.markPlane(true);
