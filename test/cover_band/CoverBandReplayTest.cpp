@@ -186,6 +186,10 @@ TEST_F(CoverBandReplay, ABandReachingOffScreenReplaysThroughDrawPixel) {
   expectReplayMatchesFreshDraw(COVER, Rect{-4, 14, 464, 120}, MASTHEAD);
 }
 
+TEST_F(CoverBandReplay, ABandReachingPastTheBottomReplaysThroughDrawPixel) {
+  expectReplayMatchesFreshDraw(COVER, Rect{8, 700, 464, 120}, MASTHEAD);
+}
+
 TEST_F(CoverBandReplay, AStripTargetClipsTheReplayAsItClipsTheDraw) {
   constexpr int STRIP_Y0 = 100;
   constexpr int STRIP_ROWS = 200;
