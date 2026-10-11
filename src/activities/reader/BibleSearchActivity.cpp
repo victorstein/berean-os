@@ -111,7 +111,7 @@ void BibleSearchActivity::onEnter() {
   }
   // Loading the book names and open() are seconds of SD on the first search
   // after boot, so both wait for this frame.
-  enterState(State::Opening, /*fullRefresh=*/true);
+  enterState(State::Opening);
 }
 
 void BibleSearchActivity::onExit() {
