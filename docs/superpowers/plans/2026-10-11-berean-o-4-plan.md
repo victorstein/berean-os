@@ -395,7 +395,8 @@ TEST(MenuCloseRestoreFit, EveryFitHasADistinctName) {
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `cmake --build build/test --target MenuCloseRestoreTest`
-Expected: FAIL to compile, with errors such as `no type named 'CapturedPage' in namespace 'MenuCloseRestore'`.
+Expected: FAIL to compile, because `CapturedPage`, `Fit` and `Position` are not members of `MenuCloseRestore` yet
+(clang: `no member named 'CapturedPage' in namespace 'MenuCloseRestore'`).
 
 - [ ] **Step 3: Add the record and `fit()` to the header**
 
