@@ -322,6 +322,8 @@ class GfxRenderer {
   void displayGrayscaleBase(HalDisplay::RefreshMode fallback = HalDisplay::HALF_REFRESH) const;
   void copyGrayscaleLsbBuffers() const;
   void copyGrayscaleMsbBuffers() const;
+  // Uploads two saved masks, laid out like the framebuffer, in place of the framebuffer itself.
+  void copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) const;
   void displayGrayBuffer() const;
 
   // Tiled grayscale (X4): stream one band of a plane straight to controller RAM
