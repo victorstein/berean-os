@@ -1231,6 +1231,8 @@ void EpubReaderActivity::renderBook() {
     return;
   }
 
+  pageCache.invalidate();
+
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
                                    &orientedMarginLeft);
@@ -1490,6 +1492,11 @@ void EpubReaderActivity::renderBook() {
     [[maybe_unused]] const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     LOG_DBG("ERS", "Rendered page in %lums", millis() - start);
+    if (const auto& captured = pageCache.captured(); captured.bw) {
+      LOG_DBG("ERS", "Page cache: %d planes in %lums",
+              static_cast<int>(captured.bw) + static_cast<int>(captured.grayLsb) + static_cast<int>(captured.grayMsb),
+              pageCache.copyMillis());
+    }
     lastRenderCompleteMs = millis();
     pageShown = true;
     pageRendered = true;
@@ -1611,6 +1618,7 @@ void EpubReaderActivity::onExit() {
   // ActivityManager holds RenderLock while it calls onExit, which is what captureLeftPlace needs;
   // ReaderActivity::onExit saves APP_STATE under the same lock.
   recordPlace(captureLeftPlace());
+  pageCache.release();
   ReaderActivity::onExit();
 }
 
@@ -1641,6 +1649,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
   const bool needsTextGrayscale = SETTINGS.textAntiAliasing;
   const bool needsAnyGrayscale = needsTextGrayscale || pageHasImages;
+  // Only these pages are ever restored on a menu close: an image page has its own display sequence, and
+  // night mode always re-renders.
+  const bool capturePage = !pageHasImages && SETTINGS.screenInverted == 0;
   const bool tiledGrayscale = needsAnyGrayscale && renderer.supportsStripGrayscale();
   // Paper Mono only (no other panel combines): defer the B/W base activation so
   // the gray planes join it in a single waveform. Displaying the base
@@ -1703,6 +1714,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   }
   renderStatusBar();
   [[maybe_unused]] const auto tBwRender = millis();
+  if (capturePage) {
+    pageCache.captureBw(renderer.getFrameBuffer(), renderer.getBufferSize(), currentSpineIndex, section->currentPage,
+                        needsTextGrayscale);
+  }
 
   if (pageHasImages) {
     // Image pages use one base refresh before the grayscale pass. FAST leaves
@@ -1749,6 +1764,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderPlaneToBuffer(true, lsbPlaneBuf.get());
       if (msbPlaneBuf) renderPlaneToBuffer(false, msbPlaneBuf.get());
       [[maybe_unused]] const auto tGrayRender = millis();
+      // With one buffer the MSB plane overwrites the LSB one; that low-heap case is left to a re-render.
+      if (capturePage && msbPlaneBuf) {
+        pageCache.captureGrayPlane(true, lsbPlaneBuf.get(), planeBytes);
+        pageCache.captureGrayPlane(false, msbPlaneBuf.get(), planeBytes);
+      }
 
       renderer.waitRefreshComplete();
       [[maybe_unused]] const auto tWait = millis();
@@ -1764,6 +1784,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.displayGrayBuffer();
+      if (capturePage) pageCache.noteGrayShown();
       [[maybe_unused]] const auto tGrayDisplay = millis();
 
       renderer.cleanupGrayscaleWithFrameBuffer();
@@ -1813,6 +1834,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
         renderer.setRenderMode(GfxRenderer::BW);
         renderer.displayGrayBuffer();
+        if (capturePage) pageCache.noteGrayShown();
         [[maybe_unused]] const auto tGrayDisplay = millis();
 
         renderer.cleanupGrayscaleWithFrameBuffer();
@@ -1838,15 +1860,18 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
       renderGrayscalePass();
       renderer.copyGrayscaleLsbBuffers();
+      if (capturePage) pageCache.captureGrayPlane(true, renderer.getFrameBuffer(), renderer.getBufferSize());
       [[maybe_unused]] const auto tGrayLsb = millis();
 
       renderer.clearScreen(0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
       renderGrayscalePass();
       renderer.copyGrayscaleMsbBuffers();
+      if (capturePage) pageCache.captureGrayPlane(false, renderer.getFrameBuffer(), renderer.getBufferSize());
       [[maybe_unused]] const auto tGrayMsb = millis();
 
       renderer.displayGrayBuffer();
+      if (capturePage) pageCache.noteGrayShown();
       [[maybe_unused]] const auto tGrayDisplay = millis();
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.restoreBwBuffer();

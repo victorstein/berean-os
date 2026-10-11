@@ -14,6 +14,7 @@
 #include "AutoPageTurn.h"
 #include "BibleBookIndex.h"
 #include "EpubReaderMenuActivity.h"
+#include "PageFrameCache.h"
 #include "Place.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
@@ -60,6 +61,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // Whether the last render drew a reading page, unlike the session-long pageShown. Cleared by
   // reopenReaderMenu before its render, set by renderBook, both under RenderLock.
   bool pageRendered = false;
+  // The page renderContents last drew, for a cancelled menu close to show again. Render task only.
+  PageFrameCache pageCache;
 
   // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
   // two live JsonDocuments are a real risk against the C3's ~50KB free heap
