@@ -1,11 +1,16 @@
 #include "BibleSearchFingerprintFile.h"
 
+#include <HalStorage.h>
+#include <Logging.h>
+
+#include <algorithm>
 #include <cstring>
 
 namespace BibleSearchFingerprintFile {
 
 namespace {
 
+constexpr const char* MODULE = "BSFP";
 constexpr size_t MAGIC_AND_VERSION_BYTES = 6;
 constexpr size_t CHECKED_BYTES = 32;
 
@@ -89,6 +94,63 @@ Load decode(const uint8_t* in, const size_t length, const Key& expected, Record&
   }
   out = record;
   return Load::Ok;
+}
+
+std::string pathIn(const std::string& cachePath) { return cachePath + "/" + FILE_NAME; }
+
+Load load(const std::string& cachePath, const Key& expected, Record& out) {
+  const std::string path = pathIn(cachePath);
+  if (!Storage.exists(path.c_str())) return Load::Missing;
+  HalFile file;
+  if (!Storage.openFileForRead(MODULE, path, file)) return Load::Unreadable;
+
+  // The real size, not the bytes read, goes to decode: a record one byte too
+  // long must not pass as a whole one.
+  const size_t length = file.fileSize();
+  const size_t wanted = std::min(length, RECORD_BYTES);
+  uint8_t raw[RECORD_BYTES] = {};
+  if (wanted > 0) {
+    const int got = file.read(raw, wanted);
+    if (got < 0) return Load::Unreadable;
+    if (static_cast<size_t>(got) != wanted) return Load::Corrupt;
+  }
+  return decode(raw, length, expected, out);
+}
+
+bool save(const std::string& cachePath, const Record& record) {
+  const std::string path = pathIn(cachePath);
+  const std::string tmpPath = path + ".tmp";
+  uint8_t raw[RECORD_BYTES];
+  encode(raw, record);
+  {
+    HalFile file;
+    if (!Storage.openFileForWrite(MODULE, tmpPath, file)) {
+      LOG_ERR(MODULE, "Cannot create %s", tmpPath.c_str());
+      return false;
+    }
+    const size_t written = file.write(raw, RECORD_BYTES);
+    file.flush();
+    const size_t onCard = file.fileSize();
+    if (written != RECORD_BYTES || onCard != RECORD_BYTES) {
+      file.close();
+      Storage.remove(tmpPath.c_str());
+      LOG_ERR(MODULE, "Short write to %s: %u of %u bytes", tmpPath.c_str(), static_cast<unsigned>(onCard),
+              static_cast<unsigned>(RECORD_BYTES));
+      return false;
+    }
+  }
+
+  // The card has no rename-over, so the old record goes first. A crash between
+  // the two reads as "no record": one recompute, never a torn record.
+  if (Storage.exists(path.c_str()) && !Storage.remove(path.c_str())) {
+    LOG_ERR(MODULE, "Could not remove %s", path.c_str());
+    return false;
+  }
+  if (!Storage.rename(tmpPath.c_str(), path.c_str())) {
+    LOG_ERR(MODULE, "Rename %s -> %s failed", tmpPath.c_str(), path.c_str());
+    return false;
+  }
+  return true;
 }
 
 bool mayOverwrite(const Load result) { return result != Load::TooNew && result != Load::Unreadable; }

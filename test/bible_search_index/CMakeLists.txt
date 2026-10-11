@@ -45,7 +45,9 @@ gtest_discover_tests(BibleSearchIndexTest)
 # <Arduino.h> resolve to the stubs, as in test/storage_io.
 add_executable(BibleSearchFingerprintTest
   FingerprintFileTest.cpp
+  FingerprintFileIoTest.cpp
   ${REPO_ROOT}/src/study/BibleSearchFingerprintFile.cpp
+  ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
 )
 
 target_include_directories(BibleSearchFingerprintTest PRIVATE

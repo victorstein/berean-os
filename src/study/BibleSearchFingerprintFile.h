@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 // The Bible search fingerprint, kept beside the Bible's book.bin as
 // <cachePath>/search-fingerprint.bin, so the first search after a boot reads 40
@@ -51,6 +52,14 @@ void encode(uint8_t (&out)[RECORD_BYTES], const Record& record);
 // The magic is checked before the version and the version before the length, so
 // a newer record of any length is TooNew and a foreign file never is.
 Load decode(const uint8_t* in, size_t length, const Key& expected, Record& out);
+
+std::string pathIn(const std::string& cachePath);
+// One read of min(file size, RECORD_BYTES) bytes. Missing when there is no file,
+// Unreadable when it exists but cannot be opened or read.
+Load load(const std::string& cachePath, const Key& expected, Record& out);
+// Writes <record>.tmp, removes the old record, renames the temp into place.
+// False on any failure; a failed temp write leaves the old record as it was.
+bool save(const std::string& cachePath, const Record& record);
 
 // Whether a record that loaded this way may be replaced. A newer one belongs to
 // a later build; one that could not be read may be fine on the next try.
