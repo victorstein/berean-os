@@ -101,6 +101,13 @@ class StudyStore {
   const std::string& pubKey() const { return pubKey_; }
   bool isOpen() const { return units_ != nullptr; }
 
+  // Whether a reader may keep this store's state for `epub` instead of calling openPublication:
+  // open and ready, opened for this very Epub, loaded without a Failed read, and under a pubkey
+  // that still resolves the same (study_reuse::mayReuse). An unstable key costs a registry read.
+  bool canResumePublication(const std::shared_ptr<Epub>& epub) const;
+  // What a fresh openPublication would reset that a reused one keeps: the marked link source.
+  void resumePublication();
+
   // True when a load failed and the file may still hold the user's data. Every
   // save is refused while this is set, for the life of the session.
   bool saveDisabled() const { return saveDisabled_; }
@@ -176,6 +183,10 @@ class StudyStore {
   bool saveDisabled_ = false;
   std::optional<size_t> linkSource_;
   std::unique_ptr<UnitIndexCache> units_;
+  // The Epub the last openPublication was for, and whether it read the palette and the passages
+  // without a Failed result. Both feed canResumePublication; closePublication clears them.
+  std::weak_ptr<Epub> openedFor_;
+  bool loadedCleanly_ = false;
 
   static constexpr uint32_t REPAIR_TIME_BUDGET_MS = 3000;
   // A Verse row whose spine hint is stale needs the book search, up to 150

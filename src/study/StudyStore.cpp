@@ -7,6 +7,7 @@
 
 #include "PassageFile.h"
 #include "PubKeyRegistry.h"
+#include "StudyReuse.h"
 #include "StudyStore/PubKey.h"
 #include "StudyStore/UnitAnchors.h"
 #include "TagPaletteFile.h"
@@ -30,6 +31,28 @@ std::string repairUnitText(void* ctx, const study::Unit& unit) {
   return self->units->unitText(self->spine, unit);
 }
 
+// The canon check the pubkey ladder requires is deferred to the index, which
+// reads the book-nav page anyway. Until it has, an NWT-shaped Bible is trusted
+// -- that is the only Bible this device has ever opened.
+study::PubKeyInputs keyInputsFor(const Epub& epub) {
+  study::PubKeyInputs keyInputs;
+  keyInputs.isBible = epub.getBibleBookNavSpineIndex() >= 0;
+  keyInputs.canonVerified = keyInputs.isBible;
+  keyInputs.bookPath = epub.getPath();
+  keyInputs.registered = PubKeyRegistry::lookup(keyInputs.bookPath);
+  return keyInputs;
+}
+
+struct KeyCheck {
+  const Epub* epub;
+  const std::string* pubKey;
+};
+
+bool keyStillResolves(void* ctx) {
+  const auto* check = static_cast<const KeyCheck*>(ctx);
+  return study::resolvePubKey(keyInputsFor(*check->epub)) == *check->pubKey;
+}
+
 }  // namespace
 
 StudyStore& StudyStore::getInstance() {
@@ -41,32 +64,34 @@ bool StudyStore::openPublication(const std::shared_ptr<Epub>& epub, GfxRenderer&
   closePublication();
   if (!epub) return false;
 
-  study::PubKeyInputs keyInputs;
-  keyInputs.isBible = epub->getBibleBookNavSpineIndex() >= 0;
-  // The canon check the pubkey ladder requires is deferred to the index, which
-  // reads the book-nav page anyway. Until it has, an NWT-shaped Bible is trusted
-  // -- that is the only Bible this device has ever opened.
-  keyInputs.canonVerified = keyInputs.isBible;
-  keyInputs.bookPath = epub->getPath();
-  keyInputs.registered = PubKeyRegistry::lookup(keyInputs.bookPath);
-  pubKey_ = study::resolvePubKey(keyInputs);
+  [[maybe_unused]] const unsigned long startedMs = millis();
+  pubKey_ = study::resolvePubKey(keyInputsFor(*epub));
+  [[maybe_unused]] const unsigned long keyMs = millis();
 
   const auto paletteResult = TagPaletteFile::load(palette_);
   if (paletteResult == TagPaletteFile::LoadResult::Failed) {
     LOG_ERR(MODULE, "Tag palette unreadable; saving disabled for this session");
     saveDisabled_ = true;
   }
+  [[maybe_unused]] const unsigned long paletteMs = millis();
 
   const auto passageResult = PassageFile::load(pubKey_, passages_);
   if (passageResult == PassageFile::LoadResult::Failed) {
     LOG_ERR(MODULE, "Passages for %s unreadable; saving disabled for this session", pubKey_.c_str());
     saveDisabled_ = true;
   }
+  [[maybe_unused]] const unsigned long passagesMs = millis();
 
   units_ = makeUniqueNoThrow<UnitIndexCache>(epub, pubKey_, renderer);
   if (!units_ || !units_->begin()) {
     LOG_ERR(MODULE, "Unit index unavailable; addressing degraded to document offsets");
   }
+  LOG_DBG(MODULE, "Open steps: pubkey %lu ms, palette %lu ms, passages %lu ms, units %lu ms", keyMs - startedMs,
+          paletteMs - keyMs, passagesMs - paletteMs, millis() - passagesMs);
+
+  openedFor_ = epub;
+  loadedCleanly_ =
+      paletteResult != TagPaletteFile::LoadResult::Failed && passageResult != PassageFile::LoadResult::Failed;
   PsramJsonAllocator::logMemory("Study open");
   return true;
 }
@@ -76,9 +101,24 @@ void StudyStore::closePublication() {
   passages_ = study::PassageDoc{PsramJsonAllocator::passageDoc()};
   pubKey_.clear();
   linkSource_.reset();
+  openedFor_.reset();
+  loadedCleanly_ = false;
   // saveDisabled_ deliberately survives: it is a property of the session's
   // knowledge that a file may hold data we could not read, not of one book.
 }
+
+bool StudyStore::canResumePublication(const std::shared_ptr<Epub>& epub) const {
+  if (!epub) return false;
+  study_reuse::Inputs in;
+  in.openAndReady = units_ && units_->ready();
+  in.sameBook = openedFor_.lock() == epub;
+  in.loadedCleanly = loadedCleanly_;
+  in.keyStable = study::pubKeyIsStable(pubKey_);
+  KeyCheck check{epub.get(), &pubKey_};
+  return study_reuse::mayReuse(in, &keyStillResolves, &check);
+}
+
+void StudyStore::resumePublication() { linkSource_.reset(); }
 
 std::vector<uint16_t> StudyStore::spineIndicesForBook(const uint8_t book) {
   if (pubKey_ != study::BIBLE_PUB_KEY || !units_ || !units_->ready()) return {};

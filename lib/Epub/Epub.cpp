@@ -517,6 +517,19 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   return true;
 }
 
+bool Epub::reopenCache(const bool skipLoadingCss) {
+  if (!bookMetadataCache || !cssParser || !bookMetadataCache->reopen()) return false;
+  if (skipLoadingCss) return true;
+  // load()'s CSS check without its rebuild branch: the caller loads a fresh Epub instead, and that
+  // load rebuilds the rules and drops the sections exactly as a cold open does.
+  if (!cssParser->hasCache() || !cssParser->loadFromCache()) {
+    LOG_DBG("EBP", "Reopen: CSS rules cache missing or stale");
+    return false;
+  }
+  cssParser->clear();
+  return true;
+}
+
 bool Epub::clearCache() const {
   if (!Storage.exists(cachePath.c_str())) {
     LOG_DBG("EPB", "Cache does not exist, no action needed");

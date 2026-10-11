@@ -74,6 +74,10 @@ inline constexpr size_t SAVE_BUDGET = worstCaseBytes();
 // anything changed, which is what drives the load-side resave.
 bool normalise(RecentBook& book);
 
+// True when `candidate`, already normalise()d, is the first entry with the same title and author:
+// adding it would change nothing, so the store can skip its prune and its save.
+bool isAlreadyFront(const std::vector<RecentBook>& books, const RecentBook& candidate);
+
 void toJson(const std::vector<RecentBook>& books, JsonDocument& doc);
 
 // Fills `books`, capping the count at MAX_RECENT_BOOKS and re-bounding every

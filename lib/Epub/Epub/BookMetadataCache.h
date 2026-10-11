@@ -65,8 +65,10 @@ class BookMetadataCache {
 
   // Cumulative spine sizes, cached in RAM at load() so progress/percent lookups are
   // O(1) instead of 2 seeks + a heap-allocating SpineEntry read per access (4 bytes
-  // per spine item; <1KB for typical books).
+  // per spine item: 15.7 KB for the 3,937-item NWT, which lands in PSRAM by size).
   std::vector<uint32_t> cumulativeSizes;
+  // book.bin's size when load() read it; reopen() keeps the cache only while it is unchanged.
+  size_t loadedFileSize = 0;
 
   // Index for fast href→spineIndex lookup (used only for large EPUBs)
   struct SpineHrefIndexEntry {
@@ -117,6 +119,10 @@ class BookMetadataCache {
 
   // Reading phase (read mode)
   bool load();
+  // After time away from a loaded cache: closes book.bin and opens it again, keeping the cache only
+  // if the file's size and header still equal what load() read. The old handle may name a file
+  // deleted and rebuilt since, so it is never read again. False leaves the cache unloaded.
+  bool reopen();
   SpineEntry getSpineEntry(int index);
   TocEntry getTocEntry(int index);
   // Cumulative byte size up to and including the given spine item (0 if out of range
