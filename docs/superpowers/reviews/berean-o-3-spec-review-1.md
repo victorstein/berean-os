@@ -151,12 +151,13 @@ bytes and for an entry that straddles a 4,096-byte refill.
 **Claim.** §6.3 step 3 says "`openPublication` skipped".
 
 **Problem.** `highlightsLoaded` is assigned only from `openPublication`'s return value
-(`EpubReaderActivity.cpp:235`). It defaults to `false` (`EpubReaderActivity.h:71`) and gates highlight
-painting and selection (`:1573`, `:1674`). A literal "skip the call" turns highlights off on exactly the
-warm path, and no step in §9.1 would notice.
+(`EpubReaderActivity.cpp:235`), and it defaults to `false` (`EpubReaderActivity.h:71`). It gates two
+things: highlight painting (`:1674`) and the place recorded on exit (`captureLeftPlace`, `:1573`), which
+feeds Home's "Continue at". A literal "skip the call" would silently disable both on exactly the warm
+path, and no step in §9.1 would notice.
 
-**Fix.** State `highlightsLoaded = true` on the reuse branch, and add a §9.1 check that a tagged passage
-still paints on a warm open.
+**Fix.** State `highlightsLoaded = true` on the reuse branch. Add §9.1 checks that, on a warm open, a
+tagged passage still paints and Home's "Continue at" still updates after leaving the book.
 
 ### MINOR 5: a marked link source now survives a warm open, contrary to A10's "exactly two places"
 
