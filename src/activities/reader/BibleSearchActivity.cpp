@@ -111,7 +111,7 @@ void BibleSearchActivity::onEnter() {
   }
   // Loading the book names and open() are seconds of SD on the first search
   // after boot, so both wait for this frame.
-  enterState(State::Opening, /*fullRefresh=*/true);
+  enterState(State::Opening);
 }
 
 void BibleSearchActivity::onExit() {
@@ -119,7 +119,7 @@ void BibleSearchActivity::onExit() {
     indexer->cancel();
     indexer.reset();
   }
-  BibleSearchStore::getInstance().close();
+  BibleSearchStore::getInstance().park();
   reader = nullptr;
   UiListActivity::onExit();
 }
@@ -187,10 +187,7 @@ void BibleSearchActivity::runBusyWork() {
   }
   switch (state) {
     case State::Opening:
-      if (!bookNames.load(epub, renderer)) {
-        LOG_ERR(MODULE, "Book names unavailable; references show chapter:verse only");
-      }
-      openIndex();
+      openIndexAndNames();
       return;
     case State::Ready:
       openIndex();
@@ -217,18 +214,45 @@ void BibleSearchActivity::runBusyWork() {
   }
 }
 
-void BibleSearchActivity::openIndex() {
+Status BibleSearchActivity::openReader() {
   auto& store = BibleSearchStore::getInstance();
   Status status = Status::Missing;
   reader = store.open(epub, &status);
+  if (reader) return Status::Ok;
+  // open() reports only on bible.idx; a matching checkpoint beside it is a
+  // build that will resume, which the prompt and the starting frame say.
+  return store.status(epub);
+}
+
+void BibleSearchActivity::showOpenResult(const Status status) {
   if (reader) {
     openKeyboard();
     return;
   }
-  // open() reports only on bible.idx; a matching checkpoint beside it is a
-  // build that will resume, which the prompt and the starting frame say.
-  status = store.status(epub);
   showPrompt(status);
+}
+
+void BibleSearchActivity::openIndex() { showOpenResult(openReader()); }
+
+// The index first: open() identifies the Bible the kept book names are matched
+// against.
+void BibleSearchActivity::openIndexAndNames() {
+  [[maybe_unused]] const unsigned long started = millis();
+  const Status status = openReader();
+
+  auto& store = BibleSearchStore::getInstance();
+  [[maybe_unused]] const char* names = "resident";
+  if (!store.restoreBookNames(epub, bookNames)) {
+    if (bookNames.load(epub, renderer)) {
+      store.keepBookNames(epub, bookNames);
+      names = "loaded";
+    } else {
+      LOG_ERR(MODULE, "Book names unavailable; references show chapter:verse only");
+      names = "unavailable";
+    }
+  }
+  LOG_DBG(MODULE, "Opened in %lu ms (index %s, names %s)", millis() - started, reader ? "ready" : "unusable", names);
+  showOpenResult(status);
 }
 
 void BibleSearchActivity::showPrompt(const Status status) {
@@ -247,6 +271,7 @@ void BibleSearchActivity::showFailure(const Failure reason) {
     failure = reason;
     state = State::Failed;
   }
+  // Closes the build's progress view with a clean paint, as Ready does.
   fullRefreshPending.store(true);
   requestUpdate();
 }
@@ -370,6 +395,8 @@ void BibleSearchActivity::finishBuild() {
     return;
   }
   // Ready's work opens the new index, and its frame stays up while it does.
+  // A clean paint over the progress view, which only FAST repaints have
+  // touched since Starting.
   enterState(State::Ready, /*fullRefresh=*/true);
 }
 
@@ -441,6 +468,8 @@ void BibleSearchActivity::handleDialogInput() {
     }
     cancelRequested = false;
     goHomeAfterCancel = false;
+    // The build's first clean paint: its progress view stays up for the
+    // whole build.
     enterState(State::Starting, /*fullRefresh=*/true);
     return;
   }
@@ -1010,8 +1039,8 @@ void BibleSearchActivity::drawFooter() {
 
 void BibleSearchActivity::render(RenderLock&&) {
   // Mirrors UiListActivity::render(), with the theme's progress bar drawn over
-  // the app and the refresh mode chosen per frame: a full refresh on entering
-  // the screen, the progress view and completion; fast ones in between.
+  // the app and the refresh mode chosen per frame: a HALF when a build starts,
+  // completes or fails; FAST otherwise, entering the screen included.
   const State drawn = state;
   const bool full = fullRefreshPending.exchange(false);
 

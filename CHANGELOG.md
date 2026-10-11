@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.29.12](https://github.com/victorstein/berean-os/compare/v1.29.11...v1.29.12) (2026-10-11)
+
+
+### Performance
+
+* keep the Bible search index open between searches ([#259](https://github.com/victorstein/berean-os/issues/259)) ([ba69759](https://github.com/victorstein/berean-os/commit/ba69759b0cbe78c5dc29a5e38c9ea49ee26dad04))
+
+## [1.29.11](https://github.com/victorstein/berean-os/compare/v1.29.10...v1.29.11) (2026-10-11)
+
+
+### Performance
+
+* run the SD card at 40 MHz high speed ([#257](https://github.com/victorstein/berean-os/issues/257)) ([b1a9f1a](https://github.com/victorstein/berean-os/commit/b1a9f1af0d0502632b250065ce520955a5cc7b75))
+
+## [1.29.10](https://github.com/victorstein/berean-os/compare/v1.29.9...v1.29.10) (2026-10-11)
+
+
+### Performance
+
+* enter Bible search and Publications with a fast refresh ([#255](https://github.com/victorstein/berean-os/issues/255)) ([106dfc4](https://github.com/victorstein/berean-os/commit/106dfc4b024429d325e87c4474007a66dde7b745))
+
 ## [1.29.9](https://github.com/victorstein/berean-os/compare/v1.29.8...v1.29.9) (2026-10-11)
 
 

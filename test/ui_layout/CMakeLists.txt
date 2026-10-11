@@ -112,3 +112,18 @@ target_link_libraries(StatusBarProgressTest PRIVATE
 )
 
 gtest_discover_tests(StatusBarProgressTest)
+
+add_executable(MenuCloseRestoreTest
+  MenuCloseRestoreTest.cpp
+)
+
+target_include_directories(MenuCloseRestoreTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(MenuCloseRestoreTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(MenuCloseRestoreTest)

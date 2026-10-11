@@ -106,8 +106,9 @@ class BibleSearchActivity final : public UiListActivity {
   };
 
   std::shared_ptr<Epub> epub;
-  // Loaded by the loop task in Opening, before any state that draws a name.
-  // Empty when the load fails; references then read "c:v".
+  // Filled by the loop task in Opening, before any state that draws a name: from
+  // the store's kept copy, else loaded. Empty when the load fails; references
+  // then read "c:v".
   BibleBookNameTable bookNames;
   State state = State::Opening;
   // The state render() last put on the panel; a busy state's SD work waits for
@@ -178,6 +179,9 @@ class BibleSearchActivity final : public UiListActivity {
   bool isBusy(State s) const;
   void runBusyWork();
   void openIndex();
+  void openIndexAndNames();
+  BibleSearch::IndexReader::Status openReader();
+  void showOpenResult(BibleSearch::IndexReader::Status status);
   void beginBuild();
   void stepBuild();
   void finishBuild();
