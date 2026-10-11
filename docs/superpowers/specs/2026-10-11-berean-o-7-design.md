@@ -7,7 +7,8 @@ Research: `docs/superpowers/research/2026-10-11-berean-o-7-research.md`. Branch
 under `/.berean/`, refusing an unknown version and writing atomically after a budget check.
 `src/util/PlacesDoc.{h,cpp}` for the pure format half — a format version, a byte budget derived
 from caps, and `toJson`/`fromJson` with no storage access. The host tests are modelled on
-`test/home_layout/HomeVerseCacheTest.cpp` and `test/places_doc/`.
+`test/home_layout/HomeVerseCacheTest.cpp` and `test/places_doc/`, and the file shell's test on
+`test/places_store/` (a real store shell against `test/stubs/HalStorageFake`).
 
 ## Problem
 
@@ -40,8 +41,11 @@ Baseline, from one clean capture: the scan takes 405 ms and the second paint 257
 - **The sleep-time `Study pick` (445 ms).** It is a different, random pick over every passage file
   (`StudySleepScreen.cpp:229`, `:250-252`) and stays as it is. `StudySleepScreen` and
   `test/study_sleep_pick/` are not edited, although both are in the task's file lock.
-- **The first wake of a new day.** The pick is seeded by the local date (`HomeVerse.cpp:68-73`),
-  so it cannot be known before that day starts.
+- **The first wake of a new day.** The brief's acceptance criterion is that "a new day … still
+  rescans". The seed is a pure function of the date (`StudySleepPick.h:176-183`), so tomorrow's
+  pick could be computed the evening before. That is filed as a follow-up with `hpipe discover`, not
+  done here. For the owner, this means the first wake of each morning keeps today's ~4.4 s. The
+  predicted gain applies to the second and later wakes of a day.
 - **Same-size edits to `bible.json`.** The file identity stays byte size only. That gap exists
   today within one boot; persistence extends it to the rest of the same day (A5).
 - **RTC memory and the sleep pass producing Home's pick.** Both were rejected in research
@@ -73,14 +77,22 @@ that.
 **A4 — An entry from another firmware build is never restored.** The file records a build
 identity. Restore requires it to equal the running build's.
 
-- Within one boot the card box, the fonts and the fit algorithm cannot change, which is why the
-  RAM key never needed them (research, "What Home's pick depends on").
+- The fonts and the fit algorithm are fixed per build. The card box is not fixed by
+  construction: it depends on the theme's `topPadding` (`HomeLayout.h:125-126`, `:150`), and a
+  theme switch applies at once (`SettingsActivity.cpp:181-187`). The box is theme-independent
+  today only because both themes set `topPadding = 5` (`BaseTheme.h:134`, `lyra/LyraTheme.h:11`).
+  A new `HomeLayoutTest` case pins `verseText` equal, width and height, under `BaseMetrics` and
+  `LyraMetrics` (`test/home_layout/HomeLayoutTest.cpp:25`, `layoutFor`). A build that makes the
+  themes diverge then fails on the host instead of restoring lines fitted for another width. The
+  box stays out of the key.
 - The identity is `esp_app_get_elf_sha256(buf, 9)` (`esp_app_desc.h:64`). With
   `CONFIG_APP_RETRIEVE_LEN_ELF_SHA=9` (`esp32s3/sdkconfig:507`) it returns the first 8 hex
   characters of the ELF's SHA-256
-  (`framework-espidf/components/esp_app_format/esp_app_desc.c:107-116`). That is the 5.5.2 source
-  on disk; the libraries are built from 5.5.0 (research, "Installed versions"). It is the same
-  prefix IDF prints at boot (`:143-144`).
+  (`framework-espidf/components/esp_app_format/esp_app_desc.c:107-116`). That source is what links:
+  `custom_sdkconfig` (`platformio.ini:94-116`) makes pioarduino rebuild the Arduino libraries from
+  `framework-espidf` 5.5.2, and the libs' `esp32s3/sdkconfig` is headed "ESP-IDF 5.5.2 Project
+  Configuration". It is the same prefix IDF prints at boot (`:143-144`). Spec review 1 confirmed
+  the ELF's SHA-256 at offset `0xb0` of a real `firmware.bin`.
 - The field is filled in because `framework-arduinoespressif32/tools/pioarduino-build.py:262`
   adds `--elf-sha256-offset 0xb0` to the ELF-to-bin step.
 - **Rejected:** `BEREAN_VERSION`. `scripts/git_branch.py` builds it from the branch and short SHA
@@ -102,9 +114,13 @@ private `bool restoreAttempted` on the singleton makes the second call a no-op.
 
 - `isCurrent()` loses its `const` (`HomeVerse.h:32`). Its only caller holds the singleton by
   non-const reference (`LauncherActivity.cpp:148`, `HomeVerse.h:49`), so the call site is unchanged.
-- That first call comes from `resolveTargets`, which `onEnter` runs before it requests any paint
-  (`LauncherActivity.cpp:79-84`). The render task, a different task (`ActivityManager.h:52-54`),
-  therefore cannot read the entry while restore fills it.
+- That first call comes from `resolveTargets`. Usually `onEnter` runs it (`LauncherActivity.cpp:79-84`).
+  If the first entry found no Bible, the first call comes later instead, from the result handler
+  that reruns `resolveTargets` after a Bible download or a Publications return (`:424`, `:435`).
+  Neither path holds the `RenderLock` (`ActivityManager.cpp:126-127`, `:159-160`). The guarantee is
+  that no render of Home is requested before `resolveTargets` returns. That is the same guarantee
+  every other member it fills (`biblePath`, the places, the meetings) already relies on, so the
+  restore adds no new class of race with the render task (`ActivityManager.h:52-54`).
 - `isCurrent()` is not called when no Bible is found (`LauncherActivity.cpp:148`
   short-circuits), so a boot that never finds a Bible never reads the file.
 - **Rejected:** restoring in `setup()`. `src/main.cpp` is a shared append point, and every boot
@@ -119,6 +135,10 @@ private `bool restoreAttempted` on the singleton makes the second call a no-op.
   exactly as they are not cached today.
 - A scan runs only when the key or the build changed, so the result always differs from the file
   and there is no redundant write to guard against.
+- So that the rule lives in one place, `ensure`'s scan-and-fit body moves into a private helper
+  that reports whether it completed. `ensure` calls `save()` once, after that helper returns true.
+  The three completed returns (`HomeVerse.cpp:115`, `:125`, `:133`) and the two OOM returns (`:79`,
+  `:107`) therefore cannot drift apart.
 
 **A8 — The save happens inside `ensure()`, on the loop task, before it returns.**
 
@@ -177,7 +197,8 @@ passage text, and the passage scan keeps passage text out of internal SRAM the s
 KB, and freed when the restore or save returns. No new resident allocation is made. The resident
 cache stays the existing static `Entry`, under 640 bytes of internal SRAM
 (`HomeVerseCache.h:95`). An allocation failure shows up as `overflowed()` or a parse error, which
-the restore and save paths already treat as failures.
+the restore and save paths already treat as failures. `HomeVerseFile` takes the allocator as a
+parameter, so the host test passes `nullptr` (ArduinoJson's default) and no PSRAM stub is needed.
 
 **A14 — Undated entries are saved like dated ones.** An undated key matches any day
 (`HomeVerseCache.h:40-43`, `HomeVerseCacheTest.cpp:53-61`), and an undated scan always uses
@@ -193,10 +214,12 @@ reason is written as an explicit code, not the enum's underlying value, so reord
 | Piece | Kind | Role |
 |---|---|---|
 | `src/activities/launcher/HomeVerseDoc.{h,cpp}` | new, pure | `FORMAT_VERSION`, caps, `worstCaseBytes()`, `SAVE_BUDGET`, `toJson`, `fromJson`, `isUsableBuildId`. Includes ArduinoJson, `HomeVerseCache.h`, `StudyStore/Unit.h`, `FormatVersion.h`, `util/CivilDate.h`; no Arduino, HAL or renderer. Never measures or serialises, as `PlacesDoc.h:16-18` |
-| `src/activities/launcher/HomeVerse.{h,cpp}` | changed shell | `restoreOnce()` and `save()`; `isCurrent()` loses `const`; `ensure()` calls `restoreOnce()` first and `save()` after a completed scan; the class comment stops saying "nothing stored" (`HomeVerse.h:12-17`) |
+| `src/activities/launcher/HomeVerseFile.{h,cpp}` | new, storage, renderer-free | `load(buildId, rungCount, allocator, Entry&)` returns an outcome (`None`, `Restored`, `Unreadable`, `UnknownFormat`, `OtherBuild`, `Malformed`); `save(const Entry&, buildId, allocator)` returns whether the file was written. It owns the path, the read through `readDocFromFileAdopting`, the `overflowed()` and budget checks, the atomic write, and the refusal of an unusable build identity on both sides. Modelled on `MeetingWeekCache.cpp:18-56` |
+| `src/activities/launcher/HomeVerse.{h,cpp}` | changed shell | reads the build identity (A4); `restoreOnce()` calls `HomeVerseFile::load` and `save()` calls `HomeVerseFile::save`; `isCurrent()` loses `const`; `ensure()` calls `restoreOnce()` first and `save()` once after a completed scan (A7); the class comment stops saying "nothing stored" (`HomeVerse.h:12-17`), and `isCurrent()`'s comment (`HomeVerse.h:30-31`, "never a parse") says the first call of a boot restores and every later call is a clock read and a stat |
 | `lib/Serialization/SdPaths.h` | one constant | `HOME_VERSE_FILE` plus its `static_assert` (A2) |
 | `lib/Serialization/PersistableStore.h:106-114` | comment | adds `home-verse.json` to the single-task list (A12) |
-| `test/home_layout/HomeVerseDocTest.cpp`, `test/home_layout/CMakeLists.txt` | new test and new executable | see Testing |
+| `test/home_layout/HomeVerseDocTest.cpp`, `HomeVerseFileTest.cpp`, `CMakeLists.txt` | two new tests, two new executables | see Testing |
+| `test/home_layout/HomeLayoutTest.cpp` | one new case | the verse box is equal under both themes (A4) |
 | `test/sd_paths/SdPathsTest.cpp` | one pin | A2 |
 | `docs/file-formats.md` | new section | `/.berean/home-verse.json`, after `places.json` (`:487-511`), in that section's shape |
 
@@ -254,7 +277,21 @@ behaves exactly as an entry from earlier in the same boot would.
 | `p.l` | fitted lines | an array that `home_verse::packLines` accepts: 1–`MAX_LINES` strings whose bytes plus terminators fit `LINE_BUFFER_BYTES` (`HomeVerseCache.h:75-91`) |
 
 Every string is read as `const char*` (`obj["r"] | ""`), never as `std::string` (`PersistableStore.h:144-147`).
-A wrong type, such as `"n":"43864"`, falls back to the default, which then fails validation.
+
+A `| default` read accepts a wrong type silently. Several defaults are themselves valid: `n` 0, `dt`
+and `f` false, `e` 0, `s` 0, `rung` 0 (`PlacesDoc.cpp:146-150` reads this way). So `fromJson` first
+requires `is<T>()` for every field above and returns `Malformed` otherwise:
+
+- `is<bool>()` for `k.dt` and `k.f`;
+- `is<uint32_t>()` for `k.n`, `k.y`, `k.m`, `k.d`, `e`, `p.s` and `p.rung`;
+- `is<const char*>()` for `b`, `p.u` and `p.r`;
+- `is<JsonArrayConst>()` for `p.l`, and `is<const char*>()` for each line;
+- `is<JsonObjectConst>()` for `k` and for `p` when present.
+
+A bad `p.s` would otherwise restore a wrong spine hint, which the verse tap passes to the reader
+(`LauncherActivity.cpp:404-405`). One cross-field rule is added as well: `e == 0` requires
+`k.f`. A pick never comes from a missing file, because `ensure` scans only when `key.fileExists`
+(`HomeVerse.cpp:97`).
 
 ## Data and control flow
 
@@ -291,14 +328,14 @@ scans, and saves.
 
 | Case | Behaviour | Log |
 |---|---|---|
-| File missing | not restored; scan | none (expected on first boot; `readDocFromFileChecked` returns `Missing` without logging, `PersistableStore.cpp:125-126`) |
+| File missing | not restored; scan | the restore line only (`none`); the read helper does not log it, `PersistableStore.cpp:125-126` |
 | Unreadable or parse error, including PSRAM exhaustion | not restored; scan; overwritten on save | the read helper's own `LOG_ERR`, plus the restore line |
 | Unknown format | not restored; scan; overwritten | `LOG_ERR`, as `MeetingWeekCache.cpp:25` |
-| Another build | not restored; scan; overwritten | `LOG_DBG`, an expected case after every update |
+| Another build | not restored; scan; overwritten | `LOG_DBG`, an expected case after every update, naming both identities |
 | Malformed field | not restored; scan; overwritten | `LOG_ERR` |
 | Unusable build identity | neither restored nor saved; today's behaviour | `LOG_ERR`, once per boot |
 | Over budget, or `doc.overflowed()` while building | not written; the RAM entry stays valid for this boot | `LOG_ERR` |
-| Atomic write fails | the old file or the `.tmp` is left as `writeDocToFileAtomic` leaves it, never a torn file (`PersistableStore.h:62-68`); the RAM entry stays valid; the next boot rescans | `writeDocToFileAtomic`'s `LOG_ERR`, plus `Verse save failed` |
+| Atomic write fails | the old file or the `.tmp` is left as `writeDocToFileAtomic` leaves it, never a torn file (`PersistableStore.h:62-68`); the RAM entry stays valid. If the rename failed after the old file was removed, the `.tmp` holds the new entry and the next boot adopts and restores it (`PersistableStore.cpp:116-120`); otherwise the next boot rescans | `writeDocToFileAtomic`'s `LOG_ERR`, plus `Verse save failed` |
 
 No failure in either path leaves Home worse off than it is today: every one of them falls back
 to the scan the device already does.
@@ -309,7 +346,9 @@ The timings use `LOG_DBG`, per the brief. The existing `Verse scan` line keeps i
 (`HomeVerse.cpp:98`) because the acceptance check looks for it.
 
 - `[HOMEV] Verse restore: <restored|none|unknown format|other build|malformed|unreadable>, current <0|1>, <ms> ms`
-  — once per boot, from `restoreOnce()`. `current` is `validFor` against the key just built.
+  — once per boot, from `restoreOnce()`. `current` is `validFor` against the key just built. On
+  `other build` the line also names both identities (`file 1a2b3c4d, running 5e6f7a8b`), so the
+  device run can tell a real build change from a misread.
 - `[HOMEV] Verse saved: <bytes> bytes, <ms> ms`, or `LOG_ERR` `Verse save failed`.
 
 ## Resource justification
@@ -363,15 +402,36 @@ keeps its "std headers only" scope (`test/home_layout/CMakeLists.txt:1-4`).
    identity, maximal numbers — measures within `SAVE_BUDGET`. `SAVE_BUDGET` equals
    `worstCaseBytes()`, pinned to its number as `PlacesDocTest` pins its own.
 9. `isUsableBuildId` rejects `""`, `"00000000"` and 65 characters, and accepts `"1a2b3c4d"`.
+10. Wrong types are `Malformed`, among them `"n":"43864"`, `"s":"1201"`, `"dt":1`, `"rung":"1"`,
+    `"l":"text"` and `"k":[]`.
+11. `e` 0 with `k.f` false is `Malformed`.
+
+**`test/home_layout/HomeVerseFileTest.cpp`**, a new `HomeVerseFileTest` executable. It is modelled
+on `test/places_store/CMakeLists.txt:1-43`: `test/stubs` first on the include path, sources
+`HomeVerseFile.cpp`, `HomeVerseDoc.cpp`, `Unit.cpp`, `lib/Serialization/PersistableStore.cpp`,
+`test/stubs/HalStorageFake.cpp` and `test/stubs/ObfuscationUtilsStub.cpp`, linking `ArduinoJson`.
+
+1. `save` then `load` round-trips an entry through the fake card, at `HOME_VERSE_FILE`.
+2. `load` with no file is `None`.
+3. A `.tmp` with no main file is adopted and restored.
+4. An unusable identity writes nothing and loads nothing.
+5. `save` of an entry with `valid` false writes nothing. The over-budget refusal cannot be reached
+   from a valid `Entry`: its fixed buffers bound every field, and `HomeVerseDocTest` case 8 shows
+   the maximum fits. It stays as a guard and is not tested through the file.
+6. A file of non-JSON bytes is `Unreadable`; a `v: 2` file is `UnknownFormat`.
+
+**`test/home_layout/HomeLayoutTest.cpp`:** one new case, `verseText` equal (x, y, width, height)
+under `BaseMetrics::values` and `LyraMetrics::values` (A4).
 
 **`test/sd_paths/SdPathsTest.cpp`:** pins `HOME_VERSE_FILE` to `"/.berean/home-verse.json"`.
 
 **Unchanged and still green:** `HomeVerseCacheTest` (`test/home_layout/HomeVerseCacheTest.cpp`),
 which A5 must not break.
 
-**The shell has no host test.** `HomeVerse.cpp` uses `GfxRenderer` and `HalStorage`; it has none
-today either, and the logic it gains is a call to the tested `fromJson`, `toJson` and
-`isUsableBuildId`. It is verified by `pio run -e x4pro` and on the device.
+**`HomeVerse.cpp` itself has no host test.** It needs `GfxRenderer` for the scan inside `ensure`
+(`HomeVerse.cpp:34-37`, `:82-91`), and has no test today. Everything it gains apart from the
+`restoreAttempted` gate and the one `save()` call (A7) lives in the tested `HomeVerseFile` and
+`HomeVerseDoc`. It is verified by `pio run -e x4pro` and on the device.
 
 **Device — the owner's run.** Flash the `x4pro` dev build and capture serial with
 `cat /dev/cu.usbmodem*`.
@@ -386,11 +446,14 @@ today either, and the logic it gains is a call to the tested `fromJson`, `toJson
 4. Tag a passage, go Home: expect `Verse scan` and `Verse saved`.
 5. Optionally set the clock forward a day and wake: expect `current 0` and a scan.
 
+The first wake of each morning is a new-day wake. It keeps today's ~4.4 s, and the PR body says
+so (Non-goals).
+
 ## Files outside the task's lock
 
 The task registered `src/activities/launcher/HomeVerse`, `src/activities/boot_sleep/StudySleepScreen`
 and `test/study_sleep_pick/`. The `HomeVerse` prefix covers `HomeVerse.{h,cpp}` and the new
-`HomeVerseDoc.{h,cpp}`. These are outside the lock:
+`HomeVerseDoc.{h,cpp}` and `HomeVerseFile.{h,cpp}`. These are outside the lock:
 
 - `lib/Serialization/SdPaths.h`
 - `lib/Serialization/PersistableStore.h` (a comment)
@@ -399,4 +462,34 @@ and `test/study_sleep_pick/`. The `HomeVerse` prefix covers `HomeVerse.{h,cpp}` 
 - `docs/file-formats.md`
 
 None of them is a shared append point, and nothing is needed in `test/CMakeLists.txt` or
-`src/main.cpp`.
+`src/main.cpp`. Two seams with sibling tasks go in the PR's "For the orchestrator" section:
+
+- **t3 (R12)** has `docs/file-formats.md` in its registered lock. Its spec makes no change to that
+  file, so a textual conflict is unlikely, but the orchestrator may sequence on the lock.
+- **t2 (R9)**'s device check expects `[LAUNCH] Band replayed in N ms` on the post-verse paint
+  after a wake. On a same-day wake this spec removes that paint, so the replay line appears only
+  on a new-day wake. Whichever task lands second sees its sibling's device step change.
+
+## Changes from spec review 1
+
+`docs/superpowers/reviews/berean-o-7-spec-review-1.md` returned CLEAR with nine MINORs, all
+accepted and applied here:
+
+1. **A4, the card box.** It is theme-independent today only because both themes set
+   `topPadding = 5`; it is not unchangeable. A `HomeLayoutTest` case now pins the box equal under
+   both themes.
+2. **Wrong types.** `fromJson` requires `is<T>()` on every field and adds the `e == 0 ⇒ k.f` rule.
+   Tests 10 and 11 cover them.
+3. **The shell's test.** Restore and save moved into the renderer-free `HomeVerseFile`, tested
+   against `HalStorageFake`, as `test/places_store/` tests `PlacesStore`. `ensure`'s save rule now
+   has one call site (A7).
+4. **The new-day non-goal.** It is restated on the brief's acceptance criterion. The morning wake
+   is named as unchanged, and precomputing tomorrow's pick is filed with `hpipe discover`.
+5. **`isCurrent()`'s comment** (`HomeVerse.h:30-31`) is listed for update.
+6. **A6.** The race guarantee is restated as "no render requested before `resolveTargets`
+   returns", and the result-handler entry is named.
+7. **IDF version.** The libraries link from 5.5.2, rebuilt because of `custom_sdkconfig`, not
+   5.5.0. Corrected here and in the research note.
+8. **Error table and logging.** They now agree on the missing-file log and the failed-rename
+   restore. `other build` names both identities.
+9. **Sibling seams.** The t2 and t3 seams are named above.

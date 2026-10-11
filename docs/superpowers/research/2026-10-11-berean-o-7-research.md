@@ -167,8 +167,10 @@ This would need no SD I/O and no on-disk format. The evidence that it could work
   `HalSystem.cpp:17-21`, `Logging.cpp:12-19`).
 - The bootloader skips reloading RTC segments after a deep-sleep reset
   (`framework-espidf/components/bootloader_support/src/esp_image_format.c:905`, `:919-936`).
-  That is the 5.5.2 source on disk; the Arduino libraries were built from `release/v5.5
-  87912cd291` (`esp32s3/versions.txt:2`).
+  That 5.5.2 source is what links. `custom_sdkconfig` (`platformio.ini:94-116`) makes pioarduino
+  rebuild the Arduino libraries from it, and the libs' `esp32s3/sdkconfig` is headed "ESP-IDF 5.5.2
+  Project Configuration". `esp32s3/versions.txt:2` (`release/v5.5 87912cd291`) is the original
+  package's file and is stale. Corrected after spec review 1.
 
 It is not proposed because no code here relies on RTC data **surviving deep sleep**. Every
 existing `RTC_NOINIT_ATTR` user relies on surviving `ESP.restart()` or a panic (`main.cpp:137`).
@@ -206,7 +208,7 @@ size, still scan and still paint twice. That is unchanged.
 | PlatformIO Core | 6.1.19 | `~/.platformio/penv/bin/pio --version` |
 | Platform | pioarduino espressif32 55.03.37 | `platformio.ini:15`, `~/.platformio/platforms/espressif32/platform.json` |
 | Arduino core | 3.3.7 | `~/.platformio/packages/framework-arduinoespressif32/package.json` |
-| Arduino libs (ESP-IDF) | 5.5.0, `release/v5.5 87912cd291` | `framework-arduinoespressif32-libs/package.json`, `esp32s3/versions.txt:2` |
+| Arduino libs (ESP-IDF) | 5.5.2, rebuilt locally because of `custom_sdkconfig`; the package shipped 5.5.0 | `platformio.ini:94-116`, the header of `framework-arduinoespressif32-libs/esp32s3/sdkconfig`; `package.json` and `versions.txt:2` describe the shipped build |
 | ESP-IDF source on disk | 5.5.2 (`framework-espidf` 3.50502) | its `package.json` |
 | ArduinoJson | 7.4.2 (device and host) | `platformio.ini:155`, `test/CMakeLists.txt:28-33` |
 | googletest | v1.17.0 | `test/CMakeLists.txt:14-18` |
