@@ -49,4 +49,63 @@ constexpr const char* name(const Verdict verdict) {
   return "";
 }
 
+// What the reader saved of the last page it rendered. Every change goes through these methods, so a
+// page can never keep planes saved for the one before it.
+struct CapturedPage {
+  bool bw = false;
+  bool grayLsb = false;
+  bool grayMsb = false;
+  bool grayExpected = false;
+  bool grayShown = false;
+  int spineIndex = -1;
+  int pageIndex = -1;
+
+  void reset() { *this = CapturedPage{}; }
+  void beginPage(const int spine, const int page, const bool expectGray) {
+    reset();
+    bw = true;
+    spineIndex = spine;
+    pageIndex = page;
+    grayExpected = expectGray;
+  }
+  void markPlane(const bool lsbPlane) { (lsbPlane ? grayLsb : grayMsb) = true; }
+  void markGrayShown() { grayShown = true; }
+};
+
+// Where the reader is when the close is handled.
+struct Position {
+  bool hasSection = false;
+  int spineIndex = -1;
+  int pageIndex = -1;
+};
+
+enum class Fit : uint8_t { Fits, Empty, NoSection, Moved, GrayMissing };
+
+constexpr Fit fit(const CapturedPage& page, const Position& at) {
+  if (!page.bw) return Fit::Empty;
+  if (!at.hasSection) return Fit::NoSection;
+  if (page.spineIndex != at.spineIndex || page.pageIndex != at.pageIndex) return Fit::Moved;
+  // A gray pass that was skipped, or not saved, is retried by a re-render rather than left flat.
+  if (page.grayExpected && !(page.grayShown && page.grayLsb && page.grayMsb)) return Fit::GrayMissing;
+  return Fit::Fits;
+}
+
+constexpr bool restoresGray(const CapturedPage& page) { return page.grayExpected; }
+
+constexpr const char* name(const Fit result) {
+  switch (result) {
+    case Fit::Fits:
+      return "fits";
+    case Fit::Empty:
+      return "empty";
+    case Fit::NoSection:
+      return "no-section";
+    case Fit::Moved:
+      return "moved";
+    case Fit::GrayMissing:
+      return "gray-missing";
+  }
+  return "";
+}
+
 }  // namespace MenuCloseRestore
