@@ -227,3 +227,32 @@ TEST(HomeVerseDoc, AFieldOfTheWrongTypeIsRefused) {
   expectMalformed([](JsonDocument& d) { d["k"].to<JsonArray>(); });
   expectMalformed([](JsonDocument& d) { d["e"] = "0"; });
 }
+
+TEST(HomeVerseDoc, TheBudgetIsDerivedFromTheCaps) {
+  EXPECT_EQ(HomeVerseDoc::worstCaseBytes(), 3943u);
+  EXPECT_EQ(HomeVerseDoc::SAVE_BUDGET, HomeVerseDoc::worstCaseBytes());
+}
+
+TEST(HomeVerseDoc, TheLargestEntryFitsTheBudget) {
+  home_verse::Entry entry;
+  entry.valid = true;
+  entry.key.dated = true;
+  entry.key.day = CivilDate{UINT16_MAX, UINT8_MAX, UINT8_MAX};
+  entry.key.fileExists = true;
+  entry.key.fileBytes = UINT32_MAX;
+  entry.empty = home_verse::Empty::None;
+  entry.hasPick = true;
+  entry.pick.start = study::Unit{study::UnitKind::DocumentOffset, UINT8_MAX, UINT16_MAX, UINT16_MAX, UINT32_MAX};
+  entry.pick.spine = UINT16_MAX;
+  memset(entry.pick.reference, '"', home_verse::REFERENCE_BYTES - 1);
+  entry.pick.reference[home_verse::REFERENCE_BYTES - 1] = '\0';
+  entry.pick.rung = UINT8_MAX;
+  const std::string quarter(home_verse::LINE_BUFFER_BYTES / home_verse::MAX_LINES - 1, '"');
+  ASSERT_TRUE(home_verse::packLines({quarter, quarter, quarter, quarter}, entry.pick));
+  const std::string build(HomeVerseDoc::MAX_BUILD_ID_BYTES, '"');
+
+  JsonDocument doc;
+  HomeVerseDoc::toJson(entry, build.c_str(), doc);
+  ASSERT_FALSE(doc.overflowed());
+  EXPECT_LE(measureJson(doc), HomeVerseDoc::SAVE_BUDGET);
+}
