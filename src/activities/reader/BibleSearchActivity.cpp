@@ -111,7 +111,7 @@ void BibleSearchActivity::onEnter() {
   }
   // Loading the book names and open() are seconds of SD on the first search
   // after boot, so both wait for this frame.
-  enterState(State::Opening, /*fullRefresh=*/true);
+  enterState(State::Opening);
 }
 
 void BibleSearchActivity::onExit() {
@@ -247,6 +247,7 @@ void BibleSearchActivity::showFailure(const Failure reason) {
     failure = reason;
     state = State::Failed;
   }
+  // Closes the build's progress view with a clean paint, as Ready does.
   fullRefreshPending.store(true);
   requestUpdate();
 }
@@ -370,6 +371,8 @@ void BibleSearchActivity::finishBuild() {
     return;
   }
   // Ready's work opens the new index, and its frame stays up while it does.
+  // A clean paint over the progress view, which only FAST repaints have
+  // touched since Starting.
   enterState(State::Ready, /*fullRefresh=*/true);
 }
 
@@ -441,6 +444,8 @@ void BibleSearchActivity::handleDialogInput() {
     }
     cancelRequested = false;
     goHomeAfterCancel = false;
+    // The build's first clean paint: its progress view stays up for the
+    // whole build.
     enterState(State::Starting, /*fullRefresh=*/true);
     return;
   }
@@ -1010,8 +1015,8 @@ void BibleSearchActivity::drawFooter() {
 
 void BibleSearchActivity::render(RenderLock&&) {
   // Mirrors UiListActivity::render(), with the theme's progress bar drawn over
-  // the app and the refresh mode chosen per frame: a full refresh on entering
-  // the screen, the progress view and completion; fast ones in between.
+  // the app and the refresh mode chosen per frame: a HALF when a build starts,
+  // completes or fails; FAST otherwise, entering the screen included.
   const State drawn = state;
   const bool full = fullRefreshPending.exchange(false);
 

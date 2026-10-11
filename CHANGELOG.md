@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.29.10](https://github.com/victorstein/berean-os/compare/v1.29.9...v1.29.10) (2026-10-11)
+
+
+### Performance
+
+* enter Bible search and Publications with a fast refresh ([#255](https://github.com/victorstein/berean-os/issues/255)) ([106dfc4](https://github.com/victorstein/berean-os/commit/106dfc4b024429d325e87c4474007a66dde7b745))
+
+## [1.29.9](https://github.com/victorstein/berean-os/compare/v1.29.8...v1.29.9) (2026-10-11)
+
+
+### Documentation
+
+* record the responsiveness research, baseline and roadmap ([#253](https://github.com/victorstein/berean-os/issues/253)) ([3e56b62](https://github.com/victorstein/berean-os/commit/3e56b6293735e8f0c2551165a551fcb1c5e62fc0))
+
 ## [1.29.8](https://github.com/victorstein/berean-os/compare/v1.29.7...v1.29.8) (2026-09-30)
 
 

@@ -52,8 +52,6 @@ void PublicationsActivity::drawFooter() {
 void PublicationsActivity::onEnter() {
   UiListActivity::onEnter();
   refresh();
-  // Entered from the launcher's cover tiles: one clean paint over them.
-  halfRefreshPending.store(true);
   LOG_INF(MODULE, "Memory on entry: internal free %u (largest %u), PSRAM free %u",
           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
           static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
