@@ -641,12 +641,14 @@ verse document, which takes about 2 s on the NWT.
 - **Owners.** `src/study/BibleSearchFingerprintFile.{h,cpp}` owns the layout, load and save.
   `BibleSearchStore.cpp` decides when to read and write it.
 - **Derived data.** Deleting it costs one recompute.
-- **Lifetime.** It lives in the Bible's cache directory on purpose: every on-device delete or
+- **Lifetime.** It lives in the Bible's cache directory on purpose: an on-device delete or
   replace of the Bible removes that directory, and the record with it. That covers web upload,
-  delete, move and rename, WebDAV, the file browser, the publication downloader and Clear Cache.
-  An in-place `book.bin` rebuild does not: a `BOOK_CACHE_VERSION` change, or `book.bin` deleted on
-  its own. So `VERSION` must be bumped with any `BOOK_CACHE_VERSION` change that alters spine
-  hrefs.
+  delete, move and rename, WebDAV PUT and DELETE, the file browser, the publication downloader
+  and Clear Cache. Two paths leave it behind. A WebDAV MOVE or COPY with `Overwrite: T` onto the
+  Bible's path removes the old file without clearing its cache (`WebDAVHandler.cpp`,
+  berean-o-10). An in-place `book.bin` rebuild does too: a `BOOK_CACHE_VERSION` change, or
+  `book.bin` deleted on its own. So `VERSION` must be bumped with any `BOOK_CACHE_VERSION` change
+  that alters spine hrefs.
 - **What is written.** Only a resolve in which every book 1-66 contributed a verse document. A
   partial one is used for that boot only.
 - **How it is written.** As `search-fingerprint.bin.tmp`; then the old record is removed and the
