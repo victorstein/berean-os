@@ -90,7 +90,7 @@ The `1d0`/`5d3` hunk numbers may differ. The two `<` lines must not.
 
 - If any **other** line differs, stop. A sibling changed a refresh choice, and this plan's expected
   list needs re-checking against spec A8 before going on.
-- Keep this command at hand. Tasks 2, 3, 5 and 6 rerun it verbatim.
+- Keep this command at hand. Tasks 2 to 6 rerun it verbatim.
 
 Nothing to commit.
 
@@ -188,6 +188,12 @@ EOF
 All four edits are in `src/activities/reader/BibleSearchActivity.cpp`. They are comments only.
 Re-read each spot before editing it.
 
+**Red first.** Run this before the edits; expect `0`:
+
+```bash
+grep -c "Closes the build's progress view\|only FAST repaints have\|The build's first clean paint\|FAST otherwise, entering the screen included" src/activities/reader/BibleSearchActivity.cpp
+```
+
 **4a. `showFailure` (spec A6).** As of `1ba1cd34` this is `:243-252`.
 
 old:
@@ -255,7 +261,7 @@ new:
     return;
 ```
 
-**4d. The `render()` header comment (spec A7).** As of `1ba1cd34` this is `:1011-1015`.
+**4d. The `render()` header comment (spec A7).** As of `1ba1cd34` this is `:1011-1014`.
 
 old:
 
@@ -275,7 +281,8 @@ void BibleSearchActivity::render(RenderLock&&) {
   // completes or fails; FAST otherwise, entering the screen included.
 ```
 
-Rerun the Task 1 command. Expect it still green (exit 0): comments do not change it.
+**Green.** Rerun the red-first `grep -c` above; expect `4`. Then rerun the Task 1 command and
+expect it still green (exit 0): these comments do not match its patterns.
 
 ```bash
 git add src/activities/reader/BibleSearchActivity.cpp
@@ -291,7 +298,14 @@ EOF
 
 ## Task 5 — `UiListActivity.h`'s flag comment states the mechanism only (spec A8, review MAJOR-1) (2 min)
 
-Re-read `src/activities/UiListActivity.h`. As of `1ba1cd34` this is `:85-89`.
+Re-read `src/activities/UiListActivity.h`. As of `1ba1cd34` this is `:86-90`.
+
+**Red first.** Run this before the edit; expect `0` then `1`:
+
+```bash
+grep -c "setter says why" src/activities/UiListActivity.h
+grep -c "replaces cover art" src/activities/UiListActivity.h
+```
 
 old:
 
@@ -319,7 +333,8 @@ Each remaining setter already carries its own reason:
 
 Leave all three alone.
 
-Rerun the Task 1 command. Expect it still green.
+**Green.** Rerun the two `grep -c` lines; expect `1` then `0`. Then rerun the Task 1 command and expect
+it still green.
 
 ```bash
 git add src/activities/UiListActivity.h
@@ -369,7 +384,10 @@ Expect exactly three files:
 - `src/activities/reader/BibleSearchActivity.cpp`.
 
 If the Task 0 merge brought in sibling changes, compare against `origin/main` instead:
-`git diff --stat origin/main...HEAD`.
+`git diff --stat origin/main...HEAD -- src/ lib/ freeink-sdk test/`.
+
+Push only when the implement-phase prompt authorises it, as it normally does (CLAUDE.md, Git workflow
+rule 2). Otherwise stop after the local commits.
 
 ```bash
 git push
@@ -385,13 +403,27 @@ The worker opens the PR against `main` only when its implement-phase prompt says
 - **Before writing the body:** decide which end-to-end search figure to quote.
 
   ```bash
-  git log --oneline 1ba1cd34..origin/main -- src/activities/reader/BibleSearchActivity.cpp src/study/
+  gh pr list --repo victorstein/berean-os --state merged --head perf/r11-search-index-resident \
+    --json number,title,mergeCommit --jq '.[] | "\(.number) \(.mergeCommit.oid) \(.title)"'
   ```
 
-  - If that shows no berean-o-6 (R11) commit, quote the `1ba1cd34`-baseline estimate below.
-  - Otherwise, replace the end-to-end search line with "measured on device against `main` at
-    `<sha>`". R11 changes the index-open time, so the estimate no longer holds (spec Goal 5,
-    review MINOR-4).
+  - **Empty output:** R11 has not merged. Quote the `1ba1cd34`-baseline estimate in the body as
+    written.
+  - **Output present, and that merge commit is in this branch** (`git merge-base --is-ancestor <oid>
+    HEAD` exits 0): recompute the end-to-end search row as an estimate.
+    - Formula: new ≈ baseline end-to-end − ~950 ms − (baseline frame → keyboard − R11's expected
+      frame → keyboard).
+    - Take R11's expected figures from its merged PR body or its spec
+      (`docs/superpowers/specs/2026-10-11-berean-o-6-design.md`, Goal).
+    - With R11's spec as written on 2026-10-11, the inputs are:
+      - first search after boot: frame → keyboard 2,436 ms → ~0.5 s, so 4.6 − 0.95 − 1.94 ≈ 1.7 s;
+      - later entries: ~500 ms → under 100 ms, so 2.7 − 0.95 − 0.4 ≈ 1.35 s or less.
+    - Put the result in the table's Bible search row, and add one line under the table showing the
+      arithmetic and naming R11's PR number.
+    - If R11's PR states no frame → keyboard figure, write instead: "not estimated: depends on R11's
+      index open; the owner measures against `main` at `<sha>`".
+  - **Output present, but the merge commit is not in this branch:** run Task 0's merge first, then
+    redo Task 6's checks.
 
 Body, filled in as written:
 
@@ -471,3 +503,22 @@ Refs berean-o-1
 ````
 
 The pipeline requires `Refs berean-o-1` to be the body's last line, so the session link goes above it.
+
+## Amendments (after plan review 0)
+
+Review: `docs/superpowers/reviews/berean-o-1-plan-review-0.md`, verdict CLEAR with five MINORs. All
+five are accepted and applied above:
+
+- **MINOR-1 → Task 7.**
+  - R11 is detected by its merged PR, `gh pr list --head perf/r11-search-index-resident`, not by a
+    commit subject.
+  - If it has landed, the end-to-end figure is recomputed and labelled an estimate. It is never
+    described as measured.
+- **MINOR-2 → Task 6.** The fallback scope check carries the same path filter as the primary one.
+- **MINOR-3 → Tasks 4 and 5.**
+  - Each now opens with a `grep -c` that is red before the edit and green after: `0` → `4` in
+    Task 4, and `0 1` → `1 0` in Task 5.
+  - The invariant then confirms nothing else moved.
+- **MINOR-4 → Task 6.** The push is gated on the implement-phase prompt, like the PR in Task 7.
+- **MINOR-5.** The `UiListActivity.h` block is `:86-90` and the `render()` block is `:1011-1014`.
+  Tasks 2 to 6 rerun the invariant.
