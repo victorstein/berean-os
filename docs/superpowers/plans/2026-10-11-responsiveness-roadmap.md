@@ -6,7 +6,8 @@ A map for making bereanOS feel faster, written so that another agent can pick it
   cited below as **F1–F18**; read that file first.
 - **Base:** `1ba1cd3`. `freeink-sdk` is pinned at `67f7e012` (branch `berean` of
   `victorstein/freeink-sdk`).
-- **State:** research done. Nothing implemented, nothing measured on a device.
+- **State:** research done. Device baseline taken 2026-10-11 on a UC8179 unit
+  (`docs/superpowers/notes/responsiveness-baseline.md`) and the items re-ranked from it below.
 
 ## What this roadmap is, and is not
 
@@ -27,6 +28,30 @@ worked, and which scoped agent (`.claude/agents/*.md`) owns it.
 items here shave the firmware's own time around it, and the right order depends on numbers nobody
 has yet. Phase 0 produces them. Re-rank Phases 2–4 by what Phase 0 shows; Phase 1 is cheap enough
 to do regardless.
+
+## Re-ranked from the baseline (2026-10-11)
+
+Measured on the owner's unit: a **UC8179** panel, an SD-card reading font, anti-aliasing on, then
+off. Costs are medians from `docs/superpowers/notes/responsiveness-baseline.md`. This order
+supersedes the phase order below for that unit.
+
+| Rank | Item | Measured cost it removes |
+|---|---|---|
+| 1 | **R20** FAST, not HALF, on entering Bible search and Publications | ~950 ms per entry (HALF 1,506 ms vs FAST ~560 ms) |
+| 2 | **R9** band cache, Home cover and mastheads | `Band drawn in` 225 ms per masthead paint; Home paints 241–257 ms of CPU |
+| 3 | **R12**, or a cheaper `BookMetadataCache::load`, plus **R5** | `Book loaded in` 505 ms on every Home → Bible; ~70 ms of saves before the first frame |
+| 4 | **R21** menu close without a full re-render | 1,160 ms per close with AA on |
+| 5 | **R2** SD card at 40 MHz | book load, section build, search index open, verse scans |
+| 6 | **R11** keep the Bible search index open | ~500 ms per re-entry; 2.2 s on the first search after every boot |
+| 7 | **R22** parse the verse file once per sleep cycle | 445 ms at sleep + 405 ms at wake |
+
+**Dropped for UC8179 units:** R1, R15, R16 (SSD1677 driver only) and R4 (the overlap path is
+SSD1677-only, F6). **Dropped for SD-card reading fonts:** R8 (`prewarm=` is 8 ms in-chapter).
+**Bottom:** R3 and R19. Taps fire on release, and the touch-down already restores the 10 ms loop:
+16 of 17 idle taps were seen 35–145 ms before they fired.
+
+**Unranked:** R6, R7, R10, R13, R14, R17, R18 (not measured, or measured small). Re-measure on an
+SSD1677 unit before ranking R1, R4, R15 or R16 for one.
 
 ## Summary
 
@@ -447,6 +472,45 @@ Each is independent and touches a different file. They can run in parallel.
 - **Verify:** R3's latency win at the 50 ms idle delay, or longer, with no battery cost.
 
 ---
+
+## Phase 6 — Found by the baseline
+
+### R20. FAST, not HALF, on entering Bible search and Publications
+
+- **Evidence:** baseline. Both screens' first paint is a HALF (1,506 ms on UC8179).
+  - Bible search: `enterState(State::Opening, /*fullRefresh=*/true)`
+    (`src/activities/reader/BibleSearchActivity.cpp:114`), resolved to `HALF_REFRESH` at `:1032`.
+    `State::Ready` (`:373`) and `State::Starting` (`:444`) ask for one too.
+  - Publications: `halfRefreshPending.store(true)` in `onEnter` "over the launcher's cover tiles"
+    (`src/activities/catalog/PublicationsActivity.cpp:55-56`; the flag is
+    `src/activities/UiListActivity.h:85-89`, used at `UiListActivity.cpp:169`).
+- **Question to settle:** does a FAST over the previous screen's cover art or an anti-aliased
+  page leave visible ghosting on this panel? The UC8179 already runs `gray_pre_DRF` when leaving
+  an anti-aliased page. If FAST ghosts, a cheaper clean than HALF, or HALF only when the previous
+  screen had cover art or gray pixels, is the fallback. Ghosting tolerance is an owner decision.
+- **Verify:** the entry's `Wait complete: 8179_DRF` drops from ~1,506 ms to ~560 ms; no ghost of
+  Home's cover or the reader page on device.
+
+### R21. Close the reader menu without a full re-render
+
+- **Evidence:** baseline. The menu logs `sheet mode: over-page (page saved)`
+  (`src/activities/reader/EpubReaderMenuActivity.cpp:286`), yet closing it re-renders the page and,
+  with AA on, its whole gray pass: `total=` 1,160 ms.
+- **Idea:** restore the saved page instead of re-rendering it. Find what "page saved" holds and
+  whether the gray planes can be kept too (PSRAM, 2 × 48,000 B).
+- **Verify:** menu close no longer logs a `Page render` with `bw_render`/`gray_lsb`; time to settled
+  drops.
+
+### R22. Parse the verse file once per sleep cycle
+
+- **Evidence:** baseline. Sleep runs `Study pick` over a 43,864-byte file (445 ms,
+  `src/activities/boot_sleep/StudySleepScreen.cpp:254`). Every wake then runs Home's
+  `Verse scan` over the same file (405 ms, `src/activities/launcher/HomeVerse.cpp:98`), because
+  `HomeVerse`'s cache lives in RAM (`HomeVerse.cpp:62-66`) and deep sleep is a reboot.
+- **Idea:** persist Home's pick keyed as `HomeVerse` keys it now (date + file identity), or have
+  the sleep pick produce it, so a wake does not rescan.
+- **Verify:** no `Verse scan` line on a same-day wake; Home's second paint after wake disappears or
+  drops.
 
 ## Owner decisions (not agent tasks)
 
