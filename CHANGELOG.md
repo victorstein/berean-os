@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.15](https://github.com/victorstein/berean-os/compare/v1.29.14...v1.29.15) (2026-10-11)
+
+
+### Performance
+
+* make opening the Bible from Home cheap ([#266](https://github.com/victorstein/berean-os/issues/266)) ([3692094](https://github.com/victorstein/berean-os/commit/3692094560b708a080b41677eb9ac8bea62b75b8))
+
 ## [1.29.14](https://github.com/victorstein/berean-os/compare/v1.29.13...v1.29.14) (2026-10-11)
 
 
