@@ -50,12 +50,15 @@ The causes:
 2. **[D1] The first search after a boot reads the fingerprint from a 40-byte record** instead of
    recomputing it. Expected frame → keyboard ≈ 0.5 s (from ~2.44 s). That covers the name load,
    the index open and one small read. It is an estimate until the device run measures it.
-3. **Memory held between entries is bounded, logged, and released** on:
-   - a Bible change,
-   - an index rebuild,
-   - a query I/O failure,
-   - PSRAM below a floor when the screen is left,
-   - sleep.
+3. **Memory held between entries is bounded, logged, and released**:
+   - **immediately** on an index rebuild or a query I/O failure;
+   - **at the next search entry** on a Bible change (detected there, A3);
+   - **when the screen is left** if PSRAM is below the floor (A6);
+   - **at sleep**, by the chip reset (A7).
+
+   Both Bible-change and pressure release are lazy. A deleted or replaced Bible's ~450 KB stays
+   held until the next search entry or sleep. The PR body's memory section says exactly this,
+   never "released eagerly".
 4. **Every phase is timed in `LOG_DBG`**, so the device run proves the after-figures phase by
    phase.
 
@@ -108,9 +111,12 @@ The causes:
   and spine count. The path and size are what the document cache uses today
   (`BibleSearchStore.cpp:114`). The spine count is added because the fingerprint covers it
   (`:178`) and the units index validates on it (`UnitIndexCache.cpp:63-83`). The store
-  re-identifies on every `open`/`status`/`documents`/`restoreBookNames` call. Each call opens the
-  EPUB once for its size, which is today's cost (`:83-88`). A different identity releases
-  everything resident before anything else runs.
+  re-identifies on every `open`/`status`/`documents` call. Each such call opens the EPUB once for
+  its size, which is today's cost (`:83-88`). `restoreBookNames`/`keepBookNames` do **not**
+  re-identify: they compare against the identity the preceding `open()` or `status()` set during
+  the same Opening work (A13). If no identity is set, they keep nothing and restore nothing. So a
+  re-entry opens the EPUB exactly once (Goal 1). A different identity releases everything resident
+  before anything else runs.
 
 - **A4 — The book-name table is kept as a copy in the store, never lent.** The activity keeps its
   own `bookNames` member (`BibleSearchActivity.h:111`); render reads it on the render task
@@ -133,16 +139,24 @@ The causes:
 
 - **A6 — PSRAM pressure is a retention floor checked when the screen is left.** `park()` measures
   `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)` and `heap_caps_get_largest_free_block(...)` with
-  the resident blocks still held. It keeps them only if free ≥ **2 MiB** and the largest block ≥
+  the resident blocks still held. It keeps them only if free ≥ **3 MiB** and the largest block ≥
   **1 MiB**.
   - **Pattern:** the same retain-only-above-a-floor bet `SdCardFont::resetStyleMiniData` makes
     (`SdCardFont.cpp:73`, `:118-125`).
-  - **Sizing:** the largest PSRAM working set reachable while parked is Buscar's catalog inflate.
-    It holds a ≤512 KB compressed buffer and allocates a ≤1 MiB output while the source is live
-    (`CatalogIndexStore.h:77-78`, `CatalogIndexStore.cpp:108-133`), 1.5 MiB together. 2 MiB covers
-    it with margin, and the 1 MiB largest-block floor covers its output block. The index build
-    (2.88 MB) is not a parked-time consumer, because `BibleSearchIndexer::begin` closes the store
-    first (`BibleSearchIndexer.cpp:57-58`).
+  - **Sizing:** sized to budgets, not measured sizes. The largest PSRAM working set reachable while
+    parked is the catalog's update check. `checkRemote` validates the staged download with
+    `loadFrom` while the current index is still held (`CatalogIndexStore.cpp:234-237`). The held
+    copy is released only in `applyStaged` (`:277`). By the store's own budgets that is:
+    - the held index, ≤1 MiB;
+    - the compressed staging buffer, ≤512 KB;
+    - the inflated output, ≤1 MiB.
+
+    That totals 2.5 MiB (`CatalogIndexStore.h:77-78`). 3 MiB covers it with margin for the other
+    explicit PSRAM users, such as the study JSON allocator (`PsramJsonAllocator.cpp:12,19`). The
+    1 MiB largest-block floor covers the inflate's output block.
+
+    The index build (2.88 MB) is not a parked-time consumer: `BibleSearchIndexer::begin` closes the
+    store first (`BibleSearchIndexer.cpp:57-58`).
   - **Normal case:** baseline PSRAM free while reading is ~8.2 MB, so the floor never trips
     (research §4).
   - **Known gap:** an allocation that fails *after* parking does not release us. If R12 (t3) adds
@@ -173,8 +187,25 @@ The causes:
     - `CardBooks::remove` (`CardBooks.cpp:57`);
     - Clear Cache (`ClearCacheActivity.cpp:115-133`).
 
+    The same `clearBookCache` → `Epub::clearCache` → `removeDir` chain (`BookCacheUtils.cpp:23-26`,
+    `Epub.cpp:520-533`) is also reached from:
+    - WebDAV (`WebDAVHandler.cpp:376, 425, 534`);
+    - the publication downloader (`PublicationDownloader.cpp:110, 252`).
+
     Moving a finished book renames the directory along with it (`EpubReaderActivity.cpp:121-133`).
-    The record therefore lives exactly as long as the `book.bin` its hrefs came from.
+  - **Where the record outlives `book.bin`:** `book.bin` can be rebuilt in place, and the record
+    survives that.
+    - A `BOOK_CACHE_VERSION` mismatch makes `BookMetadataCache::load` fail
+      (`BookMetadataCache.cpp:466-472`). `Epub::load` then rebuilds `book.bin` in the same directory
+      (`Epub.cpp:374, 413-419`). A `book.bin` deleted on its own is rebuilt the same way.
+    - The key cannot carry `BOOK_CACHE_VERSION`. The constant is file-local to
+      `BookMetadataCache.cpp:13-14`, a file t3 holds.
+    - **The consequence is benign.** It is the same EPUB, so spine order and documents are
+      unchanged. Only a cache-format change that alters spine hrefs would make the record disagree
+      with a recompute. Even then the index stays usable, and the next build's `documents()`
+      rewrites the record.
+    - The record's `VERSION` comment and the `docs/file-formats.md` section therefore say the
+      version must be bumped with any `BOOK_CACHE_VERSION` change that alters spine hrefs.
   - **Exposure compared with today:**
     - A Bible replaced off-device by a same-size file is equally undetected. `book.bin` is keyed
       only by path hash and `BOOK_CACHE_VERSION` (`Epub.h:48`, `BookMetadataCache.cpp:460-472`), so
@@ -185,7 +216,29 @@ The causes:
   - **Placement precedent:** `src/` code already writes its own small binary file into
     `<cachePath>/` (`ProgressFile.h:32-62`).
 
-- **A10 [D1] — The record is written once, synchronously, right after `resolveDocuments` succeeds.**
+- **A10 [D1] — The record is written once, synchronously, right after a *complete*
+  `resolveDocuments`, from one call site.**
+  - **Complete only.** `resolveDocuments` succeeds even when a book resolves to no documents. Such
+    a book is logged and skipped (`BibleSearchStore.cpp:146-157`), and only `count == 0` fails
+    (`:158-161`). `UnitIndexCache::spineIndicesForBook` returns empty on transient failures too:
+    - an OOM of its 3,937-B map (`UnitIndexCache.cpp:383-386`);
+    - a failed open (`:389`);
+    - a failed seek or short read (`:390-391`).
+
+    A partial fingerprint persisted would outlive the boot that produced it. It would either make
+    a valid index Stale on every boot, or seal in a partial index built that boot.
+    `resolveDocuments` therefore also reports whether every book 1-66 contributed at least one
+    document; the predicate `BibleSearchFingerprintFile::coversEveryBook` is pure and host-tested.
+    - A partial resolve serves this boot from RAM exactly as today, and is **never** written.
+    - The cost: an edition that genuinely lacks a book recomputes on every boot. The shipped NWT
+      has 66, and the store already logs a missing book as an error (`:155`).
+  - **One writer.** A single private `persistFingerprint()` is called after any complete resolve,
+    whether from `fingerprintFor` or from `documents()` on the indexer path. It writes only if
+    `mayOverwrite(recordLoad_)`.
+    - `recordLoad_` is the last `load` result for the current identity, reset by `identify()`.
+    - If no load has happened yet for this identity (the indexer path), `persistFingerprint` loads
+      once first, so a `TooNew` or `Unreadable` record is never overwritten from either path
+      (A11).
   - **When:** a fresh compute happens on the first search after the record was lost, or from
     `BibleSearchIndexer::begin`. The write runs inside the busy frame already on screen (Opening or
     Starting).
@@ -202,6 +255,12 @@ The causes:
   overwritten. This mirrors "Neither is overwritten" for `bible.idx` (`docs/file-formats.md:595`).
   - A wrong magic, a wrong length or a failed checksum (Corrupt), or a key mismatch (Stale), is
     recomputed **and** overwritten.
+  - **The decode order is what makes "newer is left alone" hold.** It mirrors `bible.idx`, which
+    checks magic, then version, then size (`IndexFormat.cpp:48-50`, `IndexReader.cpp:27-40`). The
+    order is fixed in § "Architecture", `BibleSearchFingerprintFile`.
+    - The version is read before the length, so a newer format of any length is `TooNew`.
+    - The magic is read before the version, so a foreign file can never pose as `TooNew` and pin
+      itself on the card.
   - **The cost:** after a downgrade, a newer record costs ~2 s per boot until the firmware is
     upgraded again.
 
@@ -210,6 +269,11 @@ The causes:
   calling `documents()`, which always resolves for real (`BibleSearchIndexer.cpp:59-64`). A build
   takes minutes, so its extra ~2 s is noise. A wrong record can therefore never make a build index
   the wrong documents.
+
+  A build started in a boot whose resolve was partial still indexes that partial list from the RAM
+  cache (`BibleSearchIndexer.cpp:59` → `documents()`), exactly as today. A10 keeps that from
+  persisting: the partial fingerprint is never written, so the next boot recomputes, finds the
+  partial index Stale, and offers the rebuild — today's behaviour.
 
 - **A13 — Opening runs the index work first, then the names.** Today names load before the index
   (`BibleSearchActivity.cpp:190-193`). The order changes so that `open()` establishes the identity
@@ -251,21 +315,35 @@ modelled on:
 ```cpp
 namespace BibleSearchFingerprintFile {
 inline constexpr uint32_t MAGIC = 0x50465342;  // "BSFP" little-endian
-// Bump when what the fingerprint covers, or how verse documents are resolved, changes.
+// Bump when what the fingerprint covers, how verse documents are resolved, or (through a
+// BOOK_CACHE_VERSION change) the spine hrefs it hashes, changes.
 inline constexpr uint16_t VERSION = 1;
 inline constexpr size_t RECORD_BYTES = 40;
 inline constexpr const char* FILE_NAME = "search-fingerprint.bin";
+
+// FNV-1a 64, the hash every bible.idx on a card is already keyed by. Moved out of the store's
+// anonymous namespace and declared here so the store and the record share one, tested definition.
+struct Fnv1a64 {
+  uint64_t hash = 14695981039346656037ull;
+  void add(const void* data, size_t length);
+  void addU32(uint32_t value);  // little-endian bytes
+  void addU64(uint64_t value);  // little-endian bytes
+};
 
 struct Key { uint64_t epubSize; uint32_t spineCount; uint16_t unitIndexVersion; };
 struct Record { Key key; uint32_t verseDocuments; uint64_t fingerprint; };
 enum class Load { Ok, Missing, Unreadable, Corrupt, TooNew, Stale };
 
 void encode(uint8_t (&out)[RECORD_BYTES], const Record& r);
+// `length` is the file's real size; `in` holds min(length, RECORD_BYTES) bytes.
 Load decode(const uint8_t* in, size_t length, const Key& expected, Record& out);
 Load load(const std::string& cachePath, const Key& expected, Record& out);
 bool save(const std::string& cachePath, const Record& r);  // temp + rename; false on any failure
 // Whether a load result may be replaced by a fresh record (everything but TooNew and Unreadable).
 bool mayOverwrite(Load result);
+// True when every canonical book 1..66 contributed at least one verse document; only then may a
+// resolve be persisted (A10). `books` is the resolved list's book column.
+bool coversEveryBook(const uint8_t* books, uint32_t count);
 }
 ```
 
@@ -282,18 +360,30 @@ bool mayOverwrite(Load result);
 | 24 | `fingerprint` u64 |
 | 32 | `check` u64: FNV-1a 64 over bytes 0-31 |
 
-**Byte budget:** the record is exactly `RECORD_BYTES`. `decode` refuses any other length. `save`
-writes exactly that many bytes and verifies `fileSize()` after the flush. A load is one
-`openFileForRead` plus one 40-byte `read`, never `Storage.readFile`.
+**Byte budget:** a valid record is exactly `RECORD_BYTES`. `save` writes exactly that many bytes
+and verifies `fileSize()` after the flush. A load is one `openFileForRead` plus one `read` of
+`min(fileSize(), RECORD_BYTES)` bytes, never `Storage.readFile`. It passes `fileSize()`, not the
+count read, as `decode`'s `length`, so a 41-byte file is refused through `load` as well as
+through `decode`.
 
-**Checks on load:**
-- A version above `VERSION` → `TooNew`.
-- A bad magic or check, or a lower version → `Corrupt`.
-- A key mismatch → `Stale`.
+**Decode order (fixed; this order is what makes A11 hold):**
+1. `length < 6`, or a bad magic → `Corrupt`.
+2. version > `VERSION` → `TooNew`, whatever the length and check.
+3. version < `VERSION` → `Corrupt`.
+4. `length != RECORD_BYTES` → `Corrupt`.
+5. A check mismatch → `Corrupt`.
+6. A key mismatch → `Stale`.
 
-**Failure classes:** `Unreadable` means the file exists but cannot be opened or read; it is
-transient, so it is not overwritten. A short read is `Corrupt`. `Fnv1a64` moves from the store's
-anonymous namespace into this file's, so the store and the record share one implementation.
+**Failure classes:**
+- `Missing`: no file.
+- `Unreadable`: the file exists but cannot be opened, or its read fails. It is transient, so it
+  is not overwritten.
+- A read returning fewer bytes than `min(fileSize(), RECORD_BYTES)` is `Corrupt`.
+
+**The hash:** `Fnv1a64` is declared in this header (above), not in an anonymous namespace. The
+store's fingerprint uses it through `addU32`/`addU64` exactly as today (`BibleSearchStore.cpp:174-189`).
+A byte-order slip there would turn every user's index Stale, so the tests pin it (§ "Testing
+strategy").
 
 ### New: `src/study/BibleSearchResidency.h` (header-only, pure)
 
@@ -303,12 +393,19 @@ without `Epub`. Modelled on `BibleNavCacheOf` being kept Epub-free for `test/num
 
 ```cpp
 namespace BibleSearchResidency {
-inline constexpr size_t MIN_FREE_PSRAM = 2u * 1024u * 1024u;
+inline constexpr size_t MIN_FREE_PSRAM = 3u * 1024u * 1024u;
 inline constexpr size_t MIN_LARGEST_PSRAM_BLOCK = 1024u * 1024u;
-constexpr bool keepAfterExit(size_t freePsram, size_t largestPsramBlock);
+constexpr bool keepAfterExit(const size_t freePsram, const size_t largestPsramBlock) {
+  return freePsram >= MIN_FREE_PSRAM && largestPsramBlock >= MIN_LARGEST_PSRAM_BLOCK;
+}
 // The held reader may be reused when the re-read header bytes and the file size are the held ones.
-bool heldIndexMatches(const BibleSearch::IndexHeader& held, const uint8_t* raw, size_t rawLength,
-                      uint32_t fileSize);
+inline bool heldIndexMatches(const BibleSearch::IndexHeader& held, const uint8_t* raw,
+                             const size_t rawLength, const uint32_t fileSize) {
+  if (rawLength < BibleSearch::INDEX_HEADER_BYTES || fileSize != held.fileSize) return false;
+  uint8_t expected[BibleSearch::INDEX_HEADER_BYTES];
+  BibleSearch::writeHeader(expected, held);
+  return memcmp(expected, raw, sizeof(expected)) == 0;
+}
 }
 ```
 
@@ -317,6 +414,8 @@ bool heldIndexMatches(const BibleSearch::IndexHeader& held, const uint8_t* raw, 
 **New members:**
 - `identity_` (path, size, spine count);
 - `fingerprint_` and `fingerprintKnown_`;
+- **[D1]** `recordLoad_` and `recordLoaded_`: the last record `load` result for this identity,
+  reset by `identify()` (A10);
 - `names_`, an `AllocatedBuffer` sized `sizeof(BibleBookNameTable)`, plus `namesKept_`.
 
 The existing document cache (`documentsPath_`, `documentsEpubSize_`, `documentsReady_`,
@@ -324,15 +423,17 @@ The existing document cache (`documentsPath_`, `documentsEpubSize_`, `documentsR
 
 | Method | Change |
 |---|---|
-| `identify(epub)` (private, new) | Sizes the EPUB and reads `getSpineItemsCount()`. On a different identity it calls `releaseResident()` and clears the fingerprint and document cache. False when the EPUB cannot be sized. |
-| `fingerprintFor(epub, out)` (private, new) | RAM → **[D1]** record → `resolveDocuments`. Logs `Fingerprint <source> in N ms`. |
-| `documents(epub)` | Unchanged contract. A successful resolve also sets `fingerprint_` and **[D1]** writes the record (A10). |
+| `identify(epub)` (private, new) | Sizes the EPUB and reads `getSpineItemsCount()`. On a different identity it calls `releaseResident()` and clears the fingerprint, the document cache and **[D1]** `recordLoaded_`. False when the EPUB cannot be sized. |
+| `fingerprintFor(epub, out)` (private, new) | RAM → **[D1]** record (`load`, remembered in `recordLoad_`) → `resolveDocuments`. Logs `Fingerprint <source> in N ms`. |
+| `resolveDocuments(epub, size)` | Also reports completeness through `coversEveryBook` (A10). |
+| `persistFingerprint()` (private, new) **[D1]** | The only writer. Called after a **complete** resolve, from both `fingerprintFor` and `documents()`. Loads once if `!recordLoaded_`, then calls `save` only if `mayOverwrite(recordLoad_)`. |
+| `documents(epub)` | Unchanged contract. A successful resolve also sets `fingerprint_`, and **[D1]** a complete one calls `persistFingerprint()`. |
 | `status(epub)` | Uses `fingerprintFor` instead of `documents()`. |
 | `open(epub, statusOut)` | No longer starts with `close()`. Identify → fingerprint → if a reader is held for this fingerprint, **resume** (A2); otherwise close and open fresh as today. Then `cacheTermIndex()`, which is a no-op when the cache is held and a retry when it is not (`IndexReader.cpp:50-52`). Logs `Index resumed in N ms` or `Index opened in N ms (term index B bytes)`. |
 | `close()` | Unchanged (A8). |
 | `park()` (new) | Closes `indexFile_` if open, then applies A6. Below the floor → `releaseResident()` plus an `INF` log of free/largest. Otherwise a `DBG` log of what is held. |
 | `releaseResident()` (private, new) | `close()` plus frees `names_`. |
-| `restoreBookNames(epub, out)` / `keepBookNames(epub, in)` (new) | Identify, then copy (A4). Restore is false when nothing is held for this identity. |
+| `restoreBookNames(epub, out)` / `keepBookNames(epub, in)` (new) | No re-identify: compare `epub->getPath()` and spine count against the identity the preceding `open()`/`status()` set (A3, A13), then copy (A4). Restore is false when nothing is held for that identity or none is set. |
 
 ### Changed: `src/activities/reader/BibleSearchActivity.cpp`
 
@@ -361,9 +462,12 @@ file is registered to this task, so no shared append point is touched.
 section covers:
 - the layout table;
 - the key;
-- the version and refusal rules (A11);
+- the version and refusal rules, and the decode order (A11);
+- that only a complete resolve is persisted (A10);
 - the temp+rename write;
-- that the record lives and dies with the Bible's cache directory (A9).
+- that the record lives and dies with the Bible's cache directory, except for an in-place
+  `book.bin` rebuild, which is why `VERSION` must be bumped with any `BOOK_CACHE_VERSION` change
+  that alters spine hrefs (A9).
 
 `docs/file-formats.md` is also on t3's file list, and this task does not hold it yet. At
 `implement` it is added to this task's files once t3's lock allows. If the lock is still held
@@ -385,7 +489,9 @@ never dropped.
 ### First search ever, or after the record was lost
 
 Same as above, but step 2's fingerprint is computed by `resolveDocuments` (~1.95 s, the existing
-`INF` line) and **[D1]** the record is written.
+`INF` line). **[D1]** If the resolve covered every book, `persistFingerprint()` writes the record,
+unless the record found on the card is `TooNew` or `Unreadable`. A partial resolve is used from RAM
+only (A10).
 
 ### Later search, same boot
 
@@ -432,6 +538,7 @@ Resume's open fails → close → fresh open → `Missing` → `status` → prom
 | [D1] Record `Missing`/`Corrupt`/`Stale` | Recompute, then overwrite. |
 | [D1] Record `TooNew` | Recompute in RAM, do not overwrite (A11). |
 | [D1] Record `Unreadable` (exists, cannot be opened or read) | Recompute, do not overwrite. |
+| [D1] Partial resolve (a book 1-66 resolved to no documents) | Serve this boot from RAM, as today. The record is **not** written (A10). The existing per-book `LOG_ERR` stays, plus one `LOG_ERR` saying the fingerprint was not persisted. |
 | [D1] Record write fails (temp, short write, remove, rename) | `LOG_ERR`, carry on. The fingerprint is in RAM. A leftover `.tmp` is overwritten by the next save. |
 
 ## Memory
@@ -459,10 +566,23 @@ TDD. Each test is written and run red before the code exists. All tests are host
 **[D1] `FingerprintFileTest.cpp`** — codec, modelled on `test/unit_index_format/UnitIndexFormatTest.cpp`:
 - round trip;
 - a golden 40-byte vector pins the layout;
-- each of bad magic, flipped check byte, 39 and 41 bytes → `Corrupt`;
-- version + 1 → `TooNew`;
+- the decode order:
+  - `VERSION + 1` at lengths 6, 40 and 48, each with a wrong check → `TooNew`;
+  - a 40-byte record with a wrong magic and version bytes `0xFFFF` → `Corrupt`;
+  - lengths 0 and 5 → `Corrupt`;
+  - `VERSION` at lengths 39 and 41 → `Corrupt`;
+  - a flipped check byte → `Corrupt`;
+  - version `VERSION - 1` (i.e. 0) with a valid check → `Corrupt`;
 - `epubSize`, `spineCount` and `unitIndexVersion` mismatch → `Stale`;
-- `mayOverwrite` is false only for `TooNew` and `Unreadable`.
+- `mayOverwrite` is false only for `TooNew` and `Unreadable`;
+- `Fnv1a64` pinned to the published FNV-1a-64 vectors: `""` → `cbf29ce484222325`, `"a"` →
+  `af63dc4c8601ec8c`;
+- `addU32`/`addU64` equal `add()` over the value's little-endian bytes;
+- `coversEveryBook`:
+  - true for a list with every book 1-66;
+  - false with any one book missing;
+  - false for an empty list;
+  - unaffected by duplicates and order.
 
 **[D1] `FingerprintFileIoTest.cpp`** — load and save against `test/stubs/HalStorageFake` (seeded
 with `putFile`, inspected with `fileBytes`), modelled on `test/storage_io/AtomicWriteTest.cpp`:
@@ -472,6 +592,8 @@ with `putFile`, inspected with `fileBytes`), modelled on `test/storage_io/Atomic
 - load of an absent file → `Missing`;
 - `failReadsOf(path)` → `Unreadable`;
 - a file truncated to 20 B → `Corrupt`;
+- a 41-byte file holding a valid `VERSION` record plus one byte → `Corrupt` through `load`;
+- a 48-byte `VERSION + 1` file → `TooNew` through `load`;
 - `readCallsOn(path)` is 1, so the load is one read, not a byte-at-a-time loop.
 
 **`ResidencyTest.cpp`** — `keepAfterExit` at, below and above each floor.
@@ -535,3 +657,37 @@ All figures are at the SD clock of the build flashed. Say which, since R2 (t5) c
   Its contents are listed, and so is how it lands while t3 holds that file.
 - No design change. The answer matches A9-A12 as written: the location, the key, the FNV-64 check,
   the temp+rename write, the single 40-byte read, and fingerprint-only use.
+
+## Changes after review 1
+
+Review: `docs/superpowers/reviews/berean-o-6-spec-review-1.md` (verdict CLEAR; 0 BLOCKER, 2 MAJOR,
+6 MINOR). There is no review 0 on disk: the pass-0 reviewer stopped on an API rate limit before
+writing anything. Every finding was checked against the code and accepted. None of them reopens D1.
+
+- **M1, partial resolve persisted.** A10 now persists only a resolve in which every book 1-66
+  contributed. The new pure predicate `coversEveryBook` is host-tested. A12 explains why a build
+  in a partial boot still heals on the next boot, and the error table has a "partial resolve" row.
+- **M2, decode order.** The order is fixed in the `BibleSearchFingerprintFile` section: magic,
+  then version (`TooNew` whatever the length), then length, check and key. `load` passes
+  `fileSize()` and reads `min(size, 40)` bytes. The codec and I/O tests now cover each step of the
+  order.
+- **m1, writer and gate.** One private `persistFingerprint()` writes. It is gated by
+  `mayOverwrite(recordLoad_)`, which is kept per identity and loads once on the indexer path (A10,
+  method table).
+- **m2, floor sizing.** `MIN_FREE_PSRAM` is raised from 2 MiB to 3 MiB. It is sized to the catalog
+  update check's budgeted 2.5 MiB (`CatalogIndexStore.cpp:234-237`, `:277`), not to the 1.5 MiB
+  inflate (A6).
+- **m3, lifetime.** A9 no longer says the record lives exactly as long as `book.bin`. It names the
+  in-place rebuild case, the reason the key cannot carry `BOOK_CACHE_VERSION`, and the rule to bump
+  `VERSION` with an href-changing `BOOK_CACHE_VERSION` change. The record's `VERSION` comment and
+  the docs section say the same. A9's deletion list gains WebDAV and the downloader.
+- **m4, EPUB opens per re-entry.** `restoreBookNames`/`keepBookNames` no longer re-identify; they
+  compare against the identity `open()`/`status()` set (A3, method table). A re-entry opens the
+  EPUB once, as Goal 1 says.
+- **m5, Goal 3.** Goal 3 now says when each event releases memory. Bible change and PSRAM pressure
+  are both lazy, and the PR body must not claim eager release.
+- **m6, the hash and the sketch.**
+  - `Fnv1a64` is declared in `BibleSearchFingerprintFile.h`, and tests pin it to the published
+    vectors and its little-endian helpers.
+  - `keepAfterExit` and `heldIndexMatches` have their bodies in the header-only sketch, and
+    `heldIndexMatches` is `inline`.
