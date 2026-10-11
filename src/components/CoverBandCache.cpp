@@ -3,8 +3,11 @@
 #include <Logging.h>
 #include <esp_heap_caps.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <iterator>
+#include <numeric>
 
 namespace {
 
@@ -36,13 +39,12 @@ void CoverBandCache::noteCoversChanged() { coverEpoch.fetch_add(1); }
 bool CoverBandCache::isLive(const Slot& slot) const { return slot.valid && slot.epoch == coverEpoch.load(); }
 
 const uint8_t* CoverBandCache::find(const std::string& coverPath, const Rect& band, const CoverBand::Style& style) {
-  for (Slot& slot : slots) {
-    if (isLive(slot) && slot.coverPath == coverPath && sameBand(slot.band, band) && sameStyle(slot.style, style)) {
-      slot.lastUse = ++useClock;
-      return slot.bits.get();
-    }
-  }
-  return nullptr;
+  const auto hit = std::find_if(std::begin(slots), std::end(slots), [&](const Slot& slot) {
+    return isLive(slot) && slot.coverPath == coverPath && sameBand(slot.band, band) && sameStyle(slot.style, style);
+  });
+  if (hit == std::end(slots)) return nullptr;
+  hit->lastUse = ++useClock;
+  return hit->bits.get();
 }
 
 CoverBandCache::Slot& CoverBandCache::victim() {
@@ -104,13 +106,12 @@ void CoverBandCache::abandon() {
 }
 
 size_t CoverBandCache::bytesHeld() const {
-  size_t total = 0;
-  for (const Slot& slot : slots) total += slot.bytes;
-  return total;
+  return std::accumulate(std::begin(slots), std::end(slots), size_t{0},
+                         [](const size_t total, const Slot& slot) { return total + slot.bytes; });
 }
 
 void CoverBandCache::clear() {
   reserved = nullptr;
-  for (Slot& slot : slots) slot = Slot();
+  std::generate(std::begin(slots), std::end(slots), [] { return Slot(); });
   useClock = 0;
 }
