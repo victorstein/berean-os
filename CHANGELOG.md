@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.11](https://github.com/victorstein/berean-os/compare/v1.29.10...v1.29.11) (2026-10-11)
+
+
+### Performance
+
+* run the SD card at 40 MHz high speed ([#257](https://github.com/victorstein/berean-os/issues/257)) ([b1a9f1a](https://github.com/victorstein/berean-os/commit/b1a9f1af0d0502632b250065ce520955a5cc7b75))
+
 ## [1.29.10](https://github.com/victorstein/berean-os/compare/v1.29.9...v1.29.10) (2026-10-11)
 
 
