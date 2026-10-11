@@ -420,8 +420,9 @@ on `test/places_store/CMakeLists.txt:1-43`: `test/stubs` first on the include pa
    the maximum fits. It stays as a guard and is not tested through the file.
 6. A file of non-JSON bytes is `Unreadable`; a `v: 2` file is `UnknownFormat`.
 
-**`test/home_layout/HomeLayoutTest.cpp`:** one new case, `verseText` equal (x, y, width, height)
-under `BaseMetrics::values` and `LyraMetrics::values` (A4).
+**`test/home_layout/HomeLayoutTest.cpp`:** one new case, `verseText` equal in width and height
+under `BaseMetrics::values` and `LyraMetrics::values` (A4). Its `y` legitimately moves with the
+theme, since the hero heights differ (`HomeLayoutTest.cpp:63-66`). Corrected while writing the plan.
 
 **`test/sd_paths/SdPathsTest.cpp`:** pins `HOME_VERSE_FILE` to `"/.berean/home-verse.json"`.
 
