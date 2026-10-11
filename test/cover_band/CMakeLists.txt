@@ -16,3 +16,19 @@ target_link_libraries(CoverBandGeometryTest PRIVATE
 )
 
 gtest_discover_tests(CoverBandGeometryTest)
+
+# BandInk's layout arithmetic, header-only like the geometry above.
+add_executable(BandInkTest
+  BandInkTest.cpp
+)
+
+target_include_directories(BandInkTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(BandInkTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(BandInkTest)
