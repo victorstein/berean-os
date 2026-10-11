@@ -26,6 +26,7 @@ TEST(SdPaths, BereanPathsMatchTheCard) {
   EXPECT_STREQ(sdpaths::TAGS_FILE, "/.berean/tags.json");
   EXPECT_STREQ(sdpaths::MEETING_WEEKS_FILE, "/.berean/meeting-weeks.json");
   EXPECT_STREQ(sdpaths::PLACES_FILE, "/.berean/places.json");
+  EXPECT_STREQ(sdpaths::HOME_VERSE_FILE, "/.berean/home-verse.json");
   EXPECT_STREQ(sdpaths::MIGRATION_REPORT_FILE, "/.berean/migration-report.json");
   EXPECT_STREQ(sdpaths::MIGRATION_LEDGER_FILE, "/.berean/migration-ledger.json");
   EXPECT_STREQ(sdpaths::SEARCH_DIR, "/.berean/search");

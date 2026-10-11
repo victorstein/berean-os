@@ -509,6 +509,43 @@ host-tested in `test/places_doc/`) and `src/PlacesStore.cpp` (storage, atomic wr
 At most 12 places, one per (book, chapter). The save budget, 2,118 bytes, is derived from the caps
 (`PlacesDoc::worstCaseBytes()`).
 
+## `/.berean/home-verse.json`
+
+Home's last completed verse scan. It lets a wake on the same day, with `bible.json` the same size
+and the same firmware build, show the verse without scanning again. A cache, not study data:
+deleting it costs one scan. Owned by `src/activities/launcher/HomeVerseDoc.{h,cpp}` (format,
+host-tested in `test/home_layout/HomeVerseDocTest.cpp`) and `src/activities/launcher/HomeVerseFile.{h,cpp}`
+(storage, atomic writes, host-tested in `test/home_layout/HomeVerseFileTest.cpp`). Read and
+written on the loop task only.
+
+### Version 1
+
+- `v` — format version. Required: an absent, zero, negative or newer `v` is not restored. Home
+  scans, and the save that follows replaces the file.
+
+```json
+{"v":1,"b":"1a2b3c4d","k":{"dt":true,"y":2026,"m":10,"d":11,"f":true,"n":43864},"e":0,
+ "p":{"u":"v:43:3:16:0","s":1201,"r":"John 3:16","rung":1,"l":["For God loved the world","so much that he gave"]}}
+```
+
+- `b` — the build that wrote it: the first 8 hex digits of the firmware ELF's SHA-256. Another
+  build's file is never restored, because its lines were fitted with that build's fonts.
+- `k` — the key:
+  - `dt` — whether the clock had a date;
+  - `y`, `m`, `d` — the local date, 0 when undated;
+  - `f` — whether `/.berean/passages/bible.json` existed;
+  - `n` — its size in bytes.
+- `e` — `0` a pick, `1` no whole passages, `2` passages too long for the card.
+- `p` — present exactly when `e` is `0`:
+  - `u` — the start unit as a compact `study::Unit`;
+  - `s` — the spine hint;
+  - `r` — the reference, ≤ 48 bytes;
+  - `rung` — the font rung, 0–2;
+  - `l` — the 1–4 lines, already fitted to the card.
+
+A field of the wrong type or out of range refuses the whole file. The save budget, 3,943 bytes, is
+derived from the caps (`HomeVerseDoc::worstCaseBytes()`).
+
 ## `/.berean/passages/<pubkey>.json`
 
 One publication's tagged passages. Owned by `lib/StudyStore/StudyStore/PassageDoc.{h,cpp}` (format,

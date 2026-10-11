@@ -6,6 +6,7 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <SdPaths.h>
+#include <esp_app_desc.h>
 
 #include <cstdio>
 #include <cstring>
@@ -14,6 +15,9 @@
 #include "activities/boot_sleep/StudyPassageScan.h"
 #include "activities/boot_sleep/StudySleepFit.h"
 #include "activities/boot_sleep/StudySleepPick.h"
+#include "activities/launcher/HomeVerseDoc.h"
+#include "activities/launcher/HomeVerseFile.h"
+#include "study/PsramJsonAllocator.h"
 #include "util/LocalDate.h"
 
 namespace {
@@ -30,6 +34,12 @@ void biblePassagesPath(char* out, const size_t outSize) {
 }
 
 constexpr size_t PATH_BYTES = sizeof(sdpaths::PASSAGES_DIR) + 16;
+
+// The first 8 hex digits of the running ELF's SHA-256 and a terminator: all IDF
+// keeps (CONFIG_APP_RETRIEVE_LEN_ELF_SHA=9), and the prefix it prints at boot.
+constexpr size_t BUILD_ID_BUFFER_BYTES = 9;
+
+void readBuildId(char (&out)[BUILD_ID_BUFFER_BYTES]) { esp_app_get_elf_sha256(out, sizeof(out)); }
 
 int measureCardText(const void* ctx, const uint8_t rung, const char* text) {
   return static_cast<const GfxRenderer*>(ctx)->getTextWidth(HomeVerse::FONT_IDS[rung], text,
@@ -59,12 +69,54 @@ HomeVerse& HomeVerse::getInstance() {
   return instance;
 }
 
-bool HomeVerse::isCurrent() const { return home_verse::validFor(entry, currentKey()); }
+bool HomeVerse::isCurrent() {
+  const home_verse::Key key = currentKey();
+  restoreOnce(key);
+  return home_verse::validFor(entry, key);
+}
 
 bool HomeVerse::ensure(const GfxRenderer& renderer, const int textWidth, const int textHeight) {
   const home_verse::Key key = currentKey();
+  restoreOnce(key);
   if (home_verse::validFor(entry, key)) return true;
+  if (!scan(renderer, textWidth, textHeight, key)) return false;
+  save();
+  return true;
+}
 
+void HomeVerse::restoreOnce(const home_verse::Key& key) {
+  if (restoreAttempted) return;
+  restoreAttempted = true;
+
+  char buildId[BUILD_ID_BUFFER_BYTES];
+  readBuildId(buildId);
+  [[maybe_unused]] const unsigned long started = millis();
+  const HomeVerseFile::Load outcome = HomeVerseFile::load(buildId, RUNG_COUNT, PsramJsonAllocator::json(), entry);
+  if (outcome == HomeVerseFile::Load::NoBuildId) {
+    LOG_ERR(MODULE, "No usable build identity (\"%s\"); Home's verse is not kept across sleep", buildId);
+    return;
+  }
+  LOG_DBG(MODULE, "Verse restore: %s, current %d, %lu ms", HomeVerseFile::describe(outcome),
+          home_verse::validFor(entry, key) ? 1 : 0, millis() - started);
+}
+
+void HomeVerse::save() const {
+  char buildId[BUILD_ID_BUFFER_BYTES];
+  readBuildId(buildId);
+  // restoreOnce() has already reported an unusable identity, once.
+  if (!HomeVerseDoc::isUsableBuildId(buildId)) return;
+
+  [[maybe_unused]] const unsigned long started = millis();
+  const size_t bytes = HomeVerseFile::save(entry, buildId, PsramJsonAllocator::json());
+  if (bytes == 0) {
+    LOG_ERR(MODULE, "Verse save failed");
+    return;
+  }
+  LOG_DBG(MODULE, "Verse saved: %u bytes, %lu ms", static_cast<unsigned>(bytes), millis() - started);
+}
+
+bool HomeVerse::scan(const GfxRenderer& renderer, const int textWidth, const int textHeight,
+                     const home_verse::Key& key) {
   uint32_t seed = home_verse::FALLBACK_SEED;
   if (key.dated) {
     seed = study_sleep::dailySeed(key.day);

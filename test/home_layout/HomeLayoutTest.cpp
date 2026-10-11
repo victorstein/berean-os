@@ -221,3 +221,13 @@ TEST(HomeLayout, ContainsIsHalfOpen) {
   EXPECT_FALSE(HomeLayout::contains(box, 15, 20));
   EXPECT_FALSE(HomeLayout::contains(box, 10, 25));
 }
+
+// Home's saved verse (spec berean-o-7, A4) keys on the build, not on the card box: lines fitted
+// under one theme are restored under the other, so the box must not change with the theme. Its y
+// may move, since the hero's height does.
+TEST(HomeLayout, TheVerseTextBoxIsTheSameSizeUnderEitherTheme) {
+  const HomeLayout::Box lyra = layoutFor(LyraMetrics::values).verseText;
+  const HomeLayout::Box base = layoutFor(BaseMetrics::values).verseText;
+  EXPECT_EQ(lyra.width, base.width);
+  EXPECT_EQ(lyra.height, base.height);
+}
