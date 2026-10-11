@@ -258,9 +258,12 @@ TEST_F(CoverBandReplay, TheLeastRecentlyUsedBandIsEvictedAndThePsramHeldIsBounde
   EXPECT_LE(cache.bytesHeld(), CoverBandCache::SLOTS * CoverBandCache::MAX_SLOT_BYTES);
   EXPECT_EQ(cache.bytesHeld(), CoverBandCache::SLOTS * BandInk::bytesFor(BandInk::layoutFor(14, 464, 120)));
 
+  EXPECT_EQ(paint(COVER, band(1), MASTHEAD).result, CoverBand::Result::Replayed);
+  EXPECT_EQ(paint(COVER, band(5), MASTHEAD).result, CoverBand::Result::Drawn);
+  EXPECT_EQ(paint(COVER, band(1), MASTHEAD).result, CoverBand::Result::Replayed);
+  EXPECT_EQ(paint(COVER, band(3), MASTHEAD).result, CoverBand::Result::Replayed);
   EXPECT_EQ(paint(COVER, band(4), MASTHEAD).result, CoverBand::Result::Replayed);
-  EXPECT_EQ(paint(COVER, band(0), MASTHEAD).result, CoverBand::Result::Drawn);
-  EXPECT_EQ(paint(COVER, band(2), MASTHEAD).result, CoverBand::Result::Replayed);
+  EXPECT_EQ(paint(COVER, band(2), MASTHEAD).result, CoverBand::Result::Drawn);
 }
 
 TEST_F(CoverBandReplay, WithoutPsramTheBandIsStillDrawnEveryTime) {
