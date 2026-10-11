@@ -271,7 +271,7 @@ bool EpubReaderActivity::loadBook() {
   // only has to surface it. The latch is a property of the session, not of the
   // book: a file that may still hold the user's data must not be written over
   // later either.
-  if (reusingParkedBook && STUDY.isOpenFor(epub)) {
+  if (reusingParkedBook && STUDY.canResumePublication(epub)) {
     // Still open from this book's last open in this boot, and still what a fresh open would build.
     STUDY.resumePublication();
     highlightsLoaded = true;

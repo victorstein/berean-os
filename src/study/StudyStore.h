@@ -104,7 +104,7 @@ class StudyStore {
   // Whether a reader may keep this store's state for `epub` instead of calling openPublication:
   // open and ready, opened for this very Epub, loaded without a Failed read, and under a pubkey
   // that still resolves the same (study_reuse::mayReuse). An unstable key costs a registry read.
-  bool isOpenFor(const std::shared_ptr<Epub>& epub) const;
+  bool canResumePublication(const std::shared_ptr<Epub>& epub) const;
   // What a fresh openPublication would reset that a reused one keeps: the marked link source.
   void resumePublication();
 
@@ -184,7 +184,7 @@ class StudyStore {
   std::optional<size_t> linkSource_;
   std::unique_ptr<UnitIndexCache> units_;
   // The Epub the last openPublication was for, and whether it read the palette and the passages
-  // without a Failed result. Both feed isOpenFor; closePublication clears them.
+  // without a Failed result. Both feed canResumePublication; closePublication clears them.
   std::weak_ptr<Epub> openedFor_;
   bool loadedCleanly_ = false;
 

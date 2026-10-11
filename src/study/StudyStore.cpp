@@ -107,7 +107,7 @@ void StudyStore::closePublication() {
   // knowledge that a file may hold data we could not read, not of one book.
 }
 
-bool StudyStore::isOpenFor(const std::shared_ptr<Epub>& epub) const {
+bool StudyStore::canResumePublication(const std::shared_ptr<Epub>& epub) const {
   if (!epub) return false;
   study_reuse::Inputs in;
   in.openAndReady = units_ && units_->ready();
