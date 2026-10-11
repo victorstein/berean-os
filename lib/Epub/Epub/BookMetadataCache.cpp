@@ -68,8 +68,9 @@ BookMetadataCache::TocEntry readTocEntryFrom(F& file) {
   return entry;
 }
 
-// Keeps only each spine entry's cumulativeSize. False on any short read: a truncated book.bin must
-// fail the load, and so be rebuilt, rather than load garbage.
+// Keeps only each spine entry's cumulativeSize. It decodes writeSpineEntryTo's layout by hand so the
+// pass allocates no href, so it must change whenever that layout does. False on any short read: a
+// truncated book.bin must fail the load, and so be rebuilt, rather than load garbage.
 bool readCumulativeSizes(serialization::BufferedFileReader& in, const uint16_t count, std::vector<uint32_t>& out) {
   uint8_t scratch[HREF_SKIP_CHUNK];
   for (uint16_t i = 0; i < count; i++) {
