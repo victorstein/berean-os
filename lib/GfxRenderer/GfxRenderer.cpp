@@ -2268,6 +2268,10 @@ void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuff
 
 void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
 
+void GfxRenderer::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) const {
+  display.copyGrayscaleBuffers(lsbBuffer, msbBuffer);
+}
+
 void GfxRenderer::displayGrayBuffer() const { display.displayGrayBuffer(fadingFix); }
 
 void GfxRenderer::writeGrayscalePlaneStrip(bool lsbPlane, const uint8_t* scratch, int yStart, int numRows) const {
