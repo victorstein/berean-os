@@ -23,6 +23,3 @@ struct BibleNavCache final : BibleNavCacheOf<BibleBookIndex> {};
 static_assert(BibleNavLimits::MAX_BOOKS == BibleBookNameTable::MAX_BOOKS, "one book limit");
 static_assert(BibleNavLimits::BOOK_NAME_BYTES == BibleBookNameTable::NAME_BYTES, "one name width");
 static_assert(BibleNavLimits::BOOK_ABBREV_BYTES == BibleBookNameTable::ABBREV_BYTES, "one abbreviation width");
-// Above CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL (4096), so makeUniqueNoThrow asks PSRAM first. That is a
-// preference: under PSRAM exhaustion it falls back to internal RAM.
-static_assert(sizeof(BibleNavCache) > 4096, "keep the cache PSRAM-preferred by size");

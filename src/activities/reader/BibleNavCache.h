@@ -12,9 +12,10 @@ constexpr int BOOK_NAME_BYTES = 48;
 constexpr int BOOK_ABBREV_BYTES = 16;
 }  // namespace BibleNavLimits
 
-// What the Bible navigator read from SD, kept by the reader so a second Go to reads none of it.
-// Only a successful load is kept. Nothing invalidates it during a reader's life: the book never
-// changes under a live reader. The navigator reads and writes it on the loop task only.
+// What the Bible navigator read from SD, kept with the Epub it was read from so a second Go to reads
+// none of it, across Home too while that Epub is parked (ParkedBook). Only a successful load is kept.
+// It is never invalidated on its own: it lives and dies with that Epub, which does not change while
+// it is held. The navigator reads and writes it on the loop task only.
 //
 // A template over the book table so the host suite can exercise the logic without Epub
 // (test/number_grid); the firmware instantiates it once, in BibleBookIndex.h.

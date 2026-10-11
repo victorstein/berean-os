@@ -13,6 +13,7 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <SdPaths.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 
 #include <algorithm>
@@ -20,6 +21,7 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <new>
 #include <utility>
 
 #include "BibleBookNameTable.h"
@@ -36,6 +38,7 @@
 #include "HighlightsActivity.h"
 #include "MappedInputManager.h"
 #include "PageTurn.h"
+#include "ParkedBook.h"
 #include "PassageSelectActivity.h"
 #include "PlacesStore.h"
 #include "ProgressMapper.h"
@@ -142,6 +145,21 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
   }
 }
 
+// The Go-to cache is held across Home with the parked book, so it is asked of PSRAM explicitly rather
+// than left to the size threshold, which falls back to internal RAM when PSRAM is short.
+struct PsramNavCacheFree {
+  void operator()(BibleNavCache* cache) const {
+    cache->~BibleNavCache();
+    heap_caps_free(cache);
+  }
+};
+
+std::shared_ptr<BibleNavCache> makePsramNavCache() {
+  void* raw = heap_caps_calloc(1, sizeof(BibleNavCache), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!raw) return nullptr;
+  return std::shared_ptr<BibleNavCache>(new (raw) BibleNavCache(), PsramNavCacheFree{});
+}
+
 }  // namespace
 
 EpubReaderActivity::~EpubReaderActivity() {
@@ -153,17 +171,23 @@ EpubReaderActivity::~EpubReaderActivity() {
 
   section.reset();
   if (pendingReadFolderMove && epub) {
+    ParkedBook::clear();
     const std::string srcPath = epub->getPath();
     const std::string oldCachePath = epub->getCachePath();
     const std::string dstPath = buildReadFolderDestination(srcPath);
     epub.reset();
     moveFinishedBookToReadFolder(srcPath, dstPath, oldCachePath);
-  } else {
+  } else if (cacheDeleted) {
+    ParkedBook::clear();
     epub.reset();
+  } else {
+    // The next open of this book takes it back instead of reloading it. A null epub (a reader that
+    // finished before loadBook) parks nothing and empties the slot.
+    ParkedBook::park(bookPath, {std::move(epub), std::move(navCache)});
   }
 }
 
-bool EpubReaderActivity::loadBook() {
+bool EpubReaderActivity::loadFreshEpub(const bool skipLoadingCss) {
   auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, sdpaths::CROSSPOINT_DIR);
   if (!loadedEpub) {
     LOG_ERR("ERS", "Failed to allocate EPUB object");
@@ -180,13 +204,26 @@ bool EpubReaderActivity::loadBook() {
   {
     std::optional<GfxRenderer::FrameBufferLoan> loan;
     if (uncached) loan.emplace(renderer);
-    loaded = loadedEpub->load(true, SETTINGS.embeddedStyle == 0);
+    loaded = loadedEpub->load(true, skipLoadingCss);
   }
   if (!loaded) {
     LOG_ERR("ERS", "Failed to load EPUB");
     return false;
   }
   epub = std::move(loadedEpub);
+  return true;
+}
+
+bool EpubReaderActivity::loadBook() {
+  const bool skipLoadingCss = SETTINGS.embeddedStyle == 0;
+  ParkedBook::Held parked = ParkedBook::take(bookPath, skipLoadingCss);
+  const bool reusingParkedBook = parked.book != nullptr;
+  if (reusingParkedBook) {
+    epub = std::move(parked.book);
+    navCache = std::move(parked.nav);
+  } else if (!loadFreshEpub(skipLoadingCss)) {
+    return false;
+  }
 
   ImageBlock::clearSessionRenderFailures();
   ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest) {
@@ -234,7 +271,14 @@ bool EpubReaderActivity::loadBook() {
   // only has to surface it. The latch is a property of the session, not of the
   // book: a file that may still hold the user's data must not be written over
   // later either.
-  highlightsLoaded = STUDY.openPublication(epub, renderer);
+  if (reusingParkedBook && STUDY.isOpenFor(epub)) {
+    // Still open from this book's last open in this boot, and still what a fresh open would build.
+    STUDY.resumePublication();
+    highlightsLoaded = true;
+    LOG_DBG("ERS", "Study already open for this book");
+  } else {
+    highlightsLoaded = STUDY.openPublication(epub, renderer);
+  }
   if (STUDY.saveDisabled()) {
     ReaderUtils::showMessage(renderer, tr(STR_HIGHLIGHTS_LOAD_FAILED));
   }
@@ -913,6 +957,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
           uint16_t backupPageCount = section->pageCount;
           section.reset();
           epub->clearCache();
+          cacheDeleted = true;
           CoverBand::noteCoversChanged();
           epub->setupCacheDir();
           if (!saveProgress(backupSpine, backupPage, backupPageCount)) {
@@ -965,11 +1010,8 @@ void EpubReaderActivity::openChapterPicker(const CancelTo cancelTo) {
   std::unique_ptr<Activity> chapterList;
   if (isBible()) {
     if (!navCache) {
-      // unique_ptr to shared_ptr, as loadBook() hands the Epub over.
-      auto cache = makeUniqueNoThrow<BibleNavCache>();
-      if (cache) {
-        navCache = std::move(cache);
-      } else {
+      navCache = makePsramNavCache();
+      if (!navCache) {
         LOG_ERR("ERS", "OOM: Go to cache");
       }
     }

@@ -46,12 +46,16 @@ class EpubReaderActivity final : public ReaderActivity {
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
   ReaderBookmarks bookmarks;
-  // What the Bible navigator resolved, kept for this reader's life. Allocated on the first Go to in
-  // a Bible, so other books and readers that never use Go to pay nothing.
+  // What the Bible navigator resolved, kept with `epub` and parked with it on exit (ParkedBook).
+  // Allocated in PSRAM on the first Go to in a Bible, so other books and readers that never use Go
+  // to pay nothing.
   std::shared_ptr<BibleNavCache> navCache;
   AutoPageTurn autoTurn;
   bool recentsEntryRemoved = false;
   bool pendingReadFolderMove = false;
+  // Set by the reader menu's Delete cache: the owner asked for a rebuild, so this book is not parked
+  // on exit and its next open loads it afresh.
+  bool cacheDeleted = false;
   // Consumed once by onBookLoaded(); None thereafter.
   ReaderEntryIntent entryIntent;
   // Set by the render task once a page has been drawn this session, read only under RenderLock.
@@ -208,6 +212,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void renderStatusBar() const;
   void applyOrientation(uint8_t orientation);
 
+  // A new Epub, loaded from its cache or indexed when it has none.
+  bool loadFreshEpub(bool skipLoadingCss);
   bool loadBook() override;
   std::string getBookTitle() const override { return epub ? epub->getTitle() : ""; }
   std::string getBookAuthor() const override { return epub ? epub->getAuthor() : ""; }
