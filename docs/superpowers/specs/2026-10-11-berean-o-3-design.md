@@ -6,6 +6,21 @@ device baseline `docs/superpowers/notes/responsiveness-baseline.md`, and roadmap
 (`docs/superpowers/plans/2026-10-11-responsiveness-roadmap.md:239-252,349-368`). Every `file:line` below was
 re-read on this branch.
 
+**Revision after spec review 1** (`docs/superpowers/reviews/berean-o-3-spec-review-1.md`, verdict CLEAR,
+2 MAJORs and 4 MINORs, all accepted and applied here; pass 0's reviewer stopped on a rate limit before
+writing anything):
+
+- **MAJOR 1:** A9's reuse condition now also requires a clean palette-and-passages load and an unchanged
+  pubkey. The registry can change at Home and decides the key (A9, §6.4).
+- **MAJOR 2:** Home rebuilds the Bible's `book.bin` through its cover thumbnail before any take, so the
+  Clear cache and Delete cache rows were wrong. Those rows and the A5 residual risk are corrected, and the
+  reader no longer parks after its own Delete cache (A8, §6.4, §9.1).
+- **MINOR 3:** the href skip is specified for any length, with tests for long and straddling hrefs.
+- **MINOR 4:** `highlightsLoaded = true` on the reuse branch.
+- **MINOR 5:** the reuse branch clears the link source, keeping today's behaviour (A10).
+- **MINOR 6:** the plan must declare the extra files for the lock; `park` with nothing to park clears the
+  slot; the recents-skip wording and two citations are fixed.
+
 ## 1. Problem
 
 Every Home → Bible pays `[READER] Book loaded in` 501–507 ms before anything is drawn (baseline,
@@ -31,7 +46,7 @@ Two facts from research shape the design:
   (RN §3).
 - **A `BOOK_CACHE_VERSION` bump is not cheap on this unit.** With embedded style on — the default
   (`CrossPointSettings.h:337`) and the owner's setting (RN §2.4) — a rebuild also runs
-  `Storage.removeDir(<cache>/sections)` (`Epub.cpp:497-501`), so every laid-out Bible chapter is
+  `Storage.removeDir(<cache>/sections)` (`Epub.cpp:498-503`), so every laid-out Bible chapter is
   dropped and rebuilds on its next visit at 1.2–1.8 s each (`responsiveness-baseline.md`, "Go to chapter
   → page, chapter not yet built"), and no Indexing popup is shown because that check is existence-only
   (`EpubReaderActivity.cpp:171-182`). RN §5.
@@ -94,8 +109,12 @@ change bumps its version (none is made, A3).
   `BibleSearchStore::documents` uses (`BibleSearchStore.cpp:107-117`); (iii) `Epub::reopenCache` passes
   (A6, A7). This puts **no hooks in the five-plus mutation sites** RN §4 lists, which belong to other
   surfaces and would each have to be remembered by any future mutator. Coverage is checked event by event
-  in §6.4. **Residual risk:** an EPUB replaced by a different one of the identical byte size whose cache
-  was then rebuilt with an identical header before the take. Consequence if it happens: stale
+  in §6.4. **Residual risk:** an EPUB replaced by a different one of the identical byte size whose
+  rebuilt cache has an identical header. For the Bible the rebuild before the take is not a coincidence:
+  Home regenerates the Bible's cover thumbnail on every entry (`LauncherActivity.cpp:76-80,118-121`),
+  the thumbnail lives in the cache directory (`Epub.cpp:668`), and a missing one makes
+  `CoverThumb::pathFor` rebuild `book.bin` with `load(true, true)` (`CoverThumb.cpp:32-41`). So the
+  risk reduces to "same byte size and same header". Consequence if it happens: stale
   `cumulativeSizes` and metadata strings (progress % and the inflate-popup threshold), while spine and TOC
   entries are read fresh from the new file. No study data is written from them.
 - **A6 — Take never reads through the parked file handle; it reopens `book.bin`.** The parked handle may
@@ -115,20 +134,44 @@ change bumps its version (none is made, A3).
 - **A8 — The slot is empty while a reader lives.** `take()` always empties the slot, returning the book
   or dropping it. `park()` runs in `~EpubReaderActivity` (`EpubReaderActivity.cpp:145-162`) after
   `saveProgress` and `section.reset()`, in place of `epub.reset()`. It does **not** park on the
-  read-folder move (`pendingReadFolderMove`, `:153-158`), which renames the book and its cache. A failed
-  EPUB size probe at park means no park.
-- **A9 — The study state is reused when STUDY is open, ready, and opened for this same `Epub` object.**
-  New `StudyStore::isOpenFor(epub)`: `units_ && units_->ready()` and a `std::weak_ptr<Epub>` recorded by
-  `openPublication` locks to `epub`. Otherwise `openPublication` runs as today, including the retry of a
-  failed unit index (`StudyStore.cpp:66-69`). Safe because STUDY is the only runtime writer of the study
-  files (`StudyStore.cpp:116,214,226`; `MigrationRunner.cpp:368-369` runs only at boot, `main.cpp:513`)
-  and the web server and WebDAV refuse dot-dirs (`WebRouteUtils.cpp:10`; `WebDAVHandler.cpp:50`). The
-  `saveDisabled()` toast (`EpubReaderActivity.cpp:236-238`) is still shown on a warm open:
-  `saveDisabled_` survives `closePublication` by design (`StudyStore.cpp:79-80`).
+  read-folder move (`pendingReadFolderMove`, `:153-158`), which renames the book and its cache, nor after
+  the reader's own menu → Delete cache (`:890-905`): the owner asked for a rebuild, so a new flag set in
+  that case (mirroring `pendingReadFolderMove`) skips the park and the next open is cold. Whenever the
+  reader does not park — either flag, a null `epub`, or a failed EPUB size probe — it clears the slot
+  rather than leaving an older occupant in it. Not literally every reader takes: `ReaderActivity::onEnter`
+  can `finish()` before `loadBook` (`ReaderActivity.cpp:46-50`); such a reader reads nothing and its
+  destructor clears the slot.
+- **A9 — The study state is reused only when all four hold:** STUDY is open and ready
+  (`units_ && units_->ready()`); it was opened for this same `Epub` object (a `std::weak_ptr<Epub>`
+  recorded by `openPublication` locks to `epub`); the last `openPublication` loaded the palette and the
+  passages without a `Failed` result (a flag `openPublication` sets and `closePublication` clears;
+  `saveDisabled_` cannot serve, it is session-wide by design, `StudyStore.cpp:79-80`); and the pubkey
+  still resolves the same. Otherwise `openPublication` runs as today, retrying a failed unit index
+  (`StudyStore.cpp:66-69`) and a failed palette or passages read (`:54-64`; `Failed` means the data may
+  still exist, `lib/Serialization/TempAdoption.h:73`).
+  - **The pubkey is an input that changes at Home.** `resolvePubKey` returns the registered key when the
+    registry has one and `local-<path>` otherwise (`lib/StudyStore/StudyStore/PubKey.cpp:24-35`), and the
+    downloader records an identity for an unchanged file already on the card
+    (`PublicationDownloader.cpp:195-200`). Reusing a `local-` key after that would send the session's tags
+    to a file the next cold open never reads. So when `study::pubKeyIsStable(pubKey_)` is false
+    (`PubKey.h:43`), the check re-runs `PubKeyRegistry::lookup` + `resolvePubKey` and requires the same
+    key. A stable key is not re-checked: the Bible's is fixed whenever it is an NWT-shaped Bible
+    (`PubKey.cpp:25`), and a registered key cannot revert to `local-` because nothing removes registry
+    entries (`PubKeyRegistry.cpp:70-71`, "the registry is never pruned").
+  - **The study files themselves** have one runtime writer, STUDY (`StudyStore.cpp:116,214,226`;
+    `MigrationRunner.cpp:368-369` runs only at boot, `main.cpp:513`), and the web server and WebDAV refuse
+    dot-dirs (`WebRouteUtils.cpp:10`; `WebDAVHandler.cpp:50`).
+  - **The reuse branch sets `highlightsLoaded = true`**, as `openPublication` would have returned
+    (`EpubReaderActivity.cpp:235`; it gates highlight painting at `:1674` and `captureLeftPlace` at
+    `:1573`). The `saveDisabled()` toast (`:236-238`) still runs.
+  - The rule is a pure function of those four inputs, so it is host-tested (§9).
 - **A10 — A warm open still reads `progress.bin` and bookmarks, and still runs `repairTexts()` and Bible
   registration** (`EpubReaderActivity.cpp:196-228,242-262`; together ~15 ms, RN §1). They are cheap,
   `progress.bin` is rewritten on every exit, and keeping them makes the warm path differ from the cold
-  one in exactly two places (the `Epub` and the study open).
+  one in exactly two places (the `Epub` and the study open). Skipping `closePublication` would also keep a
+  marked link source, which is reset only there (`StudyStore.cpp:78`; "cleared when the publication
+  closes", `StudyStore.h:142-146`). The reuse branch clears it through a new `StudyStore` call, so that
+  stays as today.
 - **A11 — `BibleNavCache` travels with the parked book, allocated in explicit PSRAM.** It now outlives
   the reader, which makes it a session cache under the brief's rule. Its single allocation site
   (`EpubReaderActivity.cpp:949-956`, today `makeUniqueNoThrow`, PSRAM-preferred by size,
@@ -149,7 +192,7 @@ change bumps its version (none is made, A3).
   (`ReaderActivity.cpp:73-74`).
 - **A14 — R5's rule: skip `pruneMissing()` and the save when the front entry equals the normalised
   candidate on path, title and author.** `RecentBook::operator==` compares path only
-  (`src/RecentBook.h:16`), so title and author are compared explicitly, after `RecentBooksDoc::normalise`
+  (`src/RecentBook.h:14`), so title and author are compared explicitly, after `RecentBooksDoc::normalise`
   (`RecentBooksDoc.h:75`) — the stored entry was normalised the same way (`RecentBooksStore.cpp:39-41`).
   Skipping the prune cannot evict anything because nothing is inserted. A missing entry left in the list
   is already tolerated by both readers (`BibleFinder.cpp:28-38`, existence-checked;
@@ -173,13 +216,13 @@ change bumps its version (none is made, A3).
 
 | # | Component | Change | Modelled on |
 |---|---|---|---|
-| 1 | `BookMetadataCache::load` (`lib/Epub/Epub/BookMetadataCache.cpp:460-499`) | Spine pass through a local `serialization::BufferedFileReader` over `bookFile`; the href is skipped by reading into a fixed 64-byte stack scratch (no allocation); every read checked (A4). Records `book.bin`'s size for `reopen()`. | `buildBookBin`'s buffered spine reads (`BookMetadataCache.cpp:186-192,215-223`) |
+| 1 | `BookMetadataCache::load` (`lib/Epub/Epub/BookMetadataCache.cpp:460-499`) | Spine pass through a local `serialization::BufferedFileReader` over `bookFile`. The href, of any length, is skipped by a loop that reads it into a fixed 64-byte stack scratch, chunk by chunk, so the skip stays inside the buffer and allocates nothing; every read is checked (A4). Records `book.bin`'s size for `reopen()`. | `buildBookBin`'s buffered spine reads (`BookMetadataCache.cpp:186-192,215-223`) |
 | 2 | `BookMetadataCache::reopen()` — new | Close, reopen, compare size and header; on any mismatch close and set `loaded = false` (A6). | `load()`'s version gate (`:460-472`) |
 | 3 | `Epub::reopenCache(bool skipLoadingCss)` — new (`lib/Epub/Epub.{h,cpp}`) | `bookMetadataCache->reopen()`, then the CSS check of `Epub::load` without its rebuild branch (A7). | `Epub::load` cache-hit branch (`Epub.cpp:374-410`) |
 | 4 | `ParkedBookOf<Book, NavCache>` — new template, `src/activities/reader/ParkedBook.h` | One slot: `park(path, fileSize, {book, nav})`; `take(path, fileSize, skipLoadingCss)` always empties the slot and returns the pair only when path and size match and `book->reopenCache(skipLoadingCss)` passes (A5–A8). Reports why a take missed, for the log. | `BibleNavCacheOf<Books>` — a template "so the host suite can exercise the logic without Epub" (`BibleNavCache.h:19-22`, tested by `test/number_grid/BibleNavCacheTest.cpp:13-18`) |
 | 5 | Firmware instance, `src/activities/reader/ParkedBook.cpp` — new | `ParkedBookOf<Epub, BibleNavCache>` as a function-local static; `park`/`take` wrappers that probe the EPUB size and log. | `StudyStore::getInstance` (`StudyStore.cpp:35-38`); size probe as `BibleSearchStore.cpp:83-88` |
 | 6 | `EpubReaderActivity` (`src/activities/reader/EpubReaderActivity.{h,cpp}`) | `loadBook`: take first, else today's construct-and-load (`:165-187`); skip `openPublication` when `STUDY.isOpenFor(epub)` (A9). Destructor: park instead of `epub.reset()` (A8). Go to: PSRAM allocation of `navCache` (A11). | — |
-| 7 | `StudyStore` (`src/study/StudyStore.{h,cpp}`) | `isOpenFor(epub)` + `std::weak_ptr<Epub> openedFor_` (set in `openPublication`, reset in `closePublication`); step-timing `LOG_DBG` (A9, A16). | `isOpen()` (`StudyStore.h`, `units_ != nullptr`) |
+| 7 | `StudyStore` (`src/study/StudyStore.{h,cpp}`) | `isOpenFor(epub)` implementing A9's four conditions (the pure rule lives in a small header, so it is host-tested), `std::weak_ptr<Epub> openedFor_` and a clean-load flag (set in `openPublication`, reset in `closePublication`), a call that clears the link source for the reuse branch; step-timing `LOG_DBG` (A9, A10, A16). | `isOpen()` (`StudyStore.h`, `units_ != nullptr`) |
 | 8 | `RecentBooksDoc::isAlreadyFront(books, candidate)` — new pure helper (`src/util/RecentBooksDoc.{h,cpp}`) + early return in `RecentBooksStore::addBook` (A14) | | the existing pure-helper split: "RecentBooksStore.cpp cannot be [host-tested]" (`RecentBooksDoc.h:12-15`) |
 | 9 | Comments | `BibleNavCache.h:15-17` (A11); `BookMetadataCache.h:66-69` ("<1KB for typical books" — 15.7 KB on the Bible). | — |
 
@@ -218,8 +261,9 @@ change bumps its version (none is made, A3).
 ### 6.2 Reader exit (park)
 
 `~EpubReaderActivity` (`:145-162`): `ImageBlock::setExtractor(nullptr, nullptr)`; return-stack progress
-save; `section.reset()`; then, unless `pendingReadFolderMove`, `parkedBook` park with the EPUB size probed
-now, the `epub` and the `navCache` (possibly null). STUDY keeps its own reference as today. The slot now
+save; `section.reset()`; then, unless `pendingReadFolderMove` or the Delete-cache flag is set, `parkedBook`
+park with the EPUB size probed now, the `epub` and the `navCache` (possibly null). When it does not park,
+it clears the slot (A8). STUDY keeps its own reference as today. The slot now
 holds one book; any previous occupant was already emptied by this reader's take (A8).
 
 ### 6.3 Warm open (take)
@@ -230,8 +274,8 @@ As 6.1, but at step 1 the take returns `{epub, nav}`:
    check, and `Epub::load` (`:165-187`). Still runs `ImageBlock::clearSessionRenderFailures`,
    `setExtractor`, `setupCacheDir` (`:189-194`).
 2. `progress.bin`, bookmarks — as cold (A10).
-3. `STUDY.isOpenFor(epub)` is true → `openPublication` skipped, `LOG_DBG` says so; the `saveDisabled`
-   toast check still runs (A9).
+3. `STUDY.isOpenFor(epub)` is true → `openPublication` skipped, `highlightsLoaded = true`, the link source
+   cleared, `LOG_DBG` says so; the `saveDisabled` toast check still runs (A9, A10).
 4. As cold from `repairTexts` on.
 5. A Go to (menu, or a Home Go-to intent through `onBookLoaded` → `openChapterPicker`,
    `EpubReaderActivity.cpp:1062-1065`) hands the adopted `navCache` to `BibleNavigationActivity`, which
@@ -243,11 +287,12 @@ As 6.1, but at step 1 the take returns `{epub, nav}`:
 |---|---|---|
 | Sleep, then wake | chip reset (`main.cpp:140-146`) | slot empty → cold |
 | Open a different book | — | path differs → dropped; that book opens cold |
-| Settings → Clear cache (`ClearCacheActivity.cpp:126`) | `epub_*` dirs removed | `book.bin` missing → `reopen` false → cold rebuild |
-| …then a cover thumbnail rebuilds `book.bin` (`CoverThumb.cpp:32-41`, `load(true, true)`) | new `book.bin`, no CSS cache | header and size equal (same EPUB) → `reopen` passes; with embedded style on, the CSS cache is missing → `reopenCache` false → cold (rebuilds CSS, drops sections, as today); with it off → warm, reading the **new** file |
+| Settings → Clear cache (`ClearCacheActivity.cpp:115-131`), then Home | every `epub_*` dir removed, `progress.bin` included. **For the Bible**, Home's cover thumbnail then rebuilds `book.bin` before any tap (`LauncherActivity.cpp:76-80,118-121` → `CoverThumb.cpp:32-41`, `load(true, true)`, no CSS cache) | header and size equal (same EPUB) → `reopen` passes. Embedded style **on**: the CSS cache is missing → `reopenCache` false → cold (rebuilds CSS, drops sections, as today). **Off**: warm, reading the **new** file. Either way the book opens at its text reference because `progress.bin` is gone — today's behaviour. A book whose thumbnail Home does not regenerate: `book.bin` missing → `reopen` false → cold rebuild |
+| Pubkey registered at Home for a parked non-Bible book (`PublicationDownloader.cpp:195-200`) | registry entry added | take may hit; A9's pubkey check fails → `openPublication` runs and resolves the registered key |
+| Previous open had a `Failed` palette or passages read | — | take may hit; A9's clean-load check fails → `openPublication` retries the reads |
 | Web upload / WebDAV put / download / file-browser delete of that book (`clearBookCache`, RN §4) | cache dir removed, EPUB replaced or gone | EPUB size differs, or `book.bin` missing → cold; a deleted EPUB fails `onEnter`'s `exists` check first (`ReaderActivity.cpp:46-50`) |
 | Leaving File Transfer (no reboot on a touch board, `main.cpp:148-167`) | — | nothing to detect |
-| Reader menu → Delete cache (`EpubReaderActivity.cpp:890-905`) | `book.bin` removed, then the reader goes Home and parks | `reopen` false → cold rebuild |
+| Reader menu → Delete cache (`EpubReaderActivity.cpp:890-905`) | the live book's cache removed, then the reader goes Home | **not parked** (A8) → slot empty → cold; for the Bible, Home's thumbnail has already rebuilt `book.bin`, so the cold open loads it and, with embedded style on, rebuilds the CSS cache |
 | `embeddedStyle` changed | — | `reopenCache` runs the CSS check under the new value (A7) |
 | Book renamed by the downloader (`PublicationDownloader.cpp:100-123`) | new path | path differs → cold |
 
@@ -291,8 +336,9 @@ TDD per component: the failing host test first.
 
 | Suite | New/existing | What it proves |
 |---|---|---|
-| `test/book_metadata_cache/` | **new** | `load()` over a `book.bin` seeded in the in-memory Storage fake (`test/stubs/HalStorageFake.h:23`, `putFile`) in the documented v10 layout (`docs/file-formats.md:7-79`): (1) cumulative sizes equal the seeded ones, including hrefs over 15 bytes and an empty href; (2) `storage_fake::readCallsOn(book.bin)` (`HalStorageFake.h:44-46`) is bounded by `ceil(spine block / 4096)` plus the header reads, not proportional to the entry count; (3) a version mismatch returns false; (4) a spine block cut short returns false and `isLoaded()` is false (A4); (5) `getSpineEntry` / `getTocEntry` still return the right entries after `load()`; (6) `reopen()` passes on an untouched file and fails after the file is removed, replaced with a different size, or rewritten with a different header. |
+| `test/book_metadata_cache/` | **new** | `load()` over a `book.bin` seeded in the in-memory Storage fake (`test/stubs/HalStorageFake.h:23`, `putFile`) in the documented v10 layout (`docs/file-formats.md:7-79`): (1) cumulative sizes equal the seeded ones, including hrefs over 15 bytes, an empty href, an href of ~200 bytes (longer than the 64-byte scratch), and an entry that straddles a 4,096-byte refill; (2) `storage_fake::readCallsOn(book.bin)` (`HalStorageFake.h:44-46`) is bounded by `ceil(spine block / 4096)` plus the header reads, not proportional to the entry count; (3) a version mismatch returns false; (4) a spine block cut short returns false and `isLoaded()` is false (A4); (5) `getSpineEntry` / `getTocEntry` still return the right entries after `load()`; (6) `reopen()` passes on an untouched file and fails after the file is removed, replaced with a different size, or rewritten with a different header. |
 | `test/parked_book/` | **new** | `ParkedBookOf` with a fake `Book` exposing `reopenCache(bool)`: an empty slot misses; path mismatch, size mismatch and a failing `reopenCache` each miss **and** release the held objects (`use_count`); a match returns book and nav and empties the slot; `park` replaces and releases the previous occupant; the `skipLoadingCss` flag reaches `reopenCache`. |
+| A9's reuse rule (new pure header beside `StudyStore`) | **new**, in `test/parked_book/` or its own executable | reuse only when open-and-ready, same `Epub`, clean load and same pubkey; a `local-` key that now resolves to a registered one refuses; a stable key is not re-resolved |
 | `test/recent_books_doc/` | existing (`RecentBooksDocTest`, compiles `RecentBooksDoc.cpp`, `CMakeLists.txt:1-5`) | `isAlreadyFront`: true only when the first entry matches path, title and author; false for an empty list, a match in second place, or a changed title or author. A candidate whose raw title runs past `MAX_TITLE_BYTES` matches its stored, already-capped entry once both have been through `normalise`. |
 | `test/storage_io/`, `test/number_grid/` (`BibleNavCacheTest`), `test/passage_doc/`, `test/crosspoint_state/` | existing | unchanged behaviour; run them. |
 
@@ -321,19 +367,26 @@ Flash the `x4pro` dev build and capture serial (`cat /dev/cu.usbmodem*`).
    should drop from 276 ms to under 100 ms; `[STUDY]` logs the step times; `[READER] Book loaded in` ≈ 300 ms
    (before: 501–507 ms).
 2. Home → Bible, five times. **Warm:** the take's `LOG_DBG` hit line and the study-skip line precede
-   `[READER] Book loaded in` under 50 ms. The second and later opens log the recents skip.
+   `[READER] Book loaded in` under 50 ms. Every open logs the recents skip once the Bible is first in
+   `recent.json` (the first cold open too, if it already was). On a warm open a tagged passage still
+   paints, and Home's "Continue at" still updates after leaving the book.
 3. Home Go-to after a round trip: `[BNV] Go to: books from cache` and `books ready` near the warm figures
    (+15–33 ms, RN §2.8) instead of +259–262 ms.
-4. Settings → Clear cache → Home → Bible: a take-miss line naming the cache, then a full re-index; the page
-   opens at the right place after the rebuild.
-5. Reader menu → Delete cache → Home → Bible: a take miss, then a rebuild.
+4. Settings → Clear cache → Home → Bible: `Cache not found, building spine/TOC cache` while the Launcher
+   is entering (the thumbnail rebuild); then, on the tap, a take miss naming the CSS cache, the CSS rebuild,
+   and the page at the book's text reference (Clear cache removed `progress.bin`; same as today).
+5. Reader menu → Delete cache → Home → Bible: no park on the way out, the thumbnail rebuild at Home, then a
+   cold load with no take hit, and the saved page.
 6. Toggle embedded style off and on between round trips: no crash, correct styling.
 7. Heap: `MEM Free` at Home after a round trip matches the before figure (~215 KB internal, RN §3).
 
 ## 10. Sequencing and collisions
 
-- **t4 (R21) holds `EpubReaderActivity`.** hpipe's file lock enforces implement-through-merge
-  serialisation; this task's implement waits for t4 to land, then re-reads the file.
+- **t4 (R21) holds `EpubReaderActivity`.** t3's registered prefix `src/activities/reader/ReaderActivity`
+  does not cover it, and the lock widens only from the plan's `Files:` lines. **The plan must declare**
+  `src/activities/reader/EpubReaderActivity`, `lib/Epub/Epub.`, `src/activities/reader/ParkedBook`,
+  `src/util/RecentBooksDoc`, `test/book_metadata_cache/` and `test/parked_book/`. Then implement waits for
+  t4 to land, and re-reads the file.
 - **t6 (R11)** keeps the Bible search index resident, keyed on the Bible's identity; this design uses the
   same path-plus-size identity (`BibleSearchStore.cpp:114`), so the two cannot disagree about "the same
   Bible".
