@@ -25,19 +25,24 @@ bool RecentBooksStore::fromJson(const JsonVariantConst doc) {
 }
 
 void RecentBooksStore::addBook(const std::string& path, const std::string& title, const std::string& author) {
+  // Bounded first: title and author arrive straight from EPUB metadata, and the stored copy was
+  // bounded the same way, so the two compare equal when nothing changed.
+  RecentBook book{path, title, author};
+  RecentBooksDoc::normalise(book);
+  if (RecentBooksDoc::isAlreadyFront(recentBooks, book)) {
+    LOG_DBG("RBS", "Already first in recent books; not saved");
+    return;
+  }
+
   // Drop stale entries first so a new add can't evict a valid book in their stead.
   pruneMissing();
 
-  // Remove existing entry if present
   auto it =
-      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
+      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& entry) { return entry.path == path; });
   if (it != recentBooks.end()) {
     recentBooks.erase(it);
   }
 
-  // Add to front, bounded: title and author arrive straight from EPUB metadata.
-  RecentBook book{path, title, author};
-  RecentBooksDoc::normalise(book);
   recentBooks.insert(recentBooks.begin(), std::move(book));
 
   // Trim to max size
