@@ -1,5 +1,6 @@
 #include "BibleSearchStore.h"
 
+#include <Arduino.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <esp_heap_caps.h>
@@ -8,13 +9,13 @@
 #include <cstring>
 #include <vector>
 
+#include "StudyStore/UnitIndexFormat.h"
 #include "study/StudyStore.h"
 #include "util/TaskWatchdog.h"
 
 namespace {
 
 constexpr const char* MODULE = "BSEARCH";
-constexpr uint8_t BIBLE_BOOKS = 66;
 constexpr size_t STREAM_CHUNK_BYTES = 4096;
 // A resume replays a checkpoint through tens of thousands of small reads. The
 // loop task is not subscribed to the task watchdog today, so these resets only
@@ -36,27 +37,6 @@ bool readFileAt(void* ctx, const uint32_t offset, void* dst, const uint32_t len)
   if (!file->seek(offset)) return false;
   return file->read(dst, len) == static_cast<int>(len);
 }
-
-struct Fnv1a64 {
-  uint64_t hash = 14695981039346656037ull;
-
-  void add(const void* data, const size_t length) {
-    const auto* bytes = static_cast<const uint8_t*>(data);
-    for (size_t i = 0; i < length; i++) {
-      hash ^= bytes[i];
-      hash *= 1099511628211ull;
-    }
-  }
-  void addU32(const uint32_t value) {
-    const uint8_t le[4] = {static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8),
-                           static_cast<uint8_t>(value >> 16), static_cast<uint8_t>(value >> 24)};
-    add(le, sizeof(le));
-  }
-  void addU64(const uint64_t value) {
-    addU32(static_cast<uint32_t>(value));
-    addU32(static_cast<uint32_t>(value >> 32));
-  }
-};
 
 class ScannerPrint final : public Print {
  public:
@@ -104,19 +84,90 @@ BibleSearch::ByteSource BibleSearchStore::byteSourceFor(HalFile& file) {
   return source;
 }
 
-const BibleSearchStore::Documents* BibleSearchStore::documents(const std::shared_ptr<Epub>& epub) {
-  if (!epub) return nullptr;
+bool BibleSearchStore::identify(const std::shared_ptr<Epub>& epub) {
+  if (!epub) return false;
   uint64_t epubSize = 0;
   if (!fileSizeOf(epub->getPath(), epubSize)) {
     LOG_ERR(MODULE, "Cannot size %s", epub->getPath().c_str());
-    return nullptr;
+    forgetBible();
+    return false;
   }
-  if (documentsReady_ && documentsPath_ == epub->getPath() && documentsEpubSize_ == epubSize) return &documents_;
-  if (!resolveDocuments(epub, epubSize)) return nullptr;
+  const auto spineCount = static_cast<uint32_t>(std::max(epub->getSpineItemsCount(), 0));
+  if (identified_ && identity_.path == epub->getPath() && identity_.epubSize == epubSize &&
+      identity_.spineCount == spineCount) {
+    return true;
+  }
+  if (identified_) LOG_INF(MODULE, "Another Bible on the card; dropping what search kept");
+  forgetBible();
+  identity_ = Identity{epub->getPath(), epubSize, spineCount};
+  identified_ = true;
+  return true;
+}
+
+void BibleSearchStore::forgetBible() {
+  close();
+  identified_ = false;
+  identity_ = Identity{};
+  fingerprint_ = 0;
+  fingerprintKnown_ = false;
+  recordLoad_ = BibleSearchFingerprintFile::Load::Missing;
+  recordLoaded_ = false;
+  recordFingerprint_ = 0;
+  documentsReady_ = false;
+  documents_ = Documents{};
+  documentsBuffer_.reset();
+}
+
+BibleSearchFingerprintFile::Key BibleSearchStore::recordKey() const {
+  BibleSearchFingerprintFile::Key key;
+  key.epubSize = identity_.epubSize;
+  key.spineCount = identity_.spineCount;
+  key.unitIndexVersion = study::UNIT_INDEX_VERSION;
+  return key;
+}
+
+void BibleSearchStore::loadRecord(const std::shared_ptr<Epub>& epub) {
+  BibleSearchFingerprintFile::Record record;
+  recordLoad_ = BibleSearchFingerprintFile::load(epub->getCachePath(), recordKey(), record);
+  recordLoaded_ = true;
+  recordFingerprint_ = recordLoad_ == BibleSearchFingerprintFile::Load::Ok ? record.fingerprint : 0;
+}
+
+bool BibleSearchStore::fingerprintFor(const std::shared_ptr<Epub>& epub, uint64_t& out) {
+  if (!identify(epub)) return false;
+  if (fingerprintKnown_) {
+    LOG_DBG(MODULE, "Fingerprint from memory");
+    out = fingerprint_;
+    return true;
+  }
+
+  [[maybe_unused]] const unsigned long started = millis();
+  if (!recordLoaded_) loadRecord(epub);
+  if (recordLoad_ == BibleSearchFingerprintFile::Load::Ok) {
+    fingerprint_ = recordFingerprint_;
+    fingerprintKnown_ = true;
+    out = fingerprint_;
+    LOG_DBG(MODULE, "Fingerprint from record in %lu ms", millis() - started);
+    return true;
+  }
+  if (recordLoad_ != BibleSearchFingerprintFile::Load::Missing) {
+    LOG_INF(MODULE, "Fingerprint record not used (load %d)", static_cast<int>(recordLoad_));
+  }
+
+  if (!resolveDocuments(epub)) return false;
+  out = fingerprint_;
+  LOG_DBG(MODULE, "Fingerprint computed in %lu ms", millis() - started);
+  return true;
+}
+
+const BibleSearchStore::Documents* BibleSearchStore::documents(const std::shared_ptr<Epub>& epub) {
+  if (!identify(epub)) return nullptr;
+  if (documentsReady_) return &documents_;
+  if (!resolveDocuments(epub)) return nullptr;
   return &documents_;
 }
 
-bool BibleSearchStore::resolveDocuments(const std::shared_ptr<Epub>& epub, const uint64_t epubSize) {
+bool BibleSearchStore::resolveDocuments(const std::shared_ptr<Epub>& epub) {
   documentsReady_ = false;
   documents_ = Documents{};
   documentsBuffer_.reset();
@@ -143,7 +194,7 @@ bool BibleSearchStore::resolveDocuments(const std::shared_ptr<Epub>& epub, const
   auto* scratchBooks = reinterpret_cast<uint8_t*>(scratchSpines + capacity);
 
   uint32_t count = 0;
-  for (uint8_t book = 1; book <= BIBLE_BOOKS; book++) {
+  for (uint8_t book = 1; book <= BibleSearchFingerprintFile::BIBLE_BOOKS; book++) {
     const uint32_t before = count;
     for (const uint16_t spine : STUDY.spineIndicesForBook(book)) {
       if (count >= capacity) break;
@@ -173,8 +224,8 @@ bool BibleSearchStore::resolveDocuments(const std::shared_ptr<Epub>& epub, const
 
   // Device-written FAT timestamps are constant, so there is no mtime to hash.
   // The spine hrefs catch a replaced Bible whose file size happens to match.
-  Fnv1a64 fingerprint;
-  fingerprint.addU64(epubSize);
+  BibleSearchFingerprintFile::Fnv1a64 fingerprint;
+  fingerprint.addU64(identity_.epubSize);
   fingerprint.addU32(static_cast<uint32_t>(spineCount));
   for (uint32_t i = 0; i < count; i++) {
     const std::string href = epub->getSpineItem(spines[i]).href;
@@ -192,25 +243,50 @@ bool BibleSearchStore::resolveDocuments(const std::shared_ptr<Epub>& epub, const
   documents_.count = count;
   documents_.spines = spines;
   documents_.books = books;
-  documentsPath_ = epub->getPath();
-  documentsEpubSize_ = epubSize;
   documentsReady_ = true;
+  fingerprint_ = fingerprint.hash;
+  fingerprintKnown_ = true;
   LOG_INF(MODULE, "%u verse documents, fingerprint %08lx%08lx", static_cast<unsigned>(count),
           static_cast<unsigned long>(documents_.fingerprint >> 32), static_cast<unsigned long>(documents_.fingerprint));
+
+  if (BibleSearchFingerprintFile::coversEveryBook(books, count)) {
+    persistFingerprint(epub);
+  } else {
+    LOG_ERR(MODULE, "Not every book resolved; the fingerprint is kept for this boot only");
+  }
   return true;
 }
 
+void BibleSearchStore::persistFingerprint(const std::shared_ptr<Epub>& epub) {
+  if (!recordLoaded_) loadRecord(epub);
+  if (recordLoad_ == BibleSearchFingerprintFile::Load::Ok && recordFingerprint_ == fingerprint_) return;
+  if (!BibleSearchFingerprintFile::mayOverwrite(recordLoad_)) {
+    LOG_INF(MODULE, "Fingerprint record left in place (load %d)", static_cast<int>(recordLoad_));
+    return;
+  }
+
+  BibleSearchFingerprintFile::Record record;
+  record.key = recordKey();
+  record.verseDocuments = documents_.count;
+  record.fingerprint = fingerprint_;
+  if (!BibleSearchFingerprintFile::save(epub->getCachePath(), record)) {
+    LOG_ERR(MODULE, "Fingerprint record not saved; the next boot recomputes it");
+    return;
+  }
+  recordLoad_ = BibleSearchFingerprintFile::Load::Ok;
+  recordFingerprint_ = fingerprint_;
+}
+
 BibleSearchStore::Status BibleSearchStore::status(const std::shared_ptr<Epub>& epub) {
-  const Documents* docs = documents(epub);
-  if (!docs) return Status::Unreadable;
+  uint64_t fingerprint = 0;
+  if (!fingerprintFor(epub, fingerprint)) return Status::Unreadable;
 
   BibleSearch::IndexReader reader(psramAllocator());
   Status indexStatus = Status::Missing;
   if (Storage.exists(INDEX_PATH)) {
     HalFile file;
-    indexStatus = Storage.openFileForRead(MODULE, INDEX_PATH, file)
-                      ? reader.open(byteSourceFor(file), docs->fingerprint)
-                      : Status::Unreadable;
+    indexStatus = Storage.openFileForRead(MODULE, INDEX_PATH, file) ? reader.open(byteSourceFor(file), fingerprint)
+                                                                    : Status::Unreadable;
   }
   if (indexStatus == Status::Ok) return indexStatus;
 
@@ -219,30 +295,35 @@ BibleSearchStore::Status BibleSearchStore::status(const std::shared_ptr<Epub>& e
   if (Storage.exists(CHECKPOINT_PATH)) {
     HalFile file;
     if (Storage.openFileForRead(MODULE, CHECKPOINT_PATH, file) &&
-        reader.open(byteSourceFor(file), docs->fingerprint) == Status::Incomplete) {
+        reader.open(byteSourceFor(file), fingerprint) == Status::Incomplete) {
       return Status::Incomplete;
     }
   }
   return indexStatus;
 }
 
+BibleSearchStore::Status BibleSearchStore::openIndexFile(const uint64_t fingerprint) {
+  if (!Storage.exists(INDEX_PATH)) return Status::Missing;
+  reader_ = makeUniqueNoThrow<BibleSearch::IndexReader>(psramAllocator());
+  if (!reader_) {
+    LOG_ERR(MODULE, "OOM: index reader");
+    return Status::Unreadable;
+  }
+  if (!Storage.openFileForRead(MODULE, INDEX_PATH, indexFile_)) return Status::Unreadable;
+  return reader_->open(byteSourceFor(indexFile_), fingerprint);
+}
+
+size_t BibleSearchStore::termIndexBytes() const {
+  if (!reader_ || !reader_->termIndexCached()) return 0;
+  return reader_->header().postingsOffset - reader_->header().termTableOffset;
+}
+
 const BibleSearch::IndexReader* BibleSearchStore::open(const std::shared_ptr<Epub>& epub, Status* statusOut) {
   close();
-  Status result = Status::Missing;
-  const Documents* docs = documents(epub);
-  if (!docs) {
-    result = Status::Unreadable;
-  } else if (Storage.exists(INDEX_PATH)) {
-    reader_ = makeUniqueNoThrow<BibleSearch::IndexReader>(psramAllocator());
-    if (!reader_) {
-      LOG_ERR(MODULE, "OOM: index reader");
-      result = Status::Unreadable;
-    } else if (!Storage.openFileForRead(MODULE, INDEX_PATH, indexFile_)) {
-      result = Status::Unreadable;
-    } else {
-      result = reader_->open(byteSourceFor(indexFile_), docs->fingerprint);
-    }
-  }
+  uint64_t fingerprint = 0;
+  const bool identified = fingerprintFor(epub, fingerprint);
+  [[maybe_unused]] const unsigned long started = millis();
+  const Status result = identified ? openIndexFile(fingerprint) : Status::Unreadable;
   if (statusOut) *statusOut = result;
 
   if (result != Status::Ok) {
@@ -254,6 +335,8 @@ const BibleSearch::IndexReader* BibleSearchStore::open(const std::shared_ptr<Epu
     // Still correct, only slower: lookups then read the term table from the card.
     LOG_ERR(MODULE, "Term index not cached; lookups will read the card");
   }
+  LOG_DBG(MODULE, "Index opened in %lu ms (term index %u bytes)", millis() - started,
+          static_cast<unsigned>(termIndexBytes()));
   return reader_.get();
 }
 
