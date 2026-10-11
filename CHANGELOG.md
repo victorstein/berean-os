@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.16](https://github.com/victorstein/berean-os/compare/v1.29.15...v1.29.16) (2026-10-11)
+
+
+### Documentation
+
+* record the responsiveness batch's device figures ([#268](https://github.com/victorstein/berean-os/issues/268)) ([3f704d2](https://github.com/victorstein/berean-os/commit/3f704d2ec3af044ed5881f6cfc6ff648de26e4d3))
+
 ## [1.29.15](https://github.com/victorstein/berean-os/compare/v1.29.14...v1.29.15) (2026-10-11)
 
 
