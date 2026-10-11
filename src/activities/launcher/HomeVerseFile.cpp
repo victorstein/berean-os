@@ -7,6 +7,9 @@
 
 #include "activities/launcher/HomeVerseDoc.h"
 
+static_assert(HomeVerseDoc::SAVE_BUDGET < persist::DEFAULT_SAVE_BUDGET,
+              "a store whose fields are bounded must claim less than the shared default");
+
 namespace HomeVerseFile {
 namespace {
 

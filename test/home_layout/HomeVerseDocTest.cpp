@@ -2,6 +2,7 @@
 // the budget. The storage half is HomeVerseFileTest.
 
 #include <ArduinoJson.h>
+#include <SaveBudget.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -255,4 +256,8 @@ TEST(HomeVerseDoc, TheLargestEntryFitsTheBudget) {
   HomeVerseDoc::toJson(entry, build.c_str(), doc);
   ASSERT_FALSE(doc.overflowed());
   EXPECT_LE(measureJson(doc), HomeVerseDoc::SAVE_BUDGET);
+}
+
+TEST(HomeVerseDocBudget, ClaimsLessThanTheSharedDefault) {
+  EXPECT_LT(HomeVerseDoc::SAVE_BUDGET, persist::DEFAULT_SAVE_BUDGET);
 }
