@@ -53,10 +53,12 @@ FILES: docs/file-formats.md
 - No line is needed in `src/main.cpp` (spec A7).
 
 **Overlap:**
-- `docs/file-formats.md` is also on t3's file list. If t3 still holds it when Task 7 comes up,
-  skip Task 7's commit and put the section text in the PR body under "For the orchestrator"
-  (Task 8).
-- t1 (R20) edits only `BibleSearchActivity::onEnter`. Our activity edits are elsewhere.
+- `docs/file-formats.md` is also on t3's file list. Declaring it here holds this whole task in
+  `blocked-on-files` while t3 implements. That cost is accepted: D1 requires the doc, and an
+  undeclared edit is what the lock exists to prevent.
+- t1 (R20) has landed on `main` (#255). Besides `onEnter`, it touched comments in `showFailure`,
+  `finishBuild`, `handleDialogInput` and `render`. None of these intersects a Task 6 block; plan
+  review 0 checked this by applying Task 6 to `origin/main`'s files. Task 0's merge brings it in.
 
 ## Rules for every task
 
@@ -2241,10 +2243,6 @@ git commit -m "perf: reopen Bible search without reloading the index or book nam
 **Files:**
 - Modify: `docs/file-formats.md`
 
-If t3 still holds `docs/file-formats.md` (`hpipe show --task t3` lists it while it implements),
-do not edit the file. Copy the section below into the PR body under "For the orchestrator" in
-Task 8.
-
 - [ ] **Step 1: Insert the section**
 
 In `docs/file-formats.md`, replace:
@@ -2322,13 +2320,17 @@ git commit -m "docs: document the Bible search fingerprint record"
 
 ### Task 8: Whole-tree checks, the follow-up, and the PR
 
-**Files:** none new. This task may fix formatting anywhere the whole-tree format pass reports.
+**Files:** none new. If the whole-tree format pass rewrites any file not on the `FILES:` lines,
+restore it (`git checkout -- <file>`) and report it in the PR body; do not commit it.
+
+**Who does what:** Steps 1-4 are the implementer's. Step 5 belongs to the worker: it pushes and
+opens the PR only after re-running Steps 1-3 itself. The implementer commits but never pushes.
 
 - [ ] **Step 1: Format the whole tree, as CI does**
 
 Run: `./bin/clang-format-fix`
-Expected: exit 0. If it rewrote files, `git add` them and commit
-`style: apply clang-format`.
+Expected: exit 0. If it rewrote files on the `FILES:` lines, `git add` those and commit
+`style: apply clang-format`. Restore any other rewritten file, as the task header says.
 
 - [ ] **Step 2: All host suites**
 
@@ -2368,7 +2370,7 @@ session work. Source: docs/superpowers/specs/2026-10-11-berean-o-6-design.md, No
 Run:
 `hpipe discover --task t6 --title "Persist the Bible book-name table beside book.bin" --body-file build/r11-discover-names.md`
 
-- [ ] **Step 5: Push and open the PR**
+- [ ] **Step 5 (worker, after re-running Steps 1-3 itself): push and open the PR**
 
 Run: `git push`
 
@@ -2431,8 +2433,10 @@ The body has the sections below, filled in, and its last line is exactly `Refs b
       `/.crosspoint/epub_<hash>/search-fingerprint.bin` is 40 bytes.
 6. **For the orchestrator.**
    - No `test/CMakeLists.txt` or `src/main.cpp` lines are needed.
-   - If Task 7 was skipped because t3 held `docs/file-formats.md`, paste Task 7's section here
-     verbatim for the orchestrator to apply.
+   - The `docs/file-formats.md` section landed in this branch (Task 7), so there is nothing to
+     apply.
+   - List any file the whole-tree format pass rewrote outside this task's `FILES:` lines and
+     restored (Task 8 Step 1).
 
 ---
 
@@ -2463,3 +2467,17 @@ The body has the sections below, filled in, and its last line is exactly `Refs b
   `AForeignFileIsCorruptEvenWithAHighVersion`, and the I/O tests for the 41-byte and 48-byte files.
 - **Docs:** Task 7.
 - **Follow-up:** Task 8, step 4.
+
+## Changes after plan review 0
+
+Review: `docs/superpowers/reviews/berean-o-6-plan-review-0.md` (verdict CLEAR; 3 MINOR). All
+three are accepted and applied.
+
+- **MINOR 1, the unreachable fallback.** Option (a) is taken. `docs/file-formats.md` stays on the
+  `FILES:` lines, and the "Overlap" note now says that holds t6 while t3 implements. The Task 7
+  skip branch and the matching PR-body fallback are gone. The R20 sentence is also corrected:
+  R20 has landed as #255, and it does not intersect Task 6.
+- **MINOR 2, formatting outside the lock.** Task 8 now restores, and reports, any file the
+  whole-tree pass rewrites outside the `FILES:` lines.
+- **MINOR 3, who pushes.** Task 8 Step 5 is marked as the worker's, after it re-runs Steps 1-3. The
+  implementer commits but never pushes.

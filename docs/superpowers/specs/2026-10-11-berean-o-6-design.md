@@ -469,10 +469,9 @@ section covers:
   `book.bin` rebuild, which is why `VERSION` must be bumped with any `BOOK_CACHE_VERSION` change
   that alters spine hrefs (A9).
 
-`docs/file-formats.md` is also on t3's file list, and this task does not hold it yet. At
-`implement` it is added to this task's files once t3's lock allows. If the lock is still held
-when the PR opens, the exact section text goes in the PR body under "For the orchestrator". It is
-never dropped.
+`docs/file-formats.md` is also on t3's file list. The plan declares it on this task's `FILES:`
+lines, so the pipeline holds this task until t3's lock allows. The section always lands in this
+branch, never as a hand-off (changed after plan review 0).
 
 ## Data and control flow
 
