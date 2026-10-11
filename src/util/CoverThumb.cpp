@@ -8,6 +8,8 @@
 #include <Logging.h>
 #include <SdPaths.h>
 
+#include "components/CoverBand.h"
+
 namespace {
 
 constexpr const char* MODULE = "COVER";
@@ -43,6 +45,7 @@ std::string pathFor(const std::string& bookPath, const int height, bool& generat
     LOG_DBG(MODULE, "No cover thumbnail for %s", bookPath.c_str());
     return {};
   }
+  CoverBand::noteCoversChanged();
   return Storage.exists(path.c_str()) ? path : std::string{};
 }
 
