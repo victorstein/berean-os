@@ -11,9 +11,12 @@
 
 #include "activities/launcher/HomeVerseDoc.h"
 
+using HomeVerseDoc::Restore;
+
 namespace {
 
 constexpr const char* BUILD = "1a2b3c4d";
+constexpr uint8_t RUNGS = 3;
 
 home_verse::Key datedKey(const uint8_t day, const uint32_t bytes) {
   home_verse::Key key;
@@ -58,6 +61,25 @@ std::string serialised(const home_verse::Entry& entry) {
   return json;
 }
 
+Restore restoreFrom(const std::string& json, home_verse::Entry& out, const char* build = BUILD) {
+  JsonDocument doc;
+  const DeserializationError error = deserializeJson(doc, json);
+  EXPECT_FALSE(error) << json;
+  return HomeVerseDoc::fromJson(doc.as<JsonVariantConst>(), build, RUNGS, out);
+}
+
+using DocumentEdit = void (*)(JsonDocument&);
+
+// The pick's own document with one edit applied. `out.valid` starts true, so a test sees a refusal
+// clear it.
+Restore restoreEdited(const DocumentEdit edit, home_verse::Entry& out) {
+  JsonDocument doc;
+  HomeVerseDoc::toJson(pickEntry(), BUILD, doc);
+  edit(doc);
+  out.valid = true;
+  return HomeVerseDoc::fromJson(doc.as<JsonVariantConst>(), BUILD, RUNGS, out);
+}
+
 }  // namespace
 
 TEST(HomeVerseDoc, AUsableBuildIdIsShortAndNotAllZero) {
@@ -89,4 +111,73 @@ TEST(HomeVerseDoc, AnUndatedKeyWritesNoDate) {
   undated.fileExists = false;
   EXPECT_EQ(serialised(emptyEntry(home_verse::Empty::NoPassages, undated)),
             R"({"v":1,"b":"1a2b3c4d","k":{"dt":false,"y":0,"m":0,"d":0,"f":false,"n":0},"e":1})");
+}
+
+TEST(HomeVerseDoc, APickRoundTrips) {
+  const home_verse::Entry saved = pickEntry();
+  home_verse::Entry restored;
+  ASSERT_EQ(restoreFrom(serialised(saved), restored), Restore::Restored);
+  EXPECT_TRUE(restored.valid);
+  EXPECT_TRUE(home_verse::sameKey(restored.key, saved.key));
+  EXPECT_EQ(restored.empty, home_verse::Empty::None);
+  ASSERT_TRUE(restored.hasPick);
+  EXPECT_EQ(restored.pick.start, saved.pick.start);
+  EXPECT_EQ(restored.pick.spine, 1201);
+  EXPECT_STREQ(restored.pick.reference, "John 3:16");
+  EXPECT_EQ(restored.pick.rung, 1);
+  ASSERT_EQ(restored.pick.lineCount, 2);
+  EXPECT_STREQ(restored.pick.line(0), "For God loved the world");
+  EXPECT_STREQ(restored.pick.line(1), "so much that he gave");
+}
+
+TEST(HomeVerseDoc, EmptyResultsRoundTrip) {
+  home_verse::Key missing = datedKey(11, 0);
+  missing.fileExists = false;
+  home_verse::Key undated;
+  undated.fileExists = true;
+  undated.fileBytes = 10;
+  const struct {
+    home_verse::Empty why;
+    home_verse::Key key;
+  } cases[] = {
+      {home_verse::Empty::NoPassages, datedKey(11, 43864)},
+      {home_verse::Empty::TooLong, datedKey(11, 43864)},
+      {home_verse::Empty::NoPassages, missing},
+      {home_verse::Empty::TooLong, undated},
+  };
+  for (const auto& c : cases) {
+    home_verse::Entry restored;
+    ASSERT_EQ(restoreFrom(serialised(emptyEntry(c.why, c.key)), restored), Restore::Restored);
+    EXPECT_TRUE(restored.valid);
+    EXPECT_FALSE(restored.hasPick);
+    EXPECT_EQ(restored.empty, c.why);
+    EXPECT_TRUE(home_verse::sameKey(restored.key, c.key));
+  }
+}
+
+TEST(HomeVerseDoc, ARestoredKeyAnswersOnlyForItsDayAndSize) {
+  home_verse::Entry restored;
+  ASSERT_EQ(restoreFrom(serialised(pickEntry()), restored), Restore::Restored);
+  EXPECT_TRUE(home_verse::validFor(restored, datedKey(11, 43864)));
+  EXPECT_FALSE(home_verse::validFor(restored, datedKey(12, 43864))) << "a new day rescans";
+  EXPECT_FALSE(home_verse::validFor(restored, datedKey(11, 43900))) << "a tag edit rescans";
+}
+
+TEST(HomeVerseDoc, AnUnknownFormatIsRefused) {
+  home_verse::Entry out;
+  EXPECT_EQ(restoreEdited([](JsonDocument& d) { d.remove("v"); }, out), Restore::UnknownFormat);
+  EXPECT_FALSE(out.valid);
+  EXPECT_EQ(restoreEdited([](JsonDocument& d) { d["v"] = 0; }, out), Restore::UnknownFormat);
+  EXPECT_EQ(restoreEdited([](JsonDocument& d) { d["v"] = -1; }, out), Restore::UnknownFormat);
+  EXPECT_EQ(restoreEdited([](JsonDocument& d) { d["v"] = 2; }, out), Restore::UnknownFormat);
+  EXPECT_FALSE(out.valid);
+}
+
+TEST(HomeVerseDoc, AnotherBuildsFileIsNotRestored) {
+  home_verse::Entry out;
+  out.valid = true;
+  EXPECT_EQ(restoreFrom(serialised(pickEntry()), out, "5e6f7a8b"), Restore::OtherBuild);
+  EXPECT_FALSE(out.valid);
+  EXPECT_EQ(restoreEdited([](JsonDocument& d) { d.remove("b"); }, out), Restore::OtherBuild);
+  EXPECT_FALSE(out.valid);
 }
