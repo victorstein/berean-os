@@ -1,12 +1,14 @@
 // The Home verse file on the in-memory card (spec berean-o-7, A7-A12): what reaches the card, what
 // is refused, and a .tmp left by an interrupted rename. Modelled on test/places_store.
 
+#include <ArduinoJson.h>
 #include <HalStorageFake.h>
 #include <SdPaths.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 #include "activities/launcher/HomeVerseFile.h"
@@ -36,6 +38,24 @@ home_verse::Entry pickEntry() {
   home_verse::packLines({"For God loved the world", "so much that he gave"}, entry.pick);
   return entry;
 }
+
+struct CountdownJsonAllocator : ArduinoJson::Allocator {
+  int remaining = 1 << 30;
+  int allocations = 0;
+  void* allocate(const size_t size) override {
+    if (remaining <= 0) return nullptr;
+    --remaining;
+    ++allocations;
+    return malloc(size);
+  }
+  void deallocate(void* pointer) override { free(pointer); }
+  void* reallocate(void* pointer, const size_t size) override {
+    if (remaining <= 0) return nullptr;
+    --remaining;
+    ++allocations;
+    return realloc(pointer, size);
+  }
+};
 
 class HomeVerseFileTest : public ::testing::Test {
  protected:
@@ -112,6 +132,31 @@ TEST_F(HomeVerseFileTest, AnUnreadableOrFutureFileIsRefusedThenReplaced) {
 
   ASSERT_GT(HomeVerseFile::save(pickEntry(), BUILD, nullptr), 0u);
   EXPECT_EQ(HomeVerseFile::load(BUILD, RUNGS, nullptr, out), HomeVerseFile::Load::Restored);
+}
+
+TEST_F(HomeVerseFileTest, ASaveBuildsItsDocumentOnTheGivenAllocatorAndRefusesWhenItRunsOut) {
+  CountdownJsonAllocator counting;
+  ASSERT_GT(HomeVerseFile::save(pickEntry(), BUILD, &counting), 0u);
+  EXPECT_TRUE(storage_fake::fileBytes(PATH).has_value());
+  EXPECT_GT(counting.allocations, 0);
+
+  storage_fake::reset();
+  CountdownJsonAllocator exhausted;
+  exhausted.remaining = 0;
+  EXPECT_EQ(HomeVerseFile::save(pickEntry(), BUILD, &exhausted), 0u);
+  EXPECT_FALSE(storage_fake::fileBytes(PATH).has_value());
+  EXPECT_FALSE(storage_fake::fileBytes(PATH + ".tmp").has_value());
+}
+
+TEST_F(HomeVerseFileTest, ALoadThatRunsOutOfMemoryIsUnreadable) {
+  ASSERT_GT(HomeVerseFile::save(pickEntry(), BUILD, nullptr), 0u);
+
+  CountdownJsonAllocator exhausted;
+  exhausted.remaining = 0;
+  home_verse::Entry out;
+  out.valid = true;
+  EXPECT_EQ(HomeVerseFile::load(BUILD, RUNGS, &exhausted, out), HomeVerseFile::Load::Unreadable);
+  EXPECT_FALSE(out.valid);
 }
 
 TEST_F(HomeVerseFileTest, EveryOutcomeHasALogWord) {
