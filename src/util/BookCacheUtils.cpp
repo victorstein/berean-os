@@ -7,6 +7,7 @@
 #include <SdPaths.h>
 
 #include "BookProgress.h"
+#include "components/CoverBand.h"
 
 bool isBookCacheDirectoryName(const char* name) {
   if (!name) {
@@ -26,6 +27,7 @@ void clearBookCache(const std::string& path) {
   } else {
     return;
   }
+  CoverBand::noteCoversChanged();
   LOG_DBG("BookCache", "Done checking metadata cache for: %s", path.c_str());
 }
 

@@ -556,6 +556,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
 
 // IMPORTANT: This function is in critical rendering path and is called for every pixel. Please keep it as simple and
 // efficient as possible.
+// CoverBand.cpp's replayInk and test/cover_band/GfxRendererFake.cpp copy the Portrait mapping and strip clip below
+// to write a band without this call; change all three together.
 void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
   int phyX = 0;
   int phyY = 0;
@@ -2267,6 +2269,10 @@ void GfxRenderer::preconditionGrayscale(int x, int y, int w, int h) const {
 void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuffers(frameBuffer); }
 
 void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
+
+void GfxRenderer::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) const {
+  display.copyGrayscaleBuffers(lsbBuffer, msbBuffer);
+}
 
 void GfxRenderer::displayGrayBuffer() const { display.displayGrayBuffer(fadingFix); }
 

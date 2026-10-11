@@ -100,6 +100,20 @@ TEST_F(HalStorageFake, StreamedReadReturnsTheBytesThenEof) {
   EXPECT_EQ(file.read(buf, 3), 0);
 }
 
+TEST_F(HalStorageFake, SeekCurMovesRelativeToThePositionAndRefusesToLeaveTheFile) {
+  storage_fake::putFile("/f", "abcdef");
+  HalFile file;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", std::string("/f"), file));
+  EXPECT_EQ(file.read(), 'a');
+  EXPECT_TRUE(file.seekCur(2));
+  EXPECT_EQ(file.read(), 'd');
+  EXPECT_TRUE(file.seekCur(-2));
+  EXPECT_EQ(file.read(), 'c');
+  EXPECT_FALSE(file.seekCur(-4));
+  EXPECT_FALSE(file.seekCur(4));
+  EXPECT_EQ(file.position(), 3u);
+}
+
 TEST_F(HalStorageFake, WrittenHandleBytesLandOnTheCard) {
   ASSERT_TRUE(Storage.mkdir("/d"));
   HalFile file;

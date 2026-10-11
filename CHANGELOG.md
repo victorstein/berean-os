@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.29.14](https://github.com/victorstein/berean-os/compare/v1.29.13...v1.29.14) (2026-10-11)
+
+
+### Performance
+
+* replay cover bands from PSRAM instead of re-reading the cover ([#262](https://github.com/victorstein/berean-os/issues/262)) ([941e607](https://github.com/victorstein/berean-os/commit/941e607a82ffd288828bd9c9ad20e2063c8c7c1e))
+
+## [1.29.13](https://github.com/victorstein/berean-os/compare/v1.29.12...v1.29.13) (2026-10-11)
+
+
+### Performance
+
+* skip the home verse scan on a same-day wake ([#263](https://github.com/victorstein/berean-os/issues/263)) ([89972e1](https://github.com/victorstein/berean-os/commit/89972e1ff78567ed7dd1e55cf2fce129d736d0fc))
+
+## [1.29.12](https://github.com/victorstein/berean-os/compare/v1.29.11...v1.29.12) (2026-10-11)
+
+
+### Performance
+
+* keep the Bible search index open between searches ([#259](https://github.com/victorstein/berean-os/issues/259)) ([ba69759](https://github.com/victorstein/berean-os/commit/ba69759b0cbe78c5dc29a5e38c9ea49ee26dad04))
+
+## [1.29.11](https://github.com/victorstein/berean-os/compare/v1.29.10...v1.29.11) (2026-10-11)
+
+
+### Performance
+
+* run the SD card at 40 MHz high speed ([#257](https://github.com/victorstein/berean-os/issues/257)) ([b1a9f1a](https://github.com/victorstein/berean-os/commit/b1a9f1af0d0502632b250065ce520955a5cc7b75))
+
+## [1.29.10](https://github.com/victorstein/berean-os/compare/v1.29.9...v1.29.10) (2026-10-11)
+
+
+### Performance
+
+* enter Bible search and Publications with a fast refresh ([#255](https://github.com/victorstein/berean-os/issues/255)) ([106dfc4](https://github.com/victorstein/berean-os/commit/106dfc4b024429d325e87c4474007a66dde7b745))
+
 ## [1.29.9](https://github.com/victorstein/berean-os/compare/v1.29.8...v1.29.9) (2026-10-11)
 
 

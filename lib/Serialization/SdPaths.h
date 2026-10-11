@@ -23,6 +23,8 @@ inline constexpr char PUBKEYS_FILE[] = "/.berean/pubkeys.json";
 inline constexpr char TAGS_FILE[] = "/.berean/tags.json";
 inline constexpr char MEETING_WEEKS_FILE[] = "/.berean/meeting-weeks.json";
 inline constexpr char PLACES_FILE[] = "/.berean/places.json";
+// Not under PASSAGES_DIR: the passage scan reads every *.json there as a publication's passages.
+inline constexpr char HOME_VERSE_FILE[] = "/.berean/home-verse.json";
 inline constexpr char MIGRATION_REPORT_FILE[] = "/.berean/migration-report.json";
 inline constexpr char MIGRATION_LEDGER_FILE[] = "/.berean/migration-ledger.json";
 inline constexpr char SEARCH_DIR[] = "/.berean/search";
@@ -49,6 +51,7 @@ static_assert(isUnder(PUBKEYS_FILE, BEREAN_DIR));
 static_assert(isUnder(TAGS_FILE, BEREAN_DIR));
 static_assert(isUnder(MEETING_WEEKS_FILE, BEREAN_DIR));
 static_assert(isUnder(PLACES_FILE, BEREAN_DIR));
+static_assert(isUnder(HOME_VERSE_FILE, BEREAN_DIR));
 static_assert(isUnder(MIGRATION_REPORT_FILE, BEREAN_DIR));
 static_assert(isUnder(MIGRATION_LEDGER_FILE, BEREAN_DIR));
 static_assert(isUnder(SEARCH_DIR, BEREAN_DIR));

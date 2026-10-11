@@ -509,6 +509,43 @@ host-tested in `test/places_doc/`) and `src/PlacesStore.cpp` (storage, atomic wr
 At most 12 places, one per (book, chapter). The save budget, 2,118 bytes, is derived from the caps
 (`PlacesDoc::worstCaseBytes()`).
 
+## `/.berean/home-verse.json`
+
+Home's last completed verse scan. It lets a wake on the same day, with `bible.json` the same size
+and the same firmware build, show the verse without scanning again. A cache, not study data:
+deleting it costs one scan. Owned by `src/activities/launcher/HomeVerseDoc.{h,cpp}` (format,
+host-tested in `test/home_layout/HomeVerseDocTest.cpp`) and `src/activities/launcher/HomeVerseFile.{h,cpp}`
+(storage, atomic writes, host-tested in `test/home_layout/HomeVerseFileTest.cpp`). Read and
+written on the loop task only.
+
+### Version 1
+
+- `v` — format version. Required: an absent, zero, negative or newer `v` is not restored. Home
+  scans, and the save that follows replaces the file.
+
+```json
+{"v":1,"b":"1a2b3c4d","k":{"dt":true,"y":2026,"m":10,"d":11,"f":true,"n":43864},"e":0,
+ "p":{"u":"v:43:3:16:0","s":1201,"r":"John 3:16","rung":1,"l":["For God loved the world","so much that he gave"]}}
+```
+
+- `b` — the build that wrote it: the first 8 hex digits of the firmware ELF's SHA-256. Another
+  build's file is never restored, because its lines were fitted with that build's fonts.
+- `k` — the key:
+  - `dt` — whether the clock had a date;
+  - `y`, `m`, `d` — the local date, 0 when undated;
+  - `f` — whether `/.berean/passages/bible.json` existed;
+  - `n` — its size in bytes.
+- `e` — `0` a pick, `1` no whole passages, `2` passages too long for the card.
+- `p` — present exactly when `e` is `0`:
+  - `u` — the start unit as a compact `study::Unit`;
+  - `s` — the spine hint;
+  - `r` — the reference, ≤ 48 bytes;
+  - `rung` — the font rung, 0–2;
+  - `l` — the 1–4 lines, already fitted to the card.
+
+A field of the wrong type or out of range refuses the whole file. The save budget, 3,943 bytes, is
+derived from the caps (`HomeVerseDoc::worstCaseBytes()`).
+
 ## `/.berean/passages/<pubkey>.json`
 
 One publication's tagged passages. Owned by `lib/StudyStore/StudyStore/PassageDoc.{h,cpp}` (format,
@@ -594,6 +631,52 @@ A newer `formatVersion` is refused, never reinterpreted; an older one, a size mi
 offset or count outside the file makes it unreadable. A fingerprint mismatch makes it stale.
 Neither is overwritten until the user confirms a rebuild. The Spanish NWT indexes to 31,078
 verses, 23,568 terms and 1,469,729 bytes; the write budget is 8 MB.
+
+## `/.crosspoint/epub_<hash>/search-fingerprint.bin`
+
+The Bible search fingerprint (the `fingerprint` in `bible.idx`'s header), kept beside the Bible's
+`book.bin`. The first search after a boot reads these 40 bytes instead of re-resolving every
+verse document, which takes about 2 s on the NWT.
+
+- **Owners.** `src/study/BibleSearchFingerprintFile.{h,cpp}` owns the layout, load and save.
+  `BibleSearchStore.cpp` decides when to read and write it.
+- **Derived data.** Deleting it costs one recompute.
+- **Lifetime.** It lives in the Bible's cache directory on purpose: every on-device delete or
+  replace of the Bible removes that directory, and the record with it. That covers web upload,
+  delete, move and rename, WebDAV, the file browser, the publication downloader and Clear Cache.
+  An in-place `book.bin` rebuild does not: a `BOOK_CACHE_VERSION` change, or `book.bin` deleted on
+  its own. So `VERSION` must be bumped with any `BOOK_CACHE_VERSION` change that alters spine
+  hrefs.
+- **What is written.** Only a resolve in which every book 1-66 contributed a verse document. A
+  partial one is used for that boot only.
+- **How it is written.** As `search-fingerprint.bin.tmp`; then the old record is removed and the
+  temp file is renamed into place.
+
+### Version 1
+
+Little-endian throughout; every field is copied with `memcpy`. Exactly 40 bytes.
+
+| Offset | Field |
+|---|---|
+| 0 | magic `BSFP` |
+| 4 | `version` u16 |
+| 6 | `unitIndexVersion` u16 — `study::UNIT_INDEX_VERSION` when written |
+| 8 | `epubSize` u64 |
+| 16 | `spineCount` u32 |
+| 20 | `verseDocuments` u32 |
+| 24 | `fingerprint` u64 |
+| 32 | `check` u64 — FNV-1a 64 over bytes 0-31 |
+
+It is read with one `read` of `min(file size, 40)` bytes and checked in this order:
+1. fewer than 6 bytes, or a wrong magic → corrupt;
+2. a newer `version` → refused, whatever the length;
+3. an older version, a length other than 40, or a `check` mismatch → corrupt;
+4. a key that differs from the Bible on the card (EPUB size, spine count,
+   `study::UNIT_INDEX_VERSION`) → stale.
+
+What happens next:
+- **Corrupt or stale:** recomputed and replaced.
+- **Newer, or one that cannot be opened or read:** recomputed in memory and never overwritten.
 
 ## Catalog index (`catalog-<lang>.txt`, `catalog-<lang>.v2.txt`)
 
