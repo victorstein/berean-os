@@ -38,3 +38,23 @@ target_link_libraries(BibleSearchIndexTest PRIVATE
 )
 
 gtest_discover_tests(BibleSearchIndexTest)
+
+
+# The fingerprint record's codec, and in later tasks its I/O against the
+# in-memory card. test/stubs comes first so <HalStorage.h>, <Logging.h> and
+# <Arduino.h> resolve to the stubs, as in test/storage_io.
+add_executable(BibleSearchFingerprintTest
+  FingerprintFileTest.cpp
+  ${REPO_ROOT}/src/study/BibleSearchFingerprintFile.cpp
+)
+
+target_include_directories(BibleSearchFingerprintTest PRIVATE
+  ${REPO_ROOT}/test/stubs
+)
+
+target_link_libraries(BibleSearchFingerprintTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(BibleSearchFingerprintTest)
