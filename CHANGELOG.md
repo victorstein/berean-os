@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.12](https://github.com/victorstein/berean-os/compare/v1.29.11...v1.29.12) (2026-10-11)
+
+
+### Performance
+
+* keep the Bible search index open between searches ([#259](https://github.com/victorstein/berean-os/issues/259)) ([ba69759](https://github.com/victorstein/berean-os/commit/ba69759b0cbe78c5dc29a5e38c9ea49ee26dad04))
+
 ## [1.29.11](https://github.com/victorstein/berean-os/compare/v1.29.10...v1.29.11) (2026-10-11)
 
 
