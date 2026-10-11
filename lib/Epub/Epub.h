@@ -50,6 +50,11 @@ class Epub {
   ~Epub() = default;
   std::string& getBasePath() { return contentBasePath; }
   bool load(bool buildIfMissing = true, bool skipLoadingCss = false);
+  // Re-checks a loaded book against its cache on SD after time away from it: reopens book.bin
+  // (BookMetadataCache::reopen) and, unless skipLoadingCss, requires the CSS rules cache to be
+  // present and current. False means the caller must load a fresh Epub, which rebuilds whatever is
+  // missing; this never rebuilds.
+  bool reopenCache(bool skipLoadingCss);
   bool clearCache() const;
   void setupCacheDir() const;
   const std::string& getCachePath() const;
