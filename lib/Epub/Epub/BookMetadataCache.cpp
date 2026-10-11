@@ -534,6 +534,36 @@ bool BookMetadataCache::load() {
   return true;
 }
 
+bool BookMetadataCache::reopen() {
+  if (!loaded) return false;
+  loaded = false;
+  // Explicit close() required: member variable persists beyond function scope
+  bookFile.close();
+  if (!Storage.openFileForRead("BMC", cachePath + bookBinFile, bookFile)) {
+    LOG_DBG("BMC", "Reopen: book.bin is gone");
+    return false;
+  }
+
+  uint8_t fileVersion = 0;
+  uint32_t fileLutOffset = 0;
+  uint16_t fileSpineCount = 0;
+  uint16_t fileTocCount = 0;
+  serialization::readPod(bookFile, fileVersion);
+  serialization::readPod(bookFile, fileLutOffset);
+  serialization::readPod(bookFile, fileSpineCount);
+  serialization::readPod(bookFile, fileTocCount);
+  if (bookFile.size() != loadedFileSize || fileVersion != BOOK_CACHE_VERSION || fileLutOffset != lutOffset ||
+      fileSpineCount != spineCount || fileTocCount != tocCount) {
+    LOG_DBG("BMC", "Reopen: book.bin changed since load");
+    // Explicit close() required: member variable persists beyond function scope
+    bookFile.close();
+    return false;
+  }
+
+  loaded = true;
+  return true;
+}
+
 uint32_t BookMetadataCache::getCumulativeSize(const int index) const {
   if (index < 0 || index >= static_cast<int>(cumulativeSizes.size())) {
     return 0;

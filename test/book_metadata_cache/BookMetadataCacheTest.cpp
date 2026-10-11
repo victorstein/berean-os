@@ -204,3 +204,71 @@ TEST_F(BookMetadataCacheTest, EntriesStillResolveThroughTheLookupTablesAfterLoad
   EXPECT_EQ(toc.anchor, "chapter1");
   EXPECT_EQ(toc.spineIndex, 1);
 }
+
+// A parked book's cache is checked again before reuse (ParkedBook). The old handle may name a file
+// that was deleted and rebuilt since, so reopen() reads a fresh one and compares it with load()'s.
+TEST_F(BookMetadataCacheTest, ReopenKeepsAnUntouchedCache) {
+  const std::vector<Spine> spine = spineOf(20);
+  storage_fake::putFile(BOOK_BIN, makeBookBin(spine, TOC).bytes);
+
+  BookMetadataCache cache(CACHE_DIR);
+  ASSERT_TRUE(cache.load());
+  EXPECT_TRUE(cache.reopen());
+  EXPECT_TRUE(cache.isLoaded());
+  EXPECT_EQ(cache.getSpineEntry(19).href, spine[19].href);
+}
+
+TEST_F(BookMetadataCacheTest, ReopenNeedsALoadFirst) {
+  storage_fake::putFile(BOOK_BIN, makeBookBin(spineOf(3), TOC).bytes);
+
+  BookMetadataCache cache(CACHE_DIR);
+  EXPECT_FALSE(cache.reopen());
+}
+
+TEST_F(BookMetadataCacheTest, ReopenFailsOnceTheFileIsGone) {
+  storage_fake::putFile(BOOK_BIN, makeBookBin(spineOf(3), TOC).bytes);
+
+  BookMetadataCache cache(CACHE_DIR);
+  ASSERT_TRUE(cache.load());
+  ASSERT_TRUE(Storage.remove(BOOK_BIN));
+  EXPECT_FALSE(cache.reopen());
+  EXPECT_FALSE(cache.isLoaded());
+}
+
+TEST_F(BookMetadataCacheTest, ReopenFailsWhenTheSizeChanged) {
+  const BookBin bin = makeBookBin(spineOf(3), TOC);
+  storage_fake::putFile(BOOK_BIN, bin.bytes);
+
+  BookMetadataCache cache(CACHE_DIR);
+  ASSERT_TRUE(cache.load());
+  storage_fake::putFile(BOOK_BIN, bin.bytes + "x");
+  EXPECT_FALSE(cache.reopen());
+  EXPECT_FALSE(cache.isLoaded());
+}
+
+TEST_F(BookMetadataCacheTest, ReopenFailsWhenTheVersionChangedAtTheSameSize) {
+  const BookBin bin = makeBookBin(spineOf(3), TOC);
+  storage_fake::putFile(BOOK_BIN, bin.bytes);
+
+  BookMetadataCache cache(CACHE_DIR);
+  ASSERT_TRUE(cache.load());
+  std::string otherVersion = bin.bytes;
+  otherVersion[0] = static_cast<char>(BOOK_CACHE_VERSION + 1);
+  storage_fake::putFile(BOOK_BIN, otherVersion);
+  EXPECT_FALSE(cache.reopen());
+  EXPECT_FALSE(cache.isLoaded());
+}
+
+// Byte 5 is the low byte of spineCount: u8 version at 0, u32 lutOffset at 1-4.
+TEST_F(BookMetadataCacheTest, ReopenFailsWhenTheSpineCountChangedAtTheSameSize) {
+  const BookBin bin = makeBookBin(spineOf(3), TOC);
+  storage_fake::putFile(BOOK_BIN, bin.bytes);
+
+  BookMetadataCache cache(CACHE_DIR);
+  ASSERT_TRUE(cache.load());
+  std::string otherSpineCount = bin.bytes;
+  otherSpineCount[5] = static_cast<char>(otherSpineCount[5] ^ 1);
+  storage_fake::putFile(BOOK_BIN, otherSpineCount);
+  EXPECT_FALSE(cache.reopen());
+  EXPECT_FALSE(cache.isLoaded());
+}
