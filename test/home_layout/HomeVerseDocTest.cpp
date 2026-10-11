@@ -80,6 +80,12 @@ Restore restoreEdited(const DocumentEdit edit, home_verse::Entry& out) {
   return HomeVerseDoc::fromJson(doc.as<JsonVariantConst>(), BUILD, RUNGS, out);
 }
 
+void expectMalformed(const DocumentEdit edit) {
+  home_verse::Entry out;
+  EXPECT_EQ(restoreEdited(edit, out), Restore::Malformed);
+  EXPECT_FALSE(out.valid);
+}
+
 }  // namespace
 
 TEST(HomeVerseDoc, AUsableBuildIdIsShortAndNotAllZero) {
@@ -180,4 +186,44 @@ TEST(HomeVerseDoc, AnotherBuildsFileIsNotRestored) {
   EXPECT_FALSE(out.valid);
   EXPECT_EQ(restoreEdited([](JsonDocument& d) { d.remove("b"); }, out), Restore::OtherBuild);
   EXPECT_FALSE(out.valid);
+}
+
+TEST(HomeVerseDoc, APickAndItsEmptyReasonMustAgree) {
+  expectMalformed([](JsonDocument& d) { d["e"] = 1; });
+  expectMalformed([](JsonDocument& d) { d.remove("p"); });
+  expectMalformed([](JsonDocument& d) { d["e"] = 3; });
+  expectMalformed([](JsonDocument& d) { d["p"] = 1; });
+  // A pick only ever comes from a scan of a file that exists.
+  expectMalformed([](JsonDocument& d) { d["k"]["f"] = false; });
+}
+
+TEST(HomeVerseDoc, APickTheCardCannotDrawIsRefused) {
+  expectMalformed([](JsonDocument& d) { d["p"]["rung"] = RUNGS; });
+  expectMalformed([](JsonDocument& d) { d["p"]["l"].to<JsonArray>(); });
+  expectMalformed([](JsonDocument& d) {
+    JsonArray lines = d["p"]["l"].to<JsonArray>();
+    for (int i = 0; i < 5; ++i) lines.add("a");
+  });
+  expectMalformed([](JsonDocument& d) {
+    JsonArray lines = d["p"]["l"].to<JsonArray>();
+    lines.add(std::string(300, 'x'));
+    lines.add(std::string(300, 'x'));
+  });
+  expectMalformed([](JsonDocument& d) { d["p"]["r"] = std::string(home_verse::REFERENCE_BYTES, 'r'); });
+  expectMalformed([](JsonDocument& d) { d["p"]["u"] = "verse 3:16"; });
+  expectMalformed([](JsonDocument& d) { d["p"]["s"] = 65536; });
+  expectMalformed([](JsonDocument& d) {
+    d["k"]["m"] = 2;
+    d["k"]["d"] = 30;
+  });
+}
+
+TEST(HomeVerseDoc, AFieldOfTheWrongTypeIsRefused) {
+  expectMalformed([](JsonDocument& d) { d["k"]["n"] = "43864"; });
+  expectMalformed([](JsonDocument& d) { d["p"]["s"] = "1201"; });
+  expectMalformed([](JsonDocument& d) { d["k"]["dt"] = 1; });
+  expectMalformed([](JsonDocument& d) { d["p"]["rung"] = "1"; });
+  expectMalformed([](JsonDocument& d) { d["p"]["l"] = "text"; });
+  expectMalformed([](JsonDocument& d) { d["k"].to<JsonArray>(); });
+  expectMalformed([](JsonDocument& d) { d["e"] = "0"; });
 }

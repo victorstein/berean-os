@@ -3,11 +3,12 @@
 #include <FormatVersion.h>
 #include <StudyStore/Unit.h>
 
-#include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "util/CivilDate.h"
 
 namespace HomeVerseDoc {
 namespace {
@@ -30,7 +31,7 @@ uint8_t emptyCode(const home_verse::Empty empty) {
   return EMPTY_CODE_NO_PASSAGES;
 }
 
-std::optional<home_verse::Empty> emptyFromCode(const int code) {
+std::optional<home_verse::Empty> emptyFromCode(const uint8_t code) {
   switch (code) {
     case EMPTY_CODE_PICK:
       return home_verse::Empty::None;
@@ -41,6 +42,55 @@ std::optional<home_verse::Empty> emptyFromCode(const int code) {
     default:
       return std::nullopt;
   }
+}
+
+// is<T>() before every read: a `| default` read takes a wrong type silently, and most of these
+// defaults are themselves valid values. ArduinoJson's is<T>() on an integer type also checks range.
+bool readKey(const JsonVariantConst json, home_verse::Key& key) {
+  if (!json.is<JsonObjectConst>()) return false;
+  if (!json["dt"].is<bool>() || !json["f"].is<bool>() || !json["y"].is<uint16_t>() || !json["m"].is<uint8_t>() ||
+      !json["d"].is<uint8_t>() || !json["n"].is<uint32_t>()) {
+    return false;
+  }
+  key.dated = json["dt"].as<bool>();
+  key.day.year = json["y"].as<uint16_t>();
+  key.day.month = json["m"].as<uint8_t>();
+  key.day.day = json["d"].as<uint8_t>();
+  key.fileExists = json["f"].as<bool>();
+  key.fileBytes = json["n"].as<uint32_t>();
+  return !key.dated || isValidCivilDate(key.day);
+}
+
+bool readPick(const JsonVariantConst json, const uint8_t rungCount, home_verse::Pick& pick) {
+  if (!json.is<JsonObjectConst>()) return false;
+  if (!json["u"].is<const char*>() || !json["s"].is<uint16_t>() || !json["r"].is<const char*>() ||
+      !json["rung"].is<uint8_t>() || !json["l"].is<JsonArrayConst>()) {
+    return false;
+  }
+
+  const std::optional<study::Unit> start = study::unitFromCompact(std::string(json["u"].as<const char*>()));
+  if (!start) return false;
+  const char* const reference = json["r"].as<const char*>();
+  const size_t referenceBytes = strlen(reference);
+  if (referenceBytes >= home_verse::REFERENCE_BYTES) return false;
+  const uint8_t rung = json["rung"].as<uint8_t>();
+  if (rung >= rungCount) return false;
+
+  const JsonArrayConst storedLines = json["l"].as<JsonArrayConst>();
+  if (storedLines.size() == 0 || storedLines.size() > home_verse::MAX_LINES) return false;
+  std::vector<std::string> lines;
+  lines.reserve(storedLines.size());
+  for (const JsonVariantConst line : storedLines) {
+    if (!line.is<const char*>()) return false;
+    lines.emplace_back(line.as<const char*>());
+  }
+  if (!home_verse::packLines(lines, pick)) return false;
+
+  pick.start = *start;
+  pick.spine = json["s"].as<uint16_t>();
+  pick.rung = rung;
+  memcpy(pick.reference, reference, referenceBytes + 1);
+  return true;
 }
 
 }  // namespace
@@ -82,32 +132,20 @@ Restore fromJson(const JsonVariantConst doc, const char* const buildId, const ui
   out.valid = false;
   if (!persist::isKnownFormatVersion(doc["v"] | 0, FORMAT_VERSION)) return Restore::UnknownFormat;
   if (!doc["b"].is<const char*>() || strcmp(doc["b"].as<const char*>(), buildId) != 0) return Restore::OtherBuild;
-  static_cast<void>(rungCount);
 
-  const JsonVariantConst key = doc["k"];
-  out.key.dated = key["dt"] | false;
-  out.key.day.year = key["y"] | 0;
-  out.key.day.month = key["m"] | 0;
-  out.key.day.day = key["d"] | 0;
-  out.key.fileExists = key["f"] | false;
-  out.key.fileBytes = key["n"] | 0u;
-
-  const std::optional<home_verse::Empty> empty = emptyFromCode(doc["e"] | 0);
+  if (!readKey(doc["k"], out.key)) return Restore::Malformed;
+  if (!doc["e"].is<uint8_t>()) return Restore::Malformed;
+  const std::optional<home_verse::Empty> empty = emptyFromCode(doc["e"].as<uint8_t>());
   if (!empty) return Restore::Malformed;
+
+  const bool hasPick = *empty == home_verse::Empty::None;
+  // HomeVerse::scan scans only when the file exists, so a pick from a missing file is corrupt.
+  if (hasPick && !out.key.fileExists) return Restore::Malformed;
+  if (hasPick == doc["p"].isNull()) return Restore::Malformed;
+  if (hasPick && !readPick(doc["p"], rungCount, out.pick)) return Restore::Malformed;
+
   out.empty = *empty;
-  out.hasPick = *empty == home_verse::Empty::None;
-  if (out.hasPick) {
-    const JsonVariantConst pick = doc["p"];
-    const std::optional<study::Unit> start = study::unitFromCompact(std::string(pick["u"] | ""));
-    if (!start) return Restore::Malformed;
-    std::vector<std::string> lines;
-    for (const JsonVariantConst line : pick["l"].as<JsonArrayConst>()) lines.emplace_back(line | "");
-    if (!home_verse::packLines(lines, out.pick)) return Restore::Malformed;
-    out.pick.start = *start;
-    out.pick.spine = pick["s"] | 0;
-    snprintf(out.pick.reference, sizeof(out.pick.reference), "%s", pick["r"] | "");
-    out.pick.rung = pick["rung"] | 0;
-  }
+  out.hasPick = hasPick;
   out.valid = true;
   return Restore::Restored;
 }
