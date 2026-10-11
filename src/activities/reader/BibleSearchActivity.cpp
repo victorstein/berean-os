@@ -119,7 +119,7 @@ void BibleSearchActivity::onExit() {
     indexer->cancel();
     indexer.reset();
   }
-  BibleSearchStore::getInstance().close();
+  BibleSearchStore::getInstance().park();
   reader = nullptr;
   UiListActivity::onExit();
 }
@@ -187,10 +187,7 @@ void BibleSearchActivity::runBusyWork() {
   }
   switch (state) {
     case State::Opening:
-      if (!bookNames.load(epub, renderer)) {
-        LOG_ERR(MODULE, "Book names unavailable; references show chapter:verse only");
-      }
-      openIndex();
+      openIndexAndNames();
       return;
     case State::Ready:
       openIndex();
@@ -217,18 +214,45 @@ void BibleSearchActivity::runBusyWork() {
   }
 }
 
-void BibleSearchActivity::openIndex() {
+Status BibleSearchActivity::openReader() {
   auto& store = BibleSearchStore::getInstance();
   Status status = Status::Missing;
   reader = store.open(epub, &status);
+  if (reader) return Status::Ok;
+  // open() reports only on bible.idx; a matching checkpoint beside it is a
+  // build that will resume, which the prompt and the starting frame say.
+  return store.status(epub);
+}
+
+void BibleSearchActivity::showOpenResult(const Status status) {
   if (reader) {
     openKeyboard();
     return;
   }
-  // open() reports only on bible.idx; a matching checkpoint beside it is a
-  // build that will resume, which the prompt and the starting frame say.
-  status = store.status(epub);
   showPrompt(status);
+}
+
+void BibleSearchActivity::openIndex() { showOpenResult(openReader()); }
+
+// The index first: open() identifies the Bible the kept book names are matched
+// against.
+void BibleSearchActivity::openIndexAndNames() {
+  [[maybe_unused]] const unsigned long started = millis();
+  const Status status = openReader();
+
+  auto& store = BibleSearchStore::getInstance();
+  [[maybe_unused]] const char* names = "resident";
+  if (!store.restoreBookNames(epub, bookNames)) {
+    if (bookNames.load(epub, renderer)) {
+      store.keepBookNames(epub, bookNames);
+      names = "loaded";
+    } else {
+      LOG_ERR(MODULE, "Book names unavailable; references show chapter:verse only");
+      names = "unavailable";
+    }
+  }
+  LOG_DBG(MODULE, "Opened in %lu ms (index %s, names %s)", millis() - started, reader ? "ready" : "unusable", names);
+  showOpenResult(status);
 }
 
 void BibleSearchActivity::showPrompt(const Status status) {

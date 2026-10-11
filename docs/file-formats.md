@@ -595,6 +595,52 @@ offset or count outside the file makes it unreadable. A fingerprint mismatch mak
 Neither is overwritten until the user confirms a rebuild. The Spanish NWT indexes to 31,078
 verses, 23,568 terms and 1,469,729 bytes; the write budget is 8 MB.
 
+## `/.crosspoint/epub_<hash>/search-fingerprint.bin`
+
+The Bible search fingerprint (the `fingerprint` in `bible.idx`'s header), kept beside the Bible's
+`book.bin`. The first search after a boot reads these 40 bytes instead of re-resolving every
+verse document, which takes about 2 s on the NWT.
+
+- **Owners.** `src/study/BibleSearchFingerprintFile.{h,cpp}` owns the layout, load and save.
+  `BibleSearchStore.cpp` decides when to read and write it.
+- **Derived data.** Deleting it costs one recompute.
+- **Lifetime.** It lives in the Bible's cache directory on purpose: every on-device delete or
+  replace of the Bible removes that directory, and the record with it. That covers web upload,
+  delete, move and rename, WebDAV, the file browser, the publication downloader and Clear Cache.
+  An in-place `book.bin` rebuild does not: a `BOOK_CACHE_VERSION` change, or `book.bin` deleted on
+  its own. So `VERSION` must be bumped with any `BOOK_CACHE_VERSION` change that alters spine
+  hrefs.
+- **What is written.** Only a resolve in which every book 1-66 contributed a verse document. A
+  partial one is used for that boot only.
+- **How it is written.** As `search-fingerprint.bin.tmp`; then the old record is removed and the
+  temp file is renamed into place.
+
+### Version 1
+
+Little-endian throughout; every field is copied with `memcpy`. Exactly 40 bytes.
+
+| Offset | Field |
+|---|---|
+| 0 | magic `BSFP` |
+| 4 | `version` u16 |
+| 6 | `unitIndexVersion` u16 — `study::UNIT_INDEX_VERSION` when written |
+| 8 | `epubSize` u64 |
+| 16 | `spineCount` u32 |
+| 20 | `verseDocuments` u32 |
+| 24 | `fingerprint` u64 |
+| 32 | `check` u64 — FNV-1a 64 over bytes 0-31 |
+
+It is read with one `read` of `min(file size, 40)` bytes and checked in this order:
+1. fewer than 6 bytes, or a wrong magic → corrupt;
+2. a newer `version` → refused, whatever the length;
+3. an older version, a length other than 40, or a `check` mismatch → corrupt;
+4. a key that differs from the Bible on the card (EPUB size, spine count,
+   `study::UNIT_INDEX_VERSION`) → stale.
+
+What happens next:
+- **Corrupt or stale:** recomputed and replaced.
+- **Newer, or one that cannot be opened or read:** recomputed in memory and never overwritten.
+
 ## Catalog index (`catalog-<lang>.txt`, `catalog-<lang>.v2.txt`)
 
 Published on the `catalog` GitHub release by `.github/workflows/catalog-index.yml`,

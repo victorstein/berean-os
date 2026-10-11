@@ -2,6 +2,7 @@
 # is compiled here with the firmware's flags, as in bible_search_scanner.
 add_executable(BibleSearchIndexTest
   IndexTest.cpp
+  ResidencyTest.cpp
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch/Fold.cpp
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch/IndexFormat.cpp
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch/IndexBuilder.cpp
@@ -17,6 +18,7 @@ add_executable(BibleSearchIndexTest
 
 target_include_directories(BibleSearchIndexTest PRIVATE
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch
+  ${REPO_ROOT}/lib/BibleSearch  # <BibleSearch/...>, as src/study includes it
   ${REPO_ROOT}/lib/Epub
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/Memory
@@ -36,3 +38,25 @@ target_link_libraries(BibleSearchIndexTest PRIVATE
 )
 
 gtest_discover_tests(BibleSearchIndexTest)
+
+
+# The fingerprint record's codec, and in later tasks its I/O against the
+# in-memory card. test/stubs comes first so <HalStorage.h>, <Logging.h> and
+# <Arduino.h> resolve to the stubs, as in test/storage_io.
+add_executable(BibleSearchFingerprintTest
+  FingerprintFileTest.cpp
+  FingerprintFileIoTest.cpp
+  ${REPO_ROOT}/src/study/BibleSearchFingerprintFile.cpp
+  ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
+)
+
+target_include_directories(BibleSearchFingerprintTest PRIVATE
+  ${REPO_ROOT}/test/stubs
+)
+
+target_link_libraries(BibleSearchFingerprintTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(BibleSearchFingerprintTest)
