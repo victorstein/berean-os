@@ -63,6 +63,8 @@ class EpubReaderActivity final : public ReaderActivity {
   bool pageRendered = false;
   // The page renderContents last drew, for a cancelled menu close to show again. Render task only.
   PageFrameCache pageCache;
+  // Set by the reader menu's result handler under RenderLock; consumed by the next renderBook.
+  bool pageRestoreRequested = false;
 
   // Gated on BOARD_HAS_PSRAM in loadBook(): a resident passage document plus
   // two live JsonDocuments are a real risk against the C3's ~50KB free heap
@@ -200,6 +202,9 @@ class EpubReaderActivity final : public ReaderActivity {
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
+  // Shows pageCache's page through the display calls renderContents would make, without rendering it.
+  // False, having drawn nothing, when the saved page does not match where the reader is.
+  bool restorePageFromCache();
   void renderStatusBar() const;
   void applyOrientation(uint8_t orientation);
 

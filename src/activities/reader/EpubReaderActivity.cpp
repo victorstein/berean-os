@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <utility>
@@ -286,17 +287,32 @@ void EpubReaderActivity::openReaderMenu(const bool pageOnScreen) {
   }
   const ReaderMenuSheetLayout::RecentChipLabels recent =
       isBible() ? collectRecentChips(onScreen) : ReaderMenuSheetLayout::RecentChipLabels{};
+  const bool autoTurnBefore = autoTurn.active();
+  const bool nightModeBefore = SETTINGS.screenInverted != 0;
   startActivityForResult(
       std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, readerMenuTitle(), SETTINGS.orientation,
                                                !currentPageFootnotes.empty(), !bookmarks.empty(), HIGHLIGHTS_SUPPORTED,
                                                tagTarget() == ReaderMenuModel::TagTarget::BibleTags, isBible(),
                                                tagsHereCount, pageOnScreen, recent),
-      [this](const ActivityResult& result) {
+      [this, autoTurnBefore, nightModeBefore](const ActivityResult& result) {
         const auto& menu = std::get<MenuResult>(result.data);
-        if (SETTINGS.orientation != menu.orientation) {
+        const bool orientationChanged = SETTINGS.orientation != menu.orientation;
+        if (orientationChanged) {
           applyOrientation(menu.orientation);
         }
         toggleAutoPageTurn(menu.pageTurnOption);
+        const auto verdict = MenuCloseRestore::decide({.cancelled = result.isCancelled,
+                                                       .orientationChanged = orientationChanged,
+                                                       .autoTurnBefore = autoTurnBefore,
+                                                       .autoTurnAfter = autoTurn.active(),
+                                                       .nightModeBefore = nightModeBefore,
+                                                       .nightModeAfter = SETTINGS.screenInverted != 0,
+                                                       .atEndOfBook = isAtEndOfBook()});
+        LOG_DBG("ERS", "Menu closed: %s", MenuCloseRestore::name(verdict));
+        if (verdict == MenuCloseRestore::Verdict::Restore) {
+          RenderLock lock;
+          pageRestoreRequested = true;
+        }
         if (!result.isCancelled) {
           onReaderMenuConfirm(menu);
         }
@@ -1216,6 +1232,8 @@ bool EpubReaderActivity::skipLoopDelay() {
 }
 
 void EpubReaderActivity::renderBook() {
+  // Consumed before anything can return, so a request never outlives the render that follows it.
+  const bool restoreRequested = std::exchange(pageRestoreRequested, false);
   if (!epub) return;
 
   const auto showBuildError = [this]() {
@@ -1231,6 +1249,12 @@ void EpubReaderActivity::renderBook() {
     return;
   }
 
+  if (restoreRequested && restorePageFromCache()) {
+    if (bookmarks.toastVisible()) {
+      GUI.drawToast(renderer, bookmarks.toastText());
+    }
+    return;
+  }
   pageCache.invalidate();
 
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
@@ -1519,6 +1543,52 @@ void EpubReaderActivity::renderBook() {
   if (bookmarks.toastVisible()) {
     GUI.drawToast(renderer, bookmarks.toastText());
   }
+}
+
+bool EpubReaderActivity::restorePageFromCache() {
+  const MenuCloseRestore::Position position =
+      section ? MenuCloseRestore::Position{true, currentSpineIndex, section->currentPage}
+              : MenuCloseRestore::Position{false, currentSpineIndex, -1};
+  const auto& captured = pageCache.captured();
+  const auto match = MenuCloseRestore::fit(captured, position);
+  if (match != MenuCloseRestore::Fit::Fits) {
+    LOG_DBG("ERS", "Page restore refused: %s; rendering", MenuCloseRestore::name(match));
+    return false;
+  }
+  if (!renderer.hasFrameBuffer()) {
+    LOG_DBG("ERS", "Page restore refused: no-fb; rendering");
+    return false;
+  }
+
+  [[maybe_unused]] const auto t0 = millis();
+  memcpy(renderer.getFrameBuffer(), pageCache.bw(), renderer.getBufferSize());
+  [[maybe_unused]] const auto tCopy = millis();
+  ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+  [[maybe_unused]] const auto tDisplay = millis();
+  [[maybe_unused]] auto tGrayWrite = tDisplay;
+  [[maybe_unused]] auto tGrayDisplay = tDisplay;
+  if (MenuCloseRestore::restoresGray(captured)) {
+    // The same upload each panel's own branch of renderContents makes, from the saved masks.
+    if (renderer.supportsStripGrayscale()) {
+      const int planeRows = renderer.getDisplayHeight();
+      renderer.writeGrayscalePlaneStrip(true, pageCache.grayLsb(), 0, planeRows);
+      renderer.writeGrayscalePlaneStrip(false, pageCache.grayMsb(), 0, planeRows);
+    } else {
+      renderer.copyGrayscaleBuffers(pageCache.grayLsb(), pageCache.grayMsb());
+    }
+    tGrayWrite = millis();
+    renderer.displayGrayBuffer();
+    tGrayDisplay = millis();
+    renderer.cleanupGrayscaleWithFrameBuffer();
+  }
+  [[maybe_unused]] const auto tEnd = millis();
+  LOG_DBG("ERS", "Page restore: copy=%lums display=%lums gray_write=%lums gray_display=%lums total=%lums", tCopy - t0,
+          tDisplay - tCopy, tGrayWrite - tDisplay, tGrayDisplay - tGrayWrite, tEnd - t0);
+
+  lastRenderCompleteMs = millis();
+  pageShown = true;
+  pageRendered = true;
+  return true;
 }
 
 void EpubReaderActivity::onEndOfBookRendered() { autoTurn.stop(); }
