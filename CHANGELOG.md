@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.14](https://github.com/victorstein/berean-os/compare/v1.29.13...v1.29.14) (2026-10-11)
+
+
+### Performance
+
+* replay cover bands from PSRAM instead of re-reading the cover ([#262](https://github.com/victorstein/berean-os/issues/262)) ([941e607](https://github.com/victorstein/berean-os/commit/941e607a82ffd288828bd9c9ad20e2063c8c7c1e))
+
 ## [1.29.13](https://github.com/victorstein/berean-os/compare/v1.29.12...v1.29.13) (2026-10-11)
 
 
