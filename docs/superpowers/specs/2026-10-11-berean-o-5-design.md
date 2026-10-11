@@ -237,7 +237,7 @@ mount. The mount line comes from a different class, which can't read the opaque 
   code ran 20 MHz. A separate clause says the mount requests 40 MHz high speed, and the boot log
   prints the clock the card actually runs at.
 - `SDK/docs/xteink-x4pro-support.md:219`. The same correction, plus one sentence in the
-  mount-sequence list (`:233-243`) on the per-attempt probing reset and the 20 MHz fallback.
+  mount-sequence list (`:232-243`) on the per-attempt probing reset and the 20 MHz fallback.
 
 Comments are written for the merged state, per the root `CLAUDE.md` comment rules.
 
