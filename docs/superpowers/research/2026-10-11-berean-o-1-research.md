@@ -186,13 +186,26 @@ a visible ghost has not been recorded.** Code cannot settle it. It needs eyes on
   only caller is in the same surface.
 - The standard tier holds.
 
-## Open decision
+## Decision d1 (owner, 2026-10-11): FAST from every origin
 
-How much ghosting the owner tolerates decides between:
+The options were:
 
 - **(a)** FAST on both entries from every predecessor;
 - **(b)** FAST for search from the reader menu, with a HALF kept for the two Home-origin entries
   (Publications, and search via the Search tile);
 - **(c)** no change.
 
-This is raised with `hpipe decide` after this note is pushed.
+The owner chose **(a)**. What that means for the change:
+
+- Drop `halfRefreshPending.store(true)` at `PublicationsActivity.cpp:56`, and its comment at `:55`.
+- Pass `fullRefresh=false` at `BibleSearchActivity.cpp:114`.
+- Keep the Meetings entry HALF (`MeetingsActivity.cpp:68`) and the three build-time HALFs: Starting
+  (`BibleSearchActivity.cpp:444`), Ready (`:373`) and Failed (`:250`). Each gets a one-line reason in
+  the code.
+- Leave every other refresh choice alone. That includes `BibleNavigationActivity.cpp:370` and the
+  Publications cover-change HALF (`PublicationsActivity.cpp:119`).
+- The PR lists the device checks: open each screen from Home, and from an anti-aliased reader page
+  via the menu, and look for a ghost of the cover or the page.
+- If a ghost shows on the device, the fallback is (b): a HALF only on the Home-origin entries, with
+  the origin passed to `BibleSearchActivity` as `CancelTo::Page` versus `CancelTo::Menu`
+  (`EpubReaderActivity.cpp:976`).
