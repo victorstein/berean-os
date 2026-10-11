@@ -1,5 +1,6 @@
 #include "LauncherActivity.h"
 
+#include <Arduino.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
@@ -245,7 +246,13 @@ void LauncherActivity::drawButton(const Box& box, const char* label, const bool 
 
 void LauncherActivity::drawHero() const {
   const CoverBand::Style style{CoverBandGeometry::BOOK_TITLE_BAND, RADIUS, layout.plate.height};
-  const bool drawn = !bibleCoverPath.empty() && CoverBand::draw(renderer, bibleCoverPath, toRect(layout.hero), style);
+  bool drawn = false;
+  if (!bibleCoverPath.empty()) {
+    [[maybe_unused]] const unsigned long startMs = millis();
+    const CoverBand::Result result = CoverBand::draw(renderer, bibleCoverPath, toRect(layout.hero), style);
+    LOG_DBG(MODULE, "Band %s in %lu ms", CoverBand::resultName(result), millis() - startMs);
+    drawn = result != CoverBand::Result::Declined;
+  }
   const char* subtitle = hasDateLine ? dateLine : nullptr;
   if (drawn) {
     GUI.drawHeader(renderer, toRect(layout.plateHeader), tr(STR_BIBLE), subtitle);

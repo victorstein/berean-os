@@ -206,6 +206,13 @@ bool HalFile::seek(size_t pos) {
   return true;
 }
 
+bool HalFile::seekCur(const int64_t offset) {
+  if (!impl) return false;
+  const int64_t target = static_cast<int64_t>(impl->pos) + offset;
+  if (target < 0) return false;
+  return seek(static_cast<size_t>(target));
+}
+
 int HalFile::available() const {
   if (!impl) return 0;
   const std::string* bytes = impl->bytes();

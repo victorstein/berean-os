@@ -49,6 +49,7 @@
 #include "activities/launcher/BibleFinder.h"
 #include "activities/launcher/LauncherBible.h"
 #include "activities/settings/TextSettingsActivity.h"
+#include "components/CoverBand.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "study/PubKeyRegistry.h"
@@ -912,6 +913,7 @@ void EpubReaderActivity::onReaderMenuConfirm(const MenuResult& menu) {
           uint16_t backupPageCount = section->pageCount;
           section.reset();
           epub->clearCache();
+          CoverBand::noteCoversChanged();
           epub->setupCacheDir();
           if (!saveProgress(backupSpine, backupPage, backupPageCount)) {
             LOG_ERR("ERS", "Failed to save progress before cache clear");

@@ -81,10 +81,10 @@ bool draw(const GfxRenderer& renderer, const std::string& coverPath, const float
   const CoverBand::Style style{focusBand, /*cornerRadius=*/0, metrics.headerHeight + 1};
 
   [[maybe_unused]] const unsigned long startMs = millis();
-  const bool drawn = CoverBand::draw(renderer, coverPath, toRect(band), style);
-  LOG_DBG(MODULE, "Band %s in %lu ms", drawn ? "drawn" : "declined", millis() - startMs);
+  const CoverBand::Result result = CoverBand::draw(renderer, coverPath, toRect(band), style);
+  LOG_DBG(MODULE, "Band %s in %lu ms", CoverBand::resultName(result), millis() - startMs);
 
-  if (!drawn) {
+  if (result == CoverBand::Result::Declined) {
     // CoverBand has left the band as paper, so the header never sits on dither.
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, title);
     return false;
