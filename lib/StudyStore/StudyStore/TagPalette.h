@@ -57,6 +57,14 @@ class TagPalette {
   // Active tags in allocation order, for a picker.
   std::vector<TagId> activeIds() const;
 
+  // Active tags in display order: case and accents ignored, ñ read as n, one leading ¿ or ¡
+  // skipped, then the raw name, then the id.
+  std::vector<TagId> activeIdsByName() const;
+
+  // An id's position in display order among all entries, retired ones included, so a passage
+  // that still carries a retired tag lists it in place. UINT16_MAX for UNLABELLED and unknown ids.
+  uint16_t nameRank(TagId id) const;
+
   void toJson(JsonDocument& doc) const;
 
   // Parses and validates. Rejects a future format version. Recovers nextTagId
@@ -69,10 +77,16 @@ class TagPalette {
     TagId id{};
     std::string name;
     bool active = true;
+    uint16_t rank = 0;  // position in display order among all entries
   };
 
+  // Only a change to the set of names can move a rank, so only an appending add and fromJson
+  // call this; retire and a revive leave the order as it is.
+  void rebuildDisplayOrder();
+
   std::vector<Entry> entries_;
-  uint16_t nextRaw_ = 1;  // 0 is UNLABELLED
+  std::vector<uint16_t> byName_;  // entry indices in display order
+  uint16_t nextRaw_ = 1;          // 0 is UNLABELLED
 };
 
 }  // namespace study
