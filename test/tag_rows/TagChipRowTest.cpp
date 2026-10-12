@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "activities/reader/TagChipRow.h"
+#include <StudyStore/PassageDoc.h>
 
 using study::TagId;
 using study::toTagId;
@@ -576,5 +577,43 @@ TEST(TagChipGrid, GridHitRectsNeverIntersect) {
         }
       }
     }
+  }
+}
+
+namespace {
+
+constexpr size_t CAP = study::PassageDoc::MAX_TAGS_PER_PASSAGE;
+
+}  // namespace
+
+static_assert(TagChips::pickerState(TagChips::Kind::NewTag, false, CAP, CAP) == TagChips::ChipState::Action);
+
+TEST(TagChipPickerState, BelowTheCapUnappliedTagsAreInactive) {
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, CAP - 1, CAP), TagChips::ChipState::Inactive);
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, true, CAP - 1, CAP), TagChips::ChipState::Active);
+}
+
+TEST(TagChipPickerState, AtTheCapUnappliedTagsAreDisabled) {
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, CAP, CAP), TagChips::ChipState::Disabled);
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, true, CAP, CAP), TagChips::ChipState::Active);
+}
+
+// At the cap one applied tag is removed: the chip that was Disabled and the chip just removed are
+// both unapplied with one slot free, so both are Inactive.
+TEST(TagChipPickerState, ADeselectAtTheCapMakesUnappliedTagsInactiveAgain) {
+  ASSERT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, CAP, CAP), TagChips::ChipState::Disabled);
+  ASSERT_EQ(TagChips::pickerState(TagChips::Kind::Tag, true, CAP, CAP), TagChips::ChipState::Active);
+  const size_t afterDeselect = CAP - 1;
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, afterDeselect, CAP), TagChips::ChipState::Inactive);
+}
+
+TEST(TagChipPickerState, OverTheCapUnappliedTagsStayDisabled) {
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, CAP + 1, CAP), TagChips::ChipState::Disabled);
+}
+
+TEST(TagChipPickerState, NewTagIsAnActionAtAnyCount) {
+  for (const size_t applied : {size_t{0}, CAP - 1, CAP}) {
+    EXPECT_EQ(TagChips::pickerState(TagChips::Kind::NewTag, false, applied, CAP), TagChips::ChipState::Action)
+        << applied << " applied";
   }
 }

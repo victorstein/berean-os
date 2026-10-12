@@ -37,6 +37,9 @@ void buildEntries(const std::optional<std::vector<size_t>>& scope, const std::op
         snprintf(chip.label, sizeof(chip.label), "%s %u", STUDY.tagName(chip.id).c_str(),
                  static_cast<unsigned>(counts.perTag[candidate.slot]));
         break;
+      case TagChips::Kind::NewTag:
+        // candidates never emits one; skipping it cannot show an empty chip.
+        continue;
     }
     out.push_back(chip);
   }
@@ -50,6 +53,8 @@ bool isSelected(const ChipEntry& chip, const std::optional<study::TagId> filter)
       return filter == study::UNLABELLED;
     case TagChips::Kind::Tag:
       return filter == chip.id;
+    case TagChips::Kind::NewTag:
+      return false;
   }
   return false;
 }

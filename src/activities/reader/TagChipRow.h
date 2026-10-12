@@ -86,7 +86,17 @@ constexpr int MAX_LINES = 2;
 // visible passage rows; past it, hits are dropped and the chip becomes untappable.
 constexpr int MAX_CHIPS = 24;
 
-enum class Kind : uint8_t { All, Tag, Unlabelled };
+enum class Kind : uint8_t { All, Tag, Unlabelled, NewTag };
+
+enum class ChipState : uint8_t { Inactive, Active, Disabled, Action };
+
+// A tag the passage lacks is Disabled once `cap` tags are applied. Disabled is a look, not an
+// untappable chip: a tap still explains the limit and a long-press can still retire the tag.
+constexpr ChipState pickerState(const Kind kind, const bool selected, const size_t selectedCount, const size_t cap) {
+  if (kind == Kind::NewTag) return ChipState::Action;
+  if (selected) return ChipState::Active;
+  return selectedCount < cap ? ChipState::Inactive : ChipState::Disabled;
+}
 
 struct Candidate {
   Kind kind = Kind::All;
