@@ -1,11 +1,13 @@
 #include <ArduinoJson.h>
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <vector>
 
+#include "FailingNothrowNew.h"
 #include "StudyStore/TagPalette.h"
 
 namespace {
@@ -50,6 +52,16 @@ std::vector<std::string> namesInDisplayOrder(const study::TagPalette& p) {
 }
 
 using Names = std::vector<std::string>;
+
+// The rank rebuild's key buffer is the only nothrow allocation a palette makes: strings and vectors
+// use the throwing form, which the injector never fails, and ArduinoJson allocates with malloc.
+// So "the Nth nothrow allocation fired" counts rebuilds. Assertions stay outside the guard.
+template <typename Body>
+bool nthNothrowAllocationFired(const std::size_t n, Body body) {
+  failing_new::ScopedNthNothrowFailure failure(n);
+  body();
+  return failure.fired();
+}
 
 TEST(TagPaletteAdd, AllocatesAscendingIdsAndReturnsTheExistingIdForARepeat) {
   study::TagPalette p;
@@ -338,6 +350,97 @@ TEST(TagPaletteRank, RetireAndReviveLeaveRanksUnchanged) {
   EXPECT_EQ(p.add("alfa"), alfa);
   EXPECT_EQ((std::vector<uint16_t>{p.nameRank(*gamma), p.nameRank(*alfa), p.nameRank(*beta)}), before);
   EXPECT_EQ(namesInDisplayOrder(p), (Names{"alfa", "beta", "gamma"}));
+}
+
+TEST(TagPaletteRebuild, AnAppendingAddMakesExactlyOneNothrowAllocation) {
+  study::TagPalette p;
+  p.add("mu");
+  EXPECT_TRUE(nthNothrowAllocationFired(1, [&] { p.add("alfa"); }));
+
+  study::TagPalette q;
+  q.add("mu");
+  EXPECT_FALSE(nthNothrowAllocationFired(2, [&] { q.add("alfa"); }))
+      << "the rebuild made more than one nothrow allocation";
+}
+
+TEST(TagPaletteRebuild, AcceptedFromJsonMakesExactlyOneNothrowAllocation) {
+  const JsonDocument doc = paletteJson({{1, "zeta"}, {2, "alfa"}});
+  study::TagPalette p;
+  EXPECT_TRUE(nthNothrowAllocationFired(1, [&] { p.fromJson(doc.as<JsonVariantConst>()); }));
+
+  study::TagPalette q;
+  EXPECT_FALSE(nthNothrowAllocationFired(2, [&] { q.fromJson(doc.as<JsonVariantConst>()); }))
+      << "the rebuild made more than one nothrow allocation";
+}
+
+TEST(TagPaletteRebuild, RetireDoesNotRebuild) {
+  study::TagPalette p;
+  const auto alfa = p.add("alfa");
+  p.add("beta");
+  EXPECT_FALSE(nthNothrowAllocationFired(1, [&] { p.retire(*alfa); }));
+}
+
+TEST(TagPaletteRebuild, ReviveDoesNotRebuild) {
+  study::TagPalette p;
+  const auto alfa = p.add("alfa");
+  p.retire(*alfa);
+  EXPECT_FALSE(nthNothrowAllocationFired(1, [&] { p.add("alfa"); }));
+  EXPECT_TRUE(p.isActive(*alfa));
+}
+
+TEST(TagPaletteRebuild, ReAddingAnActiveNameDoesNotRebuild) {
+  study::TagPalette p;
+  p.add("alfa");
+  EXPECT_FALSE(nthNothrowAllocationFired(1, [&] { p.add("alfa"); }));
+}
+
+TEST(TagPaletteRebuild, ARejectedFromJsonDoesNotRebuild) {
+  study::TagPalette p;
+  p.add("zeta");
+  p.add("alfa");
+  JsonDocument doc = paletteJson({{1, "mu"}});
+  doc["v"] = study::TagPalette::FORMAT_VERSION + 1;
+
+  bool accepted = true;
+  EXPECT_FALSE(nthNothrowAllocationFired(1, [&] { accepted = p.fromJson(doc.as<JsonVariantConst>()); }));
+  EXPECT_FALSE(accepted);
+  EXPECT_EQ(namesInDisplayOrder(p), (Names{"alfa", "zeta"})) << "a refused file leaves the palette as it was";
+}
+
+TEST(TagPaletteRebuild, AnEmptyPaletteAllocatesNothing) {
+  const JsonDocument doc = paletteJson({});
+  study::TagPalette p;
+  EXPECT_FALSE(nthNothrowAllocationFired(1, [&] { p.fromJson(doc.as<JsonVariantConst>()); }));
+}
+
+TEST(TagPaletteOom, FallsBackToAllocationOrderOnAdd) {
+  study::TagPalette p;
+  const auto zeta = p.add("zeta");
+  const auto mu = p.add("mu");
+  study::TagId alfa{};
+  EXPECT_TRUE(nthNothrowAllocationFired(1, [&] { alfa = *p.add("alfa"); }));
+
+  EXPECT_EQ(rawIds(p.activeIdsByName()), rawIds(p.activeIds())) << "a failed rebuild shows allocation order";
+  EXPECT_EQ(p.nameRank(*zeta), 0);
+  EXPECT_EQ(p.nameRank(*mu), 1);
+  EXPECT_EQ(p.nameRank(alfa), 2);
+}
+
+TEST(TagPaletteOom, FallsBackToAllocationOrderOnFromJson) {
+  const JsonDocument doc = paletteJson({{1, "zeta"}, {2, "mu"}, {3, "alfa"}});
+  study::TagPalette p;
+  EXPECT_TRUE(nthNothrowAllocationFired(1, [&] { p.fromJson(doc.as<JsonVariantConst>()); }));
+  EXPECT_EQ(rawIds(p.activeIdsByName()), (std::vector<uint16_t>{1, 2, 3}));
+}
+
+TEST(TagPaletteOom, TheNextRebuildRestoresNameOrder) {
+  study::TagPalette p;
+  p.add("zeta");
+  p.add("mu");
+  EXPECT_TRUE(nthNothrowAllocationFired(1, [&] { p.add("alfa"); }));
+
+  p.add("beta");
+  EXPECT_EQ(namesInDisplayOrder(p), (Names{"alfa", "beta", "mu", "zeta"}));
 }
 
 }  // namespace
