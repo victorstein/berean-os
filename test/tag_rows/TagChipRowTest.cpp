@@ -410,6 +410,24 @@ TEST(TagChipCandidates, OnlyTagCandidatesNameAPaletteSlot) {
   }
 }
 
+// The rank task passes name-ordered ids; All and Unlabelled must stay pinned around them, and a
+// zero-count filter keeps its name-order slot.
+TEST(TagChipCandidates, NameOrderedIdsKeepAllFirstAndUnlabelledLast) {
+  const std::vector<TagId> nameOrdered{NAME, HOPE, MINISTRY};
+  const std::vector<FakePassage> passages{{{NAME}}, {{NAME, MINISTRY}}, {{UNLABELLED}}};
+  const TagChips::Counts counts = TagChips::count(passages, nameOrdered);
+  EXPECT_EQ(counts.perTag, (std::vector<uint16_t>{2, 0, 1}));
+
+  const auto out = candidatesOf(counts, nameOrdered, HOPE);
+  ASSERT_EQ(out.size(), 5u);
+  EXPECT_EQ(out[0].kind, TagChips::Kind::All);
+  for (uint16_t slot = 0; slot < 3; ++slot) {
+    EXPECT_EQ(out[1 + slot].kind, TagChips::Kind::Tag);
+    EXPECT_EQ(out[1 + slot].slot, slot);
+  }
+  EXPECT_EQ(out[4].kind, TagChips::Kind::Unlabelled);
+}
+
 TEST(TagChipGeometry, ChipHeightIsNeverBelowTheTouchMinimum) {
   EXPECT_EQ(TagChips::chipHeight(20, 8, 44), 44) << "20 + 16 is short of 44";
   EXPECT_EQ(TagChips::chipHeight(30, 8, 44), 46) << "text plus padding wins once it is taller";
