@@ -3,6 +3,7 @@
 # test/bible_search_index.
 add_executable(TagPaletteTest
   TagPaletteTest.cpp
+  TagDisplayOrderTest.cpp
   FailingNothrowNew.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch/Fold.cpp
