@@ -354,7 +354,7 @@ stay green with no coverage.
 
 | Test | Asserts |
 |---|---|
-| `TagPaletteOrder.IgnoresCase` | `beta`(1), `Alfa`(2), `alfa`(3) → `[2, 3, 1]`; equal keys tie on raw bytes, `A` < `a` |
+| `TagPaletteOrder.IgnoresCase` | `beta`(1), `alfa`(2), `Alfa`(3) → `[3, 2, 1]`; equal keys tie on raw bytes, `A` < `a`. `Alfa` is allocated last so the id tiebreak alone cannot pass the test (plan review 0) |
 | `TagPaletteOrder.IgnoresAccents` | `éxodo`, `esperanza`, `Ezequiel` → esperanza, éxodo, Ezequiel |
 | `TagPaletteOrder.FoldsEnyeIntoN` | `anzuelo`, `año` → año first; `nube`, `ñu` → ñu first |
 | `TagPaletteOrder.SkipsOneLeadingInvertedMark` | `reino`, `¿Por qué?`, `paz`, `¡Ánimo!` → ¡Ánimo!, paz, ¿Por qué?, reino |

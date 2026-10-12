@@ -347,6 +347,10 @@ using Names = std::vector<std::string>;
 
 - [ ] **Step 2: Append the ordering and rank tests**
 
+`IgnoresCase` adds `alfa` *before* `Alfa` (plan review 0, MAJOR 1). In the other order, the id
+tiebreak alone gives the same result, and the raw-name level would go untested. Task 3's M6 proves
+the test now reaches that level.
+
 At the bottom of `test/tag_palette/TagPaletteTest.cpp`, find:
 ```cpp
 TEST(TagPaletteRoundTrip, HoldsTheUsersRealPaletteSize) {
@@ -372,10 +376,10 @@ TEST(TagPaletteRoundTrip, HoldsTheUsersRealPaletteSize) {
 TEST(TagPaletteOrder, IgnoresCase) {
   study::TagPalette p;
   p.add("beta");
-  p.add("Alfa");
   p.add("alfa");
-  EXPECT_EQ(rawIds(p.activeIdsByName()), (std::vector<uint16_t>{2, 3, 1}))
-      << "equal folded keys tie on the raw bytes, and 'A' sorts before 'a'";
+  p.add("Alfa");
+  EXPECT_EQ(rawIds(p.activeIdsByName()), (std::vector<uint16_t>{3, 2, 1}))
+      << "equal folded keys tie on the raw bytes, so 'Alfa' precedes 'alfa' though allocated later";
 }
 
 TEST(TagPaletteOrder, IgnoresAccents) {
@@ -1034,6 +1038,7 @@ echo "M2 fallback leaves stale ranks:"; mut $'      entries_[i].rank = static_ca
 echo "M3 retire rebuilds:"; mut $'    if (e.id == id) e.active = false;\n  }' $'    if (e.id == id) e.active = false;\n  }\n  rebuildDisplayOrder();'; run; cp /private/tmp/claude-501/-Volumes-stein--herdr-worktrees-berean-os-feature-tag-order-rank/e21478f5-7c04-4cd9-8eaa-c3582eb41c8a/scratchpad/TagPalette.cpp.good $F
 echo "M4 no mark skip:"; mut 'if (second == 0xBF || second == 0xA1) name.remove_prefix(2);' '(void)second;'; run; cp /private/tmp/claude-501/-Volumes-stein--herdr-worktrees-berean-os-feature-tag-order-rank/e21478f5-7c04-4cd9-8eaa-c3582eb41c8a/scratchpad/TagPalette.cpp.good $F
 echo "M5 no id tiebreak:"; mut 'return toRaw(left.id) < toRaw(right.id);' 'return false;'; run; cp /private/tmp/claude-501/-Volumes-stein--herdr-worktrees-berean-os-feature-tag-order-rank/e21478f5-7c04-4cd9-8eaa-c3582eb41c8a/scratchpad/TagPalette.cpp.good $F
+echo "M6 no raw-name tiebreak:"; mut 'if (left.name != right.name) return left.name < right.name;' ''; run; cp /private/tmp/claude-501/-Volumes-stein--herdr-worktrees-berean-os-feature-tag-order-rank/e21478f5-7c04-4cd9-8eaa-c3582eb41c8a/scratchpad/TagPalette.cpp.good $F
 echo "restored:"; run; build/test/tag_palette/TagPaletteTest | grep -E '^\[  PASSED'
 git diff --quiet -- $F || git diff --stat -- $F
 ```
@@ -1043,6 +1048,7 @@ Expected, as measured while proving this plan:
 - M3: `TagPaletteRebuild.RetireDoesNotRebuild`
 - M4: `TagPaletteOrder.SkipsOneLeadingInvertedMark`
 - M5: `TagPaletteOrder.BreaksANameTieOnTheId TagPaletteOrder.BreaksATruncatedNameTieOnTheId`
+- M6: `TagPaletteOrder.IgnoresCase`
 - restored: an empty failure line, then `[  PASSED  ] 41 tests.` The last `git diff` prints nothing,
   because `TagPalette.cpp` is back to the Task 2 commit.
 
@@ -1422,8 +1428,12 @@ Run:
 git status --short
 ```
 Expected: `git status --short` prints nothing. The code above was formatted with this wrapper while
-the plan was proven. If it does print files, they can only be files this plan declares. Inspect
-the diff, stage those paths by name, and commit:
+the plan was proven.
+
+If it does print files, inspect the diff. If `git status` lists a path that is not on a `FILES:`
+line, do not stage it. Restore it with `git checkout -- <path>` and report it as a discovery: a
+local clang-format can differ from CI's, and the wrapper formats the whole tree. Stage only the
+listed paths that *are* declared, by name, and commit:
 
 ```bash
 git diff --stat
@@ -1472,7 +1482,7 @@ These are not steps for the implementer. They are what the worker must carry for
 |---|---|
 | `activeIdsByName`, `nameRank` signatures and semantics | 2 |
 | `Entry::rank` last, `byName_`, invariant I1 | 2 (fallback and rebuild both write all of `rank` and `byName_`) |
-| D2 key: mark skip, fold, 24-byte zero pad, `memcmp`, then raw name, then id | 2; tests 2 and 3 (M4, M5) |
+| D2 key: mark skip, fold, 24-byte zero pad, `memcmp`, then raw name, then id | 2; tests 2 and 3 (M4, M5, M6) |
 | Rebuild only on appending `add` and accepted `fromJson` (A8) | 2; tests 3 (M1, M3) |
 | One nothrow allocation; OOM fallback that is not sticky (A7, A10) | 2; tests 3 (M2) |
 | Empty palette allocates nothing (A9) | 2; test 3 |
@@ -1482,3 +1492,13 @@ These are not steps for the implementer. They are what the worker must carry for
 | Four CMake targets plus the injector and `-fno-builtin` (A20, A21) | 1, 3, 4 |
 | Firmware link (A22), `pio check`, full-tree format | 5, 6 |
 | A18 hand-off | Hand-off notes |
+
+## Plan review 0 outcome
+
+Review: `docs/superpowers/reviews/btrial-1-plan-review-0.md`, verdict CLEAR, with one MAJOR and one
+MINOR. Both are accepted and fixed above.
+
+| Finding | Change |
+|---|---|
+| MAJOR 1: no test reached the raw-name tiebreak | `IgnoresCase` allocates `alfa` before `Alfa` and expects `[3, 2, 1]`. Task 3 adds M6, which deletes that comparator line. The spec's row is updated to match. The fix was measured with this plan replayed onto the tree: M6 fails exactly `TagPaletteOrder.IgnoresCase`, M1 and M5 keep their lists, and all 46 tests pass once restored |
+| MINOR 1: the formatter step could stage an undeclared path | Task 6 Step 3 restores any path not on a `FILES:` line and reports it as a discovery |
