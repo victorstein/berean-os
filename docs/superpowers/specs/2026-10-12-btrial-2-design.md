@@ -101,11 +101,12 @@ It is a linear scan, run once per rebuild on the loop task (batch spec §3), ove
 **Signature.** `draw(screen, rect, label, TagChips::ChipState state, action, value, inputMask, pad)`:
 only the fourth parameter's type changes (`TagChipView.h:43-44`).
 
-**Looks.** `draw` builds one `fui::BoxStyle look` for the state and copies it into every slot of
-the `StyleSet` (`normal`, `selected`, `focused`, `active`, `disabled`), so whatever state FreeInkUI
-resolves (`FreeInkUICore.h:606-617`), the chip paints its own look.
+**Looks.** `draw` writes the state's look straight into `styles.normal`, then assigns
+`styles.selected = styles.focused = styles.active = styles.disabled = styles.normal`. Whatever state
+FreeInkUI resolves (`FreeInkUICore.h:606-617`), the chip paints its own look, and no `BoxStyle`
+local is added beside today's `StyleSet` (review 0, m2).
 
-| State | `look.background` | `look.foreground` | `look.border`, width | `props.text.bold` | `props.state` |
+| State | `normal.background` | `normal.foreground` | `normal.border`, width | `props.text.bold` | `props.state` |
 |---|---|---|---|---|---|
 | Inactive | `solid(White)` | `solid(Black)` | `solid(Black)`, 1 | false | `StateNormal` |
 | Active | `solid(Black)` | `solid(White)` | `solid(Black)`, 1 | true | `StateSelected` |
@@ -150,9 +151,11 @@ unused (`scripts/gen_i18n.py:916-922`, `:1001`), so it costs no flash and fails 
 - `pickerState` and `findChip` are pure and allocation-free. In this change nothing calls them
   outside the host tests.
 - `draw` runs on the render task, inside `buildScreen` (`HighlightsActivity.cpp:707`,
-  `TagFilterActivity.cpp:100`). It allocates nothing: like today it keeps a `StyleSet` and a
-  `ButtonProps` on the stack (`TagChipView.cpp:77`, `:92`); the new `BoxStyle look` is one more
-  local of a few dozen bytes and no heap object. `fui::button` registers the hit with
+  `TagFilterActivity.cpp:100`). It allocates nothing and adds no local: it keeps exactly today's
+  `StyleSet` and `ButtonProps` on the stack (`TagChipView.cpp:77`, `:92`), about 324 B and 400 B on
+  the target (review 0, m2), on the render task's 8,192 B stack (`src/activities/ActivityManager.cpp:32-33`). Those
+  are already over CLAUDE.md's 256 B local guideline; this change does not make them larger, and
+  moving them to the heap would put an allocation on the render path. `fui::button` registers the hit with
   `props.state`, then resolves the drawn style through `frame.stateFor` (`button.h:43`, `:47-48`).
 - When FreeInkUI paints a chip's `focused` or `active` slot (research, "When the focused and
   active styles are actually painted"): never for the focus ring, because chips carry no
@@ -202,8 +205,9 @@ Each is a behavioural decision this design makes; the review should attack them.
 - **A9. The Highlights row's look is unchanged except in one case, which this corrects.** With a
   zero-count tag X as the filter, tapping a later tag Y drops X's chip (`TagChipRow.h:108`), so Y
   moves one index left and the flash, keyed by `(ACTION_CHIP, index)`, lands on the chip after Y.
-  Today that chip paints inverted for one repaint (`TagChipView.cpp:88`), so two chips look
-  selected; after this change it paints Inactive. Every other Highlights and filter-grid repaint is
+  Today that chip paints inverted (`TagChipView.cpp:88`) in the repaint that shows the tap's result,
+  and the panel keeps showing it until the next repaint (`FreeInkApp.h:681-687`), so two chips look
+  selected until then; after this change it paints Inactive (review 0, m3). Every other Highlights and filter-grid repaint is
   pixel-identical, by A5 and the table in §2.
 - **A10. `findChip` ignores `id` for kinds other than `Tag`.** All, Unlabelled and NewTag each occur
   at most once in a list (`TagChipRow.h:105`, `:113`; the picker adds one NewTag, batch spec §4),
@@ -218,8 +222,11 @@ Each is a behavioural decision this design makes; the review should attack them.
 
 ## Testing strategy
 
-TDD: each test below is written first and fails to compile, because the names do not exist, before
-the helper is added.
+TDD: the `pickerState`, `findChip` and `NewTag` tests are written first and fail to compile,
+because the names do not exist, before the helpers are added. The `candidates` name-order test is a
+characterisation test: it passes on its first run, because `candidates` already emits slots in the
+order given (`TagChipRow.h:100-114`), and it exists to pin that behaviour for the rank task
+(review 0, m1).
 
 **Host tests, `test/tag_rows/TagChipRowTest.cpp`** (built into `TagRowsTest`,
 `test/tag_rows/CMakeLists.txt:1-5`; no CMake change):
@@ -237,9 +244,14 @@ the helper is added.
   - returns `-1` for a tag id that is not in the list (a retired tag) and for an empty list;
   - does not match a `Tag` chip when asked for `Kind::Unlabelled` with `UNLABELLED`'s id, nor the
     reverse.
-- `TagChipCandidates.NameOrderedIdsKeepAllFirstAndUnlabelledLast`: `candidates` given ids in an
-  order that is not raw-id order (`{NAME, HOPE, MINISTRY}`, raw 3, 1, 2; fixtures at
-  `TagChipRowTest.cpp:18-20`) emits All, the tags' slots in the given order, then Unlabelled.
+- `TagChipCandidates.NameOrderedIdsKeepAllFirstAndUnlabelledLast`: the ids are given in an order
+  that is not raw-id order, `{NAME, HOPE, MINISTRY}` (raw 3, 1, 2; fixtures at
+  `TagChipRowTest.cpp:18-20`). The counts come from `TagChips::count` over `FakePassage`s
+  (`TagChipRowTest.cpp:40-42`) carrying NAME, MINISTRY and one Unlabelled passage, but no HOPE, so
+  the Tally's raw-id sort and slot mapping (`TagChipRow.h:32-53`) run on a non-raw order. The filter
+  is HOPE, the zero-count tag in the middle of the name order. Expected: All, NAME (slot 0), HOPE
+  (slot 1, kept because it is the filter), MINISTRY (slot 2), Unlabelled; and each Tag slot's count
+  matches its id's passages.
 
 **Firmware build:** `pio run -e x4pro` builds with no warning from `src/` or our `lib/`. Baseline at
 `59c370cf` (the research's build, PlatformIO 6.1.19): `SUCCESS`, zero `warning:` lines under `src/`
@@ -256,5 +268,17 @@ build/test --output-on-failure -j` passes (baseline 1,678 tests).
 **Device checks (owner), since only hardware shows the looks:**
 
 - Highlights: the chip row looks as today; tapping a chip shows it inverted and the old one white.
+- Highlights, the A9 case: filter by a tag X, untag X's last passage through the picker so X stays
+  as a zero-count filter chip, then tap a tag after X. Only that tag shows inverted (review 0, m3).
 - Filter grid (**…**): looks as today; the current filter is the only inverted chip.
 - The Disabled and Action looks are first visible in the picker task; they are checked there.
+
+## Review 0 outcome
+
+Review: `docs/superpowers/reviews/btrial-2-spec-review-0.md`, `CLEAR` with three MINORs, all applied.
+
+| Finding | Change |
+|---|---|
+| m1 the name-order `candidates` test could not fail | Counts now come from `TagChips::count` over name-ordered ids, with a zero-count filter in the middle; the test is labelled a characterisation test that passes first time |
+| m2 the extra `BoxStyle look` local | The look is written into `styles.normal` and copied to the other slots; no new local; stack sizes stated |
+| m3 A9 understated how long the wrong chip stays inverted | A9 says "until the next repaint"; a device check reaches the case |
