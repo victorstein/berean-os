@@ -558,8 +558,13 @@ Expected: either no change, or changes only in the files this plan declares (inc
 `TagChipRowTest.cpp`, line wrapping). If anything changed, rebuild the host target and rerun
 `./build/test/tag_rows/TagRowsTest`, then commit:
 
+If `git status --short` lists any file other than the seven on the `FILES:` lines, stop and report
+it; do not commit it.
+
 ```bash
-git add -u
+git add src/activities/reader/TagChipRow.h src/activities/reader/TagChipView.h src/activities/reader/TagChipView.cpp \
+  src/activities/reader/HighlightsActivity.cpp src/activities/reader/TagFilterActivity.cpp \
+  test/tag_rows/TagChipRowTest.cpp lib/I18n/translations/english.yaml
 git commit -m "style: format the chip states change
 
 Claude-Session: https://claude.ai/code/session_01YarvAZjfcPz19axP8tUPvo"
@@ -572,3 +577,11 @@ Run `git status --short` again: the tree must be clean, with nothing gitignored 
 Report the commits (`git log --oneline origin/feature/tag-chip-states..HEAD`), the ctest summary
 line, the pio `exit=` and RAM/Flash lines, and the list of repo warnings (expected empty). Do not
 push.
+
+Then list the owner's device checks from the spec's Testing strategy, since no host target compiles
+`TagChipView.cpp` and the build only proves it compiles:
+
+- the Highlights row looks as today, and a tapped chip inverts while the old one goes white;
+- the A9 case: filter by X, untag X's last passage so X stays as a zero-count chip, tap a tag after
+  X; only that tag inverts;
+- the filter grid looks as today, with the current filter the only inverted chip.
