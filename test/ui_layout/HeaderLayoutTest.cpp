@@ -181,3 +181,165 @@ TEST(HeaderLayout, ClassicAndLyraReservesWithoutAnAction) {
   EXPECT_EQ(r.rightReserve, 73);
   expectBox(r.battery, Box{397, 5, 65, 44});
 }
+
+namespace {
+
+// "Done" (about 52 px of bold text) and a label narrow enough to hit the floor.
+constexpr int DONE_W = 52 + 2 * SPACE_LG;
+constexpr int FLOOR_W = MIN_TOUCH;
+
+bool intersects(const Box& a, const Box& b) {
+  if (a.width <= 0 || a.height <= 0 || b.width <= 0 || b.height <= 0) return false;
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+// The rect fui::header draws the title into: the band inset by the side
+// padding and the reserves, shifted by titleOffsetY.
+Box titleBox(const Inputs& in, const Result& r) {
+  return Box{in.band.x + in.sidePadding + r.leftReserve, in.band.y + r.titleOffsetY,
+             in.band.width - 2 * in.sidePadding - r.leftReserve - r.rightReserve, in.band.height};
+}
+
+int right(const Box& box) { return box.x + box.width; }
+int bottom(const Box& box) { return box.y + box.height; }
+
+}  // namespace
+
+TEST(HeaderLayout, ActionNeverOverlapsTheBattery) {
+  for (const int width : {DONE_W, FLOOR_W}) {
+    const std::vector<Inputs> layouts = allLayouts(width);
+    for (size_t i = 0; i < layouts.size(); ++i) {
+      SCOPED_TRACE(i);
+      const Result r = HeaderLayout::layout(layouts[i]);
+      EXPECT_FALSE(intersects(r.action, r.battery));
+    }
+  }
+}
+
+TEST(HeaderLayout, ActionNeverOverlapsTheTitle) {
+  for (const int width : {DONE_W, FLOOR_W}) {
+    const std::vector<Inputs> layouts = allLayouts(width);
+    for (size_t i = 0; i < layouts.size(); ++i) {
+      SCOPED_TRACE(i);
+      const Result r = HeaderLayout::layout(layouts[i]);
+      const Box title = titleBox(layouts[i], r);
+      EXPECT_FALSE(intersects(title, r.action));
+      EXPECT_LE(right(title), r.action.x - SPACE_MD);
+    }
+  }
+}
+
+TEST(HeaderLayout, ActionStaysInsideTheBandAboveTheRule) {
+  for (const int width : {DONE_W, FLOOR_W}) {
+    const std::vector<Inputs> layouts = allLayouts(width);
+    for (size_t i = 0; i < layouts.size(); ++i) {
+      SCOPED_TRACE(i);
+      const Inputs& in = layouts[i];
+      const Result r = HeaderLayout::layout(in);
+      EXPECT_GE(r.action.x, in.band.x + in.sidePadding);
+      EXPECT_LE(right(r.action), right(in.band) - in.sidePadding);
+      EXPECT_GE(r.action.y, in.band.y);
+      EXPECT_LE(bottom(r.action), bottom(in.band) - in.underline);
+    }
+  }
+}
+
+TEST(HeaderLayout, LyraPutsTheActionOnTheTitleLineLeftOfTheBattery) {
+  for (const bool showPercent : {false, true}) {
+    SCOPED_TRACE(showPercent);
+    const Inputs in = lyra(showPercent, DONE_W);
+    const Result r = HeaderLayout::layout(in);
+    EXPECT_EQ(right(r.action), SCREEN_W - SIDE_PADDING - in.batteryReserve - SPACE_MD);
+    EXPECT_EQ(r.rightReserve, in.batteryReserve + SPACE_MD + DONE_W + SPACE_MD);
+    EXPECT_EQ(r.leftReserve, 0);
+    // FreeInkUI's trailing-button box: the band less 4 px top and bottom.
+    EXPECT_EQ(r.action.y, TOP_PADDING + 4);
+    EXPECT_EQ(r.action.height, 36);
+  }
+}
+
+TEST(HeaderLayout, ClassicPutsTheActionInTheCornerBelowTheStrip) {
+  for (const bool showPercent : {false, true}) {
+    SCOPED_TRACE(showPercent);
+    const Result r = HeaderLayout::layout(classic(showPercent, DONE_W));
+    EXPECT_EQ(right(r.action), SCREEN_W - SIDE_PADDING);
+    EXPECT_EQ(r.action.y, TOP_PADDING + 20);
+    EXPECT_EQ(bottom(r.action), TOP_PADDING + 45);
+    EXPECT_EQ(r.action.height, 25);
+  }
+}
+
+TEST(HeaderLayout, ClassicWideActionGivesUpItsExcessOverTheBatteryOnBothSides) {
+  // Percent on: 84 - 64 = 20 px beyond the battery's 64.
+  Result r = HeaderLayout::layout(classic(true, DONE_W));
+  EXPECT_EQ(r.rightReserve, 72 + 20);
+  EXPECT_EQ(r.leftReserve, 20);
+  // Percent off: 84 - 17 = 67 px beyond the battery's 17.
+  r = HeaderLayout::layout(classic(false, DONE_W));
+  EXPECT_EQ(r.rightReserve, 25 + 67);
+  EXPECT_EQ(r.leftReserve, 67);
+}
+
+TEST(HeaderLayout, ClassicNarrowActionTakesNoTitleWidthBeyondTheBattery) {
+  const Inputs in = classic(true, FLOOR_W);  // 44 <= 64
+  const Result r = HeaderLayout::layout(in);
+  const Legacy base = legacy(in);
+  EXPECT_EQ(r.leftReserve, base.leftReserve);
+  EXPECT_EQ(r.rightReserve, base.rightReserve);
+  EXPECT_FALSE(intersects(r.action, r.battery));
+  EXPECT_LE(right(titleBox(in, r)), r.action.x - SPACE_MD);
+}
+
+TEST(HeaderLayout, CentredTitlesGiveUpTheSameWidthOnBothSides) {
+  for (const int width : {DONE_W, FLOOR_W}) {
+    const std::vector<Inputs> layouts = allLayouts(width);
+    for (size_t i = 0; i < layouts.size(); ++i) {
+      SCOPED_TRACE(i);
+      const Inputs& in = layouts[i];
+      const Result r = HeaderLayout::layout(in);
+      const Legacy base = legacy(in);
+      if (in.titleCentred) {
+        EXPECT_EQ(r.leftReserve - base.leftReserve, r.rightReserve - base.rightReserve);
+      } else {
+        EXPECT_EQ(r.leftReserve, base.leftReserve);
+      }
+    }
+  }
+}
+
+TEST(HeaderLayout, BatteryLeftOrDetachedPutsTheActionAtTheTitleLineRightEdge) {
+  const std::vector<Inputs> layouts = allLayouts(DONE_W);
+  for (size_t i = 0; i < layouts.size(); ++i) {
+    const Inputs& in = layouts[i];
+    if (!in.batteryLeft && !in.batteryDetached) continue;
+    SCOPED_TRACE(i);
+    const Result r = HeaderLayout::layout(in);
+    EXPECT_EQ(right(r.action), right(in.band) - in.sidePadding);
+    EXPECT_EQ(r.rightReserve - legacy(in).rightReserve, DONE_W + SPACE_MD);
+  }
+}
+
+TEST(HeaderLayout, DetachedActionCentresOnTheTitleLineBelowTheStrip) {
+  // Battery left, Lyra metrics: the title line starts at 5 + 44 - 3 - 8 - 29 = 9,
+  // and a 36 px action centred on its 29 px starts at 9 + (29 - 36) / 2 = 6.
+  Result r = HeaderLayout::layout(withBatteryDetached(withBatteryLeft(lyra(false, DONE_W))));
+  EXPECT_EQ(r.action.y, 6);
+  EXPECT_EQ(r.action.height, 36);
+  // Battery right, Classic metrics: the 20 px strip pushes the action to 25, and
+  // the room below it is 25 px.
+  r = HeaderLayout::layout(withBatteryDetached(classic(false, DONE_W)));
+  EXPECT_EQ(r.action.y, TOP_PADDING + 20);
+  EXPECT_EQ(r.action.height, 25);
+}
+
+TEST(HeaderLayout, DetachedStripAsTallAsTheBandLeavesNoRoom) {
+  const Result r = HeaderLayout::layout(withBatteryDetached(lyra(true, DONE_W)));
+  EXPECT_EQ(r.action.height, 0);
+  EXPECT_FALSE(intersects(r.action, r.battery));
+}
+
+TEST(HeaderLayout, ActionMovesWithTheBatteryPercentOnTheTitleLine) {
+  const Result off = HeaderLayout::layout(lyra(false, DONE_W));
+  const Result on = HeaderLayout::layout(lyra(true, DONE_W));
+  EXPECT_EQ(off.action.x - on.action.x, PERCENT_SPACING + PERCENT_TEXT_W);
+}

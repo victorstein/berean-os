@@ -73,6 +73,38 @@ constexpr Result layout(const Inputs& in) {
   const int batteryX = in.batteryLeft ? band.x + batteryInset : bandRight - batteryInset - in.batteryReserve;
   out.battery = Box{batteryX, band.y, in.batteryReserve, in.batteryBarHeight};
 
+  if (in.actionWidth <= 0) return out;
+
+  const bool batteryRight = !in.batteryLeft;
+  const bool sharesTitleLine = batteryRight && !in.batteryDetached;
+  const bool corner = sharesTitleLine && in.batteryBarHeight < band.height;
+  const bool besideBattery = sharesTitleLine && !corner;
+  const int roomBottom = band.y + band.height - in.underline;
+  const int roomTop = (corner || (in.batteryDetached && batteryRight)) ? band.y + in.batteryBarHeight : band.y;
+
+  int actionRight = bandRight - in.sidePadding;
+  int growth = in.actionWidth + in.spaceMd;
+  if (besideBattery) {
+    actionRight -= in.batteryReserve + in.spaceMd;
+  } else if (corner) {
+    // The strip above already reserves the battery's columns; the action
+    // shares them at a different height, so the title gives up only the excess.
+    growth = std::max(0, in.actionWidth - in.batteryReserve);
+  }
+  out.rightReserve += growth;
+  // Equal growth on both sides keeps a centred title where drawHeader centres it.
+  if (in.titleCentred) out.leftReserve += growth;
+
+  const int height = std::max(0, std::min(band.height - 2 * ACTION_INSET, roomBottom - roomTop));
+  int y = band.y + ACTION_INSET;
+  if (corner) {
+    y = roomBottom - height;
+  } else if (in.batteryDetached) {
+    const int titleLineTop = band.y + band.height - in.underline - in.spaceMd - in.titleLineHeight;
+    y = titleLineTop + (in.titleLineHeight - height) / 2;
+  }
+  y = std::min(std::max(y, roomTop), roomBottom - height);
+  out.action = Box{actionRight - in.actionWidth, y, in.actionWidth, height};
   return out;
 }
 
