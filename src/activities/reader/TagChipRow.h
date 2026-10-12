@@ -123,6 +123,18 @@ inline void candidates(const Counts& counts, const std::vector<study::TagId>& ac
   if (counts.unlabelled > 0 || filter == study::UNLABELLED) out.push_back(Candidate{Kind::Unlabelled, 0});
 }
 
+// Restores a selection after the chip list is rebuilt: the index of the chip of `kind` (and, for a
+// Tag, of `id`), or -1 when it is gone. All, Unlabelled and NewTag occur at most once in a list, so
+// they match by kind alone. A template over the caller's chip type keeps FreeInkUI out of this header.
+template <typename Chips>
+int findChip(const Chips& chips, const Kind kind, const study::TagId id) {
+  for (size_t i = 0; i < chips.size(); ++i) {
+    if (chips[i].kind != kind) continue;
+    if (kind != Kind::Tag || chips[i].id == id) return static_cast<int>(i);
+  }
+  return -1;
+}
+
 struct Placed {
   int chip = 0;  // index into the widths passed to layout(), or -1 for the ellipsis
   int line = 0;

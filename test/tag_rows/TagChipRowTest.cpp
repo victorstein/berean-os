@@ -617,3 +617,44 @@ TEST(TagChipPickerState, NewTagIsAnActionAtAnyCount) {
         << applied << " applied";
   }
 }
+
+namespace {
+
+// findChip reads only .kind and .id, so a plain struct stands in for TagChipView::ChipEntry.
+struct FakeChip {
+  TagChips::Kind kind;
+  TagId id;
+};
+
+const std::vector<FakeChip> CHIPS{{TagChips::Kind::NewTag, UNLABELLED},
+                                  {TagChips::Kind::All, UNLABELLED},
+                                  {TagChips::Kind::Tag, HOPE},
+                                  {TagChips::Kind::Tag, NAME},
+                                  {TagChips::Kind::Unlabelled, UNLABELLED}};
+
+}  // namespace
+
+TEST(TagChipFindChip, FindsATagById) {
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::Tag, HOPE), 2);
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::Tag, NAME), 3);
+}
+
+TEST(TagChipFindChip, FindsTheSingletonKindsByKindAlone) {
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::NewTag, UNLABELLED), 0);
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::All, UNLABELLED), 1);
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::Unlabelled, UNLABELLED), 4);
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::All, HOPE), 1) << "the id is ignored for All";
+}
+
+TEST(TagChipFindChip, ARetiredTagOrAnEmptyListIsNotFound) {
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::Tag, MINISTRY), -1);
+  EXPECT_EQ(TagChips::findChip(std::vector<FakeChip>{}, TagChips::Kind::Tag, HOPE), -1);
+  EXPECT_EQ(TagChips::findChip(std::vector<FakeChip>{}, TagChips::Kind::All, UNLABELLED), -1);
+}
+
+TEST(TagChipFindChip, TheKindMustMatch) {
+  const std::vector<FakeChip> tagOnly{{TagChips::Kind::Tag, UNLABELLED}};
+  EXPECT_EQ(TagChips::findChip(tagOnly, TagChips::Kind::Unlabelled, UNLABELLED), -1);
+  const std::vector<FakeChip> unlabelledOnly{{TagChips::Kind::Unlabelled, UNLABELLED}};
+  EXPECT_EQ(TagChips::findChip(unlabelledOnly, TagChips::Kind::Tag, UNLABELLED), -1);
+}
