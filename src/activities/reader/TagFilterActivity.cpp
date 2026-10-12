@@ -97,8 +97,10 @@ void TagFilterActivity::buildScreen(UiScreen& screen) {
     const fui::Rect rect{static_cast<int16_t>(body.x + inset + placed.x),
                          static_cast<int16_t>(gridTop + TagChips::lineTop(placed.line, chip.chipHeight, gridGap_)),
                          static_cast<int16_t>(placed.width), static_cast<int16_t>(chip.chipHeight)};
-    TagChipView::draw(screen, rect, entry.label, TagChipView::isSelected(entry, filter_), ACTION_ROW,
-                      static_cast<int16_t>(placed.chip), fui::InputTouch | fui::InputLongPress,
+    const TagChips::ChipState state =
+        TagChipView::isSelected(entry, filter_) ? TagChips::ChipState::Active : TagChips::ChipState::Inactive;
+    TagChipView::draw(screen, rect, entry.label, state, ACTION_ROW, static_cast<int16_t>(placed.chip),
+                      fui::InputTouch | fui::InputLongPress,
                       TagChips::hitPadding(page_.placed, page_.placedCount, page_.lines, k, gridGap_));
     if (placed.chip == nav.selected) focused = rect;
   }
