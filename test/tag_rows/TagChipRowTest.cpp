@@ -1,3 +1,4 @@
+#include <StudyStore/PassageDoc.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -8,7 +9,6 @@
 #include <vector>
 
 #include "activities/reader/TagChipRow.h"
-#include <StudyStore/PassageDoc.h>
 
 using study::TagId;
 using study::toTagId;
