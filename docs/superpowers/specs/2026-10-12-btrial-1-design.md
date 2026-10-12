@@ -251,7 +251,7 @@ stack rule.
 
 | Target | Sources added | Include dirs added | Other |
 |---|---|---|---|
-| `test/tag_palette` | `Fold.cpp`, `FailingNothrowNew.cpp` | `lib/BibleSearch`, `lib/Memory`, `test/stubs` | `-fno-builtin` (A21) |
+| `test/tag_palette` | `Fold.cpp`, `FailingNothrowNew.cpp`, `TagDisplayOrderTest.cpp` | `lib/BibleSearch`, `lib/Memory`, `test/stubs` | `-fno-builtin` (A21) |
 | `test/migration_planner` | `Fold.cpp` | `lib/BibleSearch`, `lib/Memory`, `test/stubs` | |
 | `test/passage_doc` | `Fold.cpp` | `lib/BibleSearch`, `lib/Memory`, `test/stubs` | |
 | `test/storage_io` | `Fold.cpp` | `lib/BibleSearch` | already has stubs and Memory (`:29-31`) |
@@ -280,12 +280,20 @@ nameRank ◄── Entry::rank (linear id scan) ◄── inDisplayOrder ◄─�
                                                                      (HighlightsActivity.cpp:97-106)
 ```
 
-Everything runs on the loop task.
+Every palette mutator, and so every rebuild, runs on the loop task. The readers mostly do too, with
+one interim exception:
 
-- The palette's mutators are reached from the loop task. Today's picker calls `addTagName` and
-  `retireTag` under `RenderLock` (`TagPickerActivity.cpp:160-167`, `:264-277`), so the rebuild runs
-  inside that lock (A16).
-- No render task reads the palette (parent A1).
+- Today's picker calls `addTagName` and `retireTag` under `RenderLock`
+  (`TagPickerActivity.cpp:160-167`, `:264-277`), so the rebuild runs inside that lock (A16).
+- **Until `t5` lands**, the picker's `buildScreen` calls `STUDY.activeTags()`
+  (`TagPickerActivity.cpp:79`) on the render task. The render loop holds `RenderLock` around
+  `render()` (`src/activities/ActivityManager.cpp:52-59`). `UiListActivity::render` reaches
+  `buildScreen` through `renderUi()` (`src/activities/UiListActivity.cpp:27-31`, `:154-157`).
+  - So that read walks `byName_` under the render lock.
+  - It never overlaps a rebuild, only because every palette mutation that can rebuild or flip
+    `active` also runs under `RenderLock`.
+  - Moving such a mutation out of the lock while this picker exists would race on `byName_`.
+- After `t5`, no render task reads the palette (parent A1).
 
 ## Error handling
 
@@ -335,9 +343,12 @@ runs on:
 TDD, in this order. The full set of tests goes in `test/tag_palette/TagPaletteTest.cpp`, plus a new
 `test/tag_palette/TagDisplayOrderTest.cpp`, both compiled into `TagPaletteTest`.
 
-**Step 0: build plumbing, no behaviour.** Add `Fold.cpp`, the include directories and the injector
-to the four targets. Confirm all four still build and that the 194-test baseline stays green
-(research §7).
+**Step 0: build plumbing, no behaviour.** Add `Fold.cpp` and the include directories to all four
+targets, as tabled. Add the injector, `TagDisplayOrderTest.cpp` and `-fno-builtin` to
+`test/tag_palette` only. Confirm all four still build and that the 194-test baseline stays green
+(research §7). Once Step 3 is green, confirm `ctest --test-dir build/test -R TagDisplayOrder`
+reports five tests. A test file left out of `add_executable` is never compiled, and the suite would
+stay green with no coverage.
 
 **Step 1: order (red, then green).**
 
@@ -383,6 +394,16 @@ fail: `std::string` and `std::vector` use the never-failing throwing form, and A
 The rebuild tests are the only way to observe "not rebuilt". A rebuild with unchanged names
 produces identical ranks, so rank equality alone cannot tell the two apart.
 
+**The OOM log line is not observable on the host.** The host `LOG_ERR` expands to nothing
+(`test/stubs/Logging.h:6`), so the `TagPaletteOom.*` tests check only the fallback order. The log
+line itself is checked in two ways:
+
+- by inspection at PR review;
+- for its format string, by `-Wformat` under `pio run` (`platformio.ini:70-72`). That check works
+  because `logPrintf` carries `format(printf, 3, 4)` (`lib/Logging/Logging.h:42`).
+
+No log-capturing stub is added for this task.
+
 **Step 3: `inDisplayOrder` (red, then green), in `TagDisplayOrderTest.cpp`.**
 
 | Test | Asserts |
@@ -402,6 +423,9 @@ covered by the `inDisplayOrder` tests and the device checks below.
 cmake -S test -B build/test && cmake --build build/test && ctest --test-dir build/test --output-on-failure -j
 ~/.platformio/penv/bin/pio run -e x4pro         # links lib/StudyStore -> lib/BibleSearch; no new warnings in
                                                 # TagPalette.cpp, TagDisplayOrder.h, StudyStore.cpp
+~/.platformio/penv/bin/pio check -e x4pro --fail-on-defect low --fail-on-defect medium --fail-on-defect high
+                                               # as CI runs it (.github/workflows/ci.yml:76); scans src/,
+                                               # which holds the rewritten StudyStore.cpp
 ./bin/clang-format-fix                         # the whole tree, then git status shows no reformat
 ```
 
@@ -409,8 +433,8 @@ cmake -S test -B build/test && cmake --build build/test && ctest --test-dir buil
 
 - Highlights passage rows list each passage's tags alphabetically. A row whose stored order was
   `oración, amor` reads `amor, oración`.
-- The current picker (before `t5`) lists tags alphabetically.
-- A tag created from the picker appears in its alphabetical place.
+- The tag picker lists tags alphabetically, and a tag created from it appears in its alphabetical
+  place. The batch is tested as one PR, after `t5` has replaced the picker.
 - Serial shows no `TAGS` OOM line on opening a publication.
 - `ESP.getFreeHeap()` over serial is flat across a publication open and close.
 
@@ -488,6 +512,10 @@ Each assumption is a decision a reviewer can attack.
     order (`activeIds()`), exactly as today"; acceptance line 83).
   - The batch ships as one PR (`hpipe status`: "ships as one PR"), so the window never reaches
     `main`. `t5` must not be dropped from the batch without moving the commit to `activeIds()`.
+  - Only this spec records the window, and neither the `t5` worker nor the orchestrator reads it.
+    So the plan repeats it, and the worker states it to the orchestrator in the last message of the
+    implement turn: "t1 changes the picker's commit order until t5 lands; t5 must not be dropped
+    from the batch."
 - **A19 (template use).** This adds two `std::sort` instantiations to library code, one in
   `TagPalette.cpp` and one in `TagDisplayOrder.h`. There is precedent in `lib/`:
   `IndexBuilder.cpp:319`, `BookMetadataCache.cpp:153`, `SdCardFont.cpp:1097`.
@@ -521,3 +549,23 @@ Each assumption is a decision a reviewer can attack.
   `FailingNothrowNew.h` and `FailingNothrowNew.cpp` (new, copied)
 - `test/migration_planner/CMakeLists.txt`, `test/passage_doc/CMakeLists.txt`,
   `test/storage_io/CMakeLists.txt`
+
+## Review 0 outcome
+
+Review: `docs/superpowers/reviews/btrial-1-spec-review-0.md`, verdict CLEAR, with no BLOCKERs, no
+MAJORs and five MINORs. All five are accepted and fixed inline in this revision. I checked each
+finding's new citations against the source first.
+
+| Finding | Change |
+|---|---|
+| MINOR 1: the A18 window is recorded only in this spec | A18 now requires the plan to repeat it and the implement turn's last message to state it to the orchestrator. The device check no longer names the interim picker |
+| MINOR 2: `TagDisplayOrderTest.cpp` missing from the build table; Step 0 put the injector in all four targets | Added to the `test/tag_palette` row. Step 0 scopes the injector and `-fno-builtin` to `test/tag_palette` and checks that `ctest -R TagDisplayOrder` reports five tests |
+| MINOR 3: "no render task reads the palette" is false until `t5` | The data-flow section names the interim render-task read of `activeTags()` and why it is safe: every rebuild-triggering mutation runs under `RenderLock` |
+| MINOR 4: the `LOG_ERR` clause has no host check | The testing strategy says the line is checked by inspection at PR review and by `-Wformat` under `pio run` |
+| MINOR 5: `pio check` missing | Added to the verification commands, with CI's flags |
+
+Two of the review's citations are slightly off, and neither changes a fix:
+
+- `logPrintf`'s attribute is at `lib/Logging/Logging.h:42`, not `:43`.
+- The interim picker's `addTagName` lock is at `TagPickerActivity.cpp:160-167`. The review's
+  `:186-189` is a comment about name validation.
