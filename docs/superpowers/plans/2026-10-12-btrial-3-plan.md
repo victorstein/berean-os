@@ -959,7 +959,7 @@ Rect BaseTheme::drawHeaderBand(const GfxRenderer& renderer, Rect rect, const cha
 
 Run: `./bin/clang-format-fix -g`
 
-Expected: exits 0. Then `git diff --stat` shows only the five files in this plan's `FILES:` lines.
+Expected: exits 0. Then `git diff --stat` shows only `src/components/themes/BaseTheme.h` and `src/components/themes/BaseTheme.cpp` (Tasks 1–3 are already committed).
 
 - [ ] **Step 5: Build the firmware**
 
@@ -973,13 +973,7 @@ grep -E "^(RAM|Flash):" build/pio-btrial-3.log | tail -2
 
 Expected: `exit=0`, nothing printed above `repo warnings above` (no warning from `src/` or `lib/`, in particular none from `BaseTheme.cpp` or `HeaderLayout.h`), and the RAM/Flash summary lines. A first build in a fresh worktree downloads packages and takes several minutes.
 
-- [ ] **Step 6: Run the whole `ui_layout` host suite again**
-
-Run: `cmake --build build/test --target HeaderLayoutTest && ctest --test-dir build/test -R HeaderLayout --output-on-failure`
-
-Expected: `100% tests passed` (16 tests).
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/components/themes/BaseTheme.h src/components/themes/BaseTheme.cpp
@@ -1011,3 +1005,10 @@ Report: the commit list, the `pio run` exit and its RAM/Flash lines, the host te
 
 - map the brief's acceptance bullets to tests: battery/title overlap → `ActionNeverOverlapsTheBattery`, `ActionNeverOverlapsTheTitle`; Lyra → `LyraPutsTheActionOnTheTitleLineLeftOfTheBattery`; Classic → `ClassicPutsTheActionInTheCornerBelowTheStrip`, `CentredTitlesGiveUpTheSameWidthOnBothSides`, `ClassicWideActionGivesUpItsExcessOverTheBatteryOnBothSides`, `ClassicNarrowActionTakesNoTitleWidthBeyondTheBattery` — **as narrowed by spec A4** (the title gives up only what clears the action by `spaceMd`, per side); battery left/detached → `BatteryLeftOrDetachedPutsTheActionAtTheTitleLineRightEdge`; `drawHeader` unchanged → `WithoutAnActionReproducesDrawHeader` and the build;
 - give the owner's device check from the spec: Lyra and Classic, each with *Settings → Hide Battery %* = **Never** then **Always**; Done left of the battery on the title line (Lyra) or in the lower-right corner under the battery (Classic), touching neither the battery icon nor the percent; a long title truncates before Done; every other header (e.g. Settings with its version subtitle) unchanged; Classic with German, "Erledigt" inside its pill and nothing inked below the band (this last one needs the picker's draw fix, discovery `t3/x1`). No screen calls the seam in this change, so the check runs once the picker lands or with a temporary local call.
+
+## Plan review 0 outcome
+
+`docs/superpowers/reviews/btrial-3-plan-review-0.md`: CLEAR, two MINORs, both applied. Task 4
+Step 4 now expects only the two `BaseTheme` files in `git diff --stat`, and the host re-run that
+used to be Task 4 Step 6 was deleted: `HeaderLayoutTest` compiles nothing Task 4 changes, and the
+firmware build is that task's check.
