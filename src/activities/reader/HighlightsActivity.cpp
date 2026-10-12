@@ -705,7 +705,8 @@ void HighlightsActivity::buildChipRow(UiScreen& screen) {
                          static_cast<int16_t>(band.y + TagChips::lineTop(placed.line, chip.chipHeight, chip.gap)),
                          static_cast<int16_t>(placed.width), static_cast<int16_t>(chip.chipHeight)};
     TagChipView::draw(screen, rect, isMore ? fui::TEXT_ELLIPSIS : chips_[static_cast<size_t>(placed.chip)].label,
-                      selected, isMore ? ACTION_MORE : ACTION_CHIP, static_cast<int16_t>(isMore ? 0 : placed.chip),
+                      selected ? TagChips::ChipState::Active : TagChips::ChipState::Inactive,
+                      isMore ? ACTION_MORE : ACTION_CHIP, static_cast<int16_t>(isMore ? 0 : placed.chip),
                       fui::InputTouch, TagChips::hitPadding(chipLayout_, k, chip.gap));
   }
 

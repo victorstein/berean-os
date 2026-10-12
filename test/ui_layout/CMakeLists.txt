@@ -127,3 +127,20 @@ target_link_libraries(MenuCloseRestoreTest PRIVATE
 )
 
 gtest_discover_tests(MenuCloseRestoreTest)
+
+add_executable(HeaderLayoutTest
+  HeaderLayoutTest.cpp
+)
+
+target_include_directories(HeaderLayoutTest PRIVATE
+  ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/StudyStore
+)
+
+target_link_libraries(HeaderLayoutTest PRIVATE
+  crosspoint_test_common
+  ArduinoJson
+  GTest::gtest_main
+)
+
+gtest_discover_tests(HeaderLayoutTest)

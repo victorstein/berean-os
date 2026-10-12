@@ -86,7 +86,17 @@ constexpr int MAX_LINES = 2;
 // visible passage rows; past it, hits are dropped and the chip becomes untappable.
 constexpr int MAX_CHIPS = 24;
 
-enum class Kind : uint8_t { All, Tag, Unlabelled };
+enum class Kind : uint8_t { All, Tag, Unlabelled, NewTag };
+
+enum class ChipState : uint8_t { Inactive, Active, Disabled, Action };
+
+// A tag the passage lacks is Disabled once `cap` tags are applied. Disabled is a look, not an
+// untappable chip: a tap still explains the limit and a long-press can still retire the tag.
+constexpr ChipState pickerState(const Kind kind, const bool selected, const size_t selectedCount, const size_t cap) {
+  if (kind == Kind::NewTag) return ChipState::Action;
+  if (selected) return ChipState::Active;
+  return selectedCount < cap ? ChipState::Inactive : ChipState::Disabled;
+}
 
 struct Candidate {
   Kind kind = Kind::All;
@@ -111,6 +121,18 @@ inline void candidates(const Counts& counts, const std::vector<study::TagId>& ac
   }
   if (out.size() >= cap) return;
   if (counts.unlabelled > 0 || filter == study::UNLABELLED) out.push_back(Candidate{Kind::Unlabelled, 0});
+}
+
+// Restores a selection after the chip list is rebuilt: the index of the chip of `kind` (and, for a
+// Tag, of `id`), or -1 when it is gone. All, Unlabelled and NewTag occur at most once in a list, so
+// they match by kind alone. A template over the caller's chip type keeps FreeInkUI out of this header.
+template <typename Chips>
+int findChip(const Chips& chips, const Kind kind, const study::TagId id) {
+  for (size_t i = 0; i < chips.size(); ++i) {
+    if (chips[i].kind != kind) continue;
+    if (kind != Kind::Tag || chips[i].id == id) return static_cast<int>(i);
+  }
+  return -1;
 }
 
 struct Placed {
