@@ -37,6 +37,11 @@ draws the same header `drawHeader` draws, with room made for one action label cl
 and the battery, and returns where that action goes. It **does not paint** the action (A3); the
 picker draws a touchable chip at the returned rect (parent §4).
 
+**Contract on the returned rect.** It is the action's visual rect in screen coordinates, clear of
+the battery and the title, recomputed every call. Under Classic's corner it is only as tall as the
+room below the battery strip (25 px), so a consumer drawing a bordered label there must not inset
+the label vertically (A6).
+
 ## Non-goals
 
 - `drawHeader`'s signature, behaviour and its call sites. `grep -rn "drawHeader(" src lib`
@@ -129,7 +134,7 @@ right-anchored. Slot selection reuses `drawHeader`'s existing predicates (`BaseT
 | **TitleLine** | battery right, not detached, `batteryBarHeight >= B.height` (Lyra) | `B.right - S - (R + M) - w` | the band above the underline | `rightReserve = R + M + w + M` (`g = w + M`) |
 | **Corner** | battery right, not detached, `batteryBarHeight < B.height` (Classic) | `B.right - S - w` | `[B.y + batteryBarHeight, B.bottom - U]` | `rightReserve = max(R, w) + M` (`g = max(0, w - R)`) |
 | **Edge** | battery left, not detached | `B.right - S - w` | the band above the underline | `rightReserve = w + M` (`g = w + M`) |
-| **Detached** | `headerBatteryDetached` | `B.right - S - w` | the title line (below), pushed below the battery strip when the battery is on the right | `rightReserve = w + M` (`g = w + M`) |
+| **Detached** | `headerBatteryDetached` | `B.right - S - w` | `[B.y + batteryBarHeight, B.bottom - U]` with the battery on the right, `[B.y, B.bottom - U]` with it on the left | `rightReserve = w + M` (`g = w + M`) |
 
 - **Centred titles** (Classic, `headerTitleAlign = 1`, `BaseTheme.h:153`) also grow the *other*
   reserve by the same `g`, so the title's centre stays exactly where `drawHeader` puts it for the
@@ -141,9 +146,11 @@ right-anchored. Slot selection reuses `drawHeader`'s existing predicates (`BaseT
     clamped so `y + h <= B.bottom - U`.
   - Corner: bottom-aligned in the room, `y = B.bottom - U - h`, the corner `manualRightLabel`
     pins its label to (`BaseTheme.cpp:393-395`).
-  - Detached: centred on the title line, whose top is `B.height - U - M - titleLineHeight`
-    (`BaseTheme.cpp:352`), then moved down to `B.y + batteryBarHeight` if the battery is on the
-    right and the result would start above it, and clamped to `B.bottom - U`.
+  - Detached: centred on the title line, whose top is `B.y + B.height - U - M - titleLineHeight`
+    (the band-relative `titleTop` of `BaseTheme.cpp:352`, made absolute), then clamped into the
+    Detached room from the table: moved down to its top if it would start above it, and up so
+    `y + h <= B.bottom - U`. All coordinates in this section are absolute; every real band starts
+    at `B.y = topPadding = 5` (`UiListActivity.cpp:146`, `BaseTheme.h:134`, `LyraTheme.h:11`).
 - **Width.** `w = max(boldTextWidth + 2·spaceLg, max(textLineHeight + 2·spaceMd, minTouchSize))`,
   `TagChipView::measure` exactly (A2). On this board that is `max(textW + 32, 44)` (research,
   "Token values").
@@ -221,9 +228,17 @@ module is header-only `constexpr`.
   Classic screen.
 - **A6. Visual height.** No firmware precedent sizes a button inside the header; the nearest is
   FreeInkUI's trailing button (`header.h:105`, `:122-124`): band height minus 8, inset 4. Under
-  Classic the corner leaves 25 px, so the visual rect is 25 px holding `UI_10`'s 24 px line
-  (`ubuntu_10_regular.h`, `advanceY` 24, ascender 20, descender −4). The touch target is the
-  picker's concern (its `hitPadding` grows the hit rect to the band, parent §4).
+  Classic the corner leaves 25 px, and the visual rect is that 25 px room — the seam cannot make
+  it taller without overlapping the battery strip. **That room does not hold a label drawn the
+  default way:** `fui::button` insets its label 2 px top and bottom (`button.h:56`), leaving 21 px
+  for `UI_10`'s 24 px line (`ubuntu_10_bold.h`, `advanceY` 24, ascender 20). Capitals then sit low
+  (about 7 px above, 2 px below) and a descender (`g` in German "Erledigt", `german.yaml:84`)
+  crosses the bottom border and inks one row below the band. This is a contract on the returned
+  rect, not something the seam can fix: **under Corner the rect's height is the free room, and a
+  consumer drawing a bordered label in it must not inset the label vertically** (for example,
+  centre on the cap height or clear the button's vertical inset for this chip). Filed for the
+  picker task with `hpipe discover` (review 0, MAJOR 1). The touch target is also the picker's
+  concern (its `hitPadding` grows the hit rect to the band, parent §4).
 - **A7. Empty label returns an empty rect** rather than a zero-width rect at some position, so a
   caller cannot register a hit at a meaningless spot.
 - **A8. No horizontal clamp.** Every caller draws the header across the screen width
@@ -249,21 +264,37 @@ module is header-only `constexpr`.
 `test/ui_layout/CMakeLists.txt` modelled on its `ListRowHeightTest` block (`:1-13`) — no change to
 the shared `test/CMakeLists.txt`, since `ui_layout` is already added (`:102`). Inputs use the two
 themes' real metrics (`BaseTheme.h:131-204`, `LyraTheme.h:8-82`), the derived tokens, and two
-battery reserves: percent off (`batteryWidth + 2`) and on (`+ 4 + ` a `100%` width). Tests:
+battery reserves: percent off (`batteryWidth + 2`) and on (`+ 4 + ` a `100%` width). Every band
+starts at `B.y = topPadding` (5), not 0, so a relative/absolute mix-up fails. Tests:
 
 - **T1 — `drawHeader` unchanged.** With `actionWidth = 0`, for every slot, `layout` returns the
   reserves, `titleOffsetY` and battery rect the current inline code computes (expected values
   written out from `BaseTheme.cpp:346-362`, `:350-354`, `:384-388`), and an all-zero action.
 - **T2 — never overlaps the battery.** Every slot × percent on/off: `action ∩ battery = ∅`.
+  Corner also runs a short-label case with `w <= R` (the 44 px floor against `R` at `100%`), where
+  `g = 0` and the reserves equal T1's.
 - **T3 — never overlaps the title.** The title rect (`B.x + S + left`, `B.y + titleOffsetY`,
   `B.width − 2S − left − right`, `B.height`) does not intersect the action, and its right edge is
   `<= action.x − M`.
 - **T4 — placement.** TitleLine: `action.right == B.right − S − R − M`. Corner and Edge and
   Detached: `action.right == B.right − S`. Corner: `action.y >= B.y + batteryBarHeight` and
   `action.bottom == B.bottom − U`.
-- **T5 — centring.** Centred titles: `left − left₀ == right − right₀` against T1's values.
+- **T5 — centring.** Centred titles: `left − left₀ == right − right₀` against T1's values,
+  including the Corner `w <= R` case (`g = 0`).
 - **T6 — inside the band.** The action lies within `B`, above the underline.
-- **T7 — width.** `actionWidth` matches `TagChipView::measure`'s formula, including the floor.
+- **T7 — width.** `actionWidth(textW, lh, spaceLg, spaceMd, minTouch)` equals
+  `std::max(textW + 2·spaceLg, TagChips::chipHeight(lh, spaceMd, minTouch))`, calling the real
+  `TagChips::chipHeight` (`src/activities/reader/TagChipRow.h:191-193`; host-safe, already included
+  by `test/tag_rows/TagChipRowTest.cpp:10`), above and below the floor. Only the test includes it;
+  the theme does not.
+
+**Acceptance mapping.** "overlaps neither the battery nor the title" → T2, T3. "Lyra … immediately
+left of the battery reserve, right reserve grows by the action width plus `spaceMd`" → T4. "Classic
+… lower-right corner below the strip; the title stays centred and gives up the action's width on
+both sides" → T4, T5, **as narrowed by A4**: the title gives up only what clears the action by
+`spaceMd` (`g = max(0, w − R)` per side), not a further full `w`. The implement summary cites A4
+against that bullet. "battery left or detached … title line's right edge" → T4. "`drawHeader` …
+unchanged" → T1 and the build.
 
 Run: `cmake -S test -B build/test && cmake --build build/test --target HeaderLayoutTest &&
 ctest --test-dir build/test -R HeaderLayout --output-on-failure`.
@@ -272,9 +303,26 @@ ctest --test-dir build/test -R HeaderLayout --output-on-failure`.
 
 **Device (owner).** No caller uses the seam in this change, so the owner checks it once the picker
 lands, or with a temporary local call. Under **Lyra** and under **Classic**, each with
-*Settings → battery percentage* shown and hidden (`hideBatteryPercentage`,
-`CrossPointSettings.h:221`, `:324`): Done sits left of the battery on the title line (Lyra) or in
+*Settings → Hide Battery %* = **Never**, then **Always** (`SettingsList.h:272-273`; the header
+hides the percent only on Always, `BaseTheme.cpp:308-309`, so **In Reader** does not test the
+percent-off layout): Done sits left of the battery on the title line (Lyra) or in
 the lower-right corner under the battery (Classic); it touches neither the battery icon nor the
 percent; the title truncates with an ellipsis before Done; and every other header (e.g. Settings,
 whose `BEREAN_VERSION` subtitle exercises the corner label, `SettingsActivity.cpp:483-484`) looks
-as it did.
+as it did. Under **Classic with German** selected, "Erledigt" stays inside its pill border and
+nothing inks below the header band (A6).
+
+## Review 0 outcome
+
+`docs/superpowers/reviews/btrial-3-spec-review-0.md`: CLEAR, 1 MAJOR, 4 MINOR, all accepted.
+
+- **MAJOR 1** (Classic corner pill too short for a default-inset label): A6 corrected; the
+  returned rect now carries the "no vertical inset under Corner" contract; a device step with
+  German added; the draw-side fix filed for the picker task with `hpipe discover`.
+- **MINOR 1** (A4 narrows an acceptance bullet): the Acceptance mapping ties the bullet to T4/T5
+  and A4.
+- **MINOR 2** (battery setting values): the device check names Never and Always.
+- **MINOR 3** (Detached coordinates mixed): the title-line top is absolute, the Detached room is
+  in the table, and tests use `B.y = topPadding`.
+- **MINOR 4** (T7 tautology, Corner `w <= R` unexercised): T7 calls `TagChips::chipHeight`;
+  T2 and T5 add the `w <= R` case.
