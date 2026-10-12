@@ -76,32 +76,48 @@ int measure(UiAppHost::UiScreen& screen, const char* label, const Metrics& metri
   return std::max(textWidth + 2 * metrics.padX, metrics.chipHeight);
 }
 
-void draw(UiAppHost::UiScreen& screen, const fui::Rect& rect, const char* label, const bool selected,
+void draw(UiAppHost::UiScreen& screen, const fui::Rect& rect, const char* label, const TagChips::ChipState state,
           const fui::ActionId action, const int16_t value, const uint16_t inputMask, const TagChips::Pad& pad) {
   const auto& theme = screen.theme();
   fui::StyleSet styles;
   styles.explicitlySet = true;
-  styles.normal.background = fui::Paint::solid(fui::Color::White);
-  styles.normal.foreground = fui::Paint::solid(fui::Color::Black);
-  styles.normal.border = fui::Paint::solid(fui::Color::Black);
-  styles.normal.borderWidth = 1;
-  styles.normal.radius = static_cast<uint8_t>(std::min(rect.height / 2, 255));
-  styles.selected = styles.normal;
-  styles.selected.background = fui::Paint::solid(fui::Color::Black);
-  styles.selected.foreground = fui::Paint::solid(fui::Color::White);
-  // Focus/flash states keep the inverted pill instead of falling back to an unset style.
-  styles.focused = styles.selected;
-  styles.active = styles.selected;
-  styles.disabled = styles.normal;
+  fui::BoxStyle& look = styles.normal;
+  look.background = fui::Paint::solid(fui::Color::White);
+  look.foreground = fui::Paint::solid(fui::Color::Black);
+  look.border = fui::Paint::solid(fui::Color::Black);
+  look.borderWidth = 1;
+  look.radius = static_cast<uint8_t>(std::min(rect.height / 2, 255));
+  switch (state) {
+    case TagChips::ChipState::Inactive:
+    case TagChips::ChipState::Action:
+      break;
+    case TagChips::ChipState::Active:
+      look.background = fui::Paint::solid(fui::Color::Black);
+      look.foreground = fui::Paint::solid(fui::Color::White);
+      break;
+    case TagChips::ChipState::Disabled:
+      look.background = fui::Paint::dither(fui::Color::LightGray);
+      look.border = fui::Paint::none();
+      look.borderWidth = 0;
+      break;
+  }
+  // A tap flash paints the focused style; every slot keeps the chip's own look so a toggled chip is
+  // never repainted in the state it just left.
+  styles.selected = look;
+  styles.focused = look;
+  styles.active = look;
+  styles.disabled = look;
 
   fui::ButtonProps props;
   props.label = label;
   props.action = action;
   props.value = value;
   props.inputMask = inputMask;
-  props.state = selected ? fui::StateSelected : fui::StateNormal;
+  // Never fui::StateDisabled: findTouch skips such a hit for every input, so a Disabled chip's tap and
+  // long-press would never arrive.
+  props.state = state == TagChips::ChipState::Active ? fui::StateSelected : fui::StateNormal;
   props.text = theme.smallText;
-  props.text.bold = selected;
+  props.text.bold = state == TagChips::ChipState::Active || state == TagChips::ChipState::Action;
   props.styles = styles;
   // The chip already meets minTouchSize (TagChips::chipHeight); growing the hit rect would overlap
   // the neighbouring line, so the padding tiles the gaps instead.
