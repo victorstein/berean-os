@@ -676,3 +676,42 @@ TEST(TagChipFindChip, TheKindMustMatch) {
   const std::vector<FakeChip> unlabelledOnly{{TagChips::Kind::Unlabelled, UNLABELLED}};
   EXPECT_EQ(TagChips::findChip(unlabelledOnly, TagChips::Kind::Tag, UNLABELLED), -1);
 }
+
+TEST(TagChipReselect, FollowsATagThatMovedInARebuild) {
+  const std::vector<FakeChip> resorted{{TagChips::Kind::All, UNLABELLED},
+                                       {TagChips::Kind::Tag, NAME},
+                                       {TagChips::Kind::Tag, MINISTRY},
+                                       {TagChips::Kind::Tag, HOPE}};
+  EXPECT_EQ(TagChips::reselect(resorted, TagChips::ChipKey{TagChips::Kind::Tag, HOPE}, 1), 3);
+}
+
+TEST(TagChipReselect, ARetiredTagClampsThePreviousIndex) {
+  // CHIPS with NAME (index 3) retired.
+  const std::vector<FakeChip> afterRetire{{TagChips::Kind::NewTag, UNLABELLED},
+                                          {TagChips::Kind::All, UNLABELLED},
+                                          {TagChips::Kind::Tag, HOPE},
+                                          {TagChips::Kind::Unlabelled, UNLABELLED}};
+  EXPECT_EQ(TagChips::reselect(afterRetire, TagChips::ChipKey{TagChips::Kind::Tag, NAME}, 3), 3)
+      << "the chip that slid into its slot";
+
+  const std::vector<FakeChip> lastRetired{{TagChips::Kind::All, UNLABELLED}, {TagChips::Kind::Tag, HOPE}};
+  EXPECT_EQ(TagChips::reselect(lastRetired, TagChips::ChipKey{TagChips::Kind::Tag, NAME}, 2), 1)
+      << "past the end: the last chip";
+}
+
+TEST(TagChipReselect, SingletonKindsAreFoundByKindAlone) {
+  EXPECT_EQ(TagChips::reselect(CHIPS, TagChips::ChipKey{TagChips::Kind::NewTag, UNLABELLED}, 4), 0);
+  EXPECT_EQ(TagChips::reselect(CHIPS, TagChips::ChipKey{TagChips::Kind::All, UNLABELLED}, 4), 1);
+  EXPECT_EQ(TagChips::reselect(CHIPS, TagChips::ChipKey{TagChips::Kind::Unlabelled, UNLABELLED}, 0), 4);
+}
+
+TEST(TagChipReselect, WithoutAKeyThePreviousIndexIsClamped) {
+  EXPECT_EQ(TagChips::reselect(CHIPS, std::nullopt, 2), 2);
+  EXPECT_EQ(TagChips::reselect(CHIPS, std::nullopt, 9), 4);
+  EXPECT_EQ(TagChips::reselect(CHIPS, std::nullopt, -1), 0);
+}
+
+TEST(TagChipReselect, AnEmptyListSelectsZero) {
+  EXPECT_EQ(TagChips::reselect(std::vector<FakeChip>{}, TagChips::ChipKey{TagChips::Kind::Tag, HOPE}, 3), 0);
+  EXPECT_EQ(TagChips::reselect(std::vector<FakeChip>{}, std::nullopt, 0), 0);
+}

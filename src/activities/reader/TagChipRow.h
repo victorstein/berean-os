@@ -135,6 +135,24 @@ int findChip(const Chips& chips, const Kind kind, const study::TagId id) {
   return -1;
 }
 
+// A chip's identity across rebuilds: All, Unlabelled and NewTag by kind alone, a Tag by its id.
+struct ChipKey {
+  Kind kind = Kind::All;
+  study::TagId id = study::UNLABELLED;
+};
+
+// The selection after a chip list is rebuilt: the chip `key` names when the new list holds it,
+// otherwise `previous` clamped into the list. 0 for an empty list.
+template <typename Chips>
+int reselect(const Chips& chips, const std::optional<ChipKey> key, const int previous) {
+  if (key) {
+    const int found = findChip(chips, key->kind, key->id);
+    if (found >= 0) return found;
+  }
+  const int last = static_cast<int>(chips.size()) - 1;
+  return std::clamp(previous, 0, std::max(last, 0));
+}
+
 struct Placed {
   int chip = 0;  // index into the widths passed to layout(), or -1 for the ellipsis
   int line = 0;
