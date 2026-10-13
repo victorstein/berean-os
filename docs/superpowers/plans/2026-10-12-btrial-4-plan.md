@@ -51,8 +51,8 @@ FILES: src/activities/reader/PassageLinksActivity.h
 - Format with `./bin/clang-format-fix` (the whole tree, as CI does). It prints nothing on success.
   Never call `clang-format` directly.
 - Per the repo's `CLAUDE.md`, the firmware is built **once, after the last code edit** (Task 5).
-  Tasks 1-2 are verified by host tests. Tasks 3-4 are compile-checked by Task 5's build. If that
-  build fails, fix it in a new commit.
+  Tasks 1-2 are verified by host tests. Tasks 3-4 are compile-checked by Task 5's build; Task 5
+  Step 6 says where a build fix goes.
 - Commit messages are conventional (`feat:`, `test:`, `refactor:`) and end with the trailer line
   `Claude-Session: https://claude.ai/code/session_019rwiRsbv1DarX5ZAbihujf`.
 
@@ -996,7 +996,7 @@ commit body.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/activities/reader/TagFilterActivity.h src/activities/reader/TagFilterActivity.cpp src/activities/reader/PassageLinksActivity.h
+git add src/activities/reader/TagFilterActivity.h src/activities/reader/TagFilterActivity.cpp src/activities/reader/PassageLinksActivity.h src/activities/reader/TagChipGridActivity.h src/activities/reader/TagChipGridActivity.cpp
 git commit -m "refactor: make TagFilterActivity a TagChipGridActivity
 
 The filter grid now inherits paging, focus, retire and render from the
@@ -1029,8 +1029,10 @@ Run:
 ./bin/clang-format-fix
 git status --short
 ```
-Expected: no output from either. If the formatter changed a file, commit it as
-`style: format the tag chip grid` with the session trailer. It needs no rebuild.
+Expected: no output from either. If the formatter changed a file on a `FILES:` line, stage it by
+path and commit it as `style: format the tag chip grid` with the session trailer. It needs no
+rebuild. If `git status --short` lists any other path, do not stage it: restore it with
+`git checkout -- <path>` and report it.
 
 - [ ] **Step 3: Confirm the commit series**
 
