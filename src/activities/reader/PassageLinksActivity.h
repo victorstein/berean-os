@@ -21,7 +21,7 @@ class PassageLinksActivity final : public UiListActivity {
   PassageLinksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, size_t passageIndex);
 
  private:
-  // Both exits MUST set a result, for the reason TagFilterActivity gives.
+  // Both exits MUST set a result, for the reason TagChipGridActivity::onBackButton gives.
   void onBackButton() override;
   bool handleHomeGesture() override;
   void onRowLongPress(int row) override;
