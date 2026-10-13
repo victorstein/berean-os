@@ -26,6 +26,8 @@ lib/EpdFont/scripts/output/
 .claude/*
 !.claude/agents/
 !.claude/skills/
+!.claude/pipeline-bootstrap
+!.claude/pipeline-check
 /managed_components
 /.dummy
 /CMakeLists.txt
