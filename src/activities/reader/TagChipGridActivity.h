@@ -12,8 +12,10 @@
 
 // A full-screen, paged grid of tag chips, shared by TagFilterActivity and the tag picker so the two
 // cannot drift in paging, focus or retire behaviour. Chips wrap into lines and page at line
-// boundaries; the x/y strip shows only when there is more than one page. A swipe or a held button
-// turns a page, a released button steps one chip, a tap or Confirm activates one.
+// boundaries; the x/y strip shows only when there is more than one page. A swipe turns a page, a
+// released button steps one chip (crossing pages as it goes), and a tap or Confirm activates one.
+// navigateButtons keeps a held-button page turn for boards whose keys report a hold; on the X4 Pro
+// a long hold resolves to Back or Confirm instead.
 //
 // A long-press RETIRES a tag: it leaves the pickers and stops filtering, while every passage that
 // carried it keeps its remaining tags and stays on the card. A destructive delete here would be
@@ -45,7 +47,9 @@ class TagChipGridActivity : public UiListActivity {
   virtual void buildHeaderExtras(UiScreen&) {}
   // activateIndex(int), from UiListActivity: loop task, no lock held; take RenderLock to write
   // anything the render task reads.
-  // Loop task, no lock held, after a retire attempt left `id` inactive, failed save included.
+
+  // Loop task, no lock held, after a retire attempt left `id` inactive, failed save included; take
+  // RenderLock to write anything the render task reads.
   virtual void onTagRetired(study::TagId id) = 0;
   // Loop task, no lock held: Home while no retire confirmation is open.
   virtual void onHome() = 0;
