@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.30.0](https://github.com/victorstein/berean-os/compare/v1.29.16...v1.30.0) (2026-10-13)
+
+
+### Features
+
+* **tags:** draw tag chips in four states ([b517efb](https://github.com/victorstein/berean-os/commit/b517efb74d9d269903301e47f07afe60c37b9f3f))
+* **tags:** list tag chips by name on a shared chip grid ([b517efb](https://github.com/victorstein/berean-os/commit/b517efb74d9d269903301e47f07afe60c37b9f3f))
+* **tags:** order tags alphabetically in the palette and passage rows ([b517efb](https://github.com/victorstein/berean-os/commit/b517efb74d9d269903301e47f07afe60c37b9f3f))
+* **tags:** pick a passage's tags from a paged chip grid ([b517efb](https://github.com/victorstein/berean-os/commit/b517efb74d9d269903301e47f07afe60c37b9f3f))
+* **ui:** let the theme place a header action beside the battery ([b517efb](https://github.com/victorstein/berean-os/commit/b517efb74d9d269903301e47f07afe60c37b9f3f))
+
 ## [1.29.16](https://github.com/victorstein/berean-os/compare/v1.29.15...v1.29.16) (2026-10-11)
 
 
