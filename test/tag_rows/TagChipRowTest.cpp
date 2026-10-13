@@ -757,3 +757,46 @@ TEST(TagChipFilterKey, AZeroCountFilterIsSelectedAtItsNameOrderSlot) {
   EXPECT_EQ(TagChips::reselect(chips, TagChips::filterKey(std::nullopt), 3), 0);
   EXPECT_EQ(TagChips::reselect(chips, TagChips::filterKey(UNLABELLED), 0), 4);
 }
+
+namespace {
+
+std::vector<uint16_t> rawIdsOf(const std::vector<TagId>& ids) {
+  std::vector<uint16_t> out;
+  out.reserve(ids.size());
+  for (const TagId id : ids) out.push_back(study::toRaw(id));
+  return out;
+}
+
+}  // namespace
+
+TEST(TagChipSelectedInOrder, FollowsTheOrderNotTheSelection) {
+  const std::vector<TagId> allocation{HOPE, MINISTRY, NAME};
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(allocation, {NAME, HOPE})), (std::vector<uint16_t>{1, 3}));
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(allocation, {HOPE, NAME})), (std::vector<uint16_t>{1, 3}));
+}
+
+TEST(TagChipSelectedInOrder, DropsIdsTheOrderDoesNotList) {
+  const std::vector<TagId> active{HOPE, NAME};  // MINISTRY retired
+  const TagId unknown = toTagId(99);
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(active, {MINISTRY, NAME, unknown, UNLABELLED})),
+            (std::vector<uint16_t>{3}));
+}
+
+TEST(TagChipSelectedInOrder, EmitsEachIdOnce) {
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder({HOPE, NAME}, {NAME, HOPE, NAME})), (std::vector<uint16_t>{1, 3}));
+}
+
+TEST(TagChipSelectedInOrder, AnEmptySelectionOrOrderGivesNothing) {
+  EXPECT_TRUE(TagChips::selectedInOrder({HOPE, NAME}, {}).empty());
+  EXPECT_TRUE(TagChips::selectedInOrder({}, {HOPE, NAME}).empty());
+}
+
+TEST(TagChipSelectedInOrder, AFullSelectionComesBackInPaletteOrder) {
+  std::vector<TagId> palette;
+  palette.reserve(48);
+  for (uint16_t raw = 1; raw <= 48; ++raw) palette.push_back(toTagId(raw));
+  const std::vector<TagId> picked{toTagId(40), toTagId(3),  toTagId(17), toTagId(48),
+                                  toTagId(1),  toTagId(25), toTagId(9),  toTagId(33)};
+  ASSERT_EQ(picked.size(), CAP);
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(palette, picked)), (std::vector<uint16_t>{1, 3, 9, 17, 25, 33, 40, 48}));
+}

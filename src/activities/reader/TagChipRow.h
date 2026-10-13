@@ -160,6 +160,19 @@ int reselect(const Chips& chips, const std::optional<ChipKey> key, const int pre
   return std::clamp(previous, 0, std::max(last, 0));
 }
 
+// The ids of `order` that `selected` holds, in `order`'s order and each once. The picker passes the
+// palette's allocation order, so what it commits and keeps does not depend on display order, tap
+// order, or ids the palette no longer lists.
+inline std::vector<study::TagId> selectedInOrder(const std::vector<study::TagId>& order,
+                                                 const std::vector<study::TagId>& selected) {
+  std::vector<study::TagId> out;
+  out.reserve(std::min(order.size(), selected.size()));
+  for (const study::TagId id : order) {
+    if (std::find(selected.begin(), selected.end(), id) != selected.end()) out.push_back(id);
+  }
+  return out;
+}
+
 struct Placed {
   int chip = 0;  // index into the widths passed to layout(), or -1 for the ellipsis
   int line = 0;
