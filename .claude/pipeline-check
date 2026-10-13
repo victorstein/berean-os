@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# The herdr pipeline runs this on each landing and on the batch before its PR: the host unit
+# tests and the x4pro firmware build, as CI runs them. It is stopped after 9 minutes.
+set -euo pipefail
+jobs=$(getconf _NPROCESSORS_ONLN)
+cmake -S test -B build/test -DCMAKE_BUILD_TYPE=Release
+cmake --build build/test -j "$jobs"
+ctest --test-dir build/test --output-on-failure -j "$jobs"
+pio=$(command -v pio || echo "$HOME/.platformio/penv/bin/pio")
+"$pio" run -e x4pro
