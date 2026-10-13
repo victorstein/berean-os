@@ -19,6 +19,7 @@ add_executable(StorageIoTest
   ${REPO_ROOT}/src/study/TagPaletteFile.cpp
   ${REPO_ROOT}/src/study/PassageFile.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
+  ${REPO_ROOT}/lib/BibleSearch/BibleSearch/Fold.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/PassageDoc.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitFingerprint.cpp
@@ -29,6 +30,7 @@ target_include_directories(StorageIoTest PRIVATE
   ${REPO_ROOT}/test/stubs
   ${REPO_ROOT}/lib/Serialization
   ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/lib/BibleSearch  # <BibleSearch/Fold.h>, as TagPalette.cpp includes it
   ${REPO_ROOT}/lib/StudyStore
   ${REPO_ROOT}/lib/Utf8
   ${REPO_ROOT}/src/study

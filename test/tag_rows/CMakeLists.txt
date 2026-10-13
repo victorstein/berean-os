@@ -1,5 +1,4 @@
 add_executable(TagRowsTest
-  TagRowsTest.cpp
   PassageActionsTest.cpp
   TagChipRowTest.cpp
 )

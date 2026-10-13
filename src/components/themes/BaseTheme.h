@@ -223,6 +223,13 @@ class BaseTheme {
   virtual int getListPageItems(int contentHeight, bool hasSubtitle) const;
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
                           const char* subtitle = nullptr) const;
+  // drawHeader with room for one action label, placed clear of the title and
+  // the battery. The theme does not paint it: its frame cannot register a hit,
+  // so the caller draws a touchable chip at the returned rect. Under a battery
+  // strip shorter than the band the rect is only the room below the strip, so
+  // a bordered label drawn in it must not be inset vertically. Empty when
+  // actionLabel is null or "".
+  Rect drawHeaderWithAction(const GfxRenderer& renderer, Rect rect, const char* title, const char* actionLabel) const;
   virtual void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                              const char* rightLabel = nullptr) const;
   virtual void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
@@ -249,4 +256,8 @@ class BaseTheme {
   static constexpr int batteryPercentSpacing = 4;
   static void drawBatteryOutline(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight);
   static void drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX, int boltY);
+
+ private:
+  Rect drawHeaderBand(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                      const char* actionLabel) const;
 };

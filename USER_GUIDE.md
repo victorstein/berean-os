@@ -61,9 +61,9 @@ The left-edge Back swipe works in every screen except the reading surface. There
 you from a followed link (see [5. Reading](#5-reading)), so that in swipe page-turn mode a right
 swipe can turn back a page.
 
-**The Home key is context-dependent.** Normally it takes you to Home. Two screens repurpose it
-because they have no other way to confirm: passage selection uses a Home tap to set each end of the
-selection, and the tag picker uses it to finish. Both are described below.
+**The Home key is context-dependent.** Normally it takes you to Home. Two screens repurpose it:
+passage selection uses a Home tap to set each end of the selection, and the tag picker uses it to
+finish, as its **Done** button does. Both are described below.
 
 ### While reading
 
@@ -247,7 +247,9 @@ rather than marking that publication.
 3. Do the same for the last word.
 4. Choose what to do with the selection:
    - **Highlight** saves it with no tags.
-   - **Tag** opens the tag picker; tick any number of tags, then tap **Home** to apply them.
+   - **Tag** opens the tag picker: every tag as a chip, alphabetically. Tap a chip to apply or
+     remove it. A passage takes up to 8 tags, and at the limit the other chips turn gray.
+     **+ New tag** creates one. Tap **Done** or **Home** to apply them.
    - **Cancel** discards the selection.
 
 In a Bible, the text saved with a passage is always the whole verse or verses it touches, even if
@@ -262,7 +264,7 @@ Swiping Back at any point cancels the whole selection, including from the final 
 **Reader menu -> Highlights** lists your Bible highlights, newest first, with the passage text.
 Activating a row opens the Bible there.
 
-Above the list, a row of tag chips shows each tag with its number of passages, such as **hope 12**.
+Above the list, a row of tag chips shows each tag, alphabetically, with its number of passages, such as **hope 12**.
 **All** comes first and **Unlabeled** last. Tap a chip to show only that tag's passages, and **All**
 to show every passage again. Only tags that have passages here get a chip. **Tags here** in the
 reader menu opens the same screen for the current chapter only, and there the chips count that

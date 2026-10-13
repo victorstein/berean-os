@@ -1,3 +1,4 @@
+#include <StudyStore/PassageDoc.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -409,6 +410,24 @@ TEST(TagChipCandidates, OnlyTagCandidatesNameAPaletteSlot) {
   }
 }
 
+// The rank task passes name-ordered ids; All and Unlabelled must stay pinned around them, and a
+// zero-count filter keeps its name-order slot.
+TEST(TagChipCandidates, NameOrderedIdsKeepAllFirstAndUnlabelledLast) {
+  const std::vector<TagId> nameOrdered{NAME, HOPE, MINISTRY};
+  const std::vector<FakePassage> passages{{{NAME}}, {{NAME, MINISTRY}}, {{UNLABELLED}}};
+  const TagChips::Counts counts = TagChips::count(passages, nameOrdered);
+  EXPECT_EQ(counts.perTag, (std::vector<uint16_t>{2, 0, 1}));
+
+  const auto out = candidatesOf(counts, nameOrdered, HOPE);
+  ASSERT_EQ(out.size(), 5u);
+  EXPECT_EQ(out[0].kind, TagChips::Kind::All);
+  for (uint16_t slot = 0; slot < 3; ++slot) {
+    EXPECT_EQ(out[1 + slot].kind, TagChips::Kind::Tag);
+    EXPECT_EQ(out[1 + slot].slot, slot);
+  }
+  EXPECT_EQ(out[4].kind, TagChips::Kind::Unlabelled);
+}
+
 TEST(TagChipGeometry, ChipHeightIsNeverBelowTheTouchMinimum) {
   EXPECT_EQ(TagChips::chipHeight(20, 8, 44), 44) << "20 + 16 is short of 44";
   EXPECT_EQ(TagChips::chipHeight(30, 8, 44), 46) << "text plus padding wins once it is taller";
@@ -577,4 +596,240 @@ TEST(TagChipGrid, GridHitRectsNeverIntersect) {
       }
     }
   }
+}
+
+namespace {
+
+constexpr size_t CAP = study::PassageDoc::MAX_TAGS_PER_PASSAGE;
+
+}  // namespace
+
+static_assert(TagChips::pickerState(TagChips::Kind::NewTag, false, CAP, CAP) == TagChips::ChipState::Action);
+
+TEST(TagChipPickerState, BelowTheCapUnappliedTagsAreInactive) {
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, CAP - 1, CAP), TagChips::ChipState::Inactive);
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, true, CAP - 1, CAP), TagChips::ChipState::Active);
+}
+
+TEST(TagChipPickerState, AtTheCapUnappliedTagsAreDisabled) {
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, CAP, CAP), TagChips::ChipState::Disabled);
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, true, CAP, CAP), TagChips::ChipState::Active);
+}
+
+// At the cap one applied tag is removed: the chip that was Disabled and the chip just removed are
+// both unapplied with one slot free, so both are Inactive.
+TEST(TagChipPickerState, ADeselectAtTheCapMakesUnappliedTagsInactiveAgain) {
+  ASSERT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, CAP, CAP), TagChips::ChipState::Disabled);
+  ASSERT_EQ(TagChips::pickerState(TagChips::Kind::Tag, true, CAP, CAP), TagChips::ChipState::Active);
+  const size_t afterDeselect = CAP - 1;
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, afterDeselect, CAP), TagChips::ChipState::Inactive);
+}
+
+TEST(TagChipPickerState, OverTheCapUnappliedTagsStayDisabled) {
+  EXPECT_EQ(TagChips::pickerState(TagChips::Kind::Tag, false, CAP + 1, CAP), TagChips::ChipState::Disabled);
+}
+
+TEST(TagChipPickerState, NewTagIsAnActionAtAnyCount) {
+  for (const size_t applied : {size_t{0}, CAP - 1, CAP}) {
+    EXPECT_EQ(TagChips::pickerState(TagChips::Kind::NewTag, false, applied, CAP), TagChips::ChipState::Action)
+        << applied << " applied";
+  }
+}
+
+namespace {
+
+// findChip reads only .kind and .id, so a plain struct stands in for TagChipView::ChipEntry.
+struct FakeChip {
+  TagChips::Kind kind;
+  TagId id;
+};
+
+const std::vector<FakeChip> CHIPS{{TagChips::Kind::NewTag, UNLABELLED},
+                                  {TagChips::Kind::All, UNLABELLED},
+                                  {TagChips::Kind::Tag, HOPE},
+                                  {TagChips::Kind::Tag, NAME},
+                                  {TagChips::Kind::Unlabelled, UNLABELLED}};
+
+}  // namespace
+
+TEST(TagChipFindChip, FindsATagById) {
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::Tag, HOPE), 2);
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::Tag, NAME), 3);
+}
+
+TEST(TagChipFindChip, FindsTheSingletonKindsByKindAlone) {
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::NewTag, UNLABELLED), 0);
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::All, UNLABELLED), 1);
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::Unlabelled, UNLABELLED), 4);
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::All, HOPE), 1) << "the id is ignored for All";
+}
+
+TEST(TagChipFindChip, ARetiredTagOrAnEmptyListIsNotFound) {
+  EXPECT_EQ(TagChips::findChip(CHIPS, TagChips::Kind::Tag, MINISTRY), -1);
+  EXPECT_EQ(TagChips::findChip(std::vector<FakeChip>{}, TagChips::Kind::Tag, HOPE), -1);
+  EXPECT_EQ(TagChips::findChip(std::vector<FakeChip>{}, TagChips::Kind::All, UNLABELLED), -1);
+}
+
+TEST(TagChipFindChip, TheKindMustMatch) {
+  const std::vector<FakeChip> tagOnly{{TagChips::Kind::Tag, UNLABELLED}};
+  EXPECT_EQ(TagChips::findChip(tagOnly, TagChips::Kind::Unlabelled, UNLABELLED), -1);
+  const std::vector<FakeChip> unlabelledOnly{{TagChips::Kind::Unlabelled, UNLABELLED}};
+  EXPECT_EQ(TagChips::findChip(unlabelledOnly, TagChips::Kind::Tag, UNLABELLED), -1);
+}
+
+TEST(TagChipReselect, FollowsATagThatMovedInARebuild) {
+  const std::vector<FakeChip> resorted{{TagChips::Kind::All, UNLABELLED},
+                                       {TagChips::Kind::Tag, NAME},
+                                       {TagChips::Kind::Tag, MINISTRY},
+                                       {TagChips::Kind::Tag, HOPE}};
+  EXPECT_EQ(TagChips::reselect(resorted, TagChips::ChipKey{TagChips::Kind::Tag, HOPE}, 1), 3);
+}
+
+TEST(TagChipReselect, ARetiredTagClampsThePreviousIndex) {
+  // CHIPS with NAME (index 3) retired.
+  const std::vector<FakeChip> afterRetire{{TagChips::Kind::NewTag, UNLABELLED},
+                                          {TagChips::Kind::All, UNLABELLED},
+                                          {TagChips::Kind::Tag, HOPE},
+                                          {TagChips::Kind::Unlabelled, UNLABELLED}};
+  EXPECT_EQ(TagChips::reselect(afterRetire, TagChips::ChipKey{TagChips::Kind::Tag, NAME}, 3), 3)
+      << "the chip that slid into its slot";
+
+  const std::vector<FakeChip> lastRetired{{TagChips::Kind::All, UNLABELLED}, {TagChips::Kind::Tag, HOPE}};
+  EXPECT_EQ(TagChips::reselect(lastRetired, TagChips::ChipKey{TagChips::Kind::Tag, NAME}, 2), 1)
+      << "past the end: the last chip";
+}
+
+TEST(TagChipReselect, SingletonKindsAreFoundByKindAlone) {
+  EXPECT_EQ(TagChips::reselect(CHIPS, TagChips::ChipKey{TagChips::Kind::NewTag, UNLABELLED}, 4), 0);
+  EXPECT_EQ(TagChips::reselect(CHIPS, TagChips::ChipKey{TagChips::Kind::All, UNLABELLED}, 4), 1);
+  EXPECT_EQ(TagChips::reselect(CHIPS, TagChips::ChipKey{TagChips::Kind::Unlabelled, UNLABELLED}, 0), 4);
+}
+
+TEST(TagChipReselect, WithoutAKeyThePreviousIndexIsClamped) {
+  EXPECT_EQ(TagChips::reselect(CHIPS, std::nullopt, 2), 2);
+  EXPECT_EQ(TagChips::reselect(CHIPS, std::nullopt, 9), 4);
+  EXPECT_EQ(TagChips::reselect(CHIPS, std::nullopt, -1), 0);
+}
+
+TEST(TagChipReselect, AnEmptyListSelectsZero) {
+  EXPECT_EQ(TagChips::reselect(std::vector<FakeChip>{}, TagChips::ChipKey{TagChips::Kind::Tag, HOPE}, 3), 0);
+  EXPECT_EQ(TagChips::reselect(std::vector<FakeChip>{}, std::nullopt, 0), 0);
+}
+
+static_assert(TagChips::filterKey(std::nullopt).kind == TagChips::Kind::All);
+static_assert(TagChips::filterKey(UNLABELLED).kind == TagChips::Kind::Unlabelled);
+static_assert(TagChips::filterKey(study::toTagId(7)).kind == TagChips::Kind::Tag);
+
+TEST(TagChipFilterKey, NoFilterIsTheAllChip) {
+  const TagChips::ChipKey key = TagChips::filterKey(std::nullopt);
+  EXPECT_EQ(key.kind, TagChips::Kind::All);
+  EXPECT_EQ(TagChips::findChip(CHIPS, key.kind, key.id), 1);
+}
+
+TEST(TagChipFilterKey, UnlabelledIsTheUnlabelledChip) {
+  const TagChips::ChipKey key = TagChips::filterKey(UNLABELLED);
+  EXPECT_EQ(key.kind, TagChips::Kind::Unlabelled);
+  EXPECT_EQ(TagChips::findChip(CHIPS, key.kind, key.id), 4);
+}
+
+TEST(TagChipFilterKey, ATagIsThatTagsChip) {
+  const TagChips::ChipKey key = TagChips::filterKey(NAME);
+  EXPECT_EQ(key.kind, TagChips::Kind::Tag);
+  EXPECT_EQ(key.id, NAME);
+  EXPECT_EQ(TagChips::findChip(CHIPS, key.kind, key.id), 3);
+}
+
+// candidates keeps a zero-count tag while it is the filter; the grid's entry selection must land on
+// it at its name-order slot. Candidates carry a slot, not an id, so they are mapped the way
+// TagChipView::buildEntries maps them.
+TEST(TagChipFilterKey, AZeroCountFilterIsSelectedAtItsNameOrderSlot) {
+  const std::vector<TagId> nameOrdered{NAME, HOPE, MINISTRY};
+  const auto picked = candidatesOf(countsOf(3, 1, {2, 0, 1}), nameOrdered, HOPE);
+  std::vector<FakeChip> chips;
+  chips.reserve(picked.size());
+  for (const TagChips::Candidate& candidate : picked) {
+    chips.push_back(
+        FakeChip{candidate.kind, candidate.kind == TagChips::Kind::Tag ? nameOrdered[candidate.slot] : UNLABELLED});
+  }
+  ASSERT_EQ(chips.size(), 5u) << "All, name, hope, ministry, Unlabelled";
+
+  EXPECT_EQ(TagChips::reselect(chips, TagChips::filterKey(HOPE), 0), 2);
+  EXPECT_EQ(TagChips::reselect(chips, TagChips::filterKey(std::nullopt), 3), 0);
+  EXPECT_EQ(TagChips::reselect(chips, TagChips::filterKey(UNLABELLED), 0), 4);
+}
+
+namespace {
+
+std::vector<uint16_t> rawIdsOf(const std::vector<TagId>& ids) {
+  std::vector<uint16_t> out;
+  out.reserve(ids.size());
+  for (const TagId id : ids) out.push_back(study::toRaw(id));
+  return out;
+}
+
+}  // namespace
+
+TEST(TagChipSelectedInOrder, FollowsTheOrderNotTheSelection) {
+  const std::vector<TagId> allocation{HOPE, MINISTRY, NAME};
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(allocation, {NAME, HOPE})), (std::vector<uint16_t>{1, 3}));
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(allocation, {HOPE, NAME})), (std::vector<uint16_t>{1, 3}));
+}
+
+TEST(TagChipSelectedInOrder, DropsIdsTheOrderDoesNotList) {
+  const std::vector<TagId> active{HOPE, NAME};  // MINISTRY retired
+  const TagId unknown = toTagId(99);
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(active, {MINISTRY, NAME, unknown, UNLABELLED})),
+            (std::vector<uint16_t>{3}));
+}
+
+TEST(TagChipSelectedInOrder, EmitsEachIdOnce) {
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder({HOPE, NAME}, {NAME, HOPE, NAME})), (std::vector<uint16_t>{1, 3}));
+}
+
+TEST(TagChipSelectedInOrder, AnEmptySelectionOrOrderGivesNothing) {
+  EXPECT_TRUE(TagChips::selectedInOrder({HOPE, NAME}, {}).empty());
+  EXPECT_TRUE(TagChips::selectedInOrder({}, {HOPE, NAME}).empty());
+}
+
+TEST(TagChipSelectedInOrder, AFullSelectionComesBackInPaletteOrder) {
+  std::vector<TagId> palette;
+  palette.reserve(48);
+  for (uint16_t raw = 1; raw <= 48; ++raw) palette.push_back(toTagId(raw));
+  const std::vector<TagId> picked{toTagId(40), toTagId(3),  toTagId(17), toTagId(48),
+                                  toTagId(1),  toTagId(25), toTagId(9),  toTagId(33)};
+  ASSERT_EQ(picked.size(), CAP);
+  EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(palette, picked)), (std::vector<uint16_t>{1, 3, 9, 17, 25, 33, 40, 48}));
+}
+
+TEST(TagChipBandHitPadding, LyraPillGrowsFourPixelsEachWay) {
+  // HeaderLayout under Lyra: a band at y 5, 44 tall; the action at y 9, 36 tall.
+  const TagChips::Pad pad = TagChips::bandHitPadding(5, 44, 9, 36);
+  EXPECT_EQ(pad.top, 4);
+  EXPECT_EQ(pad.bottom, 4);
+  EXPECT_EQ(pad.left, 0);
+  EXPECT_EQ(pad.right, 0);
+}
+
+TEST(TagChipBandHitPadding, ClassicCornerPillGrowsUpOverTheStrip) {
+  // Classic: a band at y 5, 45 tall; the action below the 20 px battery strip, at y 25, 25 tall.
+  const TagChips::Pad pad = TagChips::bandHitPadding(5, 45, 25, 25);
+  EXPECT_EQ(pad.top, 20);
+  EXPECT_EQ(pad.bottom, 0);
+  EXPECT_EQ(pad.left, 0);
+  EXPECT_EQ(pad.right, 0);
+}
+
+TEST(TagChipBandHitPadding, AChipFillingTheBandNeedsNone) {
+  const TagChips::Pad pad = TagChips::bandHitPadding(5, 44, 5, 44);
+  EXPECT_EQ(pad.top, 0);
+  EXPECT_EQ(pad.bottom, 0);
+}
+
+TEST(TagChipBandHitPadding, AChipPastTheBandIsNeverPaddedNegative) {
+  const TagChips::Pad above = TagChips::bandHitPadding(5, 44, 2, 30);
+  EXPECT_EQ(above.top, 0);
+  EXPECT_EQ(above.bottom, 17);
+  const TagChips::Pad below = TagChips::bandHitPadding(5, 44, 30, 30);
+  EXPECT_EQ(below.top, 25);
+  EXPECT_EQ(below.bottom, 0);
 }

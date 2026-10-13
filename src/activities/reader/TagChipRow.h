@@ -86,7 +86,17 @@ constexpr int MAX_LINES = 2;
 // visible passage rows; past it, hits are dropped and the chip becomes untappable.
 constexpr int MAX_CHIPS = 24;
 
-enum class Kind : uint8_t { All, Tag, Unlabelled };
+enum class Kind : uint8_t { All, Tag, Unlabelled, NewTag };
+
+enum class ChipState : uint8_t { Inactive, Active, Disabled, Action };
+
+// A tag the passage lacks is Disabled once `cap` tags are applied. Disabled is a look, not an
+// untappable chip: a tap still explains the limit and a long-press can still retire the tag.
+constexpr ChipState pickerState(const Kind kind, const bool selected, const size_t selectedCount, const size_t cap) {
+  if (kind == Kind::NewTag) return ChipState::Action;
+  if (selected) return ChipState::Active;
+  return selectedCount < cap ? ChipState::Inactive : ChipState::Disabled;
+}
 
 struct Candidate {
   Kind kind = Kind::All;
@@ -111,6 +121,56 @@ inline void candidates(const Counts& counts, const std::vector<study::TagId>& ac
   }
   if (out.size() >= cap) return;
   if (counts.unlabelled > 0 || filter == study::UNLABELLED) out.push_back(Candidate{Kind::Unlabelled, 0});
+}
+
+// Restores a selection after the chip list is rebuilt: the index of the chip of `kind` (and, for a
+// Tag, of `id`), or -1 when it is gone. All, Unlabelled and NewTag occur at most once in a list, so
+// they match by kind alone. A template over the caller's chip type keeps FreeInkUI out of this header.
+template <typename Chips>
+int findChip(const Chips& chips, const Kind kind, const study::TagId id) {
+  for (size_t i = 0; i < chips.size(); ++i) {
+    if (chips[i].kind != kind) continue;
+    if (kind != Kind::Tag || chips[i].id == id) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+// A chip's identity across rebuilds: All, Unlabelled and NewTag by kind alone, a Tag by its id.
+struct ChipKey {
+  Kind kind = Kind::All;
+  study::TagId id = study::UNLABELLED;
+};
+
+// The chip that shows `filter`: All for none, Unlabelled for UNLABELLED, otherwise that tag.
+constexpr ChipKey filterKey(const std::optional<study::TagId> filter) {
+  if (!filter) return ChipKey{Kind::All, study::UNLABELLED};
+  if (*filter == study::UNLABELLED) return ChipKey{Kind::Unlabelled, study::UNLABELLED};
+  return ChipKey{Kind::Tag, *filter};
+}
+
+// The selection after a chip list is rebuilt: the chip `key` names when the new list holds it,
+// otherwise `previous` clamped into the list. 0 for an empty list.
+template <typename Chips>
+int reselect(const Chips& chips, const std::optional<ChipKey> key, const int previous) {
+  if (key) {
+    const int found = findChip(chips, key->kind, key->id);
+    if (found >= 0) return found;
+  }
+  const int last = static_cast<int>(chips.size()) - 1;
+  return std::clamp(previous, 0, std::max(last, 0));
+}
+
+// The ids of `order` that `selected` holds, in `order`'s order and each once. The picker passes the
+// palette's allocation order, so what it commits and keeps does not depend on display order, tap
+// order, or ids the palette no longer lists.
+inline std::vector<study::TagId> selectedInOrder(const std::vector<study::TagId>& order,
+                                                 const std::vector<study::TagId>& selected) {
+  std::vector<study::TagId> out;
+  out.reserve(std::min(order.size(), selected.size()));
+  for (const study::TagId id : order) {
+    if (std::find(selected.begin(), selected.end(), id) != selected.end()) out.push_back(id);
+  }
+  return out;
 }
 
 struct Placed {
@@ -308,6 +368,14 @@ inline Pad hitPadding(const Placed* placed, const int placedCount, const int lin
 
 inline Pad hitPadding(const Layout& layout, const int index, const int gap) {
   return hitPadding(layout.placed, layout.placedCount, layout.lines, index, gap);
+}
+
+// Grows a chip drawn shorter than its band to the band's full height, as the header's Done pill is.
+inline Pad bandHitPadding(const int bandTop, const int bandHeight, const int chipTop, const int chipHeight) {
+  Pad pad;
+  pad.top = std::max(0, chipTop - bandTop);
+  pad.bottom = std::max(0, bandTop + bandHeight - (chipTop + chipHeight));
+  return pad;
 }
 
 }  // namespace TagChips

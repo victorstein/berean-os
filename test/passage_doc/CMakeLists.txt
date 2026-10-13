@@ -5,6 +5,7 @@ add_executable(PassageDocTest
   ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitFingerprint.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
+  ${REPO_ROOT}/lib/BibleSearch/BibleSearch/Fold.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
@@ -12,6 +13,9 @@ target_include_directories(PassageDocTest PRIVATE
   ${REPO_ROOT}/lib/StudyStore
   ${REPO_ROOT}/lib/Utf8
   ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/BibleSearch  # <BibleSearch/Fold.h>, as TagPalette.cpp includes it
+  ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/test/stubs  # no-op Logging.h
 )
 
 target_link_libraries(PassageDocTest PRIVATE

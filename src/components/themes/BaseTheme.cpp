@@ -13,6 +13,7 @@
 #include <string>
 
 #include "I18n.h"
+#include "components/HeaderLayout.h"
 #include "components/StatusBarProgress.h"
 #include "components/ToastLayout.h"
 #include "components/UIScale.h"
@@ -284,6 +285,16 @@ int BaseTheme::getListPageItems(int contentHeight, bool hasSubtitle) const {
 }
 
 void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
+  drawHeaderBand(renderer, rect, title, subtitle, nullptr);
+}
+
+Rect BaseTheme::drawHeaderWithAction(const GfxRenderer& renderer, Rect rect, const char* title,
+                                     const char* actionLabel) const {
+  return drawHeaderBand(renderer, rect, title, nullptr, actionLabel);
+}
+
+Rect BaseTheme::drawHeaderBand(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                               const char* actionLabel) const {
   // Every activity header renders through the FreeInkUI header + battery
   // indicator components, styled by the active theme's tokens (padding,
   // centering, underline). Non-interactive frame: no hit rects registered.
@@ -297,6 +308,16 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   // UiAppHelpers.h) rather than overwriting the previously-published
   // instance in place, since some other FreeInkApp could be mid-read of it.
   const fui::ThemeTokens& tokens = refreshSharedUiThemeTokens(ui.target);
+  // The caller draws the action as a tag chip in the uiScale small font, bold,
+  // so it is measured before the small slot is rebound below.
+  int actionWidth = 0;
+  if (actionLabel != nullptr && actionLabel[0] != '\0') {
+    fui::TextStyle actionText = tokens.smallText;
+    actionText.bold = true;
+    const int textWidth = ui.target.measureText(actionText.font, actionLabel, actionText).width;
+    actionWidth = HeaderLayout::actionWidth(textWidth, ui.target.lineHeight(actionText.font), tokens.spaceLg,
+                                            tokens.spaceMd, tokens.minTouchSize);
+  }
   // Header status text (battery percent, right label) stays at the fixed
   // small font like the legacy headers; the uiScale small font is for list
   // subtitles.
@@ -343,23 +364,24 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   props.subtitleText = tokens.smallText;
   props.styles = tokens.popup;
   props.sidePadding = tokens.headerSidePadding;
-  if (batteryDetached) {
-    // Battery in its own corner strip; the title owns the full width of the
-    // lower sub-band, so long book titles span the header.
-    // Anchor the title with explicit clearance above the band's bottom rule
-    // instead of naive sub-band centering, which left the glyphs nearly
-    // touching it.
-    const int titleLineHeight = ui.target.lineHeight(fui::GfxRendererTarget::FONT_TITLE);
-    const int titleTop = static_cast<int>(band.height) - tokens.headerUnderline - tokens.spaceMd - titleLineHeight;
-    props.titleOffsetY = static_cast<int16_t>(titleTop - (static_cast<int>(band.height) - titleLineHeight) / 2);
-  } else {
-    const int16_t reserve = static_cast<int16_t>(batteryReserve + tokens.spaceMd);
-    if (batteryLeft) {
-      props.leftReserve = reserve;
-    } else {
-      props.rightReserve = reserve;
-    }
-  }
+
+  HeaderLayout::Inputs layoutInputs;
+  layoutInputs.band = HeaderLayout::Box{rect.x, rect.y, rect.width, rect.height};
+  layoutInputs.sidePadding = tokens.headerSidePadding;
+  layoutInputs.underline = tokens.headerUnderline;
+  layoutInputs.spaceMd = tokens.spaceMd;
+  layoutInputs.titleLineHeight = ui.target.lineHeight(fui::GfxRendererTarget::FONT_TITLE);
+  layoutInputs.batteryReserve = batteryReserve;
+  layoutInputs.batteryBarHeight = metrics.batteryBarHeight;
+  layoutInputs.batteryLeft = batteryLeft;
+  layoutInputs.batteryDetached = batteryDetached;
+  layoutInputs.titleCentred = tokens.headerTitleAlign == fui::TextAlign::Center;
+  layoutInputs.actionWidth = actionWidth;
+  const HeaderLayout::Result placed = HeaderLayout::layout(layoutInputs);
+  props.leftReserve = static_cast<int16_t>(placed.leftReserve);
+  props.rightReserve = static_cast<int16_t>(placed.rightReserve);
+  props.titleOffsetY = static_cast<int16_t>(placed.titleOffsetY);
+
   // Underline only under a titled header: an untitled band (Lyra home screen)
   // historically drew no rule, and the old themes keyed the line on the title.
   if (title != nullptr && props.styles.normal.border.kind == fui::PaintKind::None && tokens.headerUnderline > 0) {
@@ -376,16 +398,11 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   battery.glyphWidth = static_cast<int16_t>(metrics.batteryWidth);
   battery.glyphHeight = static_cast<int16_t>(metrics.batteryHeight);
   battery.gap = batteryPercentSpacing;
-  // Detached: hug the corner (12px, the legacy inset) within the battery
-  // strip; shared line: sit on the content grid. Both anchor to the band's top
-  // strip (batteryBarHeight). A strip shorter than the band keeps the
-  // lower-right corner free for the manual right label below; one as tall as
-  // the band centres the battery on the title line.
-  const int16_t batteryEdgeInset = batteryDetached ? 12 : tokens.headerSidePadding;
-  const int16_t batteryX = batteryLeft ? static_cast<int16_t>(band.x + batteryEdgeInset)
-                                       : static_cast<int16_t>(band.right() - batteryEdgeInset - batteryReserve);
-  const int16_t batteryH = static_cast<int16_t>(metrics.batteryBarHeight);
-  fui::batteryIndicator(ui.frame, fui::Rect{batteryX, band.y, batteryReserve, batteryH}, battery);
+  fui::batteryIndicator(
+      ui.frame,
+      fui::Rect{static_cast<int16_t>(placed.battery.x), static_cast<int16_t>(placed.battery.y),
+                static_cast<int16_t>(placed.battery.width), static_cast<int16_t>(placed.battery.height)},
+      battery);
 
   if (manualRightLabel) {
     const fui::Size labelSize = ui.target.measureText(fui::GfxRendererTarget::FONT_SMALL, subtitle, tokens.smallText);
@@ -395,6 +412,7 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
                               labelSize.width, labelH};
     ui.target.text(labelRect, subtitle, tokens.smallText);
   }
+  return Rect{placed.action.x, placed.action.y, placed.action.width, placed.action.height};
 }
 
 void BaseTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label, const char* rightLabel) const {

@@ -18,9 +18,8 @@ namespace study {
 
 // A scoped enum, not a bare uint16_t, because the model it replaces used
 // POSITIONAL INDICES into a per-book vector and the two are not
-// interchangeable. TagPickerActivity's selection today is std::vector<uint16_t>
-// of indices; with a bare alias every mis-wiring of index to id would compile
-// silently and land the wrong tag on a real passage.
+// interchangeable: with a bare alias every mis-wiring of index to id would
+// compile silently and land the wrong tag on a real passage.
 enum class TagId : uint16_t {};
 
 constexpr uint16_t toRaw(const TagId id) { return static_cast<uint16_t>(id); }
@@ -57,6 +56,14 @@ class TagPalette {
   // Active tags in allocation order, for a picker.
   std::vector<TagId> activeIds() const;
 
+  // Active tags in display order: case and accents ignored, ñ read as n, one leading ¿ or ¡
+  // skipped, then the raw name, then the id.
+  std::vector<TagId> activeIdsByName() const;
+
+  // An id's position in display order among all entries, retired ones included, so a passage
+  // that still carries a retired tag lists it in place. UINT16_MAX for UNLABELLED and unknown ids.
+  uint16_t nameRank(TagId id) const;
+
   void toJson(JsonDocument& doc) const;
 
   // Parses and validates. Rejects a future format version. Recovers nextTagId
@@ -69,10 +76,16 @@ class TagPalette {
     TagId id{};
     std::string name;
     bool active = true;
+    uint16_t rank = 0;  // position in display order among all entries
   };
 
+  // Only a change to the set of names can move a rank, so only an appending add and fromJson
+  // call this; retire and a revive leave the order as it is.
+  void rebuildDisplayOrder();
+
   std::vector<Entry> entries_;
-  uint16_t nextRaw_ = 1;  // 0 is UNLABELLED
+  std::vector<uint16_t> byName_;  // entry indices in display order
+  uint16_t nextRaw_ = 1;          // 0 is UNLABELLED
 };
 
 }  // namespace study

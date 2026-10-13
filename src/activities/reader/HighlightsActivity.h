@@ -27,7 +27,7 @@
 // TagFilterActivity, a full-screen grid of the same chips. Tapping a chip filters the list, and the
 // selected chip is inverted. Buttons reach the chips as ring position 0 (Confirm there opens the
 // picker), mirroring UiTabListActivity's tab band. The picker does NOT reuse TagPickerActivity:
-// that picker enforces HighlightDoc::MAX_TAGS_PER_HIGHLIGHT (8) and offers "New tag...", both
+// that picker enforces PassageDoc::MAX_TAGS_PER_PASSAGE (8) and offers "+ New tag", both
 // correct for tagging one highlight but wrong for a filter, which has no reason to cap how many
 // tags narrow the list and has nothing to gain from minting a tag no highlight has yet.
 //
@@ -69,10 +69,10 @@
 // applies unchanged. Wiring the launch site and its handler is Task 7's job,
 // not this activity's.
 //
-// Home: NOT overridden, unlike PassageSelectActivity and TagPickerActivity.
-// Both of those override handleHomeGesture() because the screen has no OTHER
-// way to leave carrying a result -- selecting a passage or checking tags
-// never itself finishes the activity. Here, activating a row (touch tap, or
+// Home: NOT overridden, unlike PassageSelectActivity and the tag chip grids
+// (TagChipGridActivity), which consume Home to finish with a result --
+// selecting a passage or toggling a tag never itself finishes the
+// activity. Here, activating a row (touch tap, or
 // physical Confirm release) already IS the "jump" gesture and already leaves
 // the screen, on every board, exactly like EpubReaderBookmarksActivity (the
 // same browse-plus-delete shape) which also leaves Home unoverridden. Home

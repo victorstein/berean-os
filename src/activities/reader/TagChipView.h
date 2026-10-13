@@ -10,8 +10,8 @@
 #include "TagChipRow.h"
 #include "components/UiAppHost.h"
 
-// Building, measuring and drawing tag chips, shared by the Highlights chip row and the
-// TagFilterActivity grid so the two screens cannot drift in size or style.
+// Building, measuring and drawing tag chips, shared by the Highlights chip row and
+// TagChipGridActivity (the filter grid and the tag picker) so the screens cannot drift in size or style.
 namespace TagChipView {
 
 // The label is owned here because ButtonProps borrows it during the render.
@@ -37,10 +37,11 @@ struct Metrics {
 
 Metrics metricsFor(UiAppHost::UiScreen& screen);
 
-// Measured bold, the selected weight, so the selection never changes a width or reflows the chips.
+// Measured bold, the heaviest weight any ChipState draws, so a state change never changes a width or
+// reflows the chips.
 int measure(UiAppHost::UiScreen& screen, const char* label, const Metrics& metrics);
 
-void draw(UiAppHost::UiScreen& screen, const freeink::ui::Rect& rect, const char* label, bool selected,
+void draw(UiAppHost::UiScreen& screen, const freeink::ui::Rect& rect, const char* label, TagChips::ChipState state,
           freeink::ui::ActionId action, int16_t value, uint16_t inputMask, const TagChips::Pad& pad);
 
 }  // namespace TagChipView

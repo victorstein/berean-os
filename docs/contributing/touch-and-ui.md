@@ -117,7 +117,7 @@ Three gestures are handled once, for every screen. Activities must not add their
 
 Because the back gesture arrives as `Button::Back`, most button-era activities gain back-swipe support with zero changes.
 
-Two consequences specific to this board. The frontlight owns the top edge, so the reader menu is reached by a centre-third tap or a Home-key hold, not by a swipe. And `handleHomeGesture()` is the only way a screen with no other confirm affordance can accept one — `PassageSelectActivity` and `TagPickerActivity` both repurpose the Home tap that way, and both document why.
+Two consequences specific to this board. The frontlight owns the top edge, so the reader menu is reached by a centre-third tap or a Home-key hold, not by a swipe. And `handleHomeGesture()` is the only way a screen with no other confirm affordance can accept one — `PassageSelectActivity` repurposes the Home tap that way, and documents why. `TagPickerActivity` also commits on Home, beside a touch-only **Done** pill in its header.
 
 ---
 

@@ -5,6 +5,7 @@ add_executable(MigrationPlannerTest
   ${REPO_ROOT}/lib/StudyStore/StudyStore/Unit.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/UnitFingerprint.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
+  ${REPO_ROOT}/lib/BibleSearch/BibleSearch/Fold.cpp
   ${REPO_ROOT}/lib/Epub/Epub/VerseAnchors.cpp
   ${REPO_ROOT}/lib/Epub/Epub/ParagraphAnchors.cpp
   ${REPO_ROOT}/lib/Epub/Epub/htmlEntities.cpp
@@ -19,6 +20,9 @@ target_include_directories(MigrationPlannerTest PRIVATE
   ${REPO_ROOT}/lib/Epub/Epub
   ${REPO_ROOT}/lib/expat
   ${REPO_ROOT}/lib/Serialization
+  ${REPO_ROOT}/lib/BibleSearch  # <BibleSearch/Fold.h>, as TagPalette.cpp includes it
+  ${REPO_ROOT}/lib/Memory
+  ${REPO_ROOT}/test/stubs  # no-op Logging.h
 )
 
 target_compile_definitions(MigrationPlannerTest PRIVATE XML_GE=0 XML_CONTEXT_BYTES=1024)

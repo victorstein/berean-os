@@ -39,15 +39,6 @@ class StudyStore {
 
   const study::TagPalette& palette() const { return palette_; }
 
-  // Active tags in allocation order, paired with their names, for a picker or a
-  // filter row. Returned by value: the caller builds a row list from it and the
-  // palette may be edited underneath while that list is on screen.
-  struct TagView {
-    study::TagId id;
-    std::string name;
-  };
-  std::vector<TagView> activeTags() const;
-
   // Indices of passages carrying `id`, in document order, for the filter.
   // study::UNLABELLED yields the passages marked but not yet labelled.
   std::vector<size_t> passagesWithTag(study::TagId id) const;
@@ -56,8 +47,9 @@ class StudyStore {
   // retired tag to its real name.
   std::string tagName(study::TagId id) const;
 
-  // Comma-joined names of the tags a passage carries, for a list row. Retired
-  // tags still resolve -- a passage that carries one must not render a blank.
+  // Comma-joined names of the tags a passage carries, in display order, for a
+  // list row. Retired tags still resolve -- a passage that carries one must not
+  // render a blank.
   std::string tagNamesFor(size_t passageIndex) const;
 
   struct Location {

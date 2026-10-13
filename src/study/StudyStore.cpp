@@ -9,6 +9,7 @@
 #include "PubKeyRegistry.h"
 #include "StudyReuse.h"
 #include "StudyStore/PubKey.h"
+#include "StudyStore/TagDisplayOrder.h"
 #include "StudyStore/UnitAnchors.h"
 #include "TagPaletteFile.h"
 
@@ -156,12 +157,6 @@ bool StudyStore::save() {
   return PassageFile::save(pubKey_, passages_) == PassageFile::SaveResult::Ok;
 }
 
-std::vector<StudyStore::TagView> StudyStore::activeTags() const {
-  std::vector<TagView> out;
-  for (const study::TagId id : palette_.activeIds()) out.push_back({id, palette_.name(id)});
-  return out;
-}
-
 std::vector<size_t> StudyStore::passagesWithTag(const study::TagId id) const {
   std::vector<size_t> out;
   const auto& all = passages_.passages();
@@ -183,9 +178,10 @@ std::string StudyStore::tagName(const study::TagId id) const {
 
 std::string StudyStore::tagNamesFor(const size_t passageIndex) const {
   if (passageIndex >= passages_.passages().size()) return {};
+  const study::DisplayOrderedTags ordered = study::inDisplayOrder(palette_, passages_.passages()[passageIndex].tags);
   std::string out;
-  for (const study::TagId id : passages_.passages()[passageIndex].tags) {
-    const std::string name = tagName(id);
+  for (size_t i = 0; i < ordered.count; ++i) {
+    const std::string name = tagName(ordered.ids[i]);
     if (name.empty()) continue;
     if (!out.empty()) out += ", ";
     out += name;
