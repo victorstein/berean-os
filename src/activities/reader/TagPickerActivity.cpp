@@ -82,8 +82,14 @@ void TagPickerActivity::buildHeaderExtras(UiScreen& screen) {
   if (doneRect_.width <= 0 || doneRect_.height <= 0) return;
   const fui::Rect rect{static_cast<int16_t>(doneRect_.x), static_cast<int16_t>(doneRect_.y),
                        static_cast<int16_t>(doneRect_.width), static_cast<int16_t>(doneRect_.height)};
-  TagChipView::draw(screen, rect, tr(STR_DONE), TagChips::ChipState::Action, ACTION_DONE, 0, fui::InputTouch,
+  // Classic's header corner leaves 25 px and fui::button insets its label 2 px each way, so the 24 px line
+  // would hang out of the pill and below the header; centre the label on the whole rect instead.
+  TagChipView::draw(screen, rect, "", TagChips::ChipState::Action, ACTION_DONE, 0, fui::InputTouch,
                     TagChips::bandHitPadding(headerBand_.y, headerBand_.height, doneRect_.y, doneRect_.height));
+  fui::TextStyle label = screen.theme().smallText;
+  label.bold = true;
+  label.align = fui::TextAlign::Center;
+  screen.target().text(rect, tr(STR_DONE), label);
 }
 
 void TagPickerActivity::activateIndex(const int index) {
