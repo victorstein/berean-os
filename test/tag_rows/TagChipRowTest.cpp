@@ -715,3 +715,45 @@ TEST(TagChipReselect, AnEmptyListSelectsZero) {
   EXPECT_EQ(TagChips::reselect(std::vector<FakeChip>{}, TagChips::ChipKey{TagChips::Kind::Tag, HOPE}, 3), 0);
   EXPECT_EQ(TagChips::reselect(std::vector<FakeChip>{}, std::nullopt, 0), 0);
 }
+
+static_assert(TagChips::filterKey(std::nullopt).kind == TagChips::Kind::All);
+static_assert(TagChips::filterKey(UNLABELLED).kind == TagChips::Kind::Unlabelled);
+static_assert(TagChips::filterKey(study::toTagId(7)).kind == TagChips::Kind::Tag);
+
+TEST(TagChipFilterKey, NoFilterIsTheAllChip) {
+  const TagChips::ChipKey key = TagChips::filterKey(std::nullopt);
+  EXPECT_EQ(key.kind, TagChips::Kind::All);
+  EXPECT_EQ(TagChips::findChip(CHIPS, key.kind, key.id), 1);
+}
+
+TEST(TagChipFilterKey, UnlabelledIsTheUnlabelledChip) {
+  const TagChips::ChipKey key = TagChips::filterKey(UNLABELLED);
+  EXPECT_EQ(key.kind, TagChips::Kind::Unlabelled);
+  EXPECT_EQ(TagChips::findChip(CHIPS, key.kind, key.id), 4);
+}
+
+TEST(TagChipFilterKey, ATagIsThatTagsChip) {
+  const TagChips::ChipKey key = TagChips::filterKey(NAME);
+  EXPECT_EQ(key.kind, TagChips::Kind::Tag);
+  EXPECT_EQ(key.id, NAME);
+  EXPECT_EQ(TagChips::findChip(CHIPS, key.kind, key.id), 3);
+}
+
+// candidates keeps a zero-count tag while it is the filter; the grid's entry selection must land on
+// it at its name-order slot. Candidates carry a slot, not an id, so they are mapped the way
+// TagChipView::buildEntries maps them.
+TEST(TagChipFilterKey, AZeroCountFilterIsSelectedAtItsNameOrderSlot) {
+  const std::vector<TagId> nameOrdered{NAME, HOPE, MINISTRY};
+  const auto picked = candidatesOf(countsOf(3, 1, {2, 0, 1}), nameOrdered, HOPE);
+  std::vector<FakeChip> chips;
+  chips.reserve(picked.size());
+  for (const TagChips::Candidate& candidate : picked) {
+    chips.push_back(
+        FakeChip{candidate.kind, candidate.kind == TagChips::Kind::Tag ? nameOrdered[candidate.slot] : UNLABELLED});
+  }
+  ASSERT_EQ(chips.size(), 5u) << "All, name, hope, ministry, Unlabelled";
+
+  EXPECT_EQ(TagChips::reselect(chips, TagChips::filterKey(HOPE), 0), 2);
+  EXPECT_EQ(TagChips::reselect(chips, TagChips::filterKey(std::nullopt), 3), 0);
+  EXPECT_EQ(TagChips::reselect(chips, TagChips::filterKey(UNLABELLED), 0), 4);
+}

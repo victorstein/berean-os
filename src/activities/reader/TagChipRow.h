@@ -141,6 +141,13 @@ struct ChipKey {
   study::TagId id = study::UNLABELLED;
 };
 
+// The chip that shows `filter`: All for none, Unlabelled for UNLABELLED, otherwise that tag.
+constexpr ChipKey filterKey(const std::optional<study::TagId> filter) {
+  if (!filter) return ChipKey{Kind::All, study::UNLABELLED};
+  if (*filter == study::UNLABELLED) return ChipKey{Kind::Unlabelled, study::UNLABELLED};
+  return ChipKey{Kind::Tag, *filter};
+}
+
 // The selection after a chip list is rebuilt: the chip `key` names when the new list holds it,
 // otherwise `previous` clamped into the list. 0 for an empty list.
 template <typename Chips>
