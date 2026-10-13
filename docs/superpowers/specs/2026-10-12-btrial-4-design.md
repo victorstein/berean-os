@@ -178,6 +178,8 @@ class TagChipGridActivity : public UiListActivity {
   void onRowAction(const freeink::ui::ActionEvent& event) final;
   void onRowLongPress(int index) final;
   bool handleCustomInput() final;
+  // UiListActivity's own: Back -> onBackButton, Confirm -> activateIndex(nav.selected).
+  bool handleButtons() final;
   void navigateButtons() final;
 
   // --- helpers ---------------------------------------------------------------------
@@ -314,7 +316,8 @@ Today's body (`TagFilterActivity.cpp:57-120`) with two changes:
 2. **`handleCustomInput`** (final): the popup first (`TagFilterActivity.cpp:204-211`); then swipe
    Up/Down turns a page and is consumed (`:213-217`). While the popup is open, `handleInput`
    returns true on every pass (`OptionPopup.h:65-133`), so stages 3-5 do not run (A13).
-3. **`handleButtons`**: inherited. Back → `onBackButton` (cancelled result, `:136-141`); Confirm →
+3. **`handleButtons`** (final): forwards to `UiListActivity::handleButtons`
+   (`UiListActivity.cpp:48-59`). Back → `onBackButton` (cancelled result, `:136-141`); Confirm →
    `activateIndex(nav.selected)`.
 4. **Touch**: `routeTouch` (gated) → `rowActionTrampoline` (bounds-checked,
    `UiListActivity.cpp:33-37`) → the base's `onRowAction`:
@@ -456,8 +459,12 @@ No new failure path.
   the picker's action `ACTION_DONE = ACTION_USER`.
 - **A12. The base's input and render members are `final`.** These are `listCount`, `buildScreen`,
   `drawFooter`, `onBackButton`, `onRowAction`, `onRowLongPress`, `handleCustomInput`,
-  `navigateButtons`, `handleHomeGesture` and `render`. Each carries a base invariant: the popup
-  sees input first, Home is guarded, Back returns a cancelled result, and only `Tag` chips retire.
+  `handleButtons`, `navigateButtons`, `handleHomeGesture` and `render`. Each carries a base
+  invariant: the popup sees input first, Home is guarded, Back returns a cancelled result, and only
+  `Tag` chips retire. `handleButtons` is the only route from Back and Confirm to `onBackButton` and
+  `activateIndex` (`UiListActivity.cpp:48-59`), so leaving it open would let a subclass bypass the
+  other two. The picker's override today (`TagPickerActivity.cpp:298-320`) is the held-Confirm
+  retire path that batch §4 removes.
   The six hooks, `headerTitle`, `drawChrome` and `onEnter` remain open. Those are what batch §3-§4
   need from the picker: `drawChrome` for the Done rect, `onEnter` for `app.on(ACTION_DONE, ...)`.
 - **A13. Subclasses read the list through `chips()` and the popup through
@@ -510,8 +517,11 @@ Written first. Each test fails to compile until its helper exists, then passes a
   - No key → `previous`, clamped. A negative `previous` → 0. An empty list → 0.
 - `TagChipFilterKey`:
   - `nullopt` → `{All}`; `UNLABELLED` → `{Unlabelled}`; a tag → `{Tag, id}`.
-  - Integration with `candidates`: a zero-count tag that is the filter is kept by `candidates`, and
-    `findChip(filterKey(filter))` finds it at its name-order position between All and Unlabelled.
+  - Integration with `candidates`: a zero-count tag that is the filter is kept by `candidates`.
+    Map each `Candidate` to a `FakeChip{kind, kind == Tag ? ids[slot] : UNLABELLED}`, as
+    `buildEntries` does (`TagChipView.cpp:24-45`); `Candidate` carries a slot, not an id
+    (`TagChipRow.h:101-105`). Then `reselect(mapped, filterKey(filter), 0)` lands on that chip, at
+    its name-order position between All and Unlabelled.
 
 Not host-testable: no host target compiles an activity `.cpp`, `TagChipView.cpp` or `UiAppHost`
 (research note, "Testability"). The base, the subclass and the `buildEntries` order are covered by
@@ -541,7 +551,9 @@ On a publication with enough tags that the filter grid pages (the owner's ~48-ta
    page that holds it.
 5. **Retire.** Long-press a tag chip → the popup → Delete. The chip disappears, and counts and
    order stay correct. If it was the active filter, All becomes inverted. Long-press on All or
-   Unlabelled does nothing.
+   Unlabelled does nothing. On a grid of two or more pages, retire a chip on page 2: the grid stays
+   on page 2 and does not return to page 1. That is the clamp, wired through `rebuildChips()`.
+   The host tests reach only the pure `reselect`.
 6. **Home under the popup.** With the retire popup open, Home does nothing and the popup stays. Home
    with no popup cancels to Highlights, keeping its filter.
 7. **Back.** Back (a left-edge swipe, `MappedInputManager.cpp:223`, `:257`, or Left held
@@ -562,3 +574,14 @@ Measured before any change, on this branch at `c375e379`:
   all in `.pio/libdeps` and `managed_components`; none in `src/` or `lib/`
   (`grep "warning:" | grep -E "^(src|lib)/"` is empty). "No new warnings" therefore means none
   in `src/` or `lib/`.
+
+## Review 0 outcome
+
+Review: `docs/superpowers/reviews/btrial-4-spec-review-0.md`. Verdict CLEAR, with no BLOCKER or
+MAJOR. All three MINORs were accepted and fixed:
+
+| Finding | Change |
+|---|---|
+| m1. No device check shows the clamp's wiring | Device check 5 now retires a chip on page 2 and expects the grid to stay on page 2 |
+| m2. An open `handleButtons` could bypass the `final` Back and Confirm routes | The base declares `bool handleButtons() final;` forwarding to `UiListActivity::handleButtons`. Added to A12 and to input stage 3 |
+| m3. The `filterKey` integration test did not compile as written | It maps `Candidate` to `FakeChip` as `buildEntries` does, then asserts through `reselect` |
