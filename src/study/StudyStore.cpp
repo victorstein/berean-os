@@ -157,14 +157,6 @@ bool StudyStore::save() {
   return PassageFile::save(pubKey_, passages_) == PassageFile::SaveResult::Ok;
 }
 
-std::vector<StudyStore::TagView> StudyStore::activeTags() const {
-  const std::vector<study::TagId> ids = palette_.activeIdsByName();
-  std::vector<TagView> out;
-  out.reserve(ids.size());
-  for (const study::TagId id : ids) out.push_back({id, palette_.name(id)});
-  return out;
-}
-
 std::vector<size_t> StudyStore::passagesWithTag(const study::TagId id) const {
   std::vector<size_t> out;
   const auto& all = passages_.passages();

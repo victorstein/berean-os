@@ -39,15 +39,6 @@ class StudyStore {
 
   const study::TagPalette& palette() const { return palette_; }
 
-  // Active tags in display order, paired with their names, for a picker or a
-  // filter row. Returned by value: the caller builds a row list from it and the
-  // palette may be edited underneath while that list is on screen.
-  struct TagView {
-    study::TagId id;
-    std::string name;
-  };
-  std::vector<TagView> activeTags() const;
-
   // Indices of passages carrying `id`, in document order, for the filter.
   // study::UNLABELLED yields the passages marked but not yet labelled.
   std::vector<size_t> passagesWithTag(study::TagId id) const;
