@@ -329,7 +329,7 @@ void TagPickerActivity::activateIndex(const int index) {
     case TagChips::ChipState::Inactive:
       break;
   }
-  // The flash would repaint the chip for one frame in the state it is leaving.
+  // A toggle's feedback is its own repaint; a flash must never draw over it.
   app.clearTapFlash();
   {
     RenderLock lock(*this);
