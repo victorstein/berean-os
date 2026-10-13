@@ -87,8 +87,14 @@ The batch spec's Goal 2 for the picker, matching the brief's acceptance:
   - `BaseTheme::drawHeaderWithAction` and `HeaderLayout` are btrial-3's, and are unchanged.
 - **`StudyStore::activeTags()`** is left in place, though this change removes its last caller
   (research note). Removing it is `src/study` work, filed as a discovery when `implement` lands.
-- **The stale comment in `TagPalette.h:19-23`** about "TagPickerActivity's selection today" is not
-  this change.
+- **Comments outside the picker that this change makes stale go in that same discovery.** The brief
+  keeps both callers unchanged:
+  - `HighlightsActivity.h:30` says the picker offers "New tag..." under
+    `HighlightDoc::MAX_TAGS_PER_HIGHLIGHT`.
+  - `HighlightsActivity.h:72-75` says the picker overrides `handleHomeGesture()` because it has no
+    other way to leave with a result. After this change the base owns that override (`final`), and
+    Done leaves with a result.
+  - `TagPalette.h:19-23` describes "TagPickerActivity's selection today" as indices.
 
 ## Modelled on
 
@@ -387,7 +393,11 @@ void TagPickerActivity::commitAndFinish() {
 ```
 
 `isSelected`, `setSelected` and `reportAddTagFailure` are today's (`TagPickerActivity.cpp:38-49`,
-`:183-198`), unchanged.
+`:183-198`), unchanged except for one comment. `reportAddTagFailure`'s opening comment cites
+`HighlightDoc::addTag` (`:184`), which no longer exists. It becomes: "Mirrors TagPalette::add's
+precedence, name checks before the full palette, so it needs no failure code from addTag to say
+something true." The order it describes is `TagPalette.cpp:44` (empty or too long), then `:52`
+(full).
 
 The comments in these sketches are the ones the code keeps. Each states a reason the code does not
 show, as `CLAUDE.md` asks.
@@ -552,8 +562,12 @@ The PSRAM routing threshold is 4,096 B (`sdkconfig.defaults:2260-2261`).
   (`TagPickerActivity.cpp:79`). Names over 15 bytes each allocate.
 
 **Net.**
-- At the owner's 48 tags the picker holds about 2.4 KB more internal SRAM than the `tags_` it
-  replaces while it is open. The batch spec's §6 allows this (2.2 KB for `chips_`).
+- At the owner's 48 tags, `chips_` plus `widths_` cost about 2.4 KB of internal SRAM gross while the
+  picker is open.
+- The `tags_` they replace was also held for the whole visit: 48 `TagView`s (`StudyStore.h:45-48`),
+  each an id plus a 24 B `std::string`, about 28 B, so about 1.3 KB. Each name over 15 B added its
+  own heap buffer.
+- **The net cost is therefore about 1 KB**, within the batch spec's §6 (2.2 KB for `chips_`).
 - The render path allocates nothing: no `tags_` copy, and labels are copied on the loop task at
   rebuild time.
 - Rebuilds happen at entry, after a create and after a retire. A toggle does not rebuild.
@@ -612,8 +626,19 @@ The PSRAM routing threshold is 4,096 B (`sdkconfig.defaults:2260-2261`).
 - **A6. Done's hit rect is the pill grown vertically to the full header band, and no wider.**
   - `bandHitPadding(band, rect)` sets top and bottom only. `fui::button` adds them to the visual
     rect (`button.h:36-43`), and `draw` sets `minTouchSize = 0` (`TagChipView.cpp:124`).
-  - That is 44 px tall under Lyra (4 + 36 + 4) and 45 px under Classic (20 + 25 + 0)
-    (`HeaderLayoutTest.cpp:247-270`). Both meet the 44 px touch minimum.
+  - The padded rect is the band: 44 px under Lyra (4 + 36 + 4) and 45 px under Classic
+    (20 + 25 + 0) (`HeaderLayoutTest.cpp:247-270`).
+  - `fui::button` then passes it through `ensureMinTouchRect` (`button.h:41`). That snaps any edge
+    within 12 px of the screen edge out to it (`freeink-sdk/libs/ui/FreeInkUI/src/FreeInkUI.cpp:818`,
+    `:840-843`).
+    - The band starts at `topPadding` = 5 (`LyraTheme.h:11`, `BaseTheme.h:134`), so the hit starts
+      at y = 0.
+    - The hit is therefore 49 px tall under Lyra and 50 px under Classic. Both exceed the 44 px
+      touch minimum.
+    - The right edge does not snap: it sits at least `headerSidePadding` = 18 px from the screen
+      edge (`BaseTheme.h:151`, `LyraTheme.h:29`).
+  - `bandHitPadding`'s host tests pin the band-height padding. The snap is the SDK's and is not
+    re-tested.
   - Under Classic the grown rect also covers the battery strip's columns above the pill. Nothing
     there is touchable: the header frame registers no hits (`BaseTheme.cpp:296-302` comment,
     "Non-interactive frame").
@@ -706,8 +731,12 @@ The PSRAM routing threshold is 4,096 B (`sdkconfig.defaults:2260-2261`).
     `lib`, comments included (`:250-284`, `:831`).
   - Its only code use is `TagPickerActivity.cpp:100`. Its only definition is `english.yaml:373`.
     The other hits are markdown under `docs/` (research note, "Removals").
-  - The implementer re-runs `grep -rnw STR_TAG_NEW src lib test` after the rewrite, and it must
+  - After the rewrite, the implementer runs `git grep -nw STR_TAG_NEW -- src lib test`, and it must
     print nothing.
+    - It searches tracked files only. The generated, gitignored `lib/I18n/I18nKeys.h`
+      (`.gitignore:8`) still lists `STR_TAG_NEW` (`:490`) until the next `pio run` regenerates it
+      (`platformio.ini:134`).
+    - Never hand-edit that file.
 - **A21. The class comment is rewritten for the merged state.** Today's
   (`TagPickerActivity.h:15-45`) describes a per-book `HighlightDoc` palette, `removeTag` rollback
   and a held-Confirm delete, and stops mid-sentence at `:41`. The new comment keeps three things
@@ -768,8 +797,9 @@ checks. Its decisions sit in tested pure functions:
   - No `warning:` line under `src/` or our own `lib/`. The baseline has none (research note).
   - Report the flash and RAM delta against RAM 66,228 B and Flash 5,563,766 B.
 - **Format:** `./bin/clang-format-fix` over the whole tree leaves `git status` clean.
-- **Removals:** `grep -rn -e TagRowMapping -e 'TagRows::' -e 'STR_TAG_NEW\b' src lib test` prints
-  nothing.
+- **Removals:** `git grep -nw -e STR_TAG_NEW -e TagRowMapping -e 'TagRows::' -- src lib test`
+  prints nothing. It searches tracked files only, so the generated `I18nKeys.h` cannot match
+  (A20).
 
 ### Device checks (owner)
 
@@ -797,7 +827,8 @@ passage selection → tag.
 5. **Done placement.**
    - Under Lyra and Classic, with the battery percentage on and off, Done clears the title and the
      battery.
-   - A tap at the very top and the very bottom of the header band, in Done's columns, commits.
+   - A tap at the very top and the very bottom of the header band, in Done's columns, commits. So
+     does a tap in the few pixels above the band: the SDK's edge snap reaches the screen top (A6).
    - A long-press on Done does nothing.
    - Under Classic, check the label against the pill's bottom edge (A5).
 6. **Exits.**
@@ -805,18 +836,35 @@ passage selection → tag.
    - With the retire popup open, Home does nothing and the popup stays.
    - A tap on Done with the popup open dismisses the popup without committing. This is the popup's
      outside-tap path.
-7. **Order kept.**
-   - Take a passage with two or more tags whose alphabetical order differs from the order they were
-     created. Note its sleep-screen tag pill.
-   - Open the picker, press Done with no change, and the pill is unchanged.
+7. **Order kept, read off the card.** The sleep screen picks a passage at random
+   (`src/activities/boot_sleep/StudySleepPick.h:103-121`), so its pill cannot be steered. Read the
+   files instead.
+   1. With **+ New tag**, create "Zz order", then "Aa order". Zz gets the lower id.
+   2. Apply both to one passage, and press Done.
+   3. Read both ids from `/.berean/tags.json` (`lib/Serialization/SdPaths.h:23`; each entry
+      `{"i": id, "n": name}`, `TagPalette.cpp:153-157`).
+   4. In `/.berean/passages/<pubKey>.json` (`src/study/PassageFile.cpp:16`), that passage's `"t"`
+      array (`PassageDoc.cpp:289`) lists Zz's id first. That is allocation order; name order would
+      put Aa first.
+   5. Reopen the picker from Highlights, and press Done with no change. `"t"` is unchanged.
+   - **A passage migrated from the old highlights can re-sort on its first Done.** Migration stores
+     a passage's tags in the legacy highlight's order, but allocates ids first-seen across the whole
+     run (`src/study/MigrationRunner.cpp:307-309`, `lib/StudyStore/StudyStore/MigrationPlanner.cpp:43-45`).
+     The first Done rewrites it into allocation order. `main` does the same, so that is not a
+     regression.
 8. **Hidden tag.**
    - Retire a tag in another publication while it is on a passage of this one.
    - Opening the picker here shows a count that excludes it.
    - Done drops it from the passage. Back leaves the passage untouched.
 9. **Retire.** Long-press a chip on page 2 → Delete. The chip goes, and if it was applied the count
    falls. The grid stays on page 2.
-10. **Heap.** `ESP.getFreeHeap()` over serial is flat across a picker enter/exit cycle, and across a
-    keyboard round trip.
+10. **Heap.** `ESP.getFreeHeap()` over serial is flat across:
+    - a picker enter/exit cycle;
+    - a keyboard round trip cancelled with Back;
+    - a keyboard round trip that names a tag already in the palette. The dedupe path returns before
+      it adds or saves anything (`StudyStore.cpp:256`).
+    A round trip that creates a new tag grows the palette for good (`TagPalette.cpp:55-57`), so it
+    is not a leak check.
 
 ## Baseline
 
@@ -825,3 +873,17 @@ Measured on this branch at `46b096bc`, before any change (research note):
 - **Host:** `ctest --test-dir build/test -j 8` passes 1745 of 1745, 7 of them `TagRows.*`.
 - **Firmware:** `pio run -e x4pro` gives RAM 66,228 / 327,680 B and Flash 5,563,766 / 6,553,600 B.
   The log has 248 `warning:` lines, all third-party, none under `src/` or our own `lib/`.
+
+## Review 0 outcome
+
+Review: `docs/superpowers/reviews/btrial-5-spec-review-0.md`. The verdict was CLEAR, with no BLOCKER.
+Every finding was checked against the source and accepted.
+
+| Finding | Change |
+|---|---|
+| MAJOR 1. Device check 7 could not verify the commit order: the sleep screen picks at random, and a migrated passage can re-sort on its first Done, as on `main` | Check 7 reads `"t"` from the passage file after creating "Zz order" then "Aa order". A note says migrated passages may re-sort once |
+| m1. A keyboard round trip that creates a tag grows the heap for good | Heap check 10 uses a cancelled round trip and a deduped name |
+| m2. `grep -r` matches the generated `I18nKeys.h` until the next `pio run` | A20 and the removal check use `git grep` over tracked files, and say never to hand-edit the generated file |
+| m3. Comments this change makes false | `reportAddTagFailure`'s comment is reworded in this change. `HighlightsActivity.h:30`, `:72-75` and `TagPalette.h:19-23` join the `activeTags()` discovery (Non-goals) |
+| m4. A6 left out the SDK's edge snap | A6 gives 49 and 50 px through `ensureMinTouchRect`. Device check 5 adds a tap just above the band |
+| m5. The memory "Net" did not subtract `tags_` | About 2.4 KB gross, about 1 KB net |
