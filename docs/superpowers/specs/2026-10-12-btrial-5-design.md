@@ -95,6 +95,13 @@ The batch spec's Goal 2 for the picker, matching the brief's acceptance:
     other way to leave with a result. After this change the base owns that override (`final`), and
     Done leaves with a result.
   - `TagPalette.h:19-23` describes "TagPickerActivity's selection today" as indices.
+  - `USER_GUIDE.md:64-66` and `:250` describe the picker as ticking tags, with Home as its only way
+    to finish.
+  - `docs/contributing/touch-and-ui.md:120` says `TagPickerActivity` overrides `handleHomeGesture()`
+    for want of another confirm.
+- **The wrong message on a failed write goes in that discovery too.** A failed palette write in
+  **+ New tag** shows `STR_TAG_PALETTE_FULL` (`StudyStore.cpp:258-262`), and that string still says
+  "This book" (`english.yaml:378`). This is today's behaviour, unchanged here.
 
 ## Modelled on
 
@@ -393,11 +400,14 @@ void TagPickerActivity::commitAndFinish() {
 ```
 
 `isSelected`, `setSelected` and `reportAddTagFailure` are today's (`TagPickerActivity.cpp:38-49`,
-`:183-198`), unchanged except for one comment. `reportAddTagFailure`'s opening comment cites
-`HighlightDoc::addTag` (`:184`), which no longer exists. It becomes: "Mirrors TagPalette::add's
-precedence, name checks before the full palette, so it needs no failure code from addTag to say
-something true." The order it describes is `TagPalette.cpp:44` (empty or too long), then `:52`
-(full).
+`:183-198`), unchanged except for one comment.
+
+- `reportAddTagFailure`'s opening comment cites `HighlightDoc::addTag` (`:184`). That is the legacy
+  per-book store (`lib/Epub/Epub/HighlightDoc.cpp:30`), not what the picker calls.
+- It becomes: "Mirrors TagPalette::add's precedence, name checks before the full palette, so it
+  needs no failure code from addTagName. A failed palette write also returns nullopt and reads as
+  full here."
+- The order it describes is `TagPalette.cpp:44` (empty or too long), then `:52` (full).
 
 The comments in these sketches are the ones the code keeps. Each states a reason the code does not
 show, as `CLAUDE.md` asks.
@@ -531,6 +541,9 @@ No new failure path.
   - `saveDisabled` also returns nullopt (`StudyStore.cpp:251`), which would read as "palette full".
     That cannot happen here, because both callers refuse to open the picker while `saveDisabled` is
     set (`PassageSelectActivity.cpp:29-33`, `HighlightsActivity.cpp:461-468`).
+  - **A failed palette write can happen here.** It also returns nullopt (`StudyStore.cpp:258-262`),
+    and so reads as "palette full" instead of `STR_TAG_SAVE_FAILED`. That is today's behaviour,
+    kept. It is filed in the discovery (Non-goals).
 - **A retire's save fails:** the base posts `STR_TAG_SAVE_FAILED` (`TagChipGridActivity.cpp:201`).
   It still calls `onTagRetired`, because `retireTag` does not roll back the in-memory retire
   (`StudyStore.cpp:266-273`).

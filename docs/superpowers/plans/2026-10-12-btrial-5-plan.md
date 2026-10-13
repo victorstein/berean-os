@@ -669,8 +669,9 @@ void TagPickerActivity::startNewTagFlow() {
 
 void TagPickerActivity::reportAddTagFailure(const std::string& name) {
   // Mirrors TagPalette::add's precedence, name checks before the full palette, so it needs no
-  // failure code from addTag to say something true. The too-long branch is normally unreachable:
-  // KeyboardEntryActivity's maxLength already blocks typing past MAX_TAG_NAME_BYTES.
+  // failure code from addTagName. A failed palette write also returns nullopt and reads as full
+  // here. The too-long branch is normally unreachable: KeyboardEntryActivity's maxLength already
+  // blocks typing past MAX_TAG_NAME_BYTES.
   if (name.empty()) {
     ReaderUtils::showMessage(renderer, tr(STR_TAG_NAME_EMPTY));
   } else if (name.size() > study::TagPalette::MAX_TAG_NAME_BYTES) {
@@ -973,7 +974,14 @@ need the owner and hardware, and this plan does not run them.
 Do not run `hpipe`. The worker who verifies this work files the follow-up discovery the spec names
 (Non-goals):
 - `StudyStore::activeTags()`, now without a caller;
-- the stale comments at `HighlightsActivity.h:30`, `:72-75` and `TagPalette.h:19-23`.
+- the stale comments at `HighlightsActivity.h:30`, `:72-75` and `TagPalette.h:19-23`;
+- the user guide's picker text at `USER_GUIDE.md:64-66` and `:250`. It should say that Done is in
+  the header, that the tags are chips, and that Home still commits;
+- `docs/contributing/touch-and-ui.md:120`, which still says `TagPickerActivity` overrides
+  `handleHomeGesture()` for want of another confirm;
+- the wrong message on a failed write. When the palette write fails in + New tag, the picker shows
+  `STR_TAG_PALETTE_FULL` instead of `STR_TAG_SAVE_FAILED` (`StudyStore.cpp:258-262`). That string
+  also still says "This book", although the palette is global (`english.yaml:378`).
 
 ---
 
@@ -1004,3 +1012,13 @@ One divergence from the spec's sketch: the toggle's comment now reads "A toggle'
 own repaint; a flash must never draw over it". The spec's sketch said the flash would repaint "the
 state it is leaving", but `TagChipView::draw` paints a flash in the chip's own, new look
 (`TagChipView.cpp:104-109`). The spec was corrected in the same commit as this plan.
+
+## Plan review 0 outcome
+
+Review: `docs/superpowers/reviews/btrial-5-plan-review-0.md`. The verdict was CLEAR, with no BLOCKER
+or MAJOR. Both MINORs were checked against the source and accepted.
+
+| Finding | Change |
+|---|---|
+| m1. Stale user docs were missing from the discovery | Task 5 Step 4 and the spec's Non-goals add `USER_GUIDE.md:64-66`, `:250` and `docs/contributing/touch-and-ui.md:120` |
+| m2. The `reportAddTagFailure` comment named `addTag` and over-claimed | The Task 3 Step 3 comment names `addTagName`, and says a failed palette write reads as "full". The spec says the same, and its Error handling notes the path. The wrong message goes in the discovery |
