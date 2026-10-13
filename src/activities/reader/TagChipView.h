@@ -10,8 +10,8 @@
 #include "TagChipRow.h"
 #include "components/UiAppHost.h"
 
-// Building, measuring and drawing tag chips, shared by the Highlights chip row and the
-// TagFilterActivity grid so the two screens cannot drift in size or style.
+// Building, measuring and drawing tag chips, shared by the Highlights chip row and
+// TagChipGridActivity (the filter grid and the tag picker) so the screens cannot drift in size or style.
 namespace TagChipView {
 
 // The label is owned here because ButtonProps borrows it during the render.

@@ -18,9 +18,8 @@ namespace study {
 
 // A scoped enum, not a bare uint16_t, because the model it replaces used
 // POSITIONAL INDICES into a per-book vector and the two are not
-// interchangeable. TagPickerActivity's selection today is std::vector<uint16_t>
-// of indices; with a bare alias every mis-wiring of index to id would compile
-// silently and land the wrong tag on a real passage.
+// interchangeable: with a bare alias every mis-wiring of index to id would
+// compile silently and land the wrong tag on a real passage.
 enum class TagId : uint16_t {};
 
 constexpr uint16_t toRaw(const TagId id) { return static_cast<uint16_t>(id); }
