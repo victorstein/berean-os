@@ -800,3 +800,36 @@ TEST(TagChipSelectedInOrder, AFullSelectionComesBackInPaletteOrder) {
   ASSERT_EQ(picked.size(), CAP);
   EXPECT_EQ(rawIdsOf(TagChips::selectedInOrder(palette, picked)), (std::vector<uint16_t>{1, 3, 9, 17, 25, 33, 40, 48}));
 }
+
+TEST(TagChipBandHitPadding, LyraPillGrowsFourPixelsEachWay) {
+  // HeaderLayout under Lyra: a band at y 5, 44 tall; the action at y 9, 36 tall.
+  const TagChips::Pad pad = TagChips::bandHitPadding(5, 44, 9, 36);
+  EXPECT_EQ(pad.top, 4);
+  EXPECT_EQ(pad.bottom, 4);
+  EXPECT_EQ(pad.left, 0);
+  EXPECT_EQ(pad.right, 0);
+}
+
+TEST(TagChipBandHitPadding, ClassicCornerPillGrowsUpOverTheStrip) {
+  // Classic: a band at y 5, 45 tall; the action below the 20 px battery strip, at y 25, 25 tall.
+  const TagChips::Pad pad = TagChips::bandHitPadding(5, 45, 25, 25);
+  EXPECT_EQ(pad.top, 20);
+  EXPECT_EQ(pad.bottom, 0);
+  EXPECT_EQ(pad.left, 0);
+  EXPECT_EQ(pad.right, 0);
+}
+
+TEST(TagChipBandHitPadding, AChipFillingTheBandNeedsNone) {
+  const TagChips::Pad pad = TagChips::bandHitPadding(5, 44, 5, 44);
+  EXPECT_EQ(pad.top, 0);
+  EXPECT_EQ(pad.bottom, 0);
+}
+
+TEST(TagChipBandHitPadding, AChipPastTheBandIsNeverPaddedNegative) {
+  const TagChips::Pad above = TagChips::bandHitPadding(5, 44, 2, 30);
+  EXPECT_EQ(above.top, 0);
+  EXPECT_EQ(above.bottom, 17);
+  const TagChips::Pad below = TagChips::bandHitPadding(5, 44, 30, 30);
+  EXPECT_EQ(below.top, 25);
+  EXPECT_EQ(below.bottom, 0);
+}

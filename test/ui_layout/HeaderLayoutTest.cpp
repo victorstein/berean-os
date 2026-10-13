@@ -343,3 +343,21 @@ TEST(HeaderLayout, ActionMovesWithTheBatteryPercentOnTheTitleLine) {
   const Result on = HeaderLayout::layout(lyra(true, DONE_W));
   EXPECT_EQ(off.action.x - on.action.x, PERCENT_SPACING + PERCENT_TEXT_W);
 }
+
+// The picker grows its Done pill to the header band with bandHitPadding, so a tap anywhere in the
+// band's height lands on it, under every layout that leaves the action any room.
+TEST(HeaderLayout, BandHitPaddingSpansTheBandForEveryLayout) {
+  const std::vector<Inputs> layouts = allLayouts(DONE_W);
+  int checked = 0;
+  for (size_t i = 0; i < layouts.size(); ++i) {
+    SCOPED_TRACE(i);
+    const Inputs& in = layouts[i];
+    const Result r = HeaderLayout::layout(in);
+    if (r.action.height <= 0) continue;
+    const TagChips::Pad pad = TagChips::bandHitPadding(in.band.y, in.band.height, r.action.y, r.action.height);
+    EXPECT_EQ(r.action.y - pad.top, in.band.y);
+    EXPECT_EQ(r.action.height + pad.top + pad.bottom, in.band.height);
+    ++checked;
+  }
+  EXPECT_EQ(checked, 14) << "every layout but Lyra's detached right strip, which fills the band";
+}

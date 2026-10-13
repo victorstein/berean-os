@@ -370,4 +370,12 @@ inline Pad hitPadding(const Layout& layout, const int index, const int gap) {
   return hitPadding(layout.placed, layout.placedCount, layout.lines, index, gap);
 }
 
+// Grows a chip drawn shorter than its band to the band's full height, as the header's Done pill is.
+inline Pad bandHitPadding(const int bandTop, const int bandHeight, const int chipTop, const int chipHeight) {
+  Pad pad;
+  pad.top = std::max(0, chipTop - bandTop);
+  pad.bottom = std::max(0, bandTop + bandHeight - (chipTop + chipHeight));
+  return pad;
+}
+
 }  // namespace TagChips
