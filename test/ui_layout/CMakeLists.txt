@@ -147,6 +147,7 @@ gtest_discover_tests(HeaderLayoutTest)
 
 add_executable(PreachingCardsTest
   PreachingCardLayoutTest.cpp
+  PreachingCardNavTest.cpp
   ${REPO_ROOT}/src/activities/preaching/PreachingCardLayout.cpp
 )
 
