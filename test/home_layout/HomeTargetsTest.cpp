@@ -90,17 +90,28 @@ TEST(HomeTargets, MeetingsPublicationsAndSettingsNeedNoBible) {
   }
 }
 
+TEST(HomeTargets, PreachingOpensWithABibleAndDownloadsWithout) {
+  const auto withOne = HomeTargets::route(Target::Preaching, withBible(false, 0, false));
+  EXPECT_EQ(withOne.action, Action::OpenPreaching);
+  EXPECT_EQ(withOne.intent, Kind::None);
+  EXPECT_FALSE(withOne.allowFastInitialRefresh);
+
+  const State noBible{false, true, 3, true};
+  EXPECT_EQ(HomeTargets::route(Target::Preaching, noBible).action, Action::DownloadBible);
+  EXPECT_TRUE(HomeTargets::isActive(Target::Preaching, noBible));
+}
+
 TEST(HomeTargets, TheRingWalksActiveTargetsInReadingOrder) {
   EXPECT_EQ(ringOf(withBible(true, 3, true)),
             (std::vector<Target>{Target::Continue, Target::GoTo, Target::Recent0, Target::Recent1, Target::Recent2,
-                                 Target::Verse, Target::Meetings, Target::Tags, Target::Search, Target::Publications,
-                                 Target::Settings}));
-  EXPECT_EQ(ringOf(withBible(false, 0, false)),
-            (std::vector<Target>{Target::Continue, Target::GoTo, Target::Meetings, Target::Tags, Target::Search,
+                                 Target::Verse, Target::Meetings, Target::Preaching, Target::Tags, Target::Search,
                                  Target::Publications, Target::Settings}));
+  EXPECT_EQ(ringOf(withBible(false, 0, false)),
+            (std::vector<Target>{Target::Continue, Target::GoTo, Target::Meetings, Target::Preaching, Target::Tags,
+                                 Target::Search, Target::Publications, Target::Settings}));
   EXPECT_EQ(ringOf(State{false, false, 0, false}),
-            (std::vector<Target>{Target::Continue, Target::Meetings, Target::Tags, Target::Search, Target::Publications,
-                                 Target::Settings}));
+            (std::vector<Target>{Target::Continue, Target::Meetings, Target::Preaching, Target::Tags, Target::Search,
+                                 Target::Publications, Target::Settings}));
 }
 
 TEST(HomeTargets, TheRingStopsAtItsCapacity) {

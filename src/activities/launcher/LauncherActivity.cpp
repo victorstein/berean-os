@@ -208,6 +208,8 @@ const HomeLayout::Box* LauncherActivity::boxFor(const Target target) const {
       return &layout.verseCard;
     case Target::Meetings:
       return &layout.meetings;
+    case Target::Preaching:
+      return &layout.preaching;
     case Target::Tags:
       return &layout.icons[0];
     case Target::Search:
@@ -390,6 +392,9 @@ void LauncherActivity::activate(const Target target) {
       return;
     case HomeTargets::Action::OpenMeetings:
       openMeetings();
+      return;
+    case HomeTargets::Action::OpenPreaching:
+      activityManager.goToPreaching();
       return;
     case HomeTargets::Action::OpenPublications:
       openPublications();
