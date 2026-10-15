@@ -42,8 +42,9 @@ class PreachingTopicActivity final : public Activity, private UiAppHost {
     int markWidth = 0;
   };
 
-  // Show mode at `verse` (T4).
+  // Show mode at `verse`; the Verse card it returns is selected on the way back.
   void openShow(int verse);
+  void onShowFinished(const ActivityResult& result);
   void openBible(int verse);
   void openNextQuestion();
 
