@@ -34,8 +34,12 @@ class PreachingActivity final : public UiTabListActivity {
   bool handleButtons() override;
   const char* headerTitle() const override;
 
-  // Elegir temas (T5).
   void openTopicPicker();
+  // The picker's chips are STUDY's palette, and its retire writes that palette over tags.json, so
+  // STUDY is opened on the Bible first; only the reader opens it otherwise.
+  void ensureStudyOpen();
+  // Reloads and recounts only when the picks changed.
+  void onTopicPickerResult(const ActivityResult& result);
   // Reads the picks again and recounts, for after Elegir temas saves.
   void onTopicsChanged();
 
