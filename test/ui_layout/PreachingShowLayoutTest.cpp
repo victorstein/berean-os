@@ -17,9 +17,9 @@ namespace {
 
 std::vector<CardInput> mixedQuestionCards() {
   return {
-      {CardKind::Title, "Title", ""},       {CardKind::Verse, "first", "Ref 1"},
-      {CardKind::Heading, "Heading", ""},   {CardKind::Verse, "second", "Ref 2"},
-      {CardKind::Text, "Text", ""},         {CardKind::NextVisit, "Next", "Pregunta 2"},
+      {CardKind::Title, "Title", ""},     {CardKind::Verse, "first", "Ref 1"},
+      {CardKind::Heading, "Heading", ""}, {CardKind::Verse, "second", "Ref 2"},
+      {CardKind::Text, "Text", ""},       {CardKind::NextVisit, "Next", "Pregunta 2"},
   };
 }
 
@@ -281,6 +281,4 @@ TEST(PreachingShowPaging, ABoxSmallerThanALineStillAdvancesOneLineAPage) {
   EXPECT_EQ(pages(layout), (std::vector<uint16_t>{0, 1, 2, 3, 4, 5}));
 }
 
-TEST(PreachingShowPaging, AShortQuoteIsOnePage) {
-  EXPECT_EQ(layOut("one two three", "Jn 3:16", 100).pageCount(), 1);
-}
+TEST(PreachingShowPaging, AShortQuoteIsOnePage) { EXPECT_EQ(layOut("one two three", "Jn 3:16", 100).pageCount(), 1); }

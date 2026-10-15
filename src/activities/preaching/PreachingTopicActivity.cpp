@@ -15,8 +15,8 @@
 #include <variant>
 
 #include "MappedInputManager.h"
-#include "PreachingShowActivity.h"
 #include "PreachingSession.h"
+#include "PreachingShowActivity.h"
 #include "activities/PostedMessage.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -174,9 +174,9 @@ void PreachingTopicActivity::reportFailure(const char* message) {
 
 void PreachingTopicActivity::openShow(const int verse) {
   if (verse < 0 || verse >= topic->verseCount()) return;
-  auto show = makeUniqueNoThrow<PreachingShowActivity>(
-      renderer, mappedInput, preaching::show::Deck{topic->cards.data(), topic->cards.size()}, topic->header.c_str(),
-      verse);
+  auto show = makeUniqueNoThrow<PreachingShowActivity>(renderer, mappedInput,
+                                                       preaching::show::Deck{topic->cards.data(), topic->cards.size()},
+                                                       topic->header.c_str(), verse);
   if (!show) {
     LOG_ERR(MODULE, "OOM: show mode");
     reportFailure(tr(STR_PREACHING_OPEN_FAILED));

@@ -101,8 +101,7 @@ void PreachingShowActivity::layOutVerse() {
 }
 
 void PreachingShowActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-      ReaderUtils::isTouchMenuTap(renderer, mappedInput)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) || ReaderUtils::isTouchMenuTap(renderer, mappedInput)) {
     finishWithResult();
     return;
   }
