@@ -111,7 +111,7 @@ RowTags rowTags(const JsonVariantConst row) {
   return tags;
 }
 
-// As PassageDoc::fromJson and StudyPassageScan read "s": absent, or past UINT16_MAX, is 0.
+// As StudyPassageScan reads "s": absent, or past UINT16_MAX, is 0.
 uint16_t spineHint(const JsonVariantConst row) {
   const uint32_t raw = row["s"] | 0u;
   return raw <= UINT16_MAX ? static_cast<uint16_t>(raw) : 0;
