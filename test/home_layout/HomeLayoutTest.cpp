@@ -105,8 +105,8 @@ TEST(HomeLayout, TheCoverStillShowsTheBibleTitle) {
     const auto layout = layoutFor(*metrics);
     const int visible = layout.hero.height - layout.plate.height;
     ASSERT_EQ(CoverBandGeometry::thumbHeightFor(layout.hero.width, layout.hero.height), NWT_THUMB_H);
-    const auto crop = CoverBandGeometry::crop(NWT_THUMB_W, NWT_THUMB_H, layout.hero.width, layout.hero.height,
-                                              visible, CoverBandGeometry::BOOK_TITLE_BAND);
+    const auto crop = CoverBandGeometry::crop(NWT_THUMB_W, NWT_THUMB_H, layout.hero.width, layout.hero.height, visible,
+                                              CoverBandGeometry::BOOK_TITLE_BAND);
     ASSERT_TRUE(crop.fits);
     EXPECT_LE(crop.yOffset, TITLE_FIRST_ROW);
     EXPECT_GE(crop.yOffset + visible - 1, TITLE_LAST_ROW);

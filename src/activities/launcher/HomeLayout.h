@@ -98,9 +98,7 @@ constexpr int meetingsHeight(const LineHeights& lines) {
   return PAD + std::max(lines.ui10 + lines.small, stripHeight(lines)) + lines.small + PAD;
 }
 
-constexpr int preachingHeight(const LineHeights& lines) {
-  return PAD + std::max(ICON, lines.ui10 + lines.small) + PAD;
-}
+constexpr int preachingHeight(const LineHeights& lines) { return PAD + std::max(ICON, lines.ui10 + lines.small) + PAD; }
 
 constexpr int verseTextHeight(const LineHeights& lines) { return VERSE_TEXT_LINES * lines.serif12; }
 
