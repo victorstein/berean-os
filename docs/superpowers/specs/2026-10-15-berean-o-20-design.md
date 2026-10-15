@@ -33,6 +33,27 @@ Review: `docs/superpowers/reviews/berean-o-20-spec-review-0.md` (BLOCKER 1, MINO
   verse", only the mechanism changes. The answer asked for the lock at the `stream` call to be
   checked — see A15. It also widens this task's files to `test/verse_anchors/` (for the plan).
 
+## Changes since pass 1
+
+Review: `docs/superpowers/reviews/berean-o-20-spec-review-1.md` (CLEAR; MAJOR 1–2, MINOR 1–3, all
+applied here).
+
+- **MAJOR 1 — the X4 Pro has a physical Back: a held Left nav key.** Verified: a hold of
+  `HOLD_MS = 850` synthesises `BTN_BACK` (`lib/Input/Input/NavKeyGestures.h:34`, `:41`;
+  `lib/hal/HalGPIO.cpp:211-212`) and reports `SYNTHETIC_HELD_MS = 40` (`NavKeyGestures.h:68`,
+  `HalGPIO.cpp:253-254`), so it is always a short Back. A5 keeps its choice (button and gesture
+  alike) with the corrected premise; the Non-goal claiming no button is deleted; the `ReturnStack.h`
+  rewording drops "only Return"; device checks 7–8 cover the held Left. `CLAUDE.md:76`'s "no Back
+  button" is stale and outside this task — filed with `hpipe discover`.
+- **MAJOR 2 — `VerseHref::find` returned a pointer into `take()`'s temporary.** Replaced by
+  `VerseHref::offsetOf`, returning `std::optional<uint32_t>` by value, so no caller can dangle; step 4
+  names the vector anyway, as `BibleNavigationActivity.cpp:263` does.
+- **MINOR 1** — device check 9 covers sleep and wake.
+- **MINOR 2** — A7 names the Back band: a rightward swipe starting in the left 25% of the width
+  (`freeink-sdk/libs/ui/FreeInkUI/include/FreeInkUICore.h:235`); device check 10 covers swipe mode.
+- **MINOR 3** — the overflow test pins `65536`; `%u` overflow past `UINT32_MAX` is undefined and
+  wraps on the host.
+
 ## Problem
 
 Predicación already sends the reader an intent (`PreachingTopicActivity::openBible`,
@@ -65,7 +86,6 @@ ignores what is new:
 - Place recording (D9): unchanged (research, "Place recording").
 - Persisting the origin. It is RAM only; Home and sleep drop it by destroying the reader.
 - A visible "back to Predicación" affordance. The swipe is the way back (parent spec §6).
-- Physical Back-button behaviour beyond A5. The X4 Pro has none (`CLAUDE.md`, "Input hardware").
 
 ## Departure from the brief
 
@@ -84,11 +104,11 @@ inside `src/activities/reader/`, no change to `ChapterHtmlSlimParser` or `SECTIO
 | File | Change |
 |---|---|
 | `src/activities/reader/ReaderBackSwipe.h` (new) | `ReaderBackSwipe::decide`, the three-way swipe decision |
-| `src/activities/reader/VerseHref.h` (new) | `VerseHref::parse` (an href's `chapterC_verseV` fragment) and `VerseHref::find` (its anchor among a scan's) |
+| `src/activities/reader/VerseHref.h` (new) | `VerseHref::parse` (an href's `chapterC_verseV` fragment) and `VerseHref::offsetOf` (its marker's offset among a scan's anchors) |
 | `src/activities/reader/EpubReaderActivity.h` | a `PreachingOrigin preachingOrigin` member copied from the intent in the constructor; a private `openReference(const char* href)` |
 | `src/activities/reader/EpubReaderActivity.cpp` | `Route::Href` → `openReference`; the swipe branch at line 694 routed through `decide` |
 | `src/activities/reader/ReaderUtils.h` | the comment at lines 249-254 reworded: the reader surface's own swipe handling may leave for Predicación |
-| `src/activities/reader/ReturnStack.h` | the comment at lines 15-18 reworded: once the ring empties the swipe goes back to Predicación when there is an origin, else inert |
+| `src/activities/reader/ReturnStack.h` | the comment at lines 15-18 reworded: Back — the left-edge swipe, or a held Left key — returns through the ring; once it empties, Back goes to Predicación when there is an origin (a held Left otherwise goes Home, the swipe does nothing) |
 | `test/ui_layout/ReaderBackSwipeTest.cpp` (new) + `test/ui_layout/CMakeLists.txt` | the swipe decision's tests, its own executable |
 | `test/verse_anchors/VerseHrefTest.cpp` (new) + `test/verse_anchors/CMakeLists.txt` | `VerseHref`'s tests, its own executable beside `VerseAnchorsTest` |
 
@@ -139,15 +159,15 @@ struct Verse {
 // with; nullopt for no fragment, another fragment, trailing junk, or a number past uint16_t.
 std::optional<Verse> parse(const char* href);
 
-// The scanned anchor for `verse`, or nullptr.
-const VerseAnchors::VerseAnchor* find(const std::vector<VerseAnchors::VerseAnchor>& anchors, Verse verse);
+// The offset of `verse`'s marker among `anchors`, or nullopt.
+std::optional<uint32_t> offsetOf(const std::vector<VerseAnchors::VerseAnchor>& anchors, Verse verse);
 
 }  // namespace VerseHref
 ```
 
 `parse` uses the same `sscanf("chapter%u_verse%u%c")` test as `VerseAnchors.cpp:35-36` on the text
 after the first `#`, with the same `<= UINT16_MAX` bounds, so the href and the scan agree on what a
-verse marker is. Both are `inline` in the header; `find` is a linear scan (at most 176 anchors,
+verse marker is. Both are `inline` in the header; `offsetOf` is a linear scan (at most 176 anchors,
 `VerseAnchors.cpp:68`). Header-only and Arduino-free: `VerseAnchors.h` is plain C++
 (`lib/Epub/Epub/VerseAnchors.h:1-6`).
 
@@ -198,7 +218,7 @@ void EpubReaderActivity::openReference(const char* href) {
 2. A local `VerseAnchors::Scanner`; `!valid()` → `LOG_ERR("ERS", "OOM: verse scanner")`, nullopt.
 3. `SpineHtmlStream::stream(epub, spine, renderer, feedVerseScanner, &scanner)` with the default
    `WhenMissing::Inflate`; false → nullopt.
-4. `VerseHref::find(scanner.take(), *verse)`; its `offset`, or nullopt.
+4. `const auto anchors = scanner.take();` then `VerseHref::offsetOf(anchors, *verse)`.
 
 Each nullopt path is reported by `openReference`'s one `LOG_ERR` (A8); the OOM case logs twice, as
 `loadVerses` does.
@@ -296,9 +316,14 @@ member with it. Nothing writes `ReaderEntryIntent` or `PreachingOrigin` to any s
   the last pop lands on the oldest surviving position and the next swipe goes to Predicación, not to
   the opened verse.
 - **A5 — Button and gesture are treated alike.** `wasReleased(Back)` is true for both
-  (`MappedInputManager.cpp:264-265`), as branch 1 already treats them. With an origin and an empty
-  stack, a short physical Back would go to Predicación instead of Home; the X4 Pro has no such
-  button.
+  (`MappedInputManager.cpp:264-265`), as branch 1 already treats them. The X4 Pro's button Back is
+  a held Left nav key: a hold of 850 ms synthesises `BTN_BACK` with a 40 ms held time
+  (`NavKeyGestures.h:41`, `:68`; `HalGPIO.cpp:211-212`, `:253-254`), which logical Back reaches
+  through the default `frontButtonBack` (`MappedInputManager.cpp:61-63`). With an origin and an
+  empty stack it goes to Predicación instead of Home; with no origin it goes Home, as today
+  (`ReaderUtils.h:258-265`). Treating it like the swipe matches branch 1, which already pops the
+  stack on a held Left, and is the only way back to the card that survives a dead touch panel
+  (`NavKeyGestures.h:7-10`).
 - **A6 — The `getHeldTime() < GO_BACK_OR_HOME_MS` guard applies to all three outcomes**, as it does
   to branch 1 today (line 695). A long edge hold passes on and behaves as today: inert in tap mode, a
   page back in swipe mode (`detectTouchPageTurn` sets `prev`, `ReaderUtils.h:88-92`; acted on at
@@ -306,9 +331,13 @@ member with it. Nothing writes `ReaderEntryIntent` or `PreachingOrigin` to any s
 - **A7 — In swipe page-turn mode, the origin branch consumes the short left-edge swipe.** With
   `TOUCH_READER_SWIPE` a rightward swipe, an edge one included, is also `prev` (`ReaderUtils.h:85-95`).
   Branch 1 already returns before the page turn; branch 2 does the same, so with an origin and an
-  empty stack a short left-edge swipe goes back to the card instead of paging back. A mid-screen
-  rightward swipe still pages back: `wasBackGesture` is edge-anchored
-  (`MappedInputManager.cpp:222-227`). `ReaderUtils.h:249-254`'s "a right swipe must page back" is
+  empty stack a short left-edge swipe goes back to the card instead of paging back. "Left-edge" is
+  a band, not a line: a rightward swipe is Back when it starts in the left 25% of the width
+  (`EDGE_SWIPE_SIDE_FRAC = 0.25f`, `freeink-sdk/libs/ui/FreeInkUI/include/FreeInkUICore.h:235`, via
+  `MappedInputManager.cpp:222-227`). Because the origin lasts the whole session (A3), in swipe mode
+  any page-back swipe started in that quarter leaves for the card once the stack is empty; one
+  started further right still pages back. Swipe mode is opt-in (default `TOUCH_READER_ON`,
+  `CrossPointSettings.h:363`). `ReaderUtils.h:249-254`'s "a right swipe must page back" is
   reworded to say so.
 - **A8 — A reference whose verse is not found opens its file at the start**, with one `LOG_ERR` in
   `openReference`. "Not found" covers: no `chapterC_verseV` fragment, a fragment outside the grammar,
@@ -327,7 +356,7 @@ member with it. Nothing writes `ReaderEntryIntent` or `PreachingOrigin` to any s
   `VerseAnchors.cpp:35-36`'s format string rather than adding a parse function to `lib/Epub`
   (epub-dev's surface). A host test pins both readings of the same id against each other: a
   `VerseAnchors::scan` of a one-span excerpt and `parse` of an href to that id agree.
-- **A12 — A verse matches on chapter and verse.** `find` compares both, so a file holding parts of two
+- **A12 — A verse matches on chapter and verse.** `offsetOf` compares both, so a file holding parts of two
   chapters cannot match the wrong one.
 - **A13 — `goToPreaching` failing (OOM) leaves the reader on screen.** It logs and returns without
   replacing (`ActivityManager.cpp:232-239`); the next swipe retries. No message, as every other
@@ -389,11 +418,12 @@ from the repo's sources with `XML_GE=0 XML_CONTEXT_BYTES=1024`), adding include 
 `<Epub/VerseAnchors.h>` include resolve:
 
 - `parse`: `"1001061123-split83.xhtml#chapter83_verse18"` → {83, 18}; no `#`; `#` with nothing
-  after; another fragment (`#p12`); trailing junk (`#chapter1_verse2x`); a number past `UINT16_MAX`;
+  after; another fragment (`#p12`); trailing junk (`#chapter1_verse2x`); a number past `uint16_t`, pinned to `chapter65536_verse1`
+  (a value past `UINT32_MAX` is undefined for `%u` and wraps on the host);
   the longest real href within `ReaderEntryIntent::HREF_BYTES`;
-- `find`: hit; miss; the same verse number in another chapter does not match (A12);
+- `offsetOf`: hit; miss; the same verse number in another chapter does not match (A12);
 - agreement (A11): `VerseAnchors::scan` of a short excerpt with
-  `<span id="chapter83_verse18"></span>` yields an anchor `find` returns for `parse` of the href.
+  `<span id="chapter83_verse18"></span>` yields the offset `offsetOf` returns for `parse` of the href.
   The excerpt is a few lines, per the public-repo fixture rule.
 
 Run (`test/README:5-7`): `cmake -S test -B build/test && cmake --build build/test && ctest
@@ -411,3 +441,9 @@ Run (`test/README:5-7`): `cmake -S test -B build/test && cmake --build build/tes
 5. Free heap equal across Predicación → Bible → back (serial `LOG_DBG("MEM", ...)`), several loops.
 6. For several of the 20 questions, the verse each reference names is on the page that opens, and
    serial shows `Back to Predicación` on each return and no `Verse of ... not found`.
+7. On the opened verse, hold Left about 1 s → the same card.
+8. In a reader opened from Home, hold Left → Home.
+9. From the opened verse, sleep with Power and wake: the Bible reopens at the verse; the swipe is
+   inert (tap mode) and a held Left goes Home.
+10. Swipe page-turn mode: on the opened verse, a rightward swipe started mid-screen pages back; one
+    started in the left quarter returns to the card.
