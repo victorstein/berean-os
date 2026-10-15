@@ -43,7 +43,6 @@ Tapping a quote opens `PreachingShowActivity` at that Verse card:
   (R§1); the brief asks for a quote tap.
 - No grayscale anti-aliasing pass. The topic screen draws 1-bit (`PreachingTopicActivity.cpp:260`);
   the brief asks for the reader's refresh *mode*, not its text rendering.
-- No in-quote page indicator (see A9).
 - No change to auto-sleep: `preventAutoSleep()` is not overridden (`Activity.h:45`).
 
 ## Architecture
@@ -118,7 +117,10 @@ bool step(Cursor& cursor, int pagesInVerse, int verses, int direction);
 }  // namespace preaching::show
 ```
 
-Exact member names are the plan's; the contract is above. `Span`, `CardInput`, `Face`,
+Exact member names are the plan's; the contract is above. `layOut` **reuses** `out`: it calls
+`clear()` on `out.quote`, `out.reference` and `out.pageFirstLine` before each rung attempt and never
+assigns a fresh `Layout` — unlike `layoutCards`, which starts with `out = Layout{}`
+(`PreachingCardLayout.cpp:226`) and so drops the capacity reserved in `onEnter` (review 0, m3). `Span`, `CardInput`, `Face`,
 `LINE_BUFFER_BYTES` and `wrapText` come from `PreachingCardLayout.h` unchanged.
 
 **Wrapping reuses `preaching::wrapText`** (`PreachingCardLayout.h`, impl `PreachingCardLayout.cpp:174-222`):
@@ -164,11 +166,14 @@ its own one-line copy of that predicate, since the original is file-local). 12 i
 and always accepted.
 
 **A5 — Past 12, the quote pages at 12.** The quote lines and then the reference lines form one
-column, broken into pages by `Metrics::height`, never inside a line. Nothing is cut. Two rules,
-both from the topic layout (`PreachingCardLayout.cpp:146-161`):
+column, broken into pages by `Metrics::height`, never inside a line. Nothing is cut. Three rules,
+the first two from the topic layout (`PreachingCardLayout.cpp:146-161`):
 - every page takes at least one line, so a box smaller than one line still advances;
 - **the reference never starts a page alone**: if a page would end exactly before the first
-  reference line, its last quote line moves to the next page with the reference.
+  reference line, its last quote line moves to the next page with the reference;
+- **the reference is never split across pages** (review 0, m4): the quote's last line, the gap and
+  every reference line go on one page together. Only when that block alone is taller than the box
+  does the column fall back to filling pages line by line (the first rule), so it still advances.
 The gap above the reference is only counted on the page that carries both.
 
 **A6 — The reference is drawn only after the quote's last line** (on the last page when the quote
@@ -192,9 +197,15 @@ them (`PreachingTopicActivity.cpp:92-106`):
 - box: from `viewTop + verticalSpacing` to `footerY − verticalSpacing`;
 - reference gap: `verticalSpacing`.
 
-**A9 — No in-quote page indicator.** The footer shows the verse position only. A page counter
-for a long quote would need a new string, and spec §8 gives every string to T3. If the owner's
-device check finds paging unclear, it becomes a follow-up (`hpipe discover`), not a T4 string.
+**A9 — A paged quote shows its page in the footer.** When `layout.pageCount() > 1`, the footer is
+`STR_PREACHING_SHOW_POSITION` followed by ` · %d/%d` (page, pages), appended with a second
+`snprintf` into the same buffer; a one-page verse shows the position alone. The bare `"%d/%d"` is the
+form the topic screen's own page counter already uses without `tr()`
+(`PreachingTopicActivity.cpp:245-246`): digits and punctuation are not user-facing text, so no new
+string is needed. Without it the footer would stay the same on every page of a verse, and the owner
+could not tell whether Right turns a page or moves on (review 0, M1). Buffer: position ≤ ~10 B,
+title ≤ 47 B (`PreachingContent.cpp:72`) or a 24 B tag name (`lib/StudyStore/StudyStore/TagPalette.h:38`), page ≤ 10 B — well
+inside `char[96]`.
 
 **A10 — Input, read once per `loop()` in this order:**
 1. `mappedInput.wasReleased(Button::Back)` → finish. On this device that includes the left-edge
@@ -210,12 +221,17 @@ device check finds paging unclear, it becomes a follow-up (`hpipe discover`), no
 Reading both touch helpers in one loop is what the reader does (`EpubReaderActivity.cpp:590`,
 `:612`); `wasScreenTapped` is a per-frame query (`MappedInputManager.cpp:136-143`).
 
-**A11 — Show mode honours the reader's touch settings, because it calls the reader's helpers.**
-With touch reader controls Off, taps do not page (`ReaderUtils.h:81-83`) — buttons still do. In
-Swipe mode a horizontal swipe pages instead of a tap (`:85-95`). With `tapForReaderMenu` off the
-centre tap does nothing (`:142`); the left-edge swipe still returns. The centre column's top and
-bottom thirds are dead, as in the reader. This is what "the reader's zones" means in the brief;
-an owner who has configured the reader gets the same behaviour here.
+**A11 — Show mode uses the reader's touch helpers, so it mostly follows the reader's touch
+settings.** With touch reader controls Off, side taps do not page (`ReaderUtils.h:81-83`) — buttons
+still do. In Swipe mode a horizontal swipe pages instead of a tap (`:85-95`). With
+`tapForReaderMenu` off the centre tap does nothing (`:142`); the left-edge swipe still returns. The
+centre column's top and bottom thirds are dead, as in the reader.
+**One difference from the reader, kept on purpose:** with touch reader controls Off the reader
+also ignores the centre tap, because it calls `isTouchMenuGesture`, which checks that setting first
+(`ReaderUtils.h:155-157`; `EpubReaderActivity.cpp:612`, `:690`). Show mode calls `isTouchMenuTap`
+as the brief names it, which does not (`ReaderUtils.h:140-147`), so its centre tap still returns —
+a second way out of a screen with no chrome (review 0, m1). Defaults are touch On and centre tap
+On (`CrossPointSettings.h:363`, `:366`).
 
 **A12 — Buttons use `ButtonNavigator`, not `ReaderUtils::detectPageTurn`.** `detectPageTurn`
 also turns on tilt (`ReaderUtils.h:55-56`) and on the power button when so configured (`:64-65`).
@@ -250,7 +266,9 @@ Back, swipe, centre tap — sets the result, so the topic always follows the ver
 **A17 — Layout runs on the loop task, under `RenderLock`.** On enter and on each verse change, the
 loop takes `RenderLock` (as `PreachingTopicActivity::moveTo`, `:149-155`), sets the cursor and
 lays out the new verse into the member `Layout`, then `requestUpdate()`s. `render()` only draws
-from the member layout. A page step inside a verse changes the cursor only.
+from the member layout. **Every cursor write — a page step as well as a verse change — happens
+under `RenderLock`** and is followed by `requestUpdate()`, because `render()` reads the cursor on
+the render task (review 0, m2). A page step changes the cursor only; it does not re-lay out.
 
 **A18 — The topic screen clears its tap flash before pushing**, as every other exit does
 (`PreachingTopicActivity.cpp:205`, `:237`), so the flashed quote rect is not drawn on return.
@@ -273,7 +291,7 @@ from the member layout. A page step inside a verse changes the cursor only.
 5. **`render`**: `clearScreen`; draws the current page's lines (A7) — each span copied into a
    `char[LINE_BUFFER_BYTES]` with bytes below 0x20 drawn as spaces, as the topic screen draws a
    line (`PreachingTopicActivity.cpp:287-295`) and as `wrapText` measured it
-   (`PreachingCardLayout.cpp:178-181`); the footer (A2, A8); then `displayWithRefreshCycle` (A14).
+   (`PreachingCardLayout.cpp:178-181`); the footer (A2, A8, A9); then `displayWithRefreshCycle` (A14).
 6. **`loop`**: A10. A step calls `preaching::show::step`; a verse change re-lays out (A17).
 7. **Exit**: `setResult(PreachingResult{at})` with `at.verse = cursor.verse`, `finish()`. The
    manager destroys show mode, restores the topic, unlocks, calls the handler, re-renders
@@ -328,8 +346,12 @@ rung 0 is widest (e.g. 14/12/10 px per byte), line heights 30/24/20.
 - A4: a word too wide for the column at 18 but not at 14 takes 14 even though the height fits at 18.
 - A5: a quote too tall for 12 pages at rung 2; the pages' spans, concatenated, reproduce every
   non-break byte of the quote and reference in order (nothing cut); each page's content height ≤
-  `height`; the reference lines are on the last page only.
+  `height`; the first reference line shares its page with the quote's last line.
 - A5 orphan rule: a quote whose lines exactly fill N pages puts its last line with the reference.
+- A5 whole reference: a reference that wraps to two lines (narrow column) is never split — the
+  quote's last line and both reference lines share the last page, and no page after it holds a
+  quote line; only a reference taller than the box alone falls back to line-by-line pages.
+- A9: the long-quote fixture reports `pageCount() > 1`; a short quote reports 1.
 - A5 degenerate: `height` smaller than one line → one line per page, terminates.
 - Empty quote → reference only, one page; empty reference → quote only, no gap counted.
 - `step` (A13): next within pages, then next verse page 0; previous within pages, then previous
@@ -342,6 +364,19 @@ ctest --test-dir build/test -R Preaching --output-on-failure`.
 run -e x4pro` with no new warnings; `./bin/clang-format-fix` (whole tree) after `git add`.
 
 **On the device** (the owner's, end of batch): tap a quote → the verse at 18; a long tag passage
-pages at 12 with its reference on the last page; Left/Right and the side taps step; centre tap and
+pages at 12 with its reference on the last page, the footer reading `… · 1/3` → `2/3` → `3/3`;
+Left/Right and the side taps step; centre tap and
 left-edge swipe return with that card selected and its page shown; Noto Serif 18 legible at arm's
 length (D6); free heap equal across topic → show → topic (serial `LOG_DBG("MEM", …)`).
+
+## Changes after spec review 0
+
+Review: `docs/superpowers/reviews/berean-o-17-spec-review-0.md` (CLEAR, 1 MAJOR, 4 MINOR). All accepted.
+
+| Finding | Change |
+|---|---|
+| M1 — A9's "needs a new string" was false | A9 now shows ` · p/n` in the footer when a quote pages, in the topic screen's untranslated `"%d/%d"` form; non-goal removed; host test and device check added |
+| m1 — A11 overstated parity with the reader | A11 states the one difference: with touch controls Off the centre tap still returns here |
+| m2 — page-step cursor write outside the lock | A17: every cursor write is under `RenderLock` |
+| m3 — `layOut` must not reassign `out` | Pure-module section: `clear()` the three vectors, never `out = Layout{}` |
+| m4 — "reference on the last page only" did not follow from A5 | A5 gains a third rule: the reference is never split; tests assert it |
