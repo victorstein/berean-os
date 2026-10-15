@@ -326,7 +326,7 @@ the render task (review 0, m2). A page step changes the cursor only; it does not
 |---|---|
 | `openShow` with an ordinal out of range | Returns; nothing pushed (no log spam: a tap on a stale rect is the only way) |
 | OOM constructing the show screen | `LOG_ERR("PREACH", …)`; `STR_PREACHING_OPEN_FAILED` toast; topic screen stays |
-| Start ordinal out of range inside show mode | Clamped to `[0, verseCount)`; a deck with no Verse card finishes at once with the start ordinal (unreachable: `openShow` requires one) |
+| Start ordinal out of range inside show mode | Clamped to `[0, verseCount)`; a deck with no Verse card finishes at once with ordinal 0, which the topic's `selectVerse` maps to its first Verse card (unreachable: `openShow` requires one) |
 | A Verse card with an empty quote | Only the reference is drawn, centred |
 | A Verse card with an empty reference | Only the quote; no gap |
 | Text that fits no line (box narrower than one codepoint) | `wrapText` still takes one codepoint per line (`PreachingCardLayout.cpp:207-215`), A5 still advances one line per page; nothing loops |
@@ -388,3 +388,12 @@ Review: `docs/superpowers/reviews/berean-o-17-plan-review-0.md` (CLEAR, 2 MINOR)
 A4 now names the reference as well as the quote, with a host test in the plan (m2); the plan's
 warning check greps the final build for the touched files instead of comparing counts across a
 full and an incremental build (m1).
+
+## Changes after PR review 0
+
+Review: `docs/superpowers/reviews/berean-o-17-pr-review-0.md` (CLEAR, 2 MINOR).
+
+- m1 (`copyLine` duplicates the topic screen's line copy): accepted as a follow-up, not fixed here —
+  the shared home, `PreachingCardLayout.*`, is outside t4's files. Filed as discovery t4/x1.
+- m2 (the empty-deck path returns ordinal 0, not the start ordinal): the error-table row above now
+  says ordinal 0, matching the code; the path is unreachable and `selectVerse` treats both alike.
