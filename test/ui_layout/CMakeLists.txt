@@ -144,3 +144,19 @@ target_link_libraries(HeaderLayoutTest PRIVATE
 )
 
 gtest_discover_tests(HeaderLayoutTest)
+
+add_executable(PreachingCardsTest
+  PreachingCardLayoutTest.cpp
+  ${REPO_ROOT}/src/activities/preaching/PreachingCardLayout.cpp
+)
+
+target_include_directories(PreachingCardsTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(PreachingCardsTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(PreachingCardsTest)
