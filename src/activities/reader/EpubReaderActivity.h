@@ -205,6 +205,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // Takes RenderLock itself, so no caller may hold one.
   void navigateTo(NavTarget target, ReturnPolicy policy = ReturnPolicy::Clear);
   void navigateToHref(const std::string& href, bool savePosition = false);
+  void openReference(const char* href);
+  std::optional<uint32_t> referencedVerseOffset(int spineIndex, const char* href);
   void restoreSavedPosition();
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
