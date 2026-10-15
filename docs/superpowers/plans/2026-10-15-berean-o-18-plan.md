@@ -52,13 +52,16 @@ $PIO run -e x4pro 2>&1 | tail -5
 Expected: `SUCCESS`. This is the baseline. If it fails before any edit, stop and report: the base is
 broken, not this task.
 
-Record the baseline warnings for the two preaching files you will touch:
+Record the baseline warnings for the whole build. A new warning can surface in a shared header the
+picker includes (`TagChipRow.h`, `TagChipGridActivity.h`), not only in the preaching files. Line
+and column numbers are stripped so that the lines step 3 inserts don't make an old warning look new.
+The clean build is once, here, so that every translation unit's warnings are captured:
 
 ```bash
 SCRATCH=/private/tmp/claude-501/-Volumes-stein--herdr-worktrees-berean-os-feature-preaching-topic-picker/3023fa9b-75fb-4550-9774-d73d1271b36c/scratchpad
 mkdir -p "$SCRATCH"
-touch src/activities/preaching/PreachingActivity.cpp
-$PIO run -e x4pro 2>&1 | grep -E "warning:" | grep -i preaching > "$SCRATCH/warnings-before.txt" || true
+$PIO run -e x4pro -t clean > /dev/null
+$PIO run -e x4pro 2>&1 | grep -E "warning:" | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort -u > "$SCRATCH/warnings-before.txt" || true
 wc -l "$SCRATCH/warnings-before.txt"
 ```
 
@@ -434,14 +437,18 @@ git commit -m "feat(preaching): open Elegir temas from Mis temas"
 ## Step 4 — No new warnings (3 min)
 
 ```bash
-touch src/activities/preaching/PreachingActivity.cpp src/activities/preaching/PreachingTopicPickerActivity.cpp
+$PIO run -e x4pro -t clean > /dev/null
 $PIO run -e x4pro 2>&1 | tee "$SCRATCH/build.log" | tail -3
-grep -E "warning:" "$SCRATCH/build.log" | grep -i preaching > "$SCRATCH/warnings-after.txt" || true
-diff "$SCRATCH/warnings-before.txt" "$SCRATCH/warnings-after.txt" && echo "no new preaching warnings"
+grep -E "warning:" "$SCRATCH/build.log" | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort -u > "$SCRATCH/warnings-after.txt" || true
+diff "$SCRATCH/warnings-before.txt" "$SCRATCH/warnings-after.txt" && echo "no new warnings"
 ```
 
-Expected: `SUCCESS` and "no new preaching warnings". On a new warning in one of the two files, fix
-it in place, rebuild, and commit with `fix(preaching): <the warning>`. Nothing to commit if clean.
+Expected: `SUCCESS` and "no new warnings". A line only in `warnings-after.txt` is new.
+- If it is in one of the four `FILES:` files, or caused by them, fix it in place, rebuild, and
+  commit with `fix(preaching): <the warning>`.
+- Otherwise report it.
+
+Nothing to commit if clean.
 
 ## Step 5 — Format the whole tree (2 min)
 
@@ -460,8 +467,9 @@ git add src/activities/preaching/PreachingTopicPickerActivity.h src/activities/p
 git commit -m "style: clang-format the Elegir temas picker"
 ```
 
-If it changed any other file, do not commit that file. Report it: it is a pre-existing format drift
-outside this task.
+If it changed any other file, that is pre-existing format drift outside this task. Do not commit
+that file. Restore it with `git checkout -- <file>` so the tree is clean for step 6, and report it
+in the hand-off so it can be filed with `hpipe discover`.
 
 Formatting changes no code, so no rebuild is needed (`CLAUDE.md`, Testing checklist 1).
 
@@ -502,4 +510,13 @@ git log --oneline -6
 ```
 
 The work ends here. The device checks in spec §Testing (1–8) are the owner's. List them in the
-hand-off as not run.
+hand-off as not run, together with one known gap the spec does not cover.
+
+**Sleep loses unsaved picks.**
+- If the device sleeps while the picker is open, from the power button or a timeout, the picker is
+  destroyed without saving, and no message is shown. `goToSleep` is a replace that runs only
+  `onExit`.
+- `TagPickerActivity` drops its selection on sleep the same way.
+- Saving in `onExit` was rejected: it would write to SD inside the `RenderLock` that the manager
+  holds there (`ActivityManager.cpp:141-151`; `goToSleep` at `:241-243`).
+- Ask the owner to confirm on the device that this is acceptable.
