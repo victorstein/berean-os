@@ -209,15 +209,13 @@ void PreachingActivity::openTopicPicker() { LOG_INF(MODULE, "Elegir temas is not
 
 void PreachingActivity::onTopicsChanged() {
   {
-    // The rows point into the palette's strings, which the reload replaces.
+    // The rows point into the palette's strings, and buildScreen reads the topics, both of which the
+    // reload replaces, so the render task is held off for the whole reload.
     RenderLock lock(*this);
     rowItems.clear();
     rowValues.clear();
-  }
-  session.reloadTopics();
-  if (tab == Tab::Topics) session.ensureCounts();
-  {
-    RenderLock lock(*this);
+    session.reloadTopics();
+    if (tab == Tab::Topics) session.ensureCounts();
     rebuildRows();
   }
   requestUpdate();
