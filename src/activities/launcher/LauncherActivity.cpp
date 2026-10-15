@@ -33,6 +33,7 @@
 #include "components/icons/bookmark.h"
 #include "components/icons/folder.h"
 #include "components/icons/library.h"
+#include "components/icons/preaching.h"
 #include "components/icons/search.h"
 #include "components/icons/settings2.h"
 #include "components/themes/BaseTheme.h"
@@ -353,6 +354,16 @@ void LauncherActivity::drawMeetings() const {
   }
 }
 
+void LauncherActivity::drawPreaching() const {
+  const Box& card = layout.preaching;
+  renderer.drawRoundedRect(card.x, card.y, card.width, card.height, isSelected(Target::Preaching) ? 3 : 1, RADIUS,
+                           true);
+  renderer.drawIcon(PreachingIcon, layout.preachingIcon.x, layout.preachingIcon.y, HomeLayout::ICON);
+  renderer.drawText(UI_10_FONT_ID, layout.preachingTitle.x, layout.preachingTitle.y, tr(STR_PREACHING), true,
+                    EpdFontFamily::BOLD);
+  drawTextIn(renderer, SMALL_FONT_ID, layout.preachingSubtitle, tr(STR_PREACHING_SUBTITLE), 0, true);
+}
+
 void LauncherActivity::drawIconTile(const Box& box, const uint8_t* icon, const char* label, const bool selected) const {
   renderer.drawRoundedRect(box.x, box.y, box.width, box.height, selected ? 3 : 1, RADIUS, true);
   renderer.drawIcon(icon, box.x + (box.width - HomeLayout::ICON) / 2, box.y + PAD, HomeLayout::ICON);
@@ -365,6 +376,7 @@ void LauncherActivity::render(RenderLock&&) {
   drawRecent();
   drawVerse();
   drawMeetings();
+  drawPreaching();
   drawIconTile(layout.icons[0], BookmarkIcon, tr(STR_TAGS), isSelected(Target::Tags));
   drawIconTile(layout.icons[1], SearchIcon, tr(STR_SEARCH), isSelected(Target::Search));
   drawIconTile(layout.icons[2], FolderIcon, tr(STR_PUBLICATIONS), isSelected(Target::Publications));
