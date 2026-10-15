@@ -1,5 +1,6 @@
 #include "PreachingShowLayout.h"
 
+#include <algorithm>
 #include <string_view>
 
 namespace preaching::show {
@@ -11,11 +12,10 @@ bool isBreak(const char c) { return c == ' ' || c == '\t' || c == '\n' || c == '
 
 // wrapText ends a line inside a word only when that word is wider than the column.
 bool splitsAWord(const std::string_view text, const std::vector<Span>& spans) {
-  for (const Span span : spans) {
+  return std::any_of(spans.begin(), spans.end(), [text](const Span span) {
     const size_t end = static_cast<size_t>(span.begin) + span.length;
-    if (end < text.size() && !isBreak(text[end])) return true;
-  }
-  return false;
+    return end < text.size() && !isBreak(text[end]);
+  });
 }
 
 struct RungMeasure {
