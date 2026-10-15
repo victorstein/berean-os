@@ -125,6 +125,10 @@ void PreachingTopicActivity::loop() {
     finishWithResult();
     return;
   }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    openShow(cursor.selected);
+    return;
+  }
 
   const auto touch = routeTouch(mappedInput);
   if (touch.routed && app.invalidated()) requestUpdate();

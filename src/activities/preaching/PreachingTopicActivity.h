@@ -14,10 +14,10 @@
 class PreachingSession;
 
 // A question or a tag topic as paged cards. Left/Right select Verse cards, turning the page at its
-// edge; a vertical swipe turns the page. Tapping a quote opens show mode, a reference opens the
-// Bible, and "Para la revisita" replaces the question in place. Back returns to the list with a
-// PreachingResult. Drawn with the renderer, with UiAppHost hit rects over the cards
-// (ClockOffsetActivity's shape).
+// edge; a vertical swipe turns the page. Tapping a quote, or Confirm on the selected Verse card,
+// opens show mode; a reference opens the Bible, and "Para la revisita" replaces the question in
+// place. Back returns to the list with a PreachingResult. Drawn with the renderer, with UiAppHost
+// hit rects over the cards (ClockOffsetActivity's shape).
 class PreachingTopicActivity final : public Activity, private UiAppHost {
  public:
   // A negative `startVerse` opens on the first page; otherwise on that Verse card, selected.

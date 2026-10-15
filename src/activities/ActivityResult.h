@@ -89,8 +89,8 @@ struct TagSelectionResult {
   std::vector<study::TagId> tagIds;
 };
 
-// The Predicación topic, and the Verse card within it, a screen ended on, for the screen beneath to
-// select.
+// The Verse card a Predicación screen ended on, for the screen beneath to select. The topic screen
+// also names its question or tag; show mode leaves `at.kind` None.
 struct PreachingResult {
   PreachingOrigin at;
 };

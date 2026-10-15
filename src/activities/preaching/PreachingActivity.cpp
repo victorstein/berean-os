@@ -27,7 +27,7 @@ constexpr const char* MODULE = "PREACH";
 
 using preaching::IntroSection::QUESTION_COUNT;
 
-// A topic opened from the list starts on its first page, with nothing selected.
+// A topic opened from the list starts on its first page, at the first Verse card that begins there.
 constexpr int NO_VERSE = -1;
 
 }  // namespace
