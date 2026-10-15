@@ -1,10 +1,12 @@
 #include "PreachingActivity.h"
 
+#include <Arduino.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <Preaching/IntroSection.h>
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <variant>
@@ -12,8 +14,10 @@
 #include "MappedInputManager.h"
 #include "PreachingContent.h"
 #include "PreachingTopicActivity.h"
+#include "PreachingTopicPickerActivity.h"
 #include "activities/PostedMessage.h"
 #include "components/UITheme.h"
+#include "study/StudyStore.h"
 
 namespace fui = freeink::ui;
 
@@ -205,7 +209,44 @@ void PreachingActivity::activateIndex(const int index) {
   }
 }
 
-void PreachingActivity::openTopicPicker() { LOG_INF(MODULE, "Elegir temas is not built yet"); }
+void PreachingActivity::openTopicPicker() {
+  app.clearTapFlash();
+  if (!session.hasBible()) {
+    reportOpenFailure(tr(STR_PREACHING_OPEN_FAILED));
+    return;
+  }
+  ensureStudyOpen();
+  auto picker = makeUniqueNoThrow<PreachingTopicPickerActivity>(renderer, mappedInput);
+  if (!picker) {
+    LOG_ERR(MODULE, "OOM: topic picker");
+    reportOpenFailure(tr(STR_PREACHING_OPEN_FAILED));
+    return;
+  }
+  startActivityForResult(std::move(picker), [this](const ActivityResult& result) { onTopicPickerResult(result); });
+}
+
+void PreachingActivity::ensureStudyOpen() {
+  const std::shared_ptr<Epub>& bible = session.book();
+  if (STUDY.canResumePublication(bible)) return;
+  // Safe to close whatever STUDY held: Predicación is entered only by a replace, so no reader is
+  // alive beneath it.
+  const unsigned long started = millis();
+  STUDY.openPublication(bible, renderer);
+  LOG_INF(MODULE, "Study opened for Elegir temas in %lu ms", millis() - started);
+  if (STUDY.saveDisabled()) LOG_ERR(MODULE, "Study store not read cleanly; retiring a tag is refused");
+}
+
+void PreachingActivity::onTopicPickerResult(const ActivityResult& result) {
+  const auto* picked = std::get_if<TagSelectionResult>(&result.data);
+  const std::vector<study::TagId>& shown = session.topics();
+  // The four-iterator form: the three-iterator one compares only the first list's length, so
+  // dropping the last pick would read as unchanged and Mis temas would keep showing it.
+  if (picked && std::is_permutation(picked->tagIds.begin(), picked->tagIds.end(), shown.begin(), shown.end())) {
+    return;
+  }
+  onTopicsChanged();
+  moveRingTo(listCount());
+}
 
 void PreachingActivity::onTopicsChanged() {
   {
