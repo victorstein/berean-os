@@ -138,7 +138,7 @@ struct Swipe {
 };
 
 // PassOn leaves the release to ReaderUtils::handleBackNavigation, which ignores the swipe and sends a
-// button Back Home.
+// button Back Home or to the file browser, as its settings say.
 enum class Action : uint8_t { PassOn, PopReturn, ToPreaching };
 
 constexpr Action decide(const Swipe& swipe) {
@@ -439,17 +439,16 @@ The `if (handleBackNavigation()) {` block that follows stays as it is.
 
 ### 5c. Build
 
-```bash
-~/.platformio/penv/bin/pio run -e x4pro 2>&1 | tail -20
-```
-
-Expected: `SUCCESS`. The first build in this worktree takes 3–4 minutes. Check for new warnings:
+One build, logged, so its compiler diagnostics survive (a second, incremental run compiles nothing
+and would hide them):
 
 ```bash
-~/.platformio/penv/bin/pio run -e x4pro 2>&1 | grep -n 'warning:' | grep -i 'reader/\(EpubReaderActivity\|ReaderBackSwipe\|VerseHref\)' || echo "no warnings in touched files"
+~/.platformio/penv/bin/pio run -e x4pro > build/pio-x4pro.log 2>&1; echo "rc=$?"; tail -5 build/pio-x4pro.log
+grep -n 'warning:' build/pio-x4pro.log | grep -i 'reader/\(EpubReaderActivity\|ReaderBackSwipe\|VerseHref\)' || echo "no warnings in touched files"
 ```
 
-Expected: `no warnings in touched files`.
+Expected: `rc=0`, `SUCCESS` in the tail, then `no warnings in touched files`. The first build in this
+worktree takes 3–4 minutes. Do not re-run the build to "check again".
 
 Commit: `git add src/activities/reader/EpubReaderActivity.h src/activities/reader/EpubReaderActivity.cpp`
 
@@ -560,11 +559,12 @@ Notes for the implementer (do not put these in the code):
 ### 6c. Build
 
 ```bash
-~/.platformio/penv/bin/pio run -e x4pro 2>&1 | tail -20
-~/.platformio/penv/bin/pio run -e x4pro 2>&1 | grep -n 'warning:' | grep -i 'reader/\(EpubReaderActivity\|ReaderBackSwipe\|VerseHref\)' || echo "no warnings in touched files"
+~/.platformio/penv/bin/pio run -e x4pro > build/pio-x4pro.log 2>&1; echo "rc=$?"; tail -5 build/pio-x4pro.log
+grep -n 'warning:' build/pio-x4pro.log | grep -i 'reader/\(EpubReaderActivity\|ReaderBackSwipe\|VerseHref\)' || echo "no warnings in touched files"
 ```
 
-Expected: `SUCCESS`, then `no warnings in touched files`.
+Expected: `rc=0`, `SUCCESS` in the tail, then `no warnings in touched files`. This is the build
+after the last code edit; its log is the one that counts.
 
 Commit: `git add src/activities/reader/EpubReaderActivity.h src/activities/reader/EpubReaderActivity.cpp`
 
@@ -593,12 +593,13 @@ Replace exactly:
 with:
 
 ```cpp
-  // This handler never exits on the left-edge swipe: in swipe page-turn mode a
-  // right swipe must page back instead. Home remains available through the
-  // board's dedicated Home gesture/key. The Epub reader decides the swipe
-  // before this, to return through its ReturnStack or to the Predicación card
-  // it was opened from (ReaderBackSwipe.h). Back swipes stay available in menus
-  // and other activities. Physical Back buttons are unaffected: isPressed() is
+  // This handler never exits on the left-edge swipe, so that in swipe page-turn
+  // mode a right swipe can page back. The Epub reader decides the swipe before
+  // this: it returns through its ReturnStack or, once that is empty, to the
+  // Predicación card it was opened from, which takes a short left-quarter swipe
+  // even in swipe mode (ReaderBackSwipe.h). Home remains available through the
+  // board's dedicated Home gesture/key. Back swipes stay available in menus and
+  // other activities. Physical Back buttons are unaffected: isPressed() is
   // button-only, and this guard skips just the gesture's own release frame.
 ```
 
@@ -618,8 +619,9 @@ with:
 ```cpp
   // Back -- the left-edge swipe or a held Left key -- returns through this ring.
   // Once it empties, Back leaves for Predicación if the reader was opened from
-  // there; otherwise the swipe goes inert and a held Left goes Home. Either way
-  // an evicted entry strands the reader mid-chain rather than costing one step.
+  // there; otherwise the swipe goes inert and a held Left leaves the book, as it
+  // always has. Either way an evicted entry strands the reader mid-chain rather
+  // than costing one step.
   // At 8 bytes a slot, buying the boundary well past any chain a study session
   // walks is the cheap side of that trade.
 ```
