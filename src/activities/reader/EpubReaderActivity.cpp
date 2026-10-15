@@ -699,11 +699,11 @@ void EpubReaderActivity::loop() {
 
   // getHeldTime() can clear the touch held-time override, so it stays behind wasReleased(Back), which
   // sets it for a swipe in this same frame.
-  const auto backSwipe = ReaderBackSwipe::decide(
-      {.shortBackRelease = mappedInput.wasReleased(MappedInputManager::Button::Back) &&
-                           mappedInput.getHeldTime() < ReaderUtils::GO_BACK_OR_HOME_MS,
-       .returnDepth = returnStack.count(),
-       .hasOrigin = preachingOrigin.isSet()});
+  const auto backSwipe =
+      ReaderBackSwipe::decide({.shortBackRelease = mappedInput.wasReleased(MappedInputManager::Button::Back) &&
+                                                   mappedInput.getHeldTime() < ReaderUtils::GO_BACK_OR_HOME_MS,
+                               .returnDepth = returnStack.count(),
+                               .hasOrigin = preachingOrigin.isSet()});
   if (backSwipe == ReaderBackSwipe::Action::PopReturn) {
     restoreSavedPosition();
     return;

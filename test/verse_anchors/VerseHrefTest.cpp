@@ -26,9 +26,7 @@ TEST(VerseHrefParse, ReadsTheLongestReferenceInTheSection) {
 
 TEST(VerseHrefParse, ReadsASameFileFragment) { expectVerse("#chapter3_verse16", 3, 16); }
 
-TEST(VerseHrefParse, AcceptsTheLargestUint16Numbers) {
-  expectVerse("x.xhtml#chapter65535_verse65535", 65535, 65535);
-}
+TEST(VerseHrefParse, AcceptsTheLargestUint16Numbers) { expectVerse("x.xhtml#chapter65535_verse65535", 65535, 65535); }
 
 TEST(VerseHrefParse, RefusesAnHrefWithNoVerse) {
   EXPECT_FALSE(VerseHref::parse("1001061123-split83.xhtml").has_value());
