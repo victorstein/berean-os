@@ -703,9 +703,12 @@ TEST_F(PreachingPassagesIo, UnreadableFilesAreUnreadable) {
     EXPECT_TRUE(counts.empty()) << contents;
   }
 
+  std::vector<PreachingPassages::TagCount> counts;
+  storage_fake::putFile(BIBLE, std::string(study::PassageDoc::SAVE_BYTE_BUDGET + 4096 + 1, ' '));
+  EXPECT_EQ(PreachingPassages::countByTag({tag(3)}, nullptr, counts), Status::Unreadable);
+
   putBible(R"({"u":"v:1:1:1:0","s":10,"r":"R1","t":[3]})");
   storage_fake::failReadsOf(BIBLE);
-  std::vector<PreachingPassages::TagCount> counts;
   EXPECT_EQ(PreachingPassages::countByTag({tag(3)}, nullptr, counts), Status::Unreadable);
 }
 
@@ -1006,19 +1009,27 @@ In `test/storage_io/PreachingPassagesTest.cpp`, insert just before the final `} 
 ```cpp
 void* failingTextAllocate(size_t) { return nullptr; }
 
+// "Ref 1" is Matthew at spine 5: spine, not book, puts it before Genesis. The two
+// "Tie" rows share a key and must keep file order.
 TEST_F(PreachingPassagesIo, ATagsPassagesComeInBibleOrder) {
-  putBible(R"({"u":"v:40:1:2:0","s":40,"r":"Ref 3","w":"third","t":[7]},)"
-           R"({"u":"v:1:1:1:0","s":12,"r":"Ref 1","w":"first","t":[7]},)"
-           R"({"u":"v:40:1:1:0","s":40,"r":"Ref 2","w":"second","t":[7]})");
+  putBible(R"({"u":"v:40:1:2:0","s":40,"r":"Ref 4","w":"fourth","t":[7]},)"
+           R"({"u":"v:50:1:1:0","s":60,"r":"Tie A","w":"a","t":[7]},)"
+           R"({"u":"v:40:5:1:0","s":5,"r":"Ref 1","w":"first","t":[7]},)"
+           R"({"u":"v:1:1:1:0","s":12,"r":"Ref 2","w":"second","t":[7]},)"
+           R"({"u":"v:50:1:1:0","s":60,"r":"Tie B","w":"b","t":[7]},)"
+           R"({"u":"v:40:1:1:0","s":40,"r":"Ref 3","w":"third","t":[7]})");
   std::vector<PreachingPassages::Passage> passages;
   ASSERT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages), Status::Ok);
-  ASSERT_EQ(passages.size(), 3u);
+  ASSERT_EQ(passages.size(), 6u);
   EXPECT_EQ(passages[0].reference, "Ref 1");
   EXPECT_EQ(passages[1].reference, "Ref 2");
   EXPECT_EQ(passages[2].reference, "Ref 3");
-  EXPECT_EQ(passages[0].spine, 12);
-  EXPECT_EQ(passages[0].start, (study::Unit{study::UnitKind::Verse, 1, 1, 1, 0}));
-  EXPECT_EQ(passages[2].text.view(), "third");
+  EXPECT_EQ(passages[3].reference, "Ref 4");
+  EXPECT_EQ(passages[4].reference, "Tie A");
+  EXPECT_EQ(passages[5].reference, "Tie B");
+  EXPECT_EQ(passages[1].spine, 12);
+  EXPECT_EQ(passages[1].start, (study::Unit{study::UnitKind::Verse, 1, 1, 1, 0}));
+  EXPECT_EQ(passages[3].text.view(), "fourth");
 }
 
 TEST_F(PreachingPassagesIo, ATextFallsBackToTheSnippet) {
@@ -1232,8 +1243,10 @@ them: `git checkout -- <those files>`, and report them.
 grep -nE "warning:.*(Preaching|SdPaths)" /tmp/berean-o-15-pio.log
 ```
 
-Expect `SUCCESS`, and no `grep` output: no warning in this task's files. Record the `Flash:` line
-from the output, for A11's flash delta. If a warning names this task's files, fix it, re-run the
+Expect `SUCCESS`, and no `grep` output: no warning in this task's files. Record the firmware size
+from the output as a **baseline only**. Nothing calls these functions until T3, so the linker drops
+them, and this build cannot show A11's flash cost. T3's build, compared against this baseline, is
+where that cost shows. If a warning names this task's files, fix it, re-run the
 host tests and this build, and commit as `fix(preaching): …`.
 
 Do not run two `pio run` processes at once in this project.
