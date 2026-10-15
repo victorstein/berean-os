@@ -24,8 +24,6 @@ inline constexpr int ICON = 32;
 // Between the verse card's label, text box and reference.
 inline constexpr int CARD_GAP = 4;
 inline constexpr int RADIUS = 8;
-// Below this the hero's cover is a sliver above its plate.
-inline constexpr int MIN_HERO_ART = 96;
 inline constexpr int RECENT_SLOTS = 3;
 inline constexpr int VERSE_TEXT_LINES = 3;
 inline constexpr int STRIP_CELLS = 7;
@@ -78,6 +76,10 @@ struct Layout {
   Box strip;
   int stripCell = 0;
   Box meetingsRange;
+  Box preaching;
+  Box preachingIcon;
+  Box preachingTitle;
+  Box preachingSubtitle;
   Box icons[ICON_TILES];
 };
 
@@ -94,6 +96,10 @@ constexpr int stripCellWidth(const TextWidths& widths) {
 // foot, so the meeting-day dots never sit over the range text.
 constexpr int meetingsHeight(const LineHeights& lines) {
   return PAD + std::max(lines.ui10 + lines.small, stripHeight(lines)) + lines.small + PAD;
+}
+
+constexpr int preachingHeight(const LineHeights& lines) {
+  return PAD + std::max(ICON, lines.ui10 + lines.small) + PAD;
 }
 
 constexpr int verseTextHeight(const LineHeights& lines) { return VERSE_TEXT_LINES * lines.serif12; }
@@ -115,9 +121,9 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
   const int gap = metrics.verticalSpacing;
   const int top = insets.top + metrics.topPadding + PAD;
   const int bottom = screenHeight - insets.bottom - metrics.topPadding;
-  const int fixed =
-      recentHeight(metrics, lines) + verseCardHeight(lines) + meetingsHeight(lines) + iconRowHeight(lines);
-  const int heroHeight = bottom - top - fixed - 4 * gap;
+  const int fixed = recentHeight(metrics, lines) + verseCardHeight(lines) + meetingsHeight(lines) +
+                    preachingHeight(lines) + iconRowHeight(lines);
+  const int heroHeight = bottom - top - fixed - 5 * gap;
 
   Layout out{};
   // The masthead band's left edge and width, so the hero asks CoverBand for the
@@ -162,6 +168,13 @@ constexpr Layout compute(const int screenWidth, const int screenHeight, const In
   out.meetingsPercent = Box{textX, bottomOf(out.meetingsTitle), textWidth, lines.small};
   out.meetingsRange = Box{left + PAD, bottomOf(out.strip), width - 2 * PAD, lines.small};
   y += meetingsHeight(lines) + gap;
+
+  out.preaching = Box{left, y, width, preachingHeight(lines)};
+  out.preachingIcon = Box{left + PAD, y + PAD, ICON, ICON};
+  const int preachingTextWidth = left + width - PAD - textX;
+  out.preachingTitle = Box{textX, y + PAD, preachingTextWidth, lines.ui10};
+  out.preachingSubtitle = Box{textX, bottomOf(out.preachingTitle), preachingTextWidth, lines.small};
+  y += preachingHeight(lines) + gap;
 
   const int tileWidth = (width - (ICON_TILES - 1) * PAD) / ICON_TILES;
   for (int i = 0; i < ICON_TILES; ++i) {
