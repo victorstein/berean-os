@@ -17,6 +17,7 @@ enum class Target : uint8_t {
   Recent2,
   Verse,
   Meetings,
+  Preaching,
   Tags,
   Search,
   Publications,
@@ -24,7 +25,15 @@ enum class Target : uint8_t {
   COUNT
 };
 
-enum class Action : uint8_t { None, OpenReader, DownloadBible, OpenMeetings, OpenPublications, OpenSettings };
+enum class Action : uint8_t {
+  None,
+  OpenReader,
+  DownloadBible,
+  OpenMeetings,
+  OpenPreaching,
+  OpenPublications,
+  OpenSettings
+};
 
 struct State {
   bool hasBible = false;
@@ -64,6 +73,8 @@ constexpr Route route(const Target target, const State& state) {
       return state.hasBible && state.hasPick ? reader(Kind::OpenAt) : Route{};
     case Target::Meetings:
       return Route{Action::OpenMeetings};
+    case Target::Preaching:
+      return state.hasBible ? Route{Action::OpenPreaching} : Route{Action::DownloadBible};
     case Target::Tags:
       return state.hasBible ? reader(Kind::Tags) : Route{Action::DownloadBible};
     case Target::Search:
