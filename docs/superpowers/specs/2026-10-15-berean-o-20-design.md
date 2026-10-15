@@ -29,6 +29,9 @@ Review: `docs/superpowers/reviews/berean-o-20-spec-review-0.md` (BLOCKER 1, MINO
 - **MINOR 3** — the "no new side effect" argument no longer calls `getHeldTime()` a const read
   (it writes the mutable `touchHeldOverrideValid`, `src/MappedInputManager.cpp:283`); see "The swipe".
 - Device check 6 now checks the verse is on screen, not that a log line is absent.
+- **Decision d1 (answered, orchestrator):** the offset route is approved; the goal stays "open at that
+  verse", only the mechanism changes. The answer asked for the lock at the `stream` call to be
+  checked — see A15. It also widens this task's files to `test/verse_anchors/` (for the plan).
 
 ## Problem
 
@@ -73,8 +76,8 @@ verse jump in the reader already uses — the verse grid (`BibleNavigationActivi
 `EpubReaderActivity.cpp:1030-1032`), search (`:1047`) and `Route::Locate` (`:1119`) all navigate by
 `offsetJump`. The alternative, recording verse span ids in `ChapterHtmlSlimParser`, is `lib/Epub`
 (epub-dev's surface), needs a `SECTION_FILE_VERSION` bump that invalidates every cached section, and
-grows the anchor map. The worker raises this with `hpipe decide --task t7`, recommending the offset
-route.
+grows the anchor map. Raised as decision d1 and approved by the orchestrator: the offset route, all
+inside `src/activities/reader/`, no change to `ChapterHtmlSlimParser` or `SECTION_FILE_VERSION`.
 
 ## Architecture
 
@@ -329,6 +332,15 @@ member with it. Nothing writes `ReaderEntryIntent` or `PreachingOrigin` to any s
 - **A13 — `goToPreaching` failing (OOM) leaves the reader on screen.** It logs and returns without
   replacing (`ActivityManager.cpp:232-239`); the next swipe retries. No message, as every other
   `goTo*` OOM path there.
+- **A15 — `stream` runs with no render lock held, so `WhenMissing::Inflate` is safe.** The render
+  lock is a plain FreeRTOS mutex and `Inflate` takes it for the popup (`SpineHtmlStream.h:27-34`), so
+  a caller holding it must pass `Fail`. `onBookLoaded` holds none: `ActivityManager::loop` releases
+  its lock before `onEnter` (`ActivityManager.cpp:160-161`; the first activity is entered with no
+  lock at `:194-195`); `ReaderActivity::onEnter` takes none around `loadBook()` and `onBookLoaded()`
+  (`ReaderActivity.cpp:42-67` — its only locks are at `:88` and `:195`, in other methods); and
+  `loadBook`'s own scoped locks end when it returns. `openReference` must therefore not be called
+  from inside a `RenderLock` scope; the plan keeps it a direct statement of the `Route::Href` case,
+  outside any lock, as `Route::Locate`'s `locatePlace` is.
 - **A14 — Place recording is untouched (D9).** `navigateTo` from `onBookLoaded` records nothing
   before `pageShown` (`EpubReaderActivity.h:61-64`); leaving for Predicación records as leaving for
   Home does.
