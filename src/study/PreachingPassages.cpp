@@ -6,10 +6,12 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <SdPaths.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <cstdio>
 #include <optional>
+#include <utility>
 
 #include "StudyStore/PubKey.h"
 
@@ -109,6 +111,51 @@ RowTags rowTags(const JsonVariantConst row) {
   return tags;
 }
 
+// As PassageDoc::fromJson and StudyPassageScan read "s": absent, or past UINT16_MAX, is 0.
+uint16_t spineHint(const JsonVariantConst row) {
+  const uint32_t raw = row["s"] | 0u;
+  return raw <= UINT16_MAX ? static_cast<uint16_t>(raw) : 0;
+}
+
+// Separate from passagesWithTag so the parse document is released before the sort.
+Status collectPassages(const study::TagId tag, const study::PassageDoc::Allocators& allocators,
+                       std::vector<Passage>& out, uint32_t& rowsSeen) {
+  JsonDocument filter;
+  filter["v"] = true;
+  for (const char* key : {"u", "s", "x", "w", "r", "t"}) filter["p"][0][key] = true;
+
+  JsonDocument doc = newDocument(allocators.json);
+  const Status status = readFiltered(doc, filter);
+  if (status != Status::Ok) return status;
+
+  const JsonArrayConst rows = doc["p"].as<JsonArrayConst>();
+  size_t matching = 0;
+  for (const JsonVariantConst row : rows) {
+    ++rowsSeen;
+    if (rowStart(row) && rowTags(row).carries(tag)) ++matching;
+  }
+  out.reserve(matching);
+
+  for (const JsonVariantConst row : rows) {
+    const std::optional<study::Unit> start = rowStart(row);
+    if (!start || !rowTags(row).carries(tag)) continue;
+
+    Passage passage{utf8SafeSummary(row["r"] | "", study::PassageDoc::MAX_REFERENCE_BYTES),
+                    study::PassageText(allocators.text), *start, spineHint(row)};
+    const char* whole = row["w"] | "";
+    const bool assigned = whole[0] != '\0'
+                              ? passage.text.assign(whole)
+                              : passage.text.assign(utf8SafeSummary(row["x"] | "", study::PassageDoc::MAX_SNIPPET_BYTES));
+    if (!assigned) {
+      LOG_ERR(MODULE, "OOM: passage text for tag %u", static_cast<unsigned>(study::toRaw(tag)));
+      out.clear();
+      return Status::OutOfMemory;
+    }
+    out.push_back(std::move(passage));
+  }
+  return Status::Ok;
+}
+
 }  // namespace
 
 Status countByTag(const std::vector<study::TagId>& tags, ArduinoJson::Allocator* json, std::vector<TagCount>& out) {
@@ -140,9 +187,23 @@ Status countByTag(const std::vector<study::TagId>& tags, ArduinoJson::Allocator*
   return Status::Ok;
 }
 
-Status passagesWithTag(study::TagId, const study::PassageDoc::Allocators&, std::vector<Passage>& out) {
+Status passagesWithTag(const study::TagId tag, const study::PassageDoc::Allocators& allocators,
+                       std::vector<Passage>& out) {
   out.clear();
-  return Status::Unreadable;
+  [[maybe_unused]] const unsigned long started = millis();
+  [[maybe_unused]] uint32_t rowsSeen = 0;
+  const Status status = collectPassages(tag, allocators, out, rowsSeen);
+  if (status != Status::Ok) return status;
+
+  // One key, spine then Unit: ordering verses by Unit and the rest by spine is not
+  // transitive when the file mixes two editions' spine hints.
+  std::stable_sort(out.begin(), out.end(), [](const Passage& a, const Passage& b) {
+    if (a.spine != b.spine) return a.spine < b.spine;
+    return a.start < b.start;
+  });
+  LOG_INF(MODULE, "Tag %u: %u of %u rows, %lu ms", static_cast<unsigned>(study::toRaw(tag)),
+          static_cast<unsigned>(out.size()), static_cast<unsigned>(rowsSeen), millis() - started);
+  return Status::Ok;
 }
 
 }  // namespace PreachingPassages

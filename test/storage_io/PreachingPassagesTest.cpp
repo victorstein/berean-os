@@ -117,4 +117,90 @@ TEST_F(PreachingPassagesIo, CountsNeverWriteOrAdoptATemp) {
   EXPECT_EQ(storage_fake::fileBytes(BIBLE), before);
 }
 
+void* failingTextAllocate(size_t) { return nullptr; }
+
+// "Ref 1" is Matthew at spine 5: spine, not book, puts it before Genesis. The two
+// "Tie" rows share a key and must keep file order.
+TEST_F(PreachingPassagesIo, ATagsPassagesComeInBibleOrder) {
+  putBible(R"({"u":"v:40:1:2:0","s":40,"r":"Ref 4","w":"fourth","t":[7]},)"
+           R"({"u":"v:50:1:1:0","s":60,"r":"Tie A","w":"a","t":[7]},)"
+           R"({"u":"v:40:5:1:0","s":5,"r":"Ref 1","w":"first","t":[7]},)"
+           R"({"u":"v:1:1:1:0","s":12,"r":"Ref 2","w":"second","t":[7]},)"
+           R"({"u":"v:50:1:1:0","s":60,"r":"Tie B","w":"b","t":[7]},)"
+           R"({"u":"v:40:1:1:0","s":40,"r":"Ref 3","w":"third","t":[7]})");
+  std::vector<PreachingPassages::Passage> passages;
+  ASSERT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages), Status::Ok);
+  ASSERT_EQ(passages.size(), 6u);
+  EXPECT_EQ(passages[0].reference, "Ref 1");
+  EXPECT_EQ(passages[1].reference, "Ref 2");
+  EXPECT_EQ(passages[2].reference, "Ref 3");
+  EXPECT_EQ(passages[3].reference, "Ref 4");
+  EXPECT_EQ(passages[4].reference, "Tie A");
+  EXPECT_EQ(passages[5].reference, "Tie B");
+  EXPECT_EQ(passages[1].spine, 12);
+  EXPECT_EQ(passages[1].start, (study::Unit{study::UnitKind::Verse, 1, 1, 1, 0}));
+  EXPECT_EQ(passages[3].text.view(), "fourth");
+}
+
+TEST_F(PreachingPassagesIo, ATextFallsBackToTheSnippet) {
+  putBible(R"({"u":"v:1:1:1:0","s":12,"r":"Whole","x":"short","w":"the whole text","t":[7]},)"
+           R"({"u":"v:1:1:2:0","s":12,"r":"Legacy","x":"snippet only","t":[7]},)"
+           R"({"u":"v:1:1:3:0","s":12,"r":"Bare","t":[7]})");
+  std::vector<PreachingPassages::Passage> passages;
+  ASSERT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages), Status::Ok);
+  ASSERT_EQ(passages.size(), 3u);
+  EXPECT_EQ(passages[0].text.view(), "the whole text");
+  EXPECT_EQ(passages[1].text.view(), "snippet only");
+  EXPECT_EQ(passages[2].text.view(), "");
+  EXPECT_EQ(passages[2].reference, "Bare");
+}
+
+TEST_F(PreachingPassagesIo, OnlyPassagesCarryingTheTagAreReturned) {
+  putBible(R"({"u":"v:1:1:1:0","s":12,"r":"Mine","w":"a","t":[3,7]},)"
+           R"({"u":"v:1:1:2:0","s":12,"r":"Other","w":"b","t":[3]},)"
+           R"({"u":"garbage","s":12,"r":"Unaddressable","w":"c","t":[7]})");
+  std::vector<PreachingPassages::Passage> passages;
+  ASSERT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages), Status::Ok);
+  ASSERT_EQ(passages.size(), 1u);
+  EXPECT_EQ(passages[0].reference, "Mine");
+
+  ASSERT_EQ(PreachingPassages::passagesWithTag(tag(9), study::PassageDoc::Allocators{}, passages), Status::Ok);
+  EXPECT_TRUE(passages.empty());
+}
+
+TEST_F(PreachingPassagesIo, ATagsPassagesReportMissingAndUnreadable) {
+  std::vector<PreachingPassages::Passage> passages;
+  EXPECT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages), Status::Missing);
+  EXPECT_TRUE(passages.empty());
+
+  storage_fake::putFile(BIBLE, R"({"v":5,"p":[]})");
+  EXPECT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages),
+            Status::Unreadable);
+  EXPECT_TRUE(passages.empty());
+}
+
+TEST_F(PreachingPassagesIo, ATagsPassagesOutOfMemoryIsReported) {
+  putBible(R"({"u":"v:1:1:1:0","s":12,"r":"R","w":"text","t":[7]})");
+  std::vector<PreachingPassages::Passage> passages;
+
+  CountdownJsonAllocator exhausted;
+  exhausted.remaining = 0;
+  const study::PassageDoc::Allocators noJson{study::defaultTextAllocator(), &exhausted};
+  EXPECT_EQ(PreachingPassages::passagesWithTag(tag(7), noJson, passages), Status::OutOfMemory);
+  EXPECT_TRUE(passages.empty());
+
+  const study::PassageDoc::Allocators noText{study::TextAllocator{failingTextAllocate, study::freeText}, nullptr};
+  EXPECT_EQ(PreachingPassages::passagesWithTag(tag(7), noText, passages), Status::OutOfMemory);
+  EXPECT_TRUE(passages.empty());
+}
+
+TEST_F(PreachingPassagesIo, ATagsPassagesNeverWriteTheFile) {
+  putBible(R"({"u":"v:1:1:1:0","s":12,"r":"R","w":"text","t":[7]})");
+  const auto before = storage_fake::fileBytes(BIBLE);
+  std::vector<PreachingPassages::Passage> passages;
+  EXPECT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages), Status::Ok);
+  EXPECT_EQ(storage_fake::fileBytes(BIBLE), before);
+  EXPECT_FALSE(storage_fake::fileBytes(BIBLE + ".tmp").has_value());
+}
+
 }  // namespace
