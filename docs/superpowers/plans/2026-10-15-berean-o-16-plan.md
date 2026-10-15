@@ -5,10 +5,22 @@ Spec: `docs/superpowers/specs/2026-10-15-berean-o-16-design.md` (cleared review 
 cut from `batch/20261015-predicaci-n-193x`.
 
 Every line of code below was built and run before this plan was written: the host suites passed
-(`PreachingCardsTest` 21 tests, `ReaderEntryIntentTest` 11, `HomeLayoutTest` 42), `pio run -e x4pro`
-succeeded with no warning from `src/`, and the code is shown as `./bin/clang-format-fix` left it. A replay of
-this plan's file steps onto the base reproduced that tree byte for byte. Copy it
+(`PreachingCardsTest` 22 tests, `ReaderEntryIntentTest` 11, `HomeLayoutTest` 42), `pio run -e x4pro`
+succeeded with no warning from `src/`, and `./bin/clang-format-fix` left it unchanged. Copy it
 exactly; if a step's result differs from what the step says, stop and find out why before going on.
+
+## Changes after plan review 0
+
+Review: `docs/superpowers/reviews/berean-o-16-plan-review-0.md` (CLEAR, 1 MAJOR, 3 MINOR). All applied,
+re-verified (host suites and `pio run`) and replayed:
+
+- **M1** — a topic opened from the list, and the "Para la revisita" swap, start on page 0 with
+  nothing selected (`NO_VERSE`, `atPage`), so the title and opening prose are never skipped; only a
+  return from the Bible jumps to its card. New nav test `AFreshOpenStartsOnTheFirstPage` (22 tests).
+- **m1** — `onTopicsChanged` empties the rows under the lock before the palette is reloaded.
+- **m2** — the hand-off restores the cold-slot and tap-to-page checks and says how to seed Mis temas.
+- **m3** — `openQuestion`/`openTag`/`pushTopic` return whether they pushed; a tag origin that fails
+  to open runs the deferred counts.
 
 ## Rules for whoever carries this out
 
@@ -1063,6 +1075,12 @@ TEST(PreachingCardNav, SelectingAVerseShowsItsPage) {
   EXPECT_TRUE(sameCursor(preaching::selectVerse(layout, 9), {0, 0}));
   EXPECT_TRUE(sameCursor(preaching::selectVerse(layout, -1), {0, 0}));
 }
+
+TEST(PreachingCardNav, AFreshOpenStartsOnTheFirstPage) {
+  const Layout layout = pagesWithVerses(3, {1, 2});
+  EXPECT_TRUE(sameCursor(preaching::atPage(layout, 0), {0, -1}));
+  EXPECT_TRUE(sameCursor(preaching::selectVerse(layout, 0), {1, 0}));
+}
 EOF_FILE
 ```
 
@@ -1175,7 +1193,7 @@ EOF_FILE
 
 ```bash
 cmake -S test -B build/test >/dev/null && cmake --build build/test --target PreachingCardsTest -j8
-build/test/ui_layout/PreachingCardsTest   # 21 tests pass
+build/test/ui_layout/PreachingCardsTest   # 22 tests pass
 ```
 
 ```bash
@@ -1755,6 +1773,7 @@ class PreachingSession;
 // (ClockOffsetActivity's shape).
 class PreachingTopicActivity final : public Activity, private UiAppHost {
  public:
+  // A negative `startVerse` opens on the first page; otherwise on that Verse card, selected.
   PreachingTopicActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const PreachingSession& session,
                          std::unique_ptr<TopicCards> cards, int startVerse);
 
@@ -1891,7 +1910,7 @@ void PreachingTopicActivity::onEnter() {
     finishWithResult();
     return;
   }
-  cursor = preaching::selectVerse(*layout, startVerse);
+  cursor = startVerse < 0 ? preaching::atPage(*layout, 0) : preaching::selectVerse(*layout, startVerse);
 
   resetUi();
   app.on(ACTION_QUOTE, &PreachingTopicActivity::onQuoteTapped, this);
@@ -2044,7 +2063,7 @@ void PreachingTopicActivity::openNextQuestion() {
     RenderLock lock(*this);
     std::swap(topic, cards);
     std::swap(layout, nextLayout);
-    cursor = preaching::selectVerse(*layout, 0);
+    cursor = preaching::atPage(*layout, 0);
   }
   app.clearTapFlash();
   halfRefreshPending = true;
@@ -2234,9 +2253,11 @@ class PreachingActivity final : public UiTabListActivity {
   // The caller holds the RenderLock: buildScreen reads the rows on the render task.
   void rebuildRows();
   void seedSelection();
-  void openQuestion(int question, int verse);
-  void openTag(study::TagId tag, int verse);
-  void pushTopic(std::unique_ptr<TopicCards> cards, int verse);
+  // False when the topic could not be opened; the failure has been reported. A negative `verse`
+  // opens the topic on its first page.
+  bool openQuestion(int question, int verse);
+  bool openTag(study::TagId tag, int verse);
+  bool pushTopic(std::unique_ptr<TopicCards> cards, int verse);
   void reportOpenFailure(const char* message);
   void onTopicResult(const ActivityResult& result);
 
@@ -2277,6 +2298,9 @@ constexpr const char* MODULE = "PREACH";
 
 using preaching::IntroSection::QUESTION_COUNT;
 
+// A topic opened from the list starts on its first page, with nothing selected.
+constexpr int NO_VERSE = -1;
+
 }  // namespace
 
 PreachingActivity::PreachingActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -2301,8 +2325,11 @@ void PreachingActivity::onEnter() {
 
   if (origin.kind == PreachingOrigin::Kind::Question) {
     openQuestion(origin.question, origin.verse);
-  } else if (origin.kind == PreachingOrigin::Kind::Tag) {
-    openTag(study::toTagId(origin.tag), origin.verse);
+  } else if (origin.kind == PreachingOrigin::Kind::Tag && !openTag(study::toTagId(origin.tag), origin.verse)) {
+    // No topic result will come to run the deferred counts.
+    session.ensureCounts();
+    RenderLock lock(*this);
+    rebuildRows();
   }
 }
 
@@ -2442,20 +2469,26 @@ void PreachingActivity::buildScreen(UiScreen& screen) {
 void PreachingActivity::activateIndex(const int index) {
   app.clearTapFlash();
   if (tab == Tab::Questions) {
-    openQuestion(index + 1, 0);
+    openQuestion(index + 1, NO_VERSE);
     return;
   }
   const auto& topics = session.topics();
   if (index == static_cast<int>(topics.size())) {
     openTopicPicker();
   } else if (index >= 0 && index < static_cast<int>(topics.size())) {
-    openTag(topics[static_cast<size_t>(index)], 0);
+    openTag(topics[static_cast<size_t>(index)], NO_VERSE);
   }
 }
 
 void PreachingActivity::openTopicPicker() { LOG_INF(MODULE, "Elegir temas is not built yet"); }
 
 void PreachingActivity::onTopicsChanged() {
+  {
+    // The rows point into the palette's strings, which the reload replaces.
+    RenderLock lock(*this);
+    rowItems.clear();
+    rowValues.clear();
+  }
   session.reloadTopics();
   if (tab == Tab::Topics) session.ensureCounts();
   {
@@ -2470,44 +2503,45 @@ void PreachingActivity::reportOpenFailure(const char* message) {
   requestUpdate();
 }
 
-void PreachingActivity::openQuestion(const int question, const int verse) {
+bool PreachingActivity::openQuestion(const int question, const int verse) {
   auto cards = makeUniqueNoThrow<TopicCards>();
   if (!cards) {
     LOG_ERR(MODULE, "OOM: question %d", question);
     reportOpenFailure(tr(STR_PREACHING_OPEN_FAILED));
-    return;
+    return false;
   }
   const auto result = PreachingContent::loadQuestion(session, renderer, question, *cards);
   if (result != PreachingContent::LoadResult::Ok) {
     reportOpenFailure(PreachingContent::failureMessage(result));
-    return;
+    return false;
   }
-  pushTopic(std::move(cards), verse);
+  return pushTopic(std::move(cards), verse);
 }
 
-void PreachingActivity::openTag(const study::TagId tag, const int verse) {
+bool PreachingActivity::openTag(const study::TagId tag, const int verse) {
   auto cards = makeUniqueNoThrow<TopicCards>();
   if (!cards) {
     LOG_ERR(MODULE, "OOM: tag %u", static_cast<unsigned>(study::toRaw(tag)));
     reportOpenFailure(tr(STR_PREACHING_OPEN_FAILED));
-    return;
+    return false;
   }
   const auto result = PreachingContent::loadTag(session, tag, *cards);
   if (result != PreachingContent::LoadResult::Ok) {
     reportOpenFailure(PreachingContent::failureMessage(result));
-    return;
+    return false;
   }
-  pushTopic(std::move(cards), verse);
+  return pushTopic(std::move(cards), verse);
 }
 
-void PreachingActivity::pushTopic(std::unique_ptr<TopicCards> cards, const int verse) {
+bool PreachingActivity::pushTopic(std::unique_ptr<TopicCards> cards, const int verse) {
   auto topic = makeUniqueNoThrow<PreachingTopicActivity>(renderer, mappedInput, session, std::move(cards), verse);
   if (!topic) {
     LOG_ERR(MODULE, "OOM: topic activity");
     reportOpenFailure(tr(STR_PREACHING_OPEN_FAILED));
-    return;
+    return false;
   }
   startActivityForResult(std::move(topic), [this](const ActivityResult& result) { onTopicResult(result); });
+  return true;
 }
 
 void PreachingActivity::onTopicResult(const ActivityResult& result) {
@@ -2617,6 +2651,13 @@ Stop here. The push and `hpipe submit` are not part of this plan.
 - **Device checks for the owner** (spec §Testing): Preguntas shows 20 titles in the Bible's
   language; a question pages without cutting text (Q6 headings, Q19 prose, the revisita card); a
   reference opens the Bible with `PARK: Reusing the parked book` on serial and logs `Reference check:
-  … ms`; free heap with a warm slot is equal across Home → Predicación → topic → back → Home; the
+  … ms`; tap-to-page time for the furthest question reference; free heap with a warm slot (the Bible
+  opened in the reader first) is equal across Home → Predicación → topic → back → Home, while from a
+  cold slot (after boot) a one-time drop the size of the parked Bible is expected, not a leak; the
   `PREACH: Counts: … ms` line. Until T6 there is no Home entry: call `activityManager.goToPreaching()`
   from a temporary local hook to test.
+- **Mis temas before T5:** nothing can create picks until the picker lands. Write
+  `/.berean/preaching.json` as `{"v":1,"tags":[<ids>]}` with ids of active tags from
+  `/.berean/tags.json`, uploaded through Settings → System → File Transfer. Then check the counts, a
+  tag card's reference opening the passage, a tag with no Bible verses showing the empty-topic line,
+  and that opening a topic from the list starts on its first page.
