@@ -216,17 +216,51 @@ open. So this hazard is new with this task, not a latent bug in the existing gri
 - **Shared files.** `test/CMakeLists.txt`, the translations and `src/main.cpp` are report-only
   for ui-dev (`.claude/agents/ui-dev.md`, "Shared files"). This task needs no new string.
 
-## Open questions for the spec
+## Decision d1, answered: option A, refined (orchestrator)
 
-1. **The retire hazard** (above). It is a data-integrity choice, so it is raised as a decision.
-2. **Home.** It could commit and return (TagPicker), cancel and return (TagFilter), or
+Settled; the spec builds on it.
+
+1. **Open `STUDY` the way the reader does.** Before pushing the picker, `PreachingActivity` opens
+   `STUDY` on the session's Bible `Epub` (`session.book()`, `PreachingSession.h:36`), mirroring
+   the reader: `if (!STUDY.canResumePublication(epub)) STUDY.openPublication(epub, renderer)`.
+   - **Which check.** The answer says `canResumePublication`, not `isOpen()`. `STUDY` may be open
+     for another publication, and the retire must strip the tag from `bible.json` (D5).
+   - **What the reader does.** Its branch is at `EpubReaderActivity.cpp:274-281`. When it can
+     resume, it also calls `STUDY.resumePublication()`, which only resets the marked link source
+     (`StudyStore.cpp:122`). Whether the picker path needs that call too is left for the spec.
+   - **A failed or unclean open is safe.** If the open fails, or loads uncleanly, `saveDisabled_`
+     is already set (`StudyStore.cpp:72-83`). `showRetireConfirmation` then refuses with
+     `STR_HIGHLIGHTS_LOAD_FAILED` (`TagChipGridActivity.cpp:176-181`), and `retireTag` returns
+     false.
+2. **Chips from `STUDY`.** The picker builds its chips from `STUDY.palette()`, as
+   `TagPickerActivity` does (`TagPickerActivity.cpp:58-74`).
+3. **No retired tag in Mis temas.** After a retire, Mis temas must not list the retired tag.
+   - The session's palette copy (`topicsFile.palette()`, read at `PreachingSession.cpp:121`) is
+     stale by then.
+   - The fix is a refresh on return. `PreachingActivity::onTopicsChanged` → `reloadTopics()`
+     re-runs `topicsFile.load()`, which re-reads `tags.json` (`PreachingTopicsFile.cpp:44-45`).
+     The other route is to read activeness from `STUDY.palette()`.
+   - The retired id leaves the stored picks on the next `PreachingTopicsFile::save`
+     (`.cpp:69-73`).
+4. **Time the open.** Log how long it takes, for the owner's device check. `openPublication`
+   already logs its steps at debug level (`StudyStore.cpp:90-91`). The picker path adds one
+   `LOG_INF` for the total time.
+
+Rejected: B, because it reaches the shared chip grid and `StudyStore`. Rejected: C, because an
+empty picker after boot breaks the feature.
+
+**Tier is now `heavy`** (set by the orchestrator). This adds a `StudyStore` lifecycle caller
+outside the reader, and a mistake there corrupts user data.
+
+## Open questions left for the spec
+
+1. **Home.** It could commit and return (TagPicker), cancel and return (TagFilter), or
    `goHome()`, either saving first (and toasting a failure over Home) or not.
-3. **The swipe-saves mechanism** against the `final` `onBackButton`. It could be a `loop()`
+2. **The swipe-saves mechanism** against the `final` `onBackButton`. It could be a `loop()`
    override in the picker, or a save in `PreachingActivity`'s result handler driven by state the
    picker writes.
-4. **Where the saving `PreachingTopicsFile` object lives.** It could be the picker's own (load on
+3. **Where the saving `PreachingTopicsFile` object lives.** It could be the picker's own (load on
    enter) or the session's, which needs a `PreachingSession` method outside this task's files.
-
-Tier stays `standard` if decision 1 resolves to A: everything lands in `PreachingTopicPicker*`
-and `PreachingActivity.*`. B would reach `TagChipGridActivity` and `StudyStore`, and would raise
-the tier.
+4. **When `STUDY` opens.** It could open on the "+ Elegir temas" tap, which pays the cost only for
+   the picker, or earlier in Predicación. Either way the open runs on the loop task with no
+   `RenderLock` held: `openPublication` may build the unit index, which borrows the renderer.
