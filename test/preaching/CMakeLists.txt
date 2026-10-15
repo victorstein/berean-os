@@ -1,5 +1,6 @@
 add_executable(PreachingTest
   IntroSectionTest.cpp
+  ${REPO_ROOT}/lib/Preaching/Preaching/IntroSection.cpp
 )
 
 target_include_directories(PreachingTest PRIVATE

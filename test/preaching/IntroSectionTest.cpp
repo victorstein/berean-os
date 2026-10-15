@@ -8,6 +8,7 @@ namespace {
 
 using preaching::IntroSection::BASENAMES;
 using preaching::IntroSection::nextQuestion;
+using preaching::IntroSection::stripTocPrefix;
 
 TEST(IntroSection, IndexPageIsSlotZero) {
   EXPECT_STREQ(BASENAMES[preaching::IntroSection::INDEX_SLOT], "1001061250.xhtml");
@@ -41,6 +42,20 @@ TEST(IntroSection, FollowUpOutOfRangeIsNone) {
   EXPECT_EQ(nextQuestion(0), 0);
   EXPECT_EQ(nextQuestion(-1), 0);
   EXPECT_EQ(nextQuestion(21), 0);
+}
+
+TEST(IntroSection, StripsTheTocPrefix) {
+  EXPECT_EQ(stripTocPrefix("Pregunta 8: ¿Tiene Dios la culpa del sufrimiento?"),
+            "¿Tiene Dios la culpa del sufrimiento?");
+  EXPECT_EQ(stripTocPrefix("Question 12: Can the Dead Live Again?"), "Can the Dead Live Again?");
+  EXPECT_EQ(stripTocPrefix("Pregunta 1: ¿Quién es Dios?"), "¿Quién es Dios?");
+}
+
+TEST(IntroSection, ReturnsAnUnprefixedLabelWhole) {
+  for (const char* label : {"Introducción a la Palabra de Dios", "", "Pregunta: x", "Pregunta 8 x", "Pregunta 8:x",
+                            " 8: x", "Pregunta 8: "}) {
+    EXPECT_EQ(stripTocPrefix(label), label) << '"' << label << '"';
+  }
 }
 
 }  // namespace

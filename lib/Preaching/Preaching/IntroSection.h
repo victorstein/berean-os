@@ -32,4 +32,9 @@ constexpr int nextQuestion(const int question) {
   return NEXT_QUESTION[question];
 }
 
+// "Pregunta 8: ¿Tiene Dios la culpa del sufrimiento?" -> the question alone.
+// A label that does not have that shape, or would strip to nothing, comes back
+// whole so a row is never blank. The result views into `label`.
+std::string_view stripTocPrefix(std::string_view label);
+
 }  // namespace preaching::IntroSection
