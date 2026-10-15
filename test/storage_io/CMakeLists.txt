@@ -14,12 +14,14 @@ add_executable(StorageIoTest
   TagPaletteFileTest.cpp
   PassageFileTest.cpp
   PreachingTopicsFileTest.cpp
+  PreachingPassagesTest.cpp
   ${REPO_ROOT}/test/stubs/HalStorageFake.cpp
   ${REPO_ROOT}/test/stubs/ObfuscationUtilsStub.cpp
   ${REPO_ROOT}/lib/Serialization/PersistableStore.cpp
   ${REPO_ROOT}/src/study/TagPaletteFile.cpp
   ${REPO_ROOT}/src/study/PassageFile.cpp
   ${REPO_ROOT}/src/study/PreachingTopicsFile.cpp
+  ${REPO_ROOT}/src/study/PreachingPassages.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/TagPalette.cpp
   ${REPO_ROOT}/lib/BibleSearch/BibleSearch/Fold.cpp
   ${REPO_ROOT}/lib/StudyStore/StudyStore/PassageDoc.cpp
