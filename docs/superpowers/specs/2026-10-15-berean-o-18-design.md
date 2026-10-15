@@ -394,6 +394,13 @@ existing chip code already makes.
      line appears (d1's reopen). Retire a tag. It is gone from `tags.json` and from `bible.json`'s
      passages, and the other publication's passages file is untouched.
 
+  Known gap, for the owner to accept or reject: if the device sleeps while the picker is open
+  (power button or timeout), the picker is destroyed without saving and without a message, so
+  unsaved picks are lost. `goToSleep` is a replace that runs only `onExit`
+  (`ActivityManager.cpp:241-243`). `TagPickerActivity` behaves the same way. Saving in `onExit` was
+  rejected: it would write to SD inside the `RenderLock` the manager holds there
+  (`ActivityManager.cpp:141-151`).
+
 ## Review pass 0 changes
 
 Review `docs/superpowers/reviews/berean-o-18-spec-review-0.md` was CLEAR, with 3 MAJORs and 4
