@@ -1129,6 +1129,9 @@ void EpubReaderActivity::onBookLoaded() {
     case ReaderEntryIntent::Route::Highlights:
       openHighlights(CancelTo::Page);
       return;
+    case ReaderEntryIntent::Route::Href:
+      LOG_INF("ERS", "Href entry intent not honoured yet; opening normally");
+      return;
   }
 }
 

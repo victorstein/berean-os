@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <string>
+#include <type_traits>
+
 #include "activities/reader/ReaderEntryIntent.h"
 
 using Kind = ReaderEntryIntent::Kind;
@@ -40,4 +43,44 @@ TEST(ReaderEntryIntent, OpenAtCarriesThePlacesUnitAndHint) {
   EXPECT_EQ(intent.kind, Kind::OpenAt);
   EXPECT_EQ(intent.unit, place.unit);
   EXPECT_EQ(intent.spineHint, 1201);
+}
+
+static_assert(std::is_trivially_copyable_v<ReaderEntryIntent>, "the reader copies the intent by value");
+
+TEST(ReaderEntryIntent, OpenHrefIsBibleOnly) {
+  EXPECT_EQ(ReaderEntryIntent::route(Kind::OpenHref, true), Route::Href);
+  EXPECT_EQ(ReaderEntryIntent::route(Kind::OpenHref, false), Route::None);
+}
+
+TEST(ReaderEntryIntent, OpenHrefCarriesTheLinkAndTheOrigin) {
+  const std::string link(ReaderEntryIntent::HREF_BYTES - 1, 'x');
+  const PreachingOrigin origin = PreachingOrigin::ofQuestion(8, 3);
+  ReaderEntryIntent intent;
+  ASSERT_TRUE(ReaderEntryIntent::openHref(link, origin, intent));
+  EXPECT_EQ(intent.kind, Kind::OpenHref);
+  EXPECT_EQ(std::string(intent.href), link);
+  EXPECT_EQ(intent.origin.kind, PreachingOrigin::Kind::Question);
+  EXPECT_EQ(intent.origin.question, 8);
+  EXPECT_EQ(intent.origin.verse, 3);
+}
+
+TEST(ReaderEntryIntent, OpenHrefRefusesAnOverLongOrEmptyLink) {
+  ReaderEntryIntent intent = ReaderEntryIntent::of(Kind::GoTo);
+  EXPECT_FALSE(ReaderEntryIntent::openHref(std::string(ReaderEntryIntent::HREF_BYTES, 'x'), {}, intent));
+  EXPECT_FALSE(ReaderEntryIntent::openHref("", {}, intent));
+  EXPECT_EQ(intent.kind, Kind::GoTo);
+  EXPECT_EQ(intent.href[0], '\0');
+}
+
+TEST(ReaderEntryIntent, AnIntentHasNoOriginUntilGivenOne) {
+  EXPECT_FALSE(ReaderEntryIntent{}.origin.isSet());
+  EXPECT_FALSE(ReaderEntryIntent::of(Kind::OpenAt).origin.isSet());
+}
+
+TEST(ReaderEntryIntent, OriginsKeepTheirTopicAndVerse) {
+  const PreachingOrigin tag = PreachingOrigin::ofTag(31, 2);
+  EXPECT_EQ(tag.kind, PreachingOrigin::Kind::Tag);
+  EXPECT_EQ(tag.tag, 31);
+  EXPECT_EQ(tag.verse, 2);
+  EXPECT_EQ(PreachingOrigin::ofQuestion(5, -1).verse, 0);
 }
