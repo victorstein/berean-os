@@ -112,9 +112,9 @@ TEST_F(PreachingTopicsFileIo, MoreThanTheTagCapIsRefusedAndExactlyTheCapLoads) {
 }
 
 TEST_F(PreachingTopicsFileIo, MalformedDocumentsAreRefused) {
-  for (const char* malformed : {R"({"tags":[1]})", R"({"v":1,"tags":3})", R"({"v":1})", R"({"v":1,"tags":[0]})",
-                                R"({"v":1,"tags":[-1]})", R"({"v":1,"tags":[70000]})", R"({"v":1,"tags":["a"]})",
-                                R"([1,2])"}) {
+  for (const char* malformed :
+       {R"({"tags":[1]})", R"({"v":1,"tags":3})", R"({"v":1})", R"({"v":1,"tags":[0]})", R"({"v":1,"tags":[-1]})",
+        R"({"v":1,"tags":[70000]})", R"({"v":1,"tags":["a"]})", R"([1,2])"}) {
     storage_fake::putFile(PATH, malformed);
     PreachingTopicsFile topics;
     EXPECT_EQ(topics.load(), PreachingTopicsFile::LoadResult::Failed) << malformed;

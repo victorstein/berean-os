@@ -143,9 +143,9 @@ Status collectPassages(const study::TagId tag, const study::PassageDoc::Allocato
     Passage passage{utf8SafeSummary(row["r"] | "", study::PassageDoc::MAX_REFERENCE_BYTES),
                     study::PassageText(allocators.text), *start, spineHint(row)};
     const char* whole = row["w"] | "";
-    const bool assigned = whole[0] != '\0'
-                              ? passage.text.assign(whole)
-                              : passage.text.assign(utf8SafeSummary(row["x"] | "", study::PassageDoc::MAX_SNIPPET_BYTES));
+    const bool assigned =
+        whole[0] != '\0' ? passage.text.assign(whole)
+                         : passage.text.assign(utf8SafeSummary(row["x"] | "", study::PassageDoc::MAX_SNIPPET_BYTES));
     if (!assigned) {
       LOG_ERR(MODULE, "OOM: passage text for tag %u", static_cast<unsigned>(study::toRaw(tag)));
       out.clear();

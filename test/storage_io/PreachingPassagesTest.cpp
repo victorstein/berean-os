@@ -174,8 +174,7 @@ TEST_F(PreachingPassagesIo, ATagsPassagesReportMissingAndUnreadable) {
   EXPECT_TRUE(passages.empty());
 
   storage_fake::putFile(BIBLE, R"({"v":5,"p":[]})");
-  EXPECT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages),
-            Status::Unreadable);
+  EXPECT_EQ(PreachingPassages::passagesWithTag(tag(7), study::PassageDoc::Allocators{}, passages), Status::Unreadable);
   EXPECT_TRUE(passages.empty());
 }
 
