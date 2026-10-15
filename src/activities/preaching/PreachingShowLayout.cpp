@@ -21,4 +21,29 @@ const CardInput* verseCard(const Deck& deck, const int ordinal) {
   return nullptr;
 }
 
+bool step(Cursor& cursor, const int pagesInVerse, const int verses, const int direction) {
+  if (direction > 0) {
+    if (cursor.page + 1 < pagesInVerse) {
+      ++cursor.page;
+      return true;
+    }
+    if (cursor.verse + 1 < verses) {
+      ++cursor.verse;
+      cursor.page = 0;
+      return true;
+    }
+    return false;
+  }
+  if (cursor.page > 0) {
+    --cursor.page;
+    return true;
+  }
+  if (cursor.verse > 0) {
+    --cursor.verse;
+    cursor.page = 0;
+    return true;
+  }
+  return false;
+}
+
 }  // namespace preaching::show

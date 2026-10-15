@@ -55,3 +55,45 @@ TEST(PreachingShowDeck, AllVerseDeckMapsOrdinalToIndex) {
   EXPECT_EQ(show::verseCount(deck), 3);
   for (int ordinal = 0; ordinal < 3; ++ordinal) EXPECT_EQ(show::verseCard(deck, ordinal), &cards[ordinal]);
 }
+
+TEST(PreachingShowStep, NextTurnsThePageWithinAVerse) {
+  show::Cursor cursor{0, 0};
+  EXPECT_TRUE(show::step(cursor, 3, 2, 1));
+  EXPECT_EQ(cursor.verse, 0);
+  EXPECT_EQ(cursor.page, 1);
+}
+
+TEST(PreachingShowStep, NextFromALastPageOpensTheNextVerseAtItsStart) {
+  show::Cursor cursor{0, 2};
+  EXPECT_TRUE(show::step(cursor, 3, 2, 1));
+  EXPECT_EQ(cursor.verse, 1);
+  EXPECT_EQ(cursor.page, 0);
+}
+
+TEST(PreachingShowStep, NextAtTheEndMovesNowhere) {
+  show::Cursor cursor{1, 0};
+  EXPECT_FALSE(show::step(cursor, 1, 2, 1));
+  EXPECT_EQ(cursor.verse, 1);
+  EXPECT_EQ(cursor.page, 0);
+}
+
+TEST(PreachingShowStep, PreviousTurnsBackWithinAVerse) {
+  show::Cursor cursor{1, 2};
+  EXPECT_TRUE(show::step(cursor, 3, 2, -1));
+  EXPECT_EQ(cursor.verse, 1);
+  EXPECT_EQ(cursor.page, 1);
+}
+
+TEST(PreachingShowStep, PreviousFromAFirstPageOpensThePreviousVerseAtItsStart) {
+  show::Cursor cursor{1, 0};
+  EXPECT_TRUE(show::step(cursor, 1, 2, -1));
+  EXPECT_EQ(cursor.verse, 0);
+  EXPECT_EQ(cursor.page, 0);
+}
+
+TEST(PreachingShowStep, PreviousAtTheStartMovesNowhere) {
+  show::Cursor cursor{0, 0};
+  EXPECT_FALSE(show::step(cursor, 3, 2, -1));
+  EXPECT_EQ(cursor.verse, 0);
+  EXPECT_EQ(cursor.page, 0);
+}
