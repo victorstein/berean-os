@@ -11,6 +11,8 @@
 #include <variant>
 #include <vector>
 
+#include "preaching/PreachingOrigin.h"
+
 struct WifiResult {
   bool connected = false;
   std::string ssid;
@@ -87,9 +89,15 @@ struct TagSelectionResult {
   std::vector<study::TagId> tagIds;
 };
 
+// The Predicación topic, and the Verse card within it, a screen ended on, for the screen beneath to
+// select.
+struct PreachingResult {
+  PreachingOrigin at;
+};
+
 using ResultVariant = std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult,
                                    IntervalResult, PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult,
-                                   FilePathResult, TagSelectionResult>;
+                                   FilePathResult, TagSelectionResult, PreachingResult>;
 
 struct ActivityResult {
   bool isCancelled = false;
