@@ -97,3 +97,106 @@ TEST(PreachingShowStep, PreviousAtTheStartMovesNowhere) {
   EXPECT_EQ(cursor.verse, 0);
   EXPECT_EQ(cursor.page, 0);
 }
+
+namespace {
+
+constexpr int PX_PER_BYTE[show::RUNG_COUNT] = {14, 12, 10};
+
+int widthByRung(const void*, const uint8_t rung, Face, const char* text) {
+  return static_cast<int>(std::strlen(text)) * PX_PER_BYTE[rung];
+}
+
+show::Metrics showMetrics(const int height) {
+  show::Metrics metrics;
+  metrics.width = 200;
+  metrics.height = height;
+  metrics.referenceGap = 10;
+  metrics.lineHeight[0] = 30;
+  metrics.lineHeight[1] = 24;
+  metrics.lineHeight[2] = 20;
+  return metrics;
+}
+
+show::Layout layOut(const std::string_view quote, const std::string_view reference, const int height) {
+  show::Layout layout;
+  show::layOut(CardInput{CardKind::Verse, quote, reference}, showMetrics(height), &widthByRung, nullptr, layout);
+  return layout;
+}
+
+}  // namespace
+
+TEST(PreachingShowFit, AShortQuoteTakesTheLargestSize) {
+  const auto layout = layOut("one two three", "Jn 3:16", 100);
+  EXPECT_EQ(layout.rung, 0);
+  EXPECT_EQ(layout.quote.size(), 1u);
+  EXPECT_EQ(layout.reference.size(), 1u);
+  EXPECT_EQ(layout.pageCount(), 1);
+  EXPECT_EQ(layout.pageHeight(0, showMetrics(100)), 70);
+}
+
+TEST(PreachingShowFit, StepsDownToTheMiddleSizeWhenTheLargestIsTooTall) {
+  // Rung 0: 2 quote lines, 100 px. Rung 1: 2 lines, 82 px.
+  const auto layout = layOut("abcd efgh ijkl mnop", "Jn 3:16", 90);
+  EXPECT_EQ(layout.rung, 1);
+  EXPECT_EQ(layout.pageCount(), 1);
+}
+
+TEST(PreachingShowFit, StepsDownToTheSmallestSize) {
+  // Rung 1: 82 px. Rung 2: one 19-byte line, 50 px.
+  const auto layout = layOut("abcd efgh ijkl mnop", "Jn 3:16", 60);
+  EXPECT_EQ(layout.rung, 2);
+  EXPECT_EQ(layout.quote.size(), 1u);
+  EXPECT_EQ(layout.pageCount(), 1);
+}
+
+TEST(PreachingShowFit, AWordWiderThanTheColumnStepsDownRatherThanSplit) {
+  // 16 bytes: 224 px at rung 0, 192 px at rung 1. The height fits either.
+  const auto layout = layOut("abcdefghijklmnop", "Jn 3:16", 500);
+  EXPECT_EQ(layout.rung, 1);
+  ASSERT_EQ(layout.quote.size(), 1u);
+  EXPECT_EQ(layout.quote[0].length, 16);
+}
+
+TEST(PreachingShowFit, AReferenceWordWiderThanTheColumnAlsoStepsDown) {
+  // The quote fits rung 0; the 16-byte reference word would split there (224 px), not at rung 1.
+  const auto layout = layOut("one", "Abcdefghijklmnop", 500);
+  EXPECT_EQ(layout.rung, 1);
+  ASSERT_EQ(layout.reference.size(), 1u);
+  EXPECT_EQ(layout.reference[0].length, 16);
+}
+
+TEST(PreachingShowFit, AnEmptyQuoteShowsTheReferenceAlone) {
+  const auto layout = layOut("", "Jn 3:16", 100);
+  EXPECT_TRUE(layout.quote.empty());
+  EXPECT_EQ(layout.reference.size(), 1u);
+  EXPECT_EQ(layout.pageCount(), 1);
+  EXPECT_EQ(layout.pageHeight(0, showMetrics(100)), 30);
+}
+
+TEST(PreachingShowFit, AnEmptyReferenceCountsNoGap) {
+  const auto layout = layOut("one two three", "", 100);
+  EXPECT_TRUE(layout.reference.empty());
+  EXPECT_EQ(layout.pageCount(), 1);
+  EXPECT_EQ(layout.pageHeight(0, showMetrics(100)), 30);
+}
+
+TEST(PreachingShowFit, AnEmptyCardIsOneEmptyPage) {
+  const auto layout = layOut("", "", 100);
+  EXPECT_EQ(layout.lineCount(), 0);
+  EXPECT_EQ(layout.pageCount(), 1);
+  EXPECT_EQ(layout.pageEnd(0), 0);
+  EXPECT_EQ(layout.pageHeight(0, showMetrics(100)), 0);
+}
+
+TEST(PreachingShowFit, ReusesTheCallersCapacity) {
+  show::Layout layout;
+  layout.quote.reserve(64);
+  layout.reference.reserve(4);
+  layout.pageFirstLine.reserve(8);
+  const auto* quoteStorage = layout.quote.data();
+  show::layOut(CardInput{CardKind::Verse, "abcd efgh ijkl mnop", "Jn 3:16"}, showMetrics(60), &widthByRung, nullptr,
+               layout);
+  EXPECT_EQ(layout.quote.data(), quoteStorage);
+  EXPECT_GE(layout.quote.capacity(), 64u);
+  EXPECT_GE(layout.pageFirstLine.capacity(), 8u);
+}
