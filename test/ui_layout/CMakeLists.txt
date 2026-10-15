@@ -144,3 +144,37 @@ target_link_libraries(HeaderLayoutTest PRIVATE
 )
 
 gtest_discover_tests(HeaderLayoutTest)
+
+add_executable(PreachingCardsTest
+  PreachingCardLayoutTest.cpp
+  PreachingCardNavTest.cpp
+  PreachingShowLayoutTest.cpp
+  ${REPO_ROOT}/src/activities/preaching/PreachingCardLayout.cpp
+  ${REPO_ROOT}/src/activities/preaching/PreachingShowLayout.cpp
+)
+
+target_include_directories(PreachingCardsTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(PreachingCardsTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(PreachingCardsTest)
+
+add_executable(ReaderBackSwipeTest
+  ReaderBackSwipeTest.cpp
+)
+
+target_include_directories(ReaderBackSwipeTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(ReaderBackSwipeTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(ReaderBackSwipeTest)

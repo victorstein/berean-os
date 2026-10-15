@@ -15,6 +15,7 @@
 #include "home/FileBrowserActivity.h"
 #include "launcher/LauncherActivity.h"
 #include "network/CrossPointWebServerActivity.h"
+#include "preaching/PreachingActivity.h"
 #include "reader/ReaderActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/BmpViewerActivity.h"
@@ -226,6 +227,15 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
   if (activity) {
     replaceActivity(std::move(activity));
   }
+}
+
+void ActivityManager::goToPreaching(const PreachingOrigin& origin) {
+  auto activity = makeUniqueNoThrow<PreachingActivity>(renderer, mappedInput, origin);
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: preaching activity");
+    return;
+  }
+  replaceActivity(std::move(activity));
 }
 
 void ActivityManager::goToSleep(bool fromTimeout) {

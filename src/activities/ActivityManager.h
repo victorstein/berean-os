@@ -84,6 +84,8 @@ class ActivityManager {
   void goToSettings();
   void goToFileBrowser(std::string path = {});
   void goToReader(std::string path, bool allowFastInitialRefresh = false, const ReaderEntryIntent& intent = {});
+  // Predicación's list, or, with an origin, the list with that question or tag topic open on top.
+  void goToPreaching(const PreachingOrigin& origin = {});
   void goToSleep(bool fromTimeout = false);
   void goToBoot();
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);

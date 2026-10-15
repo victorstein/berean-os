@@ -546,6 +546,34 @@ written on the loop task only.
 A field of the wrong type or out of range refuses the whole file. The save budget, 3,943 bytes, is
 derived from the caps (`HomeVerseDoc::worstCaseBytes()`).
 
+## `/.berean/preaching.json`
+
+The tags picked as Predicación topics (Mis temas). Owned by `src/study/PreachingTopicsFile.{h,cpp}`
+(format and storage, atomic writes, host-tested in `test/storage_io/PreachingTopicsFileTest.cpp`).
+Read and written on the loop task only; only Elegir temas writes it. It sits beside `passages/`,
+not in it, because the passage scan reads every `*.json` there as a publication.
+
+### Version 1
+
+- `v` — format version. Required: an absent, zero, negative or newer `v` is refused.
+
+```json
+{"v":1,"tags":[12,31,7,40]}
+```
+
+- `tags` — tag ids from `tags.json`, each an integer from 1 to 65,535, at most 200
+  (`TagPalette::MAX_ACTIVE_TAGS`). A repeated id is read once. Order carries no meaning: Mis temas
+  lists the topics by tag name.
+
+A wrong type, an id out of range or more than 200 ids refuses the whole file. A refused or
+unreadable file, or an unreadable `tags.json`, latches saving off until the next load, so the picks
+are never overwritten with an empty list; each opening of Elegir temas loads the file again. When
+the file is missing, a complete `preaching.json.tmp` left by an interrupted save is adopted.
+
+Each save keeps only the ids still active in `tags.json`, so a retired tag is pruned on the next
+save, and a list over 200 is refused. The save budget, 2,048 bytes, is checked before writing; 200
+five-digit ids fit in about 1.3 KB.
+
 ## `/.berean/passages/<pubkey>.json`
 
 One publication's tagged passages. Owned by `lib/StudyStore/StudyStore/PassageDoc.{h,cpp}` (format,

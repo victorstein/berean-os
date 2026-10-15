@@ -56,8 +56,11 @@ class EpubReaderActivity final : public ReaderActivity {
   // Set by the reader menu's Delete cache: the owner asked for a rebuild, so this book is not parked
   // on exit and its next open loads it afresh.
   bool cacheDeleted = false;
-  // Consumed once by onBookLoaded(); None thereafter.
+  // Consumed once by onBookLoaded(); None thereafter. Its origin is copied into preachingOrigin.
   ReaderEntryIntent entryIntent;
+  // Where in Predicación this reader was opened from, for the Back that returns there. Kept for the
+  // reader's whole life and never persisted, so Home and sleep drop it.
+  PreachingOrigin preachingOrigin;
   // Set by the render task once a page has been drawn this session, read only under RenderLock.
   // Nothing is recorded before it: an intent's navigateTo would otherwise record the progress.bin
   // position the reader never saw.
@@ -202,6 +205,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // Takes RenderLock itself, so no caller may hold one.
   void navigateTo(NavTarget target, ReturnPolicy policy = ReturnPolicy::Clear);
   void navigateToHref(const std::string& href, bool savePosition = false);
+  void openReference(const char* href);
+  std::optional<uint32_t> referencedVerseOffset(int spineIndex, const char* href);
   void restoreSavedPosition();
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
@@ -224,7 +229,8 @@ class EpubReaderActivity final : public ReaderActivity {
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
                               bool allowFastInitialRefresh, const ReaderEntryIntent& intent = {})
       : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh),
-        entryIntent(intent) {}
+        entryIntent(intent),
+        preachingOrigin(intent.origin) {}
   ~EpubReaderActivity() override;
 
   void loop() override;

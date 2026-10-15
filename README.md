@@ -41,6 +41,9 @@ Hardware facts, confirmed on the bench, are in
 - **Meeting publications.** The current week's *Watchtower* study edition and *Life and Ministry
   Meeting Workbook*, resolved from that week's meetings page and downloaded over Wi-Fi to the SD card.
 - **Tagged passages.** Select a passage, attach one or more tags, and browse what you tagged.
+- **Predicación.** A preaching tool on Home: the New World Translation's twenty preaching questions
+  and topics made from your own tags, as verse cards. A verse opens full screen for a householder,
+  or in the Bible, with Back returning to the card.
 - **Wi-Fi file transfer.** A browser UI for uploading, downloading and organising files on the SD
   card, plus WebDAV. See [docs/webserver.md](./docs/webserver.md).
 - **Over-the-air updates** from this repository's releases.

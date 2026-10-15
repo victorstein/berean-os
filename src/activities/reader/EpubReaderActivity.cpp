@@ -43,10 +43,12 @@
 #include "PlacesStore.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
+#include "ReaderBackSwipe.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SpineHtmlStream.h"
+#include "VerseHref.h"
 #include "activities/PostedMessage.h"
 #include "activities/SettingsSave.h"
 #include "activities/launcher/BibleFinder.h"
@@ -87,6 +89,10 @@ int clampPercent(int percent) {
 bool feedChapterNumberReader(void* ctx, const char* chunk, const size_t length, const bool isFinal) {
   auto* reader = static_cast<BibleChapterNumber::Reader*>(ctx);
   return reader->feed(chunk, length, isFinal) && !reader->resolved();
+}
+
+bool feedVerseScanner(void* ctx, const char* chunk, const size_t length, const bool isFinal) {
+  return static_cast<VerseAnchors::Scanner*>(ctx)->feed(chunk, length, isFinal);
 }
 
 // currentBibleChapter() is -1 until the chapter is known; BibleReference writes chapter 0 as the
@@ -691,9 +697,20 @@ void EpubReaderActivity::loop() {
     openReaderMenu(true);
   }
 
-  if (returnStack.count() > 0 && mappedInput.wasReleased(MappedInputManager::Button::Back) &&
-      mappedInput.getHeldTime() < ReaderUtils::GO_BACK_OR_HOME_MS) {
+  // getHeldTime() can clear the touch held-time override, so it stays behind wasReleased(Back), which
+  // sets it for a swipe in this same frame.
+  const auto backSwipe =
+      ReaderBackSwipe::decide({.shortBackRelease = mappedInput.wasReleased(MappedInputManager::Button::Back) &&
+                                                   mappedInput.getHeldTime() < ReaderUtils::GO_BACK_OR_HOME_MS,
+                               .returnDepth = returnStack.count(),
+                               .hasOrigin = preachingOrigin.isSet()});
+  if (backSwipe == ReaderBackSwipe::Action::PopReturn) {
     restoreSavedPosition();
+    return;
+  }
+  if (backSwipe == ReaderBackSwipe::Action::ToPreaching) {
+    LOG_INF("ERS", "Back to Predicación");
+    activityManager.goToPreaching(preachingOrigin);
     return;
   }
 
@@ -1128,6 +1145,9 @@ void EpubReaderActivity::onBookLoaded() {
       return;
     case ReaderEntryIntent::Route::Highlights:
       openHighlights(CancelTo::Page);
+      return;
+    case ReaderEntryIntent::Route::Href:
+      openReference(intent.href);
       return;
   }
 }
@@ -2142,6 +2162,37 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
   navigateTo({.spineIndex = targetSpineIndex, .anchor = std::move(anchor)},
              savePosition ? ReturnPolicy::Push : ReturnPolicy::Clear);
   LOG_DBG("ERS", "Navigated to spine %d for href: %s", targetSpineIndex, hrefStr.c_str());
+}
+
+// Off-lock and before the first render is requested, as Route::Locate is: the verse scan may inflate
+// the chapter, which takes the render lock for its popup.
+void EpubReaderActivity::openReference(const char* href) {
+  const int spineIndex = epub->resolveHrefToSpineIndex(href);
+  if (spineIndex < 0) {
+    LOG_ERR("ERS", "Reference did not resolve: %s", href);
+    ReaderUtils::showMessage(renderer, tr(STR_LINK_TARGET_NOT_FOUND));
+    return;
+  }
+  const auto offset = referencedVerseOffset(spineIndex, href);
+  if (!offset) {
+    LOG_ERR("ERS", "Verse of %s not found; opening spine %d at its start", href, spineIndex);
+    navigateTo({.spineIndex = spineIndex});
+    return;
+  }
+  navigateTo({.spineIndex = spineIndex, .offsetJump = *offset});
+}
+
+std::optional<uint32_t> EpubReaderActivity::referencedVerseOffset(const int spineIndex, const char* href) {
+  const auto verse = VerseHref::parse(href);
+  if (!verse) return std::nullopt;
+  VerseAnchors::Scanner scanner;
+  if (!scanner.valid()) {
+    LOG_ERR("ERS", "OOM: verse scanner");
+    return std::nullopt;
+  }
+  if (!SpineHtmlStream::stream(epub, spineIndex, renderer, feedVerseScanner, &scanner)) return std::nullopt;
+  const auto anchors = scanner.take();
+  return VerseHref::offsetOf(anchors, *verse);
 }
 
 void EpubReaderActivity::restoreSavedPosition() {

@@ -14,14 +14,15 @@ ajustes — and the screens below are replaced when that lands. See [ROADMAP.md]
 - [8. Highlights and tags](#8-highlights-and-tags)
 - [9. Bookmarks and footnotes](#9-bookmarks-and-footnotes)
 - [10. Meeting publications](#10-meeting-publications)
-- [11. File transfer and the web interface](#11-file-transfer-and-the-web-interface)
-- [12. Browsing files](#12-browsing-files)
-- [13. Settings](#13-settings)
-- [14. The sleep screen](#14-the-sleep-screen)
-- [15. Custom fonts](#15-custom-fonts)
-- [16. Firmware updates](#16-firmware-updates)
-- [17. Where your data lives](#17-where-your-data-lives)
-- [18. Troubleshooting](#18-troubleshooting)
+- [11. Preaching](#11-preaching)
+- [12. File transfer and the web interface](#12-file-transfer-and-the-web-interface)
+- [13. Browsing files](#13-browsing-files)
+- [14. Settings](#14-settings)
+- [15. The sleep screen](#15-the-sleep-screen)
+- [16. Custom fonts](#16-custom-fonts)
+- [17. Firmware updates](#17-firmware-updates)
+- [18. Where your data lives](#18-where-your-data-lives)
+- [19. Troubleshooting](#19-troubleshooting)
 
 ## 1. The device
 
@@ -46,7 +47,7 @@ a tap, a held **Right**, the Home key, or the Power button when you configure it
 | Left / Right | previous / next in a list; previous / next page while reading |
 | Hold **Left** just under a second, then release | **Back** |
 | Hold **Right** just under a second, then release | **Confirm** |
-| Swipe right from the left edge | **Back** (on the reading surface, only to return from a link; see below) |
+| Swipe right from the left edge | **Back** (on the reading surface, only to return from a link, or to the Preaching card the Bible was opened from; see below) |
 | Swipe down from the top edge | opens the frontlight panel |
 | Swipe up from the bottom edge | Home, on devices without a Home key |
 | **Home**, short press | Home; inside some screens it confirms instead (see below) |
@@ -61,9 +62,15 @@ The left-edge Back swipe works in every screen except the reading surface. There
 you from a followed link (see [5. Reading](#5-reading)), so that in swipe page-turn mode a right
 swipe can turn back a page.
 
+In a Bible opened from Preaching, Back also returns you to the card you came from once no link is
+waiting (see [11. Preaching](#11-preaching)). In swipe page-turn mode, a right swipe that starts in
+the left quarter of the screen therefore goes back to Preaching rather than turning back a page; one
+that starts further right still turns back a page.
+
 **The Home key is context-dependent.** Normally it takes you to Home. Two screens repurpose it:
 passage selection uses a Home tap to set each end of the selection, and the tag picker uses it to
-finish, as its **Done** button does. Both are described below.
+finish, as its **Done** button does. Both are described below. In **Choose topics** it still goes
+Home, but saves your picks first.
 
 ### While reading
 
@@ -113,6 +120,8 @@ Home is built around your Bible. From top to bottom:
 - **Meetings** — this week's dates, a strip of the seven days with today inverted and a dot on
   each meeting day, and how far you are through the workbook. Tap it for the week view (see
   [10. Meeting publications](#10-meeting-publications)).
+- **Preaching** — with the subtitle **Bible questions · your topics**. Tap it for the Bible's
+  preaching questions and the tags you preach from (see [11. Preaching](#11-preaching)).
 - A row of four icons:
   - **Tags** — the passages you tagged in the Bible (see
     [Browsing what you marked](#browsing-what-you-marked)).
@@ -123,8 +132,8 @@ Home is built around your Bible. From top to bottom:
 
 If no Bible has been found on the card, the cover area shows a single **Download** button, which
 offers to download the New World Translation in your **Publication language** (see
-[Finding the Bible](#finding-the-bible)). **Tags** and **Search** make the same offer, because both
-work in the Bible.
+[Finding the Bible](#finding-the-bible)). **Preaching**, **Tags** and **Search** make the same offer,
+because all three work in the Bible.
 
 Tap anything to open it, or move the selection with **Left** / **Right** and confirm.
 
@@ -142,7 +151,7 @@ Home finds it whatever it is called and wherever it is.
 
 With no Bible found, tapping **Download** asks **Download the Bible?** and gives its approximate
 size. **Download** connects to Wi-Fi and fetches it, then returns you to Home; **Choose a file**
-opens the file browser (see [12. Browsing files](#12-browsing-files)) so you can open a Bible that is
+opens the file browser (see [13. Browsing files](#13-browsing-files)) so you can open a Bible that is
 already on the card.
 
 ## 5. Reading
@@ -153,11 +162,15 @@ already on the card.
 | Previous page | tap the left third, or press **Left** |
 | Reader menu | tap the centre third, or hold **Right** and release |
 | Start a passage selection (Bible only) | long-press a word outside the centre third (section 8) |
-| Leave the book | **Home**, hold **Left** and release, or **Reader menu -> Go home** |
+| Leave the book | **Home**, hold **Left** and release, or **Reader menu -> Go home**; in a Bible opened from Preaching, a held **Left** goes back to Preaching once no link is waiting (see below) |
 
 **Cross-references.** Following a link inside a publication remembers where you came from. Back —
 the left-edge swipe or a held **Left** — returns to that position rather than leaving the book. The
-return stack holds three positions.
+return stack holds the last 16 positions.
+
+With no link waiting, a held **Left** leaves the book and the swipe does nothing, except in a Bible
+opened from Preaching: there both go back to the Preaching card the Bible was opened from (see
+[11. Preaching](#11-preaching)). **Home** and **Reader menu -> Go home** still leave the book.
 
 **Auto page turn** advances pages on a timer; enable it from the reader menu.
 
@@ -274,7 +287,8 @@ Long-pressing a row offers to delete the highlight, or to change its tags. **…
 are more tags than fit in the row, opens every tag as a grid of chips with its count, on one
 screen; tap a chip to filter by it. Long-pressing a chip there retires the tag: it stops being
 offered in the tag picker, and it is removed from your highlights. A highlight left with no tag shows as
-**Unlabeled**; no highlight is deleted.
+**Unlabeled**; no highlight is deleted. A tag can also be retired from **Choose topics** (see
+[11. Preaching](#11-preaching)), and a retired tag drops out of **My topics**.
 
 ## 9. Bookmarks and footnotes
 
@@ -315,7 +329,78 @@ by the download folder, which is editable from the web settings page; blank mean
 clock lives under **Settings -> Reader -> Customise status bar**, which is also where **Sync now**
 and the UTC offset are; those rows appear only on a device with a real-time clock.
 
-## 11. File transfer and the web interface
+## 11. Preaching
+
+**Preaching** (*Predicación* with the UI in Spanish) holds what you reach for from house to house.
+It opens from its card on Home, with two tabs:
+
+- **Questions** — the twenty questions at the front of the New World Translation, each answered
+  with a few quoted verses. A row reads as the question's number and its wording from the Bible's
+  table of contents. When your Bible does not have them, the tab says **This Bible doesn't have the
+  preaching questions**, and **My topics** still works.
+- **My topics** — the tags you picked to preach from, alphabetically, each with the number of your
+  Bible passages that carry it, then **+ Choose topics**. With nothing picked, the tab says **No
+  topics yet. Choose tags to preach from.**
+
+**Left** / **Right** move through the tabs and rows, a tap or **Confirm** opens a row, and Back or
+the Home key returns to Home.
+
+### A topic
+
+A question or a topic opens as cards, a page at a time. The header names it, such as **Question 8**
+or the tag's name, and shows the page. A question starts with its title, then its verses, with its
+own headings and text between them. A verse card is the quote, with its reference below it on the
+right, marked **›**. A tag topic is every Bible passage carrying that tag, whole and in Bible order;
+when there is none, the screen says **No Bible verses have this tag**.
+
+- **Left** / **Right** select the previous or next verse card, and turn the page past the first or
+  last one on it. A vertical swipe turns the page.
+- Tap a quote, or select its card and **Confirm**, to show the verse in show mode.
+- Tap a reference to open the Bible at that verse.
+- Most questions end with a **For the return visit** card naming the question to take up next
+  time. Tap it to open that question in place.
+- Back returns to the list, with the question or topic you were in selected.
+
+### Show mode
+
+Show mode puts one verse on the whole screen in large type, with its reference below it, for the
+householder to read. The type steps down from 18 to 14 to 12 points until the verse fits; a verse
+too long even at 12 points continues over more than one page. A footer gives the verse's position
+and the topic, such as **2 / 4 · Question 8**, plus the page when the verse has more than one.
+
+- Turn to the previous or next verse as you turn a reading page: tap the left or right third (as
+  **Touch reader controls** sets it), or press **Left** / **Right**. In a verse with more than one
+  page, they turn its pages first.
+- Tap the centre third, or Back, to return to the topic with the verse you ended on selected.
+
+### Opening a reference
+
+Tapping a reference closes Preaching and opens the Bible at that verse. In a question, a reference
+whose verse cannot be found in its chapter opens the chapter at its start, and one your Bible cannot
+open at all leaves you on the card with **Verse not found in this Bible**.
+
+Read on as usual. Back — the left-edge swipe or a held **Left** — first returns through any links
+you followed; with none left, it goes back to Preaching, at the card you came from. **Home** and
+**Reader menu -> Go home** leave as usual, and once you have gone Home, or the device has slept, the
+Bible no longer leads back to Preaching.
+
+The place you leave in the Bible is remembered like any other, so it can become **Continue** and
+appear in **Recent** on Home.
+
+### Choose topics
+
+**+ Choose topics**, at the end of **My topics**, shows every tag as a chip, alphabetically, with
+your topics selected. Tap a chip to add or remove it. New tags are made when you tag a passage, not
+here.
+
+Back saves your choice and returns to **My topics**; the Home key saves it and goes Home. If the
+save fails, **Couldn't save your topics** appears and your topics stay as they were. If the device
+sleeps while this screen is open, the changes are lost.
+
+Long-pressing a chip retires the tag everywhere, after a confirmation, as in the tag grid (see
+[Browsing what you marked](#browsing-what-you-marked)). A retired tag drops out of **My topics**.
+
+## 12. File transfer and the web interface
 
 **Settings -> System -> File Transfer**, then pick a mode:
 
@@ -339,7 +424,7 @@ networks you trust, or in hotspot mode, and leave the screen when you are done.
 Details are in [docs/webserver.md](./docs/webserver.md); the raw endpoints are in
 [docs/webserver-endpoints.md](./docs/webserver-endpoints.md).
 
-## 12. Browsing files
+## 13. Browsing files
 
 The file browser walks the SD card. It opens from **Browse the card** in **Publications**, which
 reaches books outside the download folder and the card root, and from **Choose a file** in the Bible
@@ -353,14 +438,14 @@ path is shown at the top, directories appear in brackets, and file extensions ar
 
 Hidden files and folders — anything starting with `.` — are not shown.
 
-## 13. Settings
+## 14. Settings
 
 The **Settings** icon on Home, four tabs.
 
 ### Display
 
 - **Sleep screen** — Dark, Light, Custom, Cover, Cover + Custom, Quick resume, Transparent, None, or
-  Study. See section 14.
+  Study. See section 15.
 - **Sleep screen cover mode** — Fit or Crop, when a cover is shown.
 - **Sleep screen cover filter** — None (grayscale), Contrast, or Inverted.
 - **Quick resume on timeout** — use the quick-resume sleep screen when the device sleeps on its own.
@@ -409,13 +494,13 @@ The **Settings** icon on Home, four tabs.
   **Not set** by default.
 - **Time to sleep** — inactivity before the device sleeps.
 - **Wi-Fi networks** — saved networks.
-- **File transfer** — see section 11.
+- **File transfer** — see section 12.
 - **Clear reading cache** — drop the SD cache and force a re-index.
 - **Check for updates** — over-the-air firmware update.
 - **SD firmware update** — flash a `firmware.bin` from the card.
 - **Language** — the UI language.
 
-## 14. The sleep screen
+## 15. The sleep screen
 
 | Mode | What is shown |
 |---|---|
@@ -441,7 +526,7 @@ Use uncompressed 24-bit BMPs at 480x800.
 pixels leave the screen underneath unchanged. For per-pixel transparency use a PNG with an alpha
 channel, or a 32-bit BGRA BMP.
 
-## 15. Custom fonts
+## 16. Custom fonts
 
 Additional reading fonts load from the SD card as `.cpfont` files, including scripts the built-in
 families do not cover. Three ways to install them:
@@ -453,7 +538,7 @@ families do not cover. Three ways to install them:
 Installed families appear in **Settings -> Reader -> Font family**. Full details are in
 [docs/sd-card-fonts.md](./docs/sd-card-fonts.md).
 
-## 16. Firmware updates
+## 17. Firmware updates
 
 **Settings -> System -> Check for updates** downloads the latest bereanOS release over Wi-Fi and
 flashes it into the spare OTA partition. An image built for a different board is refused. This is
@@ -465,7 +550,7 @@ you can put there over USB or through the web interface.
 Both write to the partition the device is not running from, so a failed update leaves the working
 firmware in place.
 
-## 17. Where your data lives
+## 18. Where your data lives
 
 Everything is on the SD card, in two hidden directories.
 
@@ -490,6 +575,7 @@ Everything is on the SD card, in two hidden directories.
 | `pubkeys.json` | which publication each downloaded file is, and which file is your Bible |
 | `meeting-weeks.json` | the meeting publications for each week looked up |
 | `places.json` | the Bible places you recently left, for Home and the reader menu's **Recent** row |
+| `preaching.json` | the tags you chose as Preaching topics |
 | `search/` | the Bible search index |
 | `units/` | per-publication indexes of verses and paragraphs |
 
@@ -507,9 +593,9 @@ copied onto the card yourself finds them only at its original path.
 showing **Preparing your study data** while it works. The originals are left where they are.
 
 Deleting `.crosspoint/` clears settings, reading positions, bookmarks and caches; deleting `.berean/`
-clears your highlights, tags and recent places. Back them up before you do.
+clears your highlights, tags, recent places and Preaching topics. Back them up before you do.
 
-## 18. Troubleshooting
+## 19. Troubleshooting
 
 **A screen is corrupt or ghosted.** Set **Short power button click** to **Refresh** and press Power,
 or lower **Refresh frequency**.
@@ -526,7 +612,7 @@ to any bug report.
 
 **Serial logs.** Only a development build writes a log over serial; the build that **Check for
 updates** installs does not. Build one with `pio run -e x4pro` and install it over USB or with **SD
-firmware update** (section 16). Then connect the device over USB and run:
+firmware update** (section 17). Then connect the device over USB and run:
 
 ```bash
 python3 scripts/debugging_monitor.py

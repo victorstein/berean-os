@@ -39,6 +39,13 @@ int numberInkRight(const HomeLayout::Box& cell) { return numberInkLeft(cell) + W
 
 constexpr int STRIP_DAY_HEIGHT = LINES.small + LINES.ui10;
 
+// The NWT cover as CoverBand thumbnails it for the 464 px hero, and where its
+// "LA BIBLIA" ink sits in that thumbnail (measured from the cover JPEG scaled to 535x773).
+constexpr int NWT_THUMB_W = 535;
+constexpr int NWT_THUMB_H = 773;
+constexpr int TITLE_FIRST_ROW = 167;
+constexpr int TITLE_LAST_ROW = 214;
+
 }  // namespace
 
 TEST(HomeLayout, TheHeroSharesTheMastheadThumbnail) {
@@ -52,6 +59,7 @@ TEST(HomeLayout, TheHeroSharesTheMastheadThumbnail) {
 TEST(HomeLayout, FixedSectionHeights) {
   EXPECT_EQ(HomeLayout::iconRowHeight(LINES), 79);
   EXPECT_EQ(HomeLayout::meetingsHeight(LINES), 94);
+  EXPECT_EQ(HomeLayout::preachingHeight(LINES), 63);
   EXPECT_EQ(HomeLayout::verseCardHeight(LINES), 172);
   EXPECT_EQ(HomeLayout::verseTextHeight(LINES), 102);
   EXPECT_EQ(HomeLayout::recentHeight(LyraMetrics::values, LINES), 143);
@@ -61,8 +69,8 @@ TEST(HomeLayout, FixedSectionHeights) {
 }
 
 TEST(HomeLayout, TheHeroTakesTheRemainder) {
-  EXPECT_EQ(layoutFor(LyraMetrics::values).hero.height, 250);
-  EXPECT_EQ(layoutFor(BaseMetrics::values).hero.height, 272);
+  EXPECT_EQ(layoutFor(LyraMetrics::values).hero.height, 179);
+  EXPECT_EQ(layoutFor(BaseMetrics::values).hero.height, 199);
 }
 
 TEST(HomeLayout, TheTopLeavesAGapAboveTheHero) {
@@ -79,15 +87,29 @@ TEST(HomeLayout, TheTopLeavesAGapAboveTheHero) {
 TEST(HomeLayout, TheGapsLeaveTheSectionsBelowTheHeroInPlace) {
   for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
     const auto layout = layoutFor(*metrics);
-    EXPECT_EQ(bottomOf(layout.hero), INSETS.top + metrics->topPadding + (metrics == &LyraMetrics::values ? 258 : 280));
+    EXPECT_EQ(bottomOf(layout.hero), INSETS.top + metrics->topPadding + (metrics == &LyraMetrics::values ? 187 : 207));
   }
 }
 
-TEST(HomeLayout, TheHeroKeepsItsArtAboveThePlate) {
+TEST(HomeLayout, ThePlateSitsAtTheHerosFoot) {
   for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
     const auto layout = layoutFor(*metrics);
-    EXPECT_GE(layout.hero.height - layout.plate.height, HomeLayout::MIN_HERO_ART);
     EXPECT_EQ(bottomOf(layout.plate), bottomOf(layout.hero));
+  }
+}
+
+// Every section added to Home shrinks the hero. This fails before a taller section can crop
+// the Bible's title out of the artwork above the plate.
+TEST(HomeLayout, TheCoverStillShowsTheBibleTitle) {
+  for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
+    const auto layout = layoutFor(*metrics);
+    const int visible = layout.hero.height - layout.plate.height;
+    ASSERT_EQ(CoverBandGeometry::thumbHeightFor(layout.hero.width, layout.hero.height), NWT_THUMB_H);
+    const auto crop = CoverBandGeometry::crop(NWT_THUMB_W, NWT_THUMB_H, layout.hero.width, layout.hero.height, visible,
+                                              CoverBandGeometry::BOOK_TITLE_BAND);
+    ASSERT_TRUE(crop.fits);
+    EXPECT_LE(crop.yOffset, TITLE_FIRST_ROW);
+    EXPECT_GE(crop.yOffset + visible - 1, TITLE_LAST_ROW);
   }
 }
 
@@ -105,7 +127,8 @@ TEST(HomeLayout, SectionsStackWithoutOverlap) {
     EXPECT_EQ(layout.recentLabel.y, bottomOf(layout.hero) + gap);
     EXPECT_EQ(layout.verseCard.y, bottomOf(layout.recent[HomeLayout::RECENT_SLOTS - 1]) + gap);
     EXPECT_EQ(layout.meetings.y, bottomOf(layout.verseCard) + gap);
-    EXPECT_EQ(layout.icons[0].y, bottomOf(layout.meetings) + gap);
+    EXPECT_EQ(layout.preaching.y, bottomOf(layout.meetings) + gap);
+    EXPECT_EQ(layout.icons[0].y, bottomOf(layout.preaching) + gap);
   }
 }
 
@@ -148,6 +171,21 @@ TEST(HomeLayout, TheMeetingsCardKeepsTheRangeBelowTheStrip) {
   EXPECT_TRUE(within(layout.strip, layout.meetings));
   EXPECT_TRUE(within(layout.meetingsPercent, layout.meetings));
   EXPECT_LE(bottomOf(layout.meetingsPercent), layout.meetingsRange.y);
+}
+
+TEST(HomeLayout, ThePreachingCardHoldsItsIconTitleAndSubtitle) {
+  for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
+    const auto layout = layoutFor(*metrics);
+    EXPECT_EQ(layout.preaching.height, 63);
+    EXPECT_TRUE(within(layout.preachingIcon, layout.preaching));
+    EXPECT_TRUE(within(layout.preachingTitle, layout.preaching));
+    EXPECT_TRUE(within(layout.preachingSubtitle, layout.preaching));
+    EXPECT_EQ(layout.preachingTitle.width, 408);
+    EXPECT_EQ(layout.preachingSubtitle.y, bottomOf(layout.preachingTitle));
+    EXPECT_LE(bottomOf(layout.preachingSubtitle) + HomeLayout::PAD, bottomOf(layout.preaching));
+    EXPECT_LE(bottomOf(layout.preachingIcon) + HomeLayout::PAD, bottomOf(layout.preaching));
+    EXPECT_LE(layout.preachingIcon.x + layout.preachingIcon.width + HomeLayout::PAD, layout.preachingTitle.x);
+  }
 }
 
 TEST(HomeLayout, TheStripCellIsANumberAndADigitWide) {

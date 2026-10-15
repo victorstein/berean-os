@@ -15,7 +15,8 @@
 
 // bereanOS's home screen (issue #203, Direction B v2): the Bible's cover with
 // Continue and Go to on its plate, the recent places, a verse from the user's
-// tags, this week's meetings, and Tags, Search, Publications and Settings.
+// tags, this week's meetings, Predicación, and Tags, Search, Publications and
+// Settings.
 //
 // A launcher is a screen you pass THROUGH, and on e-ink every pass costs a full
 // panel refresh, so getting back to a place is one tap. There is no Bible
@@ -54,6 +55,7 @@ class LauncherActivity final : public Activity {
   void drawRecent() const;
   void drawVerse() const;
   void drawMeetings() const;
+  void drawPreaching() const;
   void drawIconTile(const HomeLayout::Box& box, const uint8_t* icon, const char* label, bool selected) const;
   bool isSelected(Target target) const;
 
