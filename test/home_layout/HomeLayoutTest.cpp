@@ -39,6 +39,13 @@ int numberInkRight(const HomeLayout::Box& cell) { return numberInkLeft(cell) + W
 
 constexpr int STRIP_DAY_HEIGHT = LINES.small + LINES.ui10;
 
+// The NWT cover as CoverBand thumbnails it for the 464 px hero, and where its
+// "LA BIBLIA" ink sits in that thumbnail (measured from the cover JPEG scaled to 535x773).
+constexpr int NWT_THUMB_W = 535;
+constexpr int NWT_THUMB_H = 773;
+constexpr int TITLE_FIRST_ROW = 167;
+constexpr int TITLE_LAST_ROW = 214;
+
 }  // namespace
 
 TEST(HomeLayout, TheHeroSharesTheMastheadThumbnail) {
@@ -88,6 +95,21 @@ TEST(HomeLayout, ThePlateSitsAtTheHerosFoot) {
   for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
     const auto layout = layoutFor(*metrics);
     EXPECT_EQ(bottomOf(layout.plate), bottomOf(layout.hero));
+  }
+}
+
+// Every section added to Home shrinks the hero. This fails before a taller section can crop
+// the Bible's title out of the artwork above the plate.
+TEST(HomeLayout, TheCoverStillShowsTheBibleTitle) {
+  for (const ThemeMetrics* metrics : {&LyraMetrics::values, &BaseMetrics::values}) {
+    const auto layout = layoutFor(*metrics);
+    const int visible = layout.hero.height - layout.plate.height;
+    ASSERT_EQ(CoverBandGeometry::thumbHeightFor(layout.hero.width, layout.hero.height), NWT_THUMB_H);
+    const auto crop = CoverBandGeometry::crop(NWT_THUMB_W, NWT_THUMB_H, layout.hero.width, layout.hero.height,
+                                              visible, CoverBandGeometry::BOOK_TITLE_BAND);
+    ASSERT_TRUE(crop.fits);
+    EXPECT_LE(crop.yOffset, TITLE_FIRST_ROW);
+    EXPECT_GE(crop.yOffset + visible - 1, TITLE_LAST_ROW);
   }
 }
 
