@@ -18,7 +18,7 @@ and the `test/stubs` logging stub).
 
 **The code in this plan was compiled and run before it was written down.** It was built against
 this repo's own expat, `htmlEntities.cpp` and `Memory.h` with the repo's `-Wall -Wextra -pedantic`
-host flags: all 32 tests pass. It was formatted with the repo's clang-format 21. All 21 files of
+host flags: all 33 tests pass. It was formatted with the repo's clang-format 21. All 21 files of
 the real section parse (`nwt_S.epub`): Q1–Q20 yield 114 `Verse` blocks, the largest is Q19 at 32
 blocks, the most text is 1,902 bytes (Q2). Paste it exactly. If something does not compile or a
 test fails, the plan is wrong: stop and report rather than improvise.
@@ -80,14 +80,20 @@ TEST(IntroSection, QuestionNIsSlotN) {
   }
 }
 
-static_assert(nextQuestion(7) == 10);
-static_assert(nextQuestion(12) == 18);
-static_assert(nextQuestion(20) == 0);
+// The design's follow-up table, by question number; index 0 is unused.
+constexpr int EXPECTED_FOLLOW_UP[] = {0, 2, 3, 4, 5, 6, 7, 10, 9, 10, 11, 12, 18, 14, 15, 16, 18, 18, 20, 20, 0};
+
+constexpr bool followUpsMatchTheDesign() {
+  for (int question = 1; question <= preaching::IntroSection::QUESTION_COUNT; question++) {
+    if (nextQuestion(question) != EXPECTED_FOLLOW_UP[question]) return false;
+  }
+  return true;
+}
+static_assert(followUpsMatchTheDesign());
 
 TEST(IntroSection, FollowUpTableMatchesTheDesign) {
-  const int expected[] = {0, 2, 3, 4, 5, 6, 7, 10, 9, 10, 11, 12, 18, 14, 15, 16, 18, 18, 20, 20, 0};
   for (int question = 1; question <= preaching::IntroSection::QUESTION_COUNT; question++) {
-    EXPECT_EQ(nextQuestion(question), expected[question]) << "question " << question;
+    EXPECT_EQ(nextQuestion(question), EXPECTED_FOLLOW_UP[question]) << "question " << question;
   }
 }
 
@@ -379,7 +385,9 @@ bool parseQuestion(const char* xhtml, size_t length, Question& out);
 What it covers, in the spec's terms:
 
 - the title and the `contextTtl`/`pageNum` skip;
-- `<figure>`;
+- `<figure>`, and the `<figure>` and `pageNum` skips against content that would show if either
+  skip were missing: a caption paragraph inside `<figure>`, and `pageNum` spans that carry text
+  (the real ones are empty, so only this test fails when a skip is removed);
 - a quote with its reference;
 - a `pageNum` inside a quote paragraph;
 - multi-link references, Ecclesiastes and Matthew;
@@ -495,6 +503,16 @@ TEST(QuestionParser, TakesTheTitleAndSkipsTheQuestionLabel) {
 TEST(QuestionParser, FigureAddsNothing) {
   const Question question = parsed(page(std::string(Q1_HEADER) + "<div class=\"bodyTxt\">\n" + Q1_FIGURE + "</div>\n"));
   EXPECT_TRUE(question.blocks.empty());
+}
+
+TEST(QuestionParser, SkipsFigureCaptionsAndPageNumbersThatCarryText) {
+  const Question question =
+      parsed(page("<h2><span class=\"pageNum\">15</span><strong>PROFECÍA</strong></h2>\n"
+                  "<figure><img src=\"a.jpg\" alt=\"Un hombre\" /><p>Un pie de foto</p></figure>\n"
+                  "<p><span class=\"pageNum\">7</span>Texto</p>\n"));
+  ASSERT_EQ(question.blocks.size(), 2u);
+  EXPECT_EQ(question.blocks[0].text, "PROFECÍA");
+  EXPECT_EQ(question.blocks[1].text, "Texto");
 }
 
 TEST(QuestionParser, PairsAQuoteWithItsReference) {
@@ -817,10 +835,6 @@ implemented yet.
 namespace preaching {
 namespace {
 
-// Reserved once so a paragraph's text rarely regrows; the longest real one is
-// well under this.
-constexpr size_t PARAGRAPH_RESERVE_BYTES = 1024;
-
 bool isAsciiSpace(const char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
 
 bool hasToken(const char* list, const char* token) {
@@ -1084,7 +1098,6 @@ QuestionParser::QuestionParser() {
     return;
   }
   state->blocks.reserve(MAX_BLOCKS);
-  state->buffer.reserve(PARAGRAPH_RESERVE_BYTES);
 
   XML_Parser parser = XML_ParserCreate(nullptr);
   if (!parser) {
@@ -1167,7 +1180,7 @@ cmake --build build/test --target PreachingTest -j8 2>&1 | grep -E "warning|erro
 ```
 
 Expected: the `grep` prints nothing (GoogleTest's own `gtest-printers.h` warning under clang 21 is
-pre-existing and not ours), and the run ends `[  PASSED  ] 32 tests.`
+pre-existing and not ours), and the run ends `[  PASSED  ] 33 tests.`
 
 **Step 3.7 — commit.**
 
@@ -1225,16 +1238,12 @@ commit as described there). `src/PreachingBuildCheck.cpp` must not appear in any
 
 ```bash
 ~/.platformio/penv/bin/pio run -e x4pro 2>&1 | tee build/pio-x4pro.log | tail -5
-grep -nE "warning" build/pio-x4pro.log | grep -E "lib/Preaching|test/preaching" || echo "no Preaching warnings"
-find .pio/build/x4pro -path '*Preaching*' -name '*.o' -newer build/pio-x4pro-check.log | head
 ```
 
-Expected:
-
-- `[SUCCESS]`, and `no Preaching warnings`;
-- the `find` is expected to be empty. Nothing in `src/` includes the library any more, so
-  PlatformIO does not rebuild it. Record what it printed for the hand-off; either outcome is
-  acceptable, the warning check is what matters.
+Expected: `[SUCCESS]`. This proves only that the committed tree, without the temporary include,
+still builds. Nothing in `src/` includes the library now, so PlatformIO does not compile it here
+and this log cannot show its warnings. Step 4.2 is the warning check for `lib/Preaching`; do not
+grep this log for it.
 
 **Step 5.2 — formatting, as CI runs it.** The new files are committed, so `-g` would miss them.
 Run the whole-tree form:
@@ -1261,13 +1270,14 @@ If it changed files outside this task's paths, do not commit them: restore them 
 cmake -S test -B build/test && cmake --build build/test --target PreachingTest -j8 && ctest --test-dir build/test -R '^(IntroSection|QuestionParser)\.' --output-on-failure
 ```
 
-Expected: `100% tests passed, 0 tests failed out of 32`.
+Expected: `100% tests passed, 0 tests failed out of 33`.
 
 **Step 5.4 — report.** Report back:
 
 - the commit list, from `git log --oneline origin/feature/preaching-intro-parser..HEAD`;
 - the test count;
-- whether step 4.2's `find` showed the `Preaching` objects;
+- whether step 4.2's `find` showed the `Preaching` objects, and step 4.2's warning grep result
+  (the only device-compiler warning check this library gets before T3 includes it);
 - the `[SUCCESS]` lines from both device builds;
 - that `git status --short` is clean.
 
@@ -1346,14 +1356,20 @@ TEST(IntroSection, QuestionNIsSlotN) {
   }
 }
 
-static_assert(nextQuestion(7) == 10);
-static_assert(nextQuestion(12) == 18);
-static_assert(nextQuestion(20) == 0);
+// The design's follow-up table, by question number; index 0 is unused.
+constexpr int EXPECTED_FOLLOW_UP[] = {0, 2, 3, 4, 5, 6, 7, 10, 9, 10, 11, 12, 18, 14, 15, 16, 18, 18, 20, 20, 0};
+
+constexpr bool followUpsMatchTheDesign() {
+  for (int question = 1; question <= preaching::IntroSection::QUESTION_COUNT; question++) {
+    if (nextQuestion(question) != EXPECTED_FOLLOW_UP[question]) return false;
+  }
+  return true;
+}
+static_assert(followUpsMatchTheDesign());
 
 TEST(IntroSection, FollowUpTableMatchesTheDesign) {
-  const int expected[] = {0, 2, 3, 4, 5, 6, 7, 10, 9, 10, 11, 12, 18, 14, 15, 16, 18, 18, 20, 20, 0};
   for (int question = 1; question <= preaching::IntroSection::QUESTION_COUNT; question++) {
-    EXPECT_EQ(nextQuestion(question), expected[question]) << "question " << question;
+    EXPECT_EQ(nextQuestion(question), EXPECTED_FOLLOW_UP[question]) << "question " << question;
   }
 }
 
@@ -1379,3 +1395,22 @@ TEST(IntroSection, ReturnsAnUnprefixedLabelWhole) {
 
 }  // namespace
 ```
+
+## Changes after plan review pass 0
+
+`docs/superpowers/reviews/berean-o-14-plan-review-0.md` (CLEAR, 4 MINOR); all accepted. The
+changed code was rebuilt and rerun against the repo's sources (33 tests pass). Each skip was
+removed in turn: only the new test failed, so it guards both.
+
+- **The skips were untested.** Removing the `<figure>` or `pageNum` skip left every test green,
+  because the fixtures' figure held only an `<img>` and their `pageNum` spans were empty. The new
+  test `SkipsFigureCaptionsAndPageNumbersThatCarryText` fails under either removal.
+- **Step 5.1's warning check was hollow.** It ran after the temporary include was gone, so the
+  library was not compiled. Step 5.1 now checks only `[SUCCESS]`, and step 5.4 reports step 4.2's
+  warning result.
+- **`static_assert` for every follow-up.** The three single `static_assert`s are replaced by one
+  `static_assert(followUpsMatchTheDesign())` over all 20 questions. A shared `EXPECTED_FOLLOW_UP`
+  table also drives the runtime test.
+- **An allocation the spec did not budget.** `buffer.reserve(1024)` and `PARAGRAPH_RESERVE_BYTES`
+  are gone. The paragraph buffer is cleared, not freed, between blocks, so it grows to the longest
+  paragraph once and is reused. The only reservation left is the spec's `blocks.reserve(MAX_BLOCKS)`.
