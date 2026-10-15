@@ -111,6 +111,12 @@ reader does: `if (!STUDY.canResumePublication(epub)) STUDY.openPublication(epub,
 `canResumePublication`, not `isOpen()`, so that a `STUDY` open for another publication is
 reopened on the Bible. A retire then strips the tag from `bible.json` (D5).
 
+**The reopen is safe because no reader is ever alive beneath Predicación.** `openPublication`
+first runs `closePublication()` on whatever `STUDY` held (`StudyStore.cpp:65`). Predicación is
+entered only through `goToPreaching`, which is a replace (`ActivityManager.cpp:232-239`): the
+reader that last used `STUDY`, if any, has already been destroyed. If Predicación is ever pushed
+over a live reader, this assumption has to be revisited.
+
 ## Design
 
 ### Assumptions (each is a choice the review may attack)
@@ -138,8 +144,11 @@ reopened on the Bible. A retire then strips the tag from `bible.json` (D5).
 - **A3 — The picker seeds its selection from its own loaded `tags()`**, filtered to
   `STUDY.palette().activeIds()` with `TagChips::selectedInOrder` (`TagChipRow.h:166-174`). This is
   `TagPickerActivity`'s seeding (`TagPickerActivity.cpp:22-25`), applied to what is on disk now.
-  - If the load latched, `tags()` is empty (`PreachingTopicsFile.cpp:58`), so the picker opens
-    with nothing picked. The swipe's save is then refused with the popup.
+  - If `preaching.json` failed to load, `tags()` is empty (`PreachingTopicsFile.cpp:58`), so the
+    picker opens with nothing picked. If only `tags.json` failed, `tags()` keeps the stored picks
+    and the latch still refuses the save. Either way, a changed selection's save is refused with
+    the popup (A13).
+  - This seed is also kept as `seedIds`, a loop-task member that A13 compares against.
 - **A4 — Chips are one `Kind::Tag` chip per `STUDY.palette().activeIdsByName()`**, with no
   `NewTag` chip. This is `TagPickerActivity::buildChips` (`TagPickerActivity.cpp:58-74`) without
   its first chip.
@@ -158,14 +167,24 @@ reopened on the Bible. A retire then strips the tag from `bible.json` (D5).
     message, `STR_TAG_LIMIT_PER_HIGHLIGHT`, is about highlights.
   - The store refuses more than 200 picks with `TooLarge` (`PreachingTopicsFile.cpp:75-79`), which
     shows the save-failed toast. The owner's palette is 48 tags (`TagPalette.h:35`).
-- **A7 — The result is `TagSelectionResult` holding the picker's final selection**, in
-  `STUDY.palette().activeIdsByName()` order (`ActivityResult.h:88-90`). The picker sets it whether
-  or not the save succeeded. The save's outcome is reported by the picker's own toast.
-  `isCancelled` is never set by the picker.
+- **A7 — The result is a `TagSelectionResult` holding the picks as they now stand on disk**, in
+  `STUDY.palette().activeIdsByName()` order (`ActivityResult.h:88-90`). `isCancelled` is never set
+  by the picker.
+  - **Saved, or nothing to save (A13):** `picks`.
+  - **A failed save:** what the file still holds minus tags `STUDY` has retired, i.e.
+    `selectedInOrder(STUDY.palette().activeIdsByName(), topicsFile.tags())`. `tags()` is unchanged
+    on any result but `Ok` (`PreachingTopicsFile.cpp:96`).
+  - So a failed save with toggles but no retire compares equal to Mis temas, and costs no reload
+    or count pass (the brief: recount "only when the selection changed"). A retired pick still
+    differs, so Mis temas drops it.
+  - The save's outcome itself is reported by the picker's own toast.
 - **A8 — Recount only on a change.**
-  - In `onTopicPickerResult` (below), `PreachingActivity` compares the returned selection with
-    `session.topics()` as sets (`std::is_permutation`). It calls the existing `onTopicsChanged()`
-    only when they differ.
+  - In `onTopicPickerResult` (below), `PreachingActivity` compares the returned ids with
+    `session.topics()` as sets. That uses the **four-iterator**
+    `std::is_permutation(a.begin(), a.end(), b.begin(), b.end())`. The three-iterator form compares
+    only `a`'s length: dropping the last-named pick would read as unchanged, and a longer `a` reads
+    past `b`'s end. The four-iterator form is C++14, and the build is `gnu++2a`
+    (`platformio.ini:40`, `-std=gnu++2a`). `onTopicsChanged()` runs only when they differ.
   - Unchanged → no reload and no count pass. The manager's post-handler render repaints
     (`ActivityManager.cpp:131-133`).
   - A result that is not a `TagSelectionResult` (unreachable under A1) is treated as changed, so a
@@ -193,6 +212,15 @@ reopened on the Bible. A retire then strips the tag from `bible.json` (D5).
   `drawChrome` (`UiListActivity.h:63-66`). There is no Done pill: the swipe is the exit, and
   `TagPickerActivity`'s Done exists for its touch commit beside a cancelling Back
   (`TagPickerActivity.h:18-19`).
+- **A13 — No change, no write.**
+  - Leaving with the same ids the picker opened with (`seedIds`, A3) writes nothing and posts no
+    toast, from the swipe or from Home.
+  - `CLAUDE.md` says to guard redundant writes ("Storage discipline": each costs serialisation,
+    SD I/O and `storageMutex` contention).
+  - Without the guard, a latched store would toast "Couldn't save your topics" on every visit,
+    even one that changed nothing.
+  - A retired pick leaves `selectedIds` (`onTagRetired`), so it differs from the seed: the save
+    still runs and prunes it.
 
 ### `PreachingTopicPickerActivity` (new)
 
@@ -212,12 +240,19 @@ reopened on the Bible. A retire then strips the tag from `bible.json` (D5).
 
 `saveAndReturn()` is private, on the loop task:
 1. `picks = TagChips::selectedInOrder(STUDY.palette().activeIdsByName(), selectedIds)`.
-2. `topicsFile.save(picks)`. On any result but `Ok`, `LOG_ERR` the result and
-   `PostedMessage::post(tr(STR_PREACHING_SAVE_FAILED))`.
-3. `app.clearTapFlash()`; `setResult(TagSelectionResult{picks})` (A7); `finish()`.
+2. If `picks` and `seedIds` hold the same ids (four-iterator `std::is_permutation`, A8), skip the
+   save and the toast (A13), and return `picks`.
+3. Otherwise `topicsFile.save(picks)`. On any result but `Ok`, `LOG_ERR` the result,
+   `PostedMessage::post(tr(STR_PREACHING_SAVE_FAILED))`, and return the on-disk picks (A7).
+4. `app.clearTapFlash()`; `setResult(TagSelectionResult{...})` (A7); `finish()`.
 
 The swipe calls `saveAndReturn()`. Home calls it and then `goHome()`, whose replace drops the
 stack and the result handler with it (`ActivityManager.cpp:144-151`).
+
+**The order is load-bearing:** `saveAndReturn()` must come before `goHome()`. `finish()` sets a
+pending Pop, and `goHome()` then turns it into a Replace. In the reverse order,
+`popActivity()` resets the pending Home activity (`ActivityManager.cpp:267-273`), and Home is
+lost.
 
 **State and threads.**
 - **`selectedIds`** (`std::vector<study::TagId>`) is written by the loop task under `RenderLock`
@@ -260,17 +295,20 @@ Mis temas: tap "+ Elegir temas"  (loop task, no lock)
     ensureStudyOpen: canResume(Bible)? : openPublication(Bible)   [LOG_INF ms]
     push PreachingTopicPickerActivity
       onEnter: topicsFile.load()  -> tags.json, preaching.json (latch on failure)
-               selectedIds = selectedInOrder(STUDY.activeIds, topicsFile.tags())
+               selectedIds = seedIds = selectedInOrder(STUDY.activeIds, topicsFile.tags())
                chips = STUDY.activeIdsByName, no New tag
       tap chip      -> toggle (RenderLock)
       long-press    -> base retire via STUDY (Bible open, so tags.json + bible.json)
                        -> onTagRetired: drop from selectedIds
-      left swipe    -> saveAndReturn: save(picks); != Ok -> toast SAVE_FAILED
-                       result = TagSelectionResult{picks}; finish()
+      left swipe    -> saveAndReturn: picks same ids as seedIds? -> no write, result picks
+                       else save(picks): Ok -> result picks
+                                         != Ok -> toast SAVE_FAILED, result = on-disk picks
+                       finish()
       Home          -> saveAndReturn, then goHome()  (handler never runs)
   pop: picker onExit/destroy under RenderLock; handler with lock free
     onTopicPickerResult:
-      picks == session.topics() (as sets)?  -> nothing; manager re-renders
+      result same ids as session.topics() (4-iterator is_permutation)?
+                                       -> nothing; manager re-renders
       else -> onTopicsChanged(): reloadTopics (re-reads tags.json + preaching.json),
               ensureCounts (bible.json pass), rebuildRows   [all under RenderLock]
               moveRingTo(Elegir row)
@@ -285,10 +323,10 @@ path, with `STUDY` holding the real palette and the Bible's passages.
 | What fails | What happens | What the user sees |
 |---|---|---|
 | No Bible loaded | Picker not pushed (A11) | `STR_PREACHING_OPEN_FAILED` |
-| `openPublication`: tags or `bible.json` unreadable | `saveDisabled_` latched by `StudyStore` (`StudyStore.cpp:73-83`) | Picker opens; a retire is refused with `STR_HIGHLIGHTS_LOAD_FAILED` (base) |
-| `tags.json` unreadable as `STUDY` loads it | Palette empty, so no chips | An empty grid; nothing is written |
-| `preaching.json` corrupt or newer, or `tags.json` unreadable, in the picker's load | `topicsFile` latched; selection starts empty (A3) | On leaving: `STR_PREACHING_SAVE_FAILED`; the file is untouched |
-| Save `TooLarge` / `WriteFailed` / `Refused` | `tags()` and the file unchanged (`PreachingTopicsFile.cpp:63-97`) | `STR_PREACHING_SAVE_FAILED` over Predicación or Home; Mis temas shows the previous picks (minus any retired) |
+| `openPublication`: tags or `bible.json` unreadable | `saveDisabled_` latched by `StudyStore` (`StudyStore.cpp:73-83`), **for the whole boot**: it survives `closePublication` (`StudyStore.cpp:107-108`) | Picker opens; a retire is refused with `STR_HIGHLIGHTS_LOAD_FAILED` (base). Until reboot, every tag edit in every publication is refused too, and the reader shows `STR_HIGHLIGHTS_LOAD_FAILED` on each book open (`EpubReaderActivity.cpp:282-284`). Opening the Bible in the reader already does this; what is new is reaching it without opening the Bible |
+| `tags.json` unreadable as `STUDY` loads it | `openPublication` loads into the existing palette without resetting it (`StudyStore.cpp:72`) | The grid shows whatever palette `STUDY` last loaded this boot, or nothing after a fresh boot. Nothing is written: both stores refuse |
+| `preaching.json` corrupt or newer, or `tags.json` unreadable, in the picker's load | `topicsFile` latched. The selection starts empty only when `preaching.json` failed (A3) | On leaving **after a change**: `STR_PREACHING_SAVE_FAILED`; the file is untouched. With no change, nothing is written and no toast shows (A13) |
+| Save `TooLarge` / `WriteFailed` / `Refused` | `tags()` and the file unchanged (`PreachingTopicsFile.cpp:63-97`). The result is the on-disk picks (A7) | `STR_PREACHING_SAVE_FAILED` over Predicación or Home. Mis temas shows the previous picks, minus any retired; it recounts only if a retire changed them |
 | Retire saved the palette but not the passages | Base posts `STR_TAG_SAVE_FAILED` (`TagChipGridActivity.cpp:199-201`) | As in every chip grid |
 | OOM creating the picker | `makeUniqueNoThrow` null → `LOG_ERR` | `STR_PREACHING_OPEN_FAILED` |
 
@@ -303,16 +341,30 @@ existing chip code already makes.
   is a member, not a stack local; the stack stays under 256 B.
 - **Three palettes while it is open:** `STUDY`'s, the session's and the picker's. This is the cost
   of A2. It ends when the picker pops.
-- **`STUDY` on the Bible:** the open loads `bible.json` passages through the passage-doc
-  allocator, into PSRAM: `closePublication` resets the document onto `PsramJsonAllocator::passageDoc()` (`StudyStore.cpp:102`) before `PassageFile::load` fills it (`:79`). They are held
-  until the next `openPublication`, exactly as after reading the Bible. A reader that later takes
-  the parked Bible resumes it instead of reloading (`StudyStore.cpp:111-120`).
+- **`STUDY` on the Bible stays resident after the first open.** When the open runs (it is skipped
+  when `canResumePublication` is true), it leaves this state held until the next
+  `openPublication`, exactly as reading the Bible does:
+  - in PSRAM, the `bible.json` passages: `closePublication` resets the document onto
+    `PsramJsonAllocator::passageDoc()` (`StudyStore.cpp:102`) before `PassageFile::load` fills it
+    (`:79`);
+  - in internal heap:
+    - `palette_`, about 48 entries with their names, which `closePublication` never clears
+      (`StudyStore.cpp:100-109`);
+    - the `UnitIndexCache` (`StudyStore.cpp:86`), which keeps a `shared_ptr<Epub>` to the Bible
+      (`UnitIndexCache.h:87`);
+    - `pubKey_`.
+  
+  On a boot straight to Home, the first Elegir temas therefore lowers `ESP.getFreeHeap()` (internal
+  heap only) by about 1.5–2 KB. That is resident state, not a leak.
+
+  A reader that later takes the parked Bible resumes this state instead of reloading
+  (`StudyStore.cpp:111-120`).
 
 ## Testing
 
 - **No new host suite.** The brief asks for tests only of logic extracted here, and none is:
   - selection ordering is `TagChips::selectedInOrder`, tested in `test/tag_rows/TagChipRowTest.cpp`;
-  - the change check is one `std::is_permutation`;
+  - the change checks are each one four-iterator `std::is_permutation` (A8, A13);
   - save, latch, pruning and budget are T2's, tested in
     `test/storage_io/PreachingTopicsFileTest.cpp:43-213`.
 
@@ -325,11 +377,44 @@ existing chip code already makes.
      The serial log shows "Study opened for Elegir temas in N ms".
   2. Pick three, swipe back. Mis temas lists them in name order with counts. `preaching.json`
      holds the three ids.
-  3. Reopen the picker. The three are Active. Swipe without changing anything: no count pass in
-     the log.
+  3. Reopen the picker. The three are Active. Swipe without changing anything: no count pass
+     (`Counts:` line) in the log, and `preaching.json`'s modification time is unchanged.
+  3a. Reopen, unpick the **last** of the three in name order, and swipe. Mis temas drops it, and
+     `preaching.json` holds the other two (A8's four-iterator check).
   4. Long-press a picked tag and retire it, then swipe. Mis temas drops it, and `tags.json` still
      holds every other tag (the d1 hazard).
   5. Make `preaching.json` unreadable (e.g. `{"v":2}`), pick, swipe. The toast appears, the file
-     is unchanged, and Mis temas is unchanged.
-  6. Home from the picker saves and lands on Home.
-  7. Free heap equal before Elegir temas and after returning.
+     is unchanged, Mis temas is unchanged, and there is no `Counts:` line.
+  5a. With it still unreadable, open the picker, change nothing, and swipe. No toast (A13).
+  6. Home from the picker after a change saves and lands on Home.
+  7. Open Elegir temas once and return; the "Study opened" line appears. Note free heap. Open it
+     again, change nothing, and return; there is no "Study opened" line. Free heap is equal to the
+     note.
+  8. Read a non-Bible publication, go Home, then Predicación → Elegir temas. The "Study opened"
+     line appears (d1's reopen). Retire a tag. It is gone from `tags.json` and from `bible.json`'s
+     passages, and the other publication's passages file is untouched.
+
+## Review pass 0 changes
+
+Review `docs/superpowers/reviews/berean-o-18-spec-review-0.md` was CLEAR, with 3 MAJORs and 4
+MINORs. All were accepted and fixed here.
+
+- **M1 — redundant writes.** Added A13: leaving with the seeded ids writes nothing and posts no
+  toast. `saveAndReturn()` gained the skip as step 2, and A3 keeps `seedIds`. Error row 4 now reads
+  "after a change". Added device check 5a.
+- **M2 — device check 7.** Memory now lists `STUDY`'s resident state after the first open: the
+  palette, the unit index and its `Epub` reference in internal heap, and the passages in PSRAM.
+  Check 7 now measures across a second round trip.
+- **M3 — the three-iterator `is_permutation`.** A8 now names the four-iterator overload and says
+  why. The flow and both comparisons use it. Added device check 3a, which unpicks the last tag in
+  name order.
+- **m1 — a failed save recounted.** A7 now returns the on-disk picks after a failed save, so only a
+  retire triggers the reload.
+- **m2 — the reopen invariant.** The d1 section states that no reader lives beneath Predicación,
+  because `goToPreaching` is a replace. Added device check 8.
+- **m3 — boot-wide latch.** Error row 2 now gives the boot-wide scope of `saveDisabled_`.
+- **m4 — latch descriptions.** A3 and error row 3 are corrected for the case where only `tags.json`
+  failed.
+
+The review's note on Home ordering (`saveAndReturn()` before `goHome()`) is now stated under the
+`saveAndReturn()` steps.
