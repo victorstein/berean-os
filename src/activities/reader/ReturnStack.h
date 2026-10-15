@@ -12,10 +12,13 @@ struct SavedPosition {
 
 class ReturnStack {
  public:
-  // The left-edge swipe is this device's only Return and goes inert once the
-  // ring empties, so an evicted entry strands the reader mid-chain rather than
-  // costing one step. At 8 bytes a slot, buying the boundary well past any
-  // chain a study session walks is the cheap side of that trade.
+  // Back -- the left-edge swipe or a held Left key -- returns through this ring.
+  // Once it empties, Back leaves for Predicación if the reader was opened from
+  // there; otherwise the swipe goes inert and a held Left leaves the book, as it
+  // always has. Either way an evicted entry strands the reader mid-chain rather
+  // than costing one step.
+  // At 8 bytes a slot, buying the boundary well past any chain a study session
+  // walks is the cheap side of that trade.
   static constexpr int CAPACITY = 16;
 
   // At capacity the oldest entry is evicted, trading the article origin for

@@ -246,11 +246,13 @@ struct BackNavCallback {
 // - with backShortToFileBrowser: go to file browser.
 inline bool handleBackNavigation(const MappedInputManager& mappedInput, ActivityManager& activityManager,
                                  const char* filePath, BackNavCallback goHome) {
-  // The reading surface deliberately has no left-edge swipe-to-exit path: in
-  // swipe page-turn mode a right swipe must page back instead. Home remains
-  // available through the board's dedicated Home gesture/key. Back swipes stay
-  // available in menus and other activities; only this reader-surface handler
-  // ignores them. Physical Back buttons are unaffected: isPressed() is
+  // This handler never exits on the left-edge swipe, so that in swipe page-turn
+  // mode a right swipe can page back. The Epub reader decides the swipe before
+  // this: it returns through its ReturnStack or, once that is empty, to the
+  // Predicación card it was opened from, which takes a short left-quarter swipe
+  // even in swipe mode (ReaderBackSwipe.h). Home remains available through the
+  // board's dedicated Home gesture/key. Back swipes stay available in menus and
+  // other activities. Physical Back buttons are unaffected: isPressed() is
   // button-only, and this guard skips just the gesture's own release frame.
   if (mappedInput.wasBackGesture()) {
     return false;
