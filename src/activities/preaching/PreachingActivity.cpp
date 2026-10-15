@@ -239,6 +239,8 @@ void PreachingActivity::ensureStudyOpen() {
 void PreachingActivity::onTopicPickerResult(const ActivityResult& result) {
   const auto* picked = std::get_if<TagSelectionResult>(&result.data);
   const std::vector<study::TagId>& shown = session.topics();
+  // The four-iterator form: the three-iterator one compares only the first list's length, so
+  // dropping the last pick would read as unchanged and Mis temas would keep showing it.
   if (picked && std::is_permutation(picked->tagIds.begin(), picked->tagIds.end(), shown.begin(), shown.end())) {
     return;
   }
