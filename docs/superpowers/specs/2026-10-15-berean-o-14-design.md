@@ -216,9 +216,11 @@ file-local copies in `VerseTextScanner.cpp:44,57` and `UnitText.cpp:37,45`.
 
 ### Character data
 
-Character data is dropped unless a block is collecting and `skipDepth == 0`. Entities reach the
-same path through `onDefault`, exactly as `VerseAnchors.cpp:46-60` handles them: a known entity
-becomes its UTF-8 value, and an unknown one is kept literally (A9).
+Character data is dropped unless a block is collecting and `skipDepth == 0`. When expat routes an
+entity to `onDefault`, it reaches the same path exactly as `VerseAnchors.cpp:46-60` handles it: a
+known entity becomes its UTF-8 value, and an unknown one is kept literally. Expat only routes it
+there when the document declares an external subset; without a DOCTYPE an undeclared entity is a
+hard parse error and the question is refused (A9).
 
 Whitespace collapses (A8):
 
@@ -265,17 +267,27 @@ stops the parser. The title is not a block. `href` bytes count towards `MAX_TEXT
 ```
 if (!parser_ || failed_ || finished_) return false;
 status = XML_Parse(parser, chunk, length, isFinal);
-if (status == XML_STATUS_ERROR || state->overLimit) {
-  outOfMemory_ = !overLimit && XML_GetErrorCode(parser) == XML_ERROR_NO_MEMORY;
-  LOG_ERR("PREACH", overLimit ? "Question refused: over %zu blocks or %zu bytes"
-                              : "Question parse failed: %s", …, XML_ErrorString(code));
-  failed_ = true;
-  clear the state's title, blocks and pendingQuote;
+if (status != XML_STATUS_ERROR && isFinal) flush the pending quote as Text;  // bounds apply
+if (state->overLimit) {
+  LOG_ERR("PREACH", "Question refused: over %zu blocks or %zu bytes", MAX_BLOCKS, MAX_TEXT_BYTES);
+  fail();
   return false;
 }
-if (isFinal) { flush the pending quote as Text (bounds apply); finished_ = !overLimit; }
+if (status == XML_STATUS_ERROR) {
+  outOfMemory_ = XML_GetErrorCode(parser) == XML_ERROR_NO_MEMORY;
+  LOG_ERR("PREACH", "Question parse failed: %s", XML_ErrorString(XML_GetErrorCode(parser)));
+  fail();  // failed_ = true; clear the state's title, blocks and pendingQuote
+  return false;
+}
+if (isFinal) finished_ = true;
 return true;
 ```
+
+The end-of-document flush runs **before** the bounds check, so a trailing unpaired quote that
+crosses a bound is refused like any other overflow. Each `LOG_ERR` has its own literal format:
+the device macro pastes `format "\n"` and is printf-checked (`lib/Logging/Logging.h:42,46`), so a
+computed format would not compile there, while the host stub expands to nothing
+(`test/stubs/Logging.h:6`) and would not catch it.
 
 A non-resumable `XML_StopParser` makes `XML_Parse` return `XML_STATUS_ERROR` with
 `XML_ERROR_ABORTED` (`lib/expat/expat.h:763`). `feed` checks `overLimit` as well, so the refusal
@@ -300,7 +312,7 @@ writes to `out`: this is the "nothing partial" contract.
 | A6 | Only text inside `<h1>`–`<h6>` and `<p>` is collected. Text directly in `<div>`, `<li>`, `<header>` or `<title>` is ignored | Every visible run in Q1–Q20 sits in one of those (research §3 survey). It keeps `<title>` and `alt` out without special cases |
 | A7 | A **reference paragraph** has at least one `<a>` with an `href`, and no non-whitespace character data outside its `<a>` elements. Its `reference` is the collapsed text of the whole paragraph, so the link texts are joined with whatever whitespace stands between them. `href` is the first `<a href>`, verbatim | The texts carry their own separators: "Eclesiastés 9:5," + " 10" → "Eclesiastés 9:5, 10" (research §3). A prose paragraph with an inline link stays `Text`, and its href is dropped |
 | A8 | Whitespace: runs of ASCII space/tab/CR/LF collapse to one space, with none leading or trailing. U+00A0, U+202F and other non-ASCII spaces are kept as they are | The same rule and the same four bytes as `BibleNavScanner.cpp:36-58` (`:40`). The non-breaking spaces are meaningful typography in this publisher's markup |
-| A9 | Known HTML entities become UTF-8 through `lookupHtmlEntity`; unknown ones are kept literally, `&` through `;` | `VerseAnchors.cpp:46-60` and `VerseTextScanner.cpp:191-203`. Under `XML_GE=0` (`platformio.ini:38`) expat sends undeclared entities to the default handler. The real files contain none (research §3) |
+| A9 | In a document with an external-subset DOCTYPE, known HTML entities become UTF-8 through `lookupHtmlEntity` and unknown ones are kept literally, `&` through `;`. Without a DOCTYPE an undeclared entity is a parse error and the question is refused, with nothing partial | Under `XML_GE=0` (`platformio.ini:38`) expat reports an undeclared entity to the default handler only when the document declared an external subset; otherwise it returns `XML_ERROR_UNDEFINED_ENTITY` (`lib/expat/xmlparse.c:3037-3039`). The repo documents and tests both sides (`test/verse_anchors/VerseAnchorsTest.cpp:34-53`), and `VerseAnchors.cpp:46-60` and `VerseTextScanner.cpp:191-203` behave the same way. The real question files have no DOCTYPE and no entities (research §3), so today neither path is taken. A future edition that adds an entity without a DOCTYPE would make that question fail to open rather than show wrong text |
 | A10 | Empty paragraphs and empty headings are dropped and do not break a pending quote/reference pair | 13 of 21 files end in an empty `<p>` (research §4.2) |
 | A11 | A quote's text is the whole paragraph's collapsed text, including any text outside `<q>` | Nothing visible is lost. In the real files the quote paragraph holds only the `<q>`, with its curly quotes inside it |
 | A12 | `MAX_TEXT_BYTES` (8,192) counts the stored bytes of `title` plus every block's `text`, `reference` and `href`. A store that would exceed it is refused. `MAX_BLOCKS` (64) counts `blocks` only. Exactly 64 blocks and exactly 8,192 bytes are accepted | It bounds what the result holds in memory. The largest real file is 33 blocks and ~1.7 KB (research §3) |
@@ -334,8 +346,12 @@ Each parser allocates:
 - one expat parser, whose buffer is bounded by `XML_CONTEXT_BYTES=1024` and the 2 KB chunk;
 - at most 8 KB of strings.
 
-All of it is freed when T3 destroys the parser. The result `Question` lives as long as T3's screen
-does (parent spec §9: "under 5 KB of strings"). None of it is static, and there is nothing in
+`take` moves the 64-slot `blocks` vector (about 4.9 KB) and its strings into the result
+`Question`, so they live as long as T3's screen does. The parser frees only the expat parser and
+the rest of its `State`. At over 4,096 B the reservation is routed to PSRAM by this build's malloc
+threshold (`CLAUDE.md`, "PSRAM is a licence to budget deliberately"), not the internal heap that
+parent spec §9 assumes for a question. It is touched only when the cards are laid out, never from an
+ISR. None of it is static, and there is nothing in
 IRAM, ISRs or PSRAM-specific code. The `constexpr` tables sit in flash.
 
 ## Testing strategy
@@ -390,19 +406,26 @@ Fixtures are inline strings: short excerpts of a few lines of real markup wrappe
   `<p>` adds no block.
 - `<figure>` with an `<img alt>` adds no text.
 - `[...]` passes through.
-- `&nbsp;` → U+00A0, `&amp;` → `&`, and an unknown `&foo;` is kept literally.
+- Entities, in a fixture opening with
+  `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "xhtml11.dtd">` as
+  `VerseAnchorsTest.cpp:40-42` does: `&nbsp;` → U+00A0, `&amp;` → `&`, and an unknown `&foo;` is
+  kept literally.
+- The same `&nbsp;` with no DOCTYPE → `feed` false, `take` false (A9).
 - A prose paragraph with an inline `<a>` → `Text` including the link text (A7).
 - Chunk boundaries: one fixture fed at every split point and at chunk sizes 1, 2, 3, 7 and 64. The
-  fixture has a tag name, an attribute value, an entity and a multi-byte UTF-8 character crossing
-  chunk edges. Each result equals the one-shot `parseQuestion` result. An empty final chunk
-  (`feed("", 0, true)`) is accepted.
+  fixture has the DOCTYPE, and a tag name, an attribute value, an entity and a multi-byte UTF-8
+  character crossing chunk edges. The test first asserts that one-shot `parseQuestion` succeeds and
+  yields the expected blocks, so the comparison cannot pass by both sides failing. Each chunked
+  result equals it. An empty final chunk (`feed("", 0, true)`) is accepted.
 - Bounds:
   - exactly 64 `Text` blocks → success;
   - 65 → `feed` false, `take` false, `out` untouched;
   - text totalling exactly 8,192 bytes → success;
   - 8,193 → refused;
   - one 9,000-byte paragraph → refused before the paragraph closes (`feed` false on the chunk that
-    carries the overflow).
+    carries the overflow);
+  - a document whose only overflow is a trailing unpaired quote, flushed at the end → the final
+    `feed` returns false, and `take` returns false.
 - Malformed (`<p>` never closed, then the final chunk) → false, `take` false, and later feeds false.
 - `take` before the final chunk → false; a second `take` after success → false.
 
@@ -413,7 +436,11 @@ publisher text.
 `<Preaching/…>` header from `src/`, PlatformIO's default library finder is unlikely to compile
 `lib/Preaching` (research §4.5; `lib/StudyStore` landed the same way in `121e1e2f`). The implement
 phase records from the build log whether `Preaching` was built. The host suite's
-`-Wall -Wextra -pedantic` is the warning gate for this code until then.
+`-Wall -Wextra -pedantic` does not see the device `LOG_ERR` format checks, because the host stub is
+empty. So the implement phase also compiles the library once on the device: a temporary,
+**uncommitted** `#include <Preaching/QuestionParser.h>` and `<Preaching/IntroSection.h>` in one
+`src/` file, `pio run -e x4pro`, the log checked for warnings from `lib/Preaching`, then reverted
+with the tree confirmed clean. The final, committed build is run without it.
 
 **Format.** `./bin/clang-format-fix` (whole tree) after `git add`.
 
@@ -425,3 +452,20 @@ phase records from the build log whether `Preaching` was built. The host suite's
 - T3/T7: `Block::href` is verbatim and unbounded except by `MAX_TEXT_BYTES`. The 64-byte
   `ReaderEntryIntent::href` limit (parent §6) is enforced where the intent is built; the longest real
   href is 45 B (research §3).
+
+## Changes after spec review pass 0
+
+`docs/superpowers/reviews/berean-o-14-spec-review-0.md` (CLEAR, 3 MAJOR, 1 MINOR); all accepted.
+
+- **MAJOR 1, entities.** A9 claimed that undeclared entities always reach the default handler.
+  They reach it only after an external-subset DOCTYPE (`xmlparse.c:3037-3039`). A9, the character
+  data section and the tests are rewritten: entity fixtures carry the DOCTYPE, a no-DOCTYPE case
+  asserts a clean refusal, and the chunk test asserts that the one-shot parse succeeds before
+  comparing.
+- **MAJOR 2, flush after the bounds check.** `feed` used to check the bounds before flushing a
+  trailing quote, so an overflow there returned true. The flush now runs first, and a test covers it.
+- **MAJOR 3, device warnings unchecked.** The ternary `LOG_ERR` format is now two literal-format
+  calls (the device macro would not compile it). The implement phase compiles the library on the
+  device through a temporary, uncommitted `src/` include.
+- **MINOR 1, memory.** The block vector outlives the parser inside `Question`, and it is
+  PSRAM-routed. The memory section now says so.
