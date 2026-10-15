@@ -35,7 +35,24 @@ int linesHeight(const Layout& layout, const Metrics& metrics, const int first, c
   return (end - first) * metrics.lineHeight[layout.rung] + (holdsBoth ? metrics.referenceGap : 0);
 }
 
-void paginate(Layout& out, const Metrics&) { out.pageFirstLine.push_back(0); }
+// Every page takes at least one line. The quote's last line and the whole reference stay on one
+// page whenever that block fits the box, so a reference neither starts a page alone nor splits.
+void paginate(Layout& out, const Metrics& metrics) {
+  out.pageFirstLine.push_back(0);
+  const int lines = out.lineCount();
+  const int quoteLines = static_cast<int>(out.quote.size());
+  const int tailStart = quoteLines > 0 ? quoteLines - 1 : 0;
+  const bool keepTail = !out.reference.empty() && linesHeight(out, metrics, tailStart, lines) <= metrics.height;
+  const int pageLimit = keepTail ? tailStart : lines;
+  int first = 0;
+  while (linesHeight(out, metrics, first, lines) > metrics.height) {
+    int end = first + 1;
+    while (end < pageLimit && linesHeight(out, metrics, first, end + 1) <= metrics.height) ++end;
+    if (end >= lines) return;
+    first = end;
+    out.pageFirstLine.push_back(static_cast<uint16_t>(first));
+  }
+}
 
 }  // namespace
 

@@ -200,3 +200,87 @@ TEST(PreachingShowFit, ReusesTheCallersCapacity) {
   EXPECT_GE(layout.quote.capacity(), 64u);
   EXPECT_GE(layout.pageFirstLine.capacity(), 8u);
 }
+
+namespace {
+
+std::string words(const int count) {
+  std::string text;
+  for (int i = 0; i < count; ++i) {
+    if (i > 0) text.push_back(' ');
+    text.append("word");
+  }
+  return text;
+}
+
+std::string withoutBreaks(const std::string_view text) {
+  std::string kept;
+  for (const char c : text) {
+    if (c != ' ' && c != '\t' && c != '\n' && c != '\r') kept.push_back(c);
+  }
+  return kept;
+}
+
+std::string joined(const std::string_view text, const std::vector<Span>& spans) {
+  std::string out;
+  for (const Span span : spans) out.append(text.substr(span.begin, span.length));
+  return out;
+}
+
+std::vector<uint16_t> pages(const show::Layout& layout) { return layout.pageFirstLine; }
+
+}  // namespace
+
+TEST(PreachingShowPaging, ALongQuotePagesAtTheSmallestSize) {
+  const std::string quote = words(20);
+  const auto layout = layOut(quote, "Ref 1:1", 60);
+  EXPECT_EQ(layout.rung, show::PAGING_RUNG);
+  EXPECT_EQ(layout.quote.size(), 5u);
+  EXPECT_EQ(pages(layout), (std::vector<uint16_t>{0, 3, 4}));
+  EXPECT_GT(layout.pageCount(), 1);
+  const auto metrics = showMetrics(60);
+  EXPECT_EQ(layout.pageHeight(0, metrics), 60);
+  EXPECT_EQ(layout.pageHeight(1, metrics), 20);
+  EXPECT_EQ(layout.pageHeight(2, metrics), 50);
+}
+
+TEST(PreachingShowPaging, NothingIsCut) {
+  const std::string quote = words(20);
+  const std::string reference = "Ref 1:1";
+  const auto layout = layOut(quote, reference, 60);
+  EXPECT_EQ(withoutBreaks(joined(quote, layout.quote)), withoutBreaks(quote));
+  EXPECT_EQ(withoutBreaks(joined(reference, layout.reference)), withoutBreaks(reference));
+  const auto metrics = showMetrics(60);
+  ASSERT_GE(layout.pageCount(), 1);
+  EXPECT_EQ(layout.pageFirstLine[0], 0);
+  for (int page = 0; page < layout.pageCount(); ++page) {
+    EXPECT_LT(layout.pageFirstLine[static_cast<size_t>(page)], layout.pageEnd(page));
+    EXPECT_LE(layout.pageHeight(page, metrics), 60);
+  }
+  EXPECT_EQ(layout.pageEnd(layout.pageCount() - 1), layout.lineCount());
+}
+
+TEST(PreachingShowPaging, TheReferenceNeverStartsAPageAlone) {
+  // Five quote lines fill 100 px exactly; the last one moves to the reference's page.
+  const auto layout = layOut(words(20), "Ref 1:1", 100);
+  EXPECT_EQ(pages(layout), (std::vector<uint16_t>{0, 4}));
+}
+
+TEST(PreachingShowPaging, AWrappedReferenceIsNeverSplit) {
+  // The reference wraps to two lines (5 and 6). Greedy filling from line 3 would split it.
+  const std::string reference = "Ref 1:1 and 2:2 and 3:3";
+  const auto layout = layOut(words(20), reference, 70);
+  ASSERT_EQ(layout.reference.size(), 2u);
+  EXPECT_EQ(pages(layout), (std::vector<uint16_t>{0, 3, 4}));
+  const int lastPageFirst = layout.pageFirstLine.back();
+  EXPECT_EQ(lastPageFirst, static_cast<int>(layout.quote.size()) - 1);
+  EXPECT_FALSE(layout.isReferenceLine(lastPageFirst));
+}
+
+TEST(PreachingShowPaging, ABoxSmallerThanALineStillAdvancesOneLineAPage) {
+  const auto layout = layOut(words(20), "Ref 1:1", 10);
+  EXPECT_EQ(pages(layout), (std::vector<uint16_t>{0, 1, 2, 3, 4, 5}));
+}
+
+TEST(PreachingShowPaging, AShortQuoteIsOnePage) {
+  EXPECT_EQ(layOut("one two three", "Jn 3:16", 100).pageCount(), 1);
+}
