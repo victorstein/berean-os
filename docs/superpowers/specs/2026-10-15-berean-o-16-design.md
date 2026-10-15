@@ -5,6 +5,24 @@ Parent design: `docs/superpowers/specs/2026-10-14-preaching-tool-design.md` (§3
 Surface: `ui`. Tier: heavy. Every `file:line` below was read at `6b8a9bd0` (batch tip `aed8879a` plus
 the research note).
 
+## Changes after spec review 0
+
+Review: `docs/superpowers/reviews/berean-o-16-spec-review-0.md` (CLEAR, 2 MAJOR, 5 MINOR). All
+applied:
+
+- **M1** — question titles use a TOC entry only when it belongs to that spine; a spine without one
+  inherits the previous spine's index, which made the `STR_PREACHING_QUESTION_N` fallback
+  unreachable (`PreachingSession` table).
+- **M2** — the free-heap device check now states its warm-slot precondition and names the cold-slot
+  drop as expected (Testing).
+- **m1** — `TopicCards` is non-copyable and non-movable, held only by `unique_ptr`, cards built last
+  (new A26); A15's uppercase transform is withdrawn — the markup is already uppercase.
+- **m2** — A14 gains a precedence rule for a heading before an over-tall card, and a test.
+- **m3** — A23 corrected: a hit also scans from spine 0; the tap logs its cost for the device check.
+- **m4** — a tag origin loads only the topics; the counts pass is deferred until Mis temas is shown.
+- **m5** — the result handler uses `moveRingTo` so the returned row is pulled into view.
+- A5's figure corrected (504 B); A17 notes the power key's optional Confirm mapping.
+
 ## Problem
 
 T1 landed the question parser (`lib/Preaching`) and T2 the picked-tags store and the `bible.json`
@@ -60,7 +78,7 @@ T4–T7 each need a fixed contract from this task before they can start in paral
 | `src/activities/preaching/PreachingOrigin.h` | new | `PreachingOrigin`, Arduino-free |
 | `src/activities/preaching/PreachingSession.{h,cpp}` | new | the Bible, the 21 spine indices, question titles, the picked topics and counts; owned by `PreachingActivity` |
 | `src/activities/preaching/PreachingContent.{h,cpp}` | new | loads one topic's cards: a question through `SpineHtmlStream` + `QuestionParser`, or a tag through `PreachingPassages::passagesWithTag` |
-| `src/activities/preaching/PreachingCardLayout.{h,cpp}` | new | pure: wrap, page breaking, Latin uppercase for headings |
+| `src/activities/preaching/PreachingCardLayout.{h,cpp}` | new | pure: wrap and page breaking |
 | `src/activities/preaching/PreachingCardNav.h` | new | pure: Left/Right/swipe rules over a layout |
 | `src/activities/preaching/PreachingActivity.{h,cpp}` | new | the two tabs |
 | `src/activities/preaching/PreachingTopicActivity.{h,cpp}` | new | the cards |
@@ -133,14 +151,14 @@ Owned by `PreachingActivity` as a member; `PreachingTopicActivity` receives a `P
 | `ParkedBook::Held bible` | `ParkedBook::take(biblePath, SETTINGS.embeddedStyle == 0)` (`ParkedBook.h:23`, `EpubReaderActivity.cpp:218-219`); else a fresh `Epub` as `loadFreshEpub` does, with `nav` null |
 | `int spines[21]` | one `resolveFilenamesToSpineIndices` over `IntroSection::BASENAMES` (`Epub.h:93`) |
 | `bool sectionFound` | all 21 ≥ 0 |
-| `std::string titles[21]` | slots 1..20: `getTocItem(getTocIndexForSpineIndex(spine)).title` through `stripTocPrefix`; empty when the TOC index is < 0 |
+| `std::string titles[21]` | slots 1..20: with `toc = getTocIndexForSpineIndex(spines[n])`, the title of `getTocItem(toc)` through `stripTocPrefix` **only when** `toc >= 0` and that entry's `spineIndex == spines[n]`; otherwise empty. A spine with no TOC entry of its own inherits the previous spine's index (`BookMetadataCache.cpp:337-346`), so the ownership check is what makes the `STR_PREACHING_QUESTION_N` fallback reachable (`TocEntry::spineIndex`, `BookMetadataCache.h:32-38`) |
 | `PreachingTopicsFile topics` + `topicsLoaded` | loaded on first need (Mis temas, or a tag origin) |
 | `std::vector<PreachingPassages::TagCount> counts` + `countsStatus` + `countsLoaded` | `countByTag(activeTopics, PsramJsonAllocator::json(), counts)` the first time Mis temas opens (`PreachingPassages.h:43`) |
 | `std::vector<study::TagId> activeTopics` | `topics.palette().activeIdsByName()` filtered to `topics.tags()` (`TagPalette.h:61`) |
 
 - **A5.** The 21 basenames become `std::string`s in a `makeUniqueNoThrow<std::string[]>(21)` buffer
   for the one resolve call (the API takes `const std::string*`, `Epub.h:93`): 21 `std::string`s on the
-  stack are ~672 B, over the 256-B local limit.
+  stack are 504 B on the 32-bit device (24 B each), over the 256-B local limit.
 - **A6.** **The topic screen holds a reference to its parent's session.** Lifetime: the topic is only
   ever pushed over its own `PreachingActivity`; a Replace destroys the current activity before the
   stack (`ActivityManager.cpp:145-150`), and a Pop destroys the child before the parent resumes
@@ -174,11 +192,24 @@ struct TopicCards {
   std::vector<PreachingPassages::Passage> passages;  // Tag: texts in PSRAM
   std::vector<preaching::CardInput> cards;           // views into the two above
   uint16_t verseCount = 0;
+
+  TopicCards() = default;
+  TopicCards(const TopicCards&) = delete;             // `cards` views into this object's own strings
+  TopicCards& operator=(const TopicCards&) = delete;
+  TopicCards(TopicCards&&) = delete;
+  TopicCards& operator=(TopicCards&&) = delete;
 };
 enum class LoadResult : uint8_t { Ok, Unreadable, OutOfMemory, VersesUnavailable };
+// `out` is a fresh instance from makeUniqueNoThrow<TopicCards>(); `cards` is built last, once
+// `parsed` / `passages` are final (passagesWithTag sorts its output, PreachingPassages.cpp:200).
 LoadResult loadQuestion(PreachingSession&, GfxRenderer&, int question, TopicCards& out);
 LoadResult loadTag(PreachingSession&, study::TagId, TopicCards& out);
 ```
+
+- **A26.** `TopicCards` cannot be copied or moved: `cards` holds `string_view`s into `parsed` and
+  `passages`, and moving a `std::string` of 15 bytes or fewer (libstdc++'s inline buffer) relocates its
+  bytes and leaves the view dangling. A topic is only ever held by `std::unique_ptr<TopicCards>`; the
+  revisita swap exchanges pointers, never objects.
 
 - A question: `SpineHtmlStream::stream(bible.book, spines[n], renderer, sink, &parser)` with a static
   trampoline calling `QuestionParser::feed` (`SpineHtmlStream.h:20,40`, `QuestionParser.h:49`), then
@@ -209,7 +240,7 @@ struct Layout { std::vector<Line> lines; std::vector<Segment> segments; std::vec
 bool layoutCards(const CardInput*, size_t count, const Metrics&, MeasureFn, const void* ctx, Layout& out);
 ```
 
-Faces (A11): Title = Noto Serif 14 bold; Heading = UI 10 bold, uppercased; Quote = Noto Serif 12
+Faces (A11): Title = Noto Serif 14 bold; Heading = UI 10 bold, drawn verbatim (A15); Quote = Noto Serif 12
 italic (Home's verse face, `HomeVerse.h:24-26`); Body (`Text`) = Noto Serif 12 regular; Reference =
 Noto Serif 12 bold, right-aligned, prefixed `"› "`; Label (the "Para la revisita" caption) = UI 10
 bold. Font ids from `src/fontIds.h:4-5,12`; widths from `UITheme` metrics (`contentSidePadding`,
@@ -231,16 +262,20 @@ Rules:
   following pages. Nothing is dropped.
 - **A14.** Keep-with-next: a `Heading` or the `Title` never ends a page; it moves to the next page with
   the card after it. A `Verse` card's reference line never starts a page alone: it carries at least
-  its last quote line with it.
-- **A15.** Headings are uppercased by a small Latin rule (ASCII a–z and U+00E0–U+00FE except U+00F7,
-  minus 0x20), enough for Spanish and English; other codepoints pass through. No uppercase helper
-  exists in `lib/Utf8` (`grep -n "upper\|Upper" lib/Utf8/*.h` is empty). The uppercased copy is a
-  `std::string` per heading held beside the cards (three questions have headings, Q19 ten).
+  its last quote line with it. **Precedence:** a page holding only `Title`/`Heading` cards counts as
+  empty for the over-tall rule, so a heading followed by a card taller than a page shares its page
+  with that card's first lines (no loop, no stranded heading). Each card is placed exactly once, in
+  order, so the layout always terminates.
+- **A15 (withdrawn after review 0).** Headings are drawn verbatim, with no case transform: the
+  publisher's headings are already uppercase in the markup (`<strong>PROFECÍA</strong>` in
+  `1001061256.xhtml`, "LAS ESPOSAS" in Q17, "EL PENTATEUCO (5 LIBROS):" in Q19), so a transform would
+  only add copies that the card views would have to outlive.
 - Layout runs once per topic on the loop task: in `PreachingTopicActivity::onEnter` and after "Para la
   revisita" swaps the content. Measuring on the loop task in `onEnter` follows
-  `LauncherActivity::computeLayout` (`LauncherActivity.cpp:77-103`). The revisita swap installs the
-  new cards and layout under `RenderLock lock(*this)`, as `moveSelectionTo` guards nav state
-  (`UiListActivity.cpp:72-81`).
+  `LauncherActivity::computeLayout` (`LauncherActivity.cpp:77-103`). The revisita loads into a new
+  `unique_ptr<TopicCards>` and lays it out into a new `Layout` outside the lock, then swaps both
+  pointers under `RenderLock lock(*this)`, as `moveSelectionTo` guards nav state
+  (`UiListActivity.cpp:72-81`); the old topic is freed after the lock is released.
 
 ### `PreachingCardNav` — Left/Right and swipes
 
@@ -255,7 +290,9 @@ State: `page`, `selected` (Verse ordinal, −1 for none). Pure functions over a 
 - **Select(verse)**: `page` = the page where that card begins; out of range → page 0, first verse.
 - **A17.** Headings, `Text`, the title and "Para la revisita" are not selectable (parent §4). Left/Right
   still reach every page, so prose-only Q19 is readable with buttons, and the revisita card is reached
-  by paging and opened by touch — the device has no Confirm button (`CLAUDE.md` input hardware).
+  by paging and opened by touch. There is no front Confirm button (`CLAUDE.md` input hardware); the
+  power key can be mapped to Confirm (`SettingsList.h:373-376`), but the parent spec gives Confirm no
+  role on this screen, so it is ignored here.
 - **A18.** A selected card that continues onto the next page is drawn selected on every page it spans.
 
 ### `PreachingActivity`
@@ -267,8 +304,10 @@ State: `page`, `selected` (Verse ordinal, −1 for none). Pure functions over a 
   `activeNav()` (`UiListActivity.cpp:20-27`):
   - no origin → Preguntas, ring 1 (the first row), or ring 0 when the tab has no rows;
   - a question origin → Preguntas, ring `n`;
-  - a tag origin → Mis temas (loading topics and counts), the tag's row if it is still an active pick,
-    else ring 1.
+  - a tag origin → Mis temas, loading `topics` only (the row and the header name need it), the tag's
+    row if it is still an active pick, else ring 1. The counts pass is **deferred** to the topic's
+    result handler, when Mis temas is first actually shown — still "the first time the tab opens" —
+    so a return from the Bible pays one `bible.json` pass (the tag's passages), not two.
   Then, with an origin, load the topic (`PreachingContent`) and push `PreachingTopicActivity`
   selecting `origin.verse`. A failed load posts `STR_PREACHING_OPEN_FAILED` and stays on the list.
 - `onExit`: park the Bible (A7), then `UiTabListActivity`'s exit.
@@ -294,8 +333,12 @@ State: `page`, `selected` (Verse ordinal, −1 for none). Pure functions over a 
   one (`SettingsActivity.cpp:222-229`); parent §3 says the swipe goes Home. The Home key is handled
   by `ActivityManager::loop` (`:75-81`). Left/Right walk the ring through the base
   (`UiTabListActivity.cpp:64-72`).
-- Result handler of the pushed topic: read `PreachingResult`, switch to that tab, select that row
-  (the question the topic **ended** on, which "Para la revisita" may have changed), request an update.
+- Result handler of the pushed topic: read `PreachingResult`, switch to that tab (running a deferred
+  counts pass if Mis temas has none yet), and `moveRingTo(row + 1)` (`UiTabListActivity.cpp:49-62`) —
+  the question the topic **ended** on, which "Para la revisita" may have changed. `moveRingTo` sets
+  the selection, pulls the viewport to it and requests the update: `followOnBuild` was consumed by
+  the list's first build, after which `syncTabListViewport` only clamps (`:92-104`), so a bare
+  selection could sit off-screen.
 - **Seam (T5)**: `void openTopicPicker();` — logs `"Elegir temas: not built yet"` and returns. Beside
   it, `void onTopicsChanged();` reloads `topics`, drops the held counts and recounts, so T5's result
   handler is one call.
@@ -334,8 +377,11 @@ session, a `std::unique_ptr<TopicCards>` (the list loaded it) and a start Verse 
     `origin = ofTag(raw, verse)`.
   - **A22.** `allowFastInitialRefresh = false`: Home passes its route's flag, whose default is `false`
     (`HomeTargets.h:42`); a UI screen into the reader takes the clean refresh.
-  - **A23.** `resolveHrefToSpineIndex` walks the whole spine on a miss (`Epub.cpp:949-974`). It runs once
-    per tap, not at layout.
+  - **A23.** `resolveHrefToSpineIndex` scans from spine 0 until it matches (`Epub.cpp:964-972`), two
+    `book.bin` reads per item (`BookMetadataCache.cpp:588-593`): a hit costs as much as its position —
+    a median ~1,100 entries for the question hrefs in `nwt_S`, up to 1,342 — and a miss the whole
+    spine. T7's `navigateToHref` resolves the same href again. It is still checked on the tap, never
+    at layout, and the tap logs its cost (`LOG_DBG` of the milliseconds spent) for the device check.
 - `ACTION_NEXT_VISIT` → `loadQuestion(next)`; on success swap the cards and layout under the render
   lock, select verse 0 on page 0, and remember the question for the result; on failure post
   `STR_PREACHING_OPEN_FAILED` and stay. Back still returns to the list (the topic was replaced in
@@ -452,8 +498,9 @@ lib/I18n/`. No comment names an unlanded `STR_` key (`gen-i18n-scans-comments-fo
   - cards that fit share a page; a card that does not fit starts the next page;
   - a card taller than a page continues across pages and every line appears exactly once;
   - a heading never ends a page; a reference line never starts one alone (A14);
+  - a heading followed by a card taller than a page shares its page with that card's first lines,
+    and the layout terminates (A14 precedence);
   - the revisita card lands after the last block; an empty input yields one empty page;
-  - uppercase: "Profecía" → "PROFECÍA", "ñ" → "Ñ", non-Latin passes through (A15).
 - `test/ui_layout/PreachingCardNavTest.cpp`: Right/Left within a page, across pages, past prose-only
   pages, at both ends; swipes; `Select` of an out-of-range verse.
 
@@ -468,5 +515,12 @@ builds with no new warnings; `./bin/clang-format-fix` (whole tree) is clean.
 - A question pages without cutting text; Q6's headings, Q19's prose, the revisita card.
 - A reference opens the Bible; serial shows `PARK: Reusing the parked book` (`ParkedBook.cpp:63`),
   not a fresh load.
-- Free heap (`LOG_DBG("MEM", …)`) equal across Predicación → topic → back → Home.
+- Free heap (`LOG_DBG("MEM", …)`), with the slot warm: open the Bible in the reader, go Home, take the
+  baseline at Home, enter Predicación (serial shows `PARK: Reusing the parked book`), go topic → back
+  → Home, and compare — equal. From a cold slot (after boot, or after reading another publication)
+  Predicación opens a fresh `Epub` and parks it on exit, and only the reader takes or clears that
+  slot (`ParkedBook.cpp:43-51`; the only callers are `EpubReaderActivity.cpp:174,181,186,219`): Home
+  then shows a one-time drop the size of the parked Bible, which is expected, not a leak.
+- The reference tap's logged pre-check milliseconds (A23), and tap-to-page time for the furthest
+  question reference.
 - The `PREACH: Counts: … ms` line (`PreachingPassages.cpp:185`) for the counts pass.
