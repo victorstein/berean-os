@@ -49,15 +49,15 @@ Expected: all existing `PreachingCardLayout*` / `PreachingCardNav*` tests pass. 
 `cmake --build` fails while fetching or building googletest, run it once more (a known first-build
 race in a fresh worktree).
 
-**0.2** Record the firmware warning baseline (takes several minutes):
+**0.2** Confirm the firmware builds before any change (takes several minutes):
 
 ```bash
 ~/.platformio/penv/bin/pio run -e x4pro > .pio/baseline-build.log 2>&1; echo "exit $?"
-grep -c "warning:" .pio/baseline-build.log
 ```
 
-Expected: `exit 0`. Note the warning count; Task 7 compares against it. (`.pio/` is gitignored;
-the log is never committed.)
+Expected: `exit 0`. (`.pio/` is gitignored; the log is never committed.) Warnings are not compared
+by count later: this first build is full and later ones are incremental, so their counts differ for
+no reason. Task 7 instead greps the final log for warnings in the files this plan touches.
 
 ---
 
@@ -433,6 +433,14 @@ TEST(PreachingShowFit, AWordWiderThanTheColumnStepsDownRatherThanSplit) {
   EXPECT_EQ(layout.quote[0].length, 16);
 }
 
+TEST(PreachingShowFit, AReferenceWordWiderThanTheColumnAlsoStepsDown) {
+  // The quote fits rung 0; the 16-byte reference word would split there (224 px), not at rung 1.
+  const auto layout = layOut("one", "Abcdefghijklmnop", 500);
+  EXPECT_EQ(layout.rung, 1);
+  ASSERT_EQ(layout.reference.size(), 1u);
+  EXPECT_EQ(layout.reference[0].length, 16);
+}
+
 TEST(PreachingShowFit, AnEmptyQuoteShowsTheReferenceAlone) {
   const auto layout = layOut("", "Jn 3:16", 100);
   EXPECT_TRUE(layout.quote.empty());
@@ -555,7 +563,10 @@ void layOut(const CardInput& card, const Metrics& metrics, const MeasureFn measu
 
 (The `verseCount`, `verseCard` and `step` definitions stay where they are, after this block.)
 
-Run the host commands. Expected: 18 `PreachingShow*` tests pass.
+Run the host commands. Expected: 19 `PreachingShow*` tests pass.
+
+The fit check also steps down when a *reference* word would split, not only a quote word (spec
+A4, as amended after plan review 0): a reference broken mid-word reads as a wrong address.
 
 **3.3** Commit:
 
@@ -694,7 +705,7 @@ void paginate(Layout& out, const Metrics& metrics) {
 }
 ```
 
-Run the host commands. Expected: 24 `PreachingShow*` tests pass. Run
+Run the host commands. Expected: 25 `PreachingShow*` tests pass. Run
 `./build/test/ui_layout/PreachingCardsTest` unfiltered: all pass.
 
 **4.3** Commit:
@@ -1097,14 +1108,16 @@ If it changed a file outside that list, do not commit it; report it.
 ```bash
 cmake --build build/test --target PreachingCardsTest && ./build/test/ui_layout/PreachingCardsTest
 ~/.platformio/penv/bin/pio run -e x4pro > .pio/final-build.log 2>&1; echo "exit $?"
-grep -c "warning:" .pio/baseline-build.log .pio/final-build.log
+grep -n "warning:" .pio/final-build.log | grep -E "PreachingShow|PreachingTopicActivity"
 ./bin/clang-format-fix && git status --short
 ```
 
-Expected: every `PreachingCardsTest` test passes (the 24 `PreachingShow*` among them); `exit 0`;
-the two warning counts are equal; `git status --short` prints nothing.
+Expected: every `PreachingCardsTest` test passes (the 25 `PreachingShow*` among them); `exit 0`;
+the warning grep prints nothing; `git status --short` prints nothing. If the incremental build did
+not recompile the touched files (no `PreachingShow` object in the log), `touch` the four
+`PreachingShow*` and two `PreachingTopicActivity.*` files and rebuild before grepping.
 
-Report back: the test summary line, the build exit code, both warning counts, and the commit list
+Report back: the test summary line, the build exit code, the warning grep output, and the commit list
 (`git log --oneline 61bb11f9..HEAD`).
 
 ## Device check (the owner's, at the end of the batch — not part of this plan's run)

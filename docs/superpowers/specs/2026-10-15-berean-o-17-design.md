@@ -156,8 +156,9 @@ registered at boot (`src/main.cpp:88-92`, `:312`; ids `src/fontIds.h:4-7`). The 
 reference is **bold** at the same rung's size, so the pair scales together.
 
 **A4 — "Fits" at a rung means:** the wrapped quote, the gap and the wrapped reference stack within
-`Metrics::height` on one page, **and** no word of the quote was broken mid-word by `wrapText`'s
-over-wide fallback. 18 and 14 are tried in order; the first that fits wins. A word wider than the
+`Metrics::height` on one page, **and** no word of the quote or the reference was broken mid-word
+by `wrapText`'s over-wide fallback (the reference added after plan review 0, m2: a reference split
+mid-word reads as a wrong address). 18 and 14 are tried in order; the first that fits wins. A word wider than the
 column at 18 therefore steps the size down rather than splitting the word — the same rule
 `study_sleep::fitPassage` applies ("A word too wide for any line marks the wrap as overflowing",
 `StudySleepFit.h:67-68`, `:111`). A broken word is detected as a span that ends before the text
@@ -380,3 +381,10 @@ Review: `docs/superpowers/reviews/berean-o-17-spec-review-0.md` (CLEAR, 1 MAJOR,
 | m2 — page-step cursor write outside the lock | A17: every cursor write is under `RenderLock` |
 | m3 — `layOut` must not reassign `out` | Pure-module section: `clear()` the three vectors, never `out = Layout{}` |
 | m4 — "reference on the last page only" did not follow from A5 | A5 gains a third rule: the reference is never split; tests assert it |
+
+## Changes after plan review 0
+
+Review: `docs/superpowers/reviews/berean-o-17-plan-review-0.md` (CLEAR, 2 MINOR). Both accepted:
+A4 now names the reference as well as the quote, with a host test in the plan (m2); the plan's
+warning check greps the final build for the touched files instead of comparing counts across a
+full and an incremental build (m1).
