@@ -107,6 +107,20 @@ TEST(PreachingCardWrap, NewlinesBreakLikeSpaces) {
   EXPECT_EQ(wrap("aaa\nbbb", 30), (std::vector<std::string>{"aaa", "bbb"}));
 }
 
+int widthPenalisingRawTabs(const void*, Face, const char* text) {
+  const std::string_view measured(text);
+  if (measured.find('\t') != std::string_view::npos) return 1000;
+  return static_cast<int>(measured.size()) * PX_PER_BYTE;
+}
+
+TEST(PreachingCardWrap, MeasuresControlBytesAsTheSpacesTheyAreDrawnAs) {
+  std::vector<Span> spans;
+  preaching::wrapText("a b\tc", Face::Body, 50, &widthPenalisingRawTabs, nullptr, spans);
+  ASSERT_EQ(spans.size(), 1u);
+  EXPECT_EQ(spans[0].begin, 0u);
+  EXPECT_EQ(spans[0].length, 5);
+}
+
 TEST(PreachingCardLayout, EmptyInputIsOneEmptyPage) {
   const Layout layout = layOut({}, plainMetrics(100));
   EXPECT_EQ(layout.pageCount(), 1);

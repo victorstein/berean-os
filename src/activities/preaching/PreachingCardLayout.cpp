@@ -1,7 +1,5 @@
 #include "PreachingCardLayout.h"
 
-#include <string>
-
 namespace preaching {
 namespace {
 
@@ -175,12 +173,17 @@ class Paginator {
 
 void wrapText(const std::string_view text, const Face face, const int width, const MeasureFn measure,
               const void* const ctx, std::vector<Span>& out) {
-  std::string scratch;
-  scratch.reserve(LINE_BUFFER_BYTES);
+  char scratch[LINE_BUFFER_BYTES];
   auto fits = [&](const size_t begin, const size_t end) {
-    if (end - begin >= LINE_BUFFER_BYTES) return false;
-    scratch.assign(text.data() + begin, end - begin);
-    return measure(ctx, face, scratch.c_str()) <= width;
+    const size_t length = end - begin;
+    if (length >= LINE_BUFFER_BYTES) return false;
+    // PreachingTopicActivity::drawLine draws every byte below 0x20 as a space, so measure it that way.
+    for (size_t i = 0; i < length; ++i) {
+      const char c = text[begin + i];
+      scratch[i] = static_cast<unsigned char>(c) < 0x20 ? ' ' : c;
+    }
+    scratch[length] = '\0';
+    return measure(ctx, face, scratch) <= width;
   };
   auto wordEndFrom = [&](size_t at) {
     while (at < text.size() && !isBreak(text[at])) ++at;
