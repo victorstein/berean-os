@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.31.0](https://github.com/victorstein/berean-os/compare/v1.30.0...v1.31.0) (2026-10-15)
+
+
+### Features
+
+* **home:** add the Predicación card ([99a8823](https://github.com/victorstein/berean-os/commit/99a88230ba6ee917ad97e7f556a4d836147bd380))
+* **preaching:** add the Predicación screens and reader entry contract ([99a8823](https://github.com/victorstein/berean-os/commit/99a88230ba6ee917ad97e7f556a4d836147bd380))
+* **preaching:** parse the NWT intro section's questions ([99a8823](https://github.com/victorstein/berean-os/commit/99a88230ba6ee917ad97e7f556a4d836147bd380))
+* **preaching:** pick the tags shown under Mis temas ([99a8823](https://github.com/victorstein/berean-os/commit/99a88230ba6ee917ad97e7f556a4d836147bd380))
+* **preaching:** show one verse full screen for the householder ([99a8823](https://github.com/victorstein/berean-os/commit/99a88230ba6ee917ad97e7f556a4d836147bd380))
+* **preaching:** store the picked topics and read their Bible verses ([99a8823](https://github.com/victorstein/berean-os/commit/99a88230ba6ee917ad97e7f556a4d836147bd380))
+* **reader:** open a preaching reference at its verse and swipe back to its card ([99a8823](https://github.com/victorstein/berean-os/commit/99a88230ba6ee917ad97e7f556a4d836147bd380))
+
 ## [1.30.0](https://github.com/victorstein/berean-os/compare/v1.29.16...v1.30.0) (2026-10-13)
 
 
