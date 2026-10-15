@@ -126,8 +126,8 @@ All three were asserted and disproven during design:
 ## Scope
 
 In: the Bible as the centre of the device, Bible verse search, the two weekly
-meeting publications, browsing and downloading from the jw.org catalog, tagging
-passages with global tags, and settings.
+meeting publications, the Predicación preaching tool, browsing and downloading
+from the jw.org catalog, tagging passages with global tags, and settings.
 
 Out, deliberately: notes, `.jwlibrary` interop, full-text search beyond Bible verses, and the
 general-reader subsystems the fork removed.
