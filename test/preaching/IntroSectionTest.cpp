@@ -21,12 +21,28 @@ TEST(IntroSection, QuestionNIsSlotN) {
   }
 }
 
-// The design's follow-up table, by question number; index 0 is unused.
-constexpr int EXPECTED_FOLLOW_UP[] = {0, 2, 3, 4, 5, 6, 7, 10, 9, 10, 11, 12, 18, 14, 15, 16, 18, 18, 20, 20, 0};
+// The design's rule, written independently of the implementation's table:
+// the next question, except where the design sends a return visit elsewhere.
+constexpr int expectedFollowUp(const int question) {
+  switch (question) {
+    case 7:
+      return 10;
+    case 12:
+    case 16:
+    case 17:
+      return 18;
+    case 18:
+      return 20;
+    case 20:
+      return 0;
+    default:
+      return question + 1;
+  }
+}
 
 constexpr bool followUpsMatchTheDesign() {
   for (int question = 1; question <= preaching::IntroSection::QUESTION_COUNT; question++) {
-    if (nextQuestion(question) != EXPECTED_FOLLOW_UP[question]) return false;
+    if (nextQuestion(question) != expectedFollowUp(question)) return false;
   }
   return true;
 }
@@ -34,7 +50,7 @@ static_assert(followUpsMatchTheDesign());
 
 TEST(IntroSection, FollowUpTableMatchesTheDesign) {
   for (int question = 1; question <= preaching::IntroSection::QUESTION_COUNT; question++) {
-    EXPECT_EQ(nextQuestion(question), EXPECTED_FOLLOW_UP[question]) << "question " << question;
+    EXPECT_EQ(nextQuestion(question), expectedFollowUp(question)) << "question " << question;
   }
 }
 
