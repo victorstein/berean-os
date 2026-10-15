@@ -163,3 +163,18 @@ target_link_libraries(PreachingCardsTest PRIVATE
 )
 
 gtest_discover_tests(PreachingCardsTest)
+
+add_executable(ReaderBackSwipeTest
+  ReaderBackSwipeTest.cpp
+)
+
+target_include_directories(ReaderBackSwipeTest PRIVATE
+  ${REPO_ROOT}/src
+)
+
+target_link_libraries(ReaderBackSwipeTest PRIVATE
+  crosspoint_test_common
+  GTest::gtest_main
+)
+
+gtest_discover_tests(ReaderBackSwipeTest)
