@@ -12,9 +12,11 @@
 #include <cstdio>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 #include "MappedInputManager.h"
 #include "PreachingSession.h"
+#include "PreachingShowActivity.h"
 #include "activities/PostedMessage.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -171,7 +173,26 @@ void PreachingTopicActivity::reportFailure(const char* message) {
 }
 
 void PreachingTopicActivity::openShow(const int verse) {
-  LOG_INF(MODULE, "Show mode is not built yet (verse %d)", verse);
+  if (verse < 0 || verse >= topic->verseCount()) return;
+  auto show = makeUniqueNoThrow<PreachingShowActivity>(renderer, mappedInput,
+                                                       preaching::show::Deck{topic->cards.data(), topic->cards.size()},
+                                                       topic->header.c_str(), verse);
+  if (!show) {
+    LOG_ERR(MODULE, "OOM: show mode");
+    reportFailure(tr(STR_PREACHING_OPEN_FAILED));
+    return;
+  }
+  app.clearTapFlash();
+  startActivityForResult(std::move(show), [this](const ActivityResult& result) { onShowFinished(result); });
+}
+
+void PreachingTopicActivity::onShowFinished(const ActivityResult& result) {
+  // Coming back from full-screen large type: a fast refresh would leave it ghosted.
+  halfRefreshPending = true;
+  const auto* returned = std::get_if<PreachingResult>(&result.data);
+  if (!returned || !layout) return;
+  RenderLock lock(*this);
+  cursor = preaching::selectVerse(*layout, returned->at.verse);
 }
 
 void PreachingTopicActivity::openBible(const int verse) {
