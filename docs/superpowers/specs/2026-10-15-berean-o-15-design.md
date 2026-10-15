@@ -40,8 +40,8 @@ stream it. Neither may ever write it.
 ## Goal
 
 - **`PreachingTopicsFile`** (`src/study/PreachingTopicsFile.{h,cpp}`). One object owns:
-  - the load of `/.berean/preaching.json`;
-  - the picked ids;
+  - the load of `/.berean/preaching.json`, and a read-only load of `tags.json` to prune against;
+  - the picked ids and the palette;
   - the load-refused latch;
   - the save.
 
@@ -62,7 +62,32 @@ stream it. Neither may ever write it.
 - Counting or listing passages from any publication other than the Bible (D5).
 - Display order of the picked tags. `TagPalette::activeIdsByName` (`TagPalette.h:61`) decides it, in
   T3.
-- Loading the tag palette. The caller supplies it (A9).
+- Writing the tag palette. `PreachingTopicsFile` reads `tags.json`, to prune against it (A9), and
+  never saves it.
+
+## Changes after review 0
+
+`docs/superpowers/reviews/berean-o-15-spec-review-0.md` (CLEAR, 2 MAJOR, 4 MINOR). All six
+findings are accepted.
+
+- **M1.** The palette is no longer a `save` parameter. `PreachingTopicsFile::load()` also loads
+  `tags.json`, through `TagPaletteFile::load`, into a member. A `Failed` from either file latches
+  saving. `save(picked)` prunes against that member, and `palette()` exposes it to T3 and T5. The
+  reason: an empty `StudyStore::palette()` (it is filled only by `openPublication`,
+  `StudyStore.cpp:72`) would have pruned every pick, and there would have been no `Failed` to catch.
+  §2, A9 and tests 8, 13 and 14 changed.
+- **M2.** `TagPalette::fromJson` does not cap active tags (`TagPalette.cpp:162-191`). Only `add` does
+  (`:52`). So `save` now refuses a kept list over 200 with `TooLarge`, rather than write a file its own
+  `load` would refuse. §2 step 3, A14, A15 and test 15 changed.
+- **m1.** A8's rationale is corrected: `bible.json` is shared across editions (`PubKey.h:35-37`), so
+  stale spine numbers can misorder passages across books. The single `(spine, start)` key stays,
+  because a mixed comparator is not transitive.
+- **m2.** The counts pass's real peak, which grows with the number of rows, is now stated in A4, as a
+  departure from the brief's "bounded by the number of picked tags". The device check also logs PSRAM
+  around the counts pass.
+- **m3.** The "no abort" claim is narrowed, and the internal-SRAM expectation on the device is
+  corrected. The header must state that the firmware passes the PSRAM allocators.
+- **m4.** A hand-off line for `PersistableStore.h:106-114` has been added. See "Hand-off".
 
 ## Architecture
 
@@ -117,12 +142,21 @@ class PreachingTopicsFile {
 
   explicit PreachingTopicsFile(size_t saveBudget = SAVE_BYTE_BUDGET);
 
-  LoadResult load();
+  LoadResult load();  // preaching.json's outcome; tags.json's only shows in saveRefused()
   const std::vector<study::TagId>& tags() const;
+  const study::TagPalette& palette() const;
   bool saveRefused() const;
-  SaveResult save(const std::vector<study::TagId>& picked, const study::TagPalette& palette);
+  SaveResult save(const std::vector<study::TagId>& picked);
 };
 ```
+
+**The palette.** `load()` first runs `TagPaletteFile::load(palette_)` (`TagPaletteFile.h:22`). It
+never saves `tags.json`. A `Failed` there sets `saveRefused_ = true` and logs `LOG_ERR`, as
+`StudyStore.cpp:72-76` does. `Empty` leaves an empty palette, and saving stays allowed. With no
+`tags.json` there are no tags at all, so every pick refers to nothing, and the next save writes `[]`.
+`palette()` is what T3 uses for `activeIdsByName` and what T5 uses for its chips. The member copy can
+go stale only if `tags.json` changes during Predicación's lifetime, and nothing in Predicación writes
+it: Elegir temas creates no tags (parent spec §7).
 
 **`load()`** calls `PersistableStoreBase::loadAdopting(PATH, &readDocFromFileChecked, accept, this)`,
 the same call as `TagPaletteFile.cpp:18-23`. `accept` parses into a **local** vector and only
@@ -150,21 +184,24 @@ After the call:
 - `Failed`, an unreadable, unparseable or refused file → `tags_` is cleared,
   `saveRefused_ = true`, and the load logs `LOG_ERR`.
 
-**`save(picked, palette)`:**
+**`save(picked)`:**
 
 1. `saveRefused_` → `Refused`, with a `LOG_ERR`. Nothing is touched.
-2. Build the list to keep from `picked`: drop ids that are not `palette.isActive` (`TagPalette.h:51`,
-   which is false for `UNLABELLED` and unknown ids, `TagPalette.cpp:67-72`), and drop duplicates.
-   Reserve `picked.size()` first. The result is at most 200 ids, because `isActive` bounds it at
-   the palette's active count.
-3. Build `{"v":1,"tags":[...]}` in a default `JsonDocument`. If `overflowed()`, return
+2. Build the list to keep from `picked`: drop ids that are not `palette_.isActive`
+   (`TagPalette.h:51`, which is false for `UNLABELLED` and unknown ids, `TagPalette.cpp:67-72`), and
+   drop duplicates. Reserve `picked.size()` first.
+3. If the kept list has more than `TagPalette::MAX_ACTIVE_TAGS` ids, return `TooLarge` with a
+   `LOG_ERR`. Nothing is written. That can happen: `TagPalette::fromJson` accepts any number of
+   active tags (`TagPalette.cpp:162-191`), and only `add` caps them (`:52`). Writing such a list
+   would produce a file this store's own `load` refuses.
+4. Build `{"v":1,"tags":[...]}` in a default `JsonDocument`. If `overflowed()`, return
    `WriteFailed` (the `PassageFile.cpp:32-37` check).
-4. If `!persist::fitsBudget(measureJson(doc), saveBudget_)` (`SaveBudget.h:26`), return `TooLarge`
+5. If `!persist::fitsBudget(measureJson(doc), saveBudget_)` (`SaveBudget.h:26`), return `TooLarge`
    with a `LOG_ERR`. Nothing is written.
-5. Write through `PersistableStoreBase::writeDocToFileAtomic(PATH, doc)` and nothing else. On
+6. Write through `PersistableStoreBase::writeDocToFileAtomic(PATH, doc)` and nothing else. On
    `true`, `tags_` becomes the kept list and the result is `Ok`. On `false`, the result is
    `WriteFailed`.
-6. Any result except `Ok` leaves `tags_` exactly as it was. That is the parent spec §7's "keeps the
+7. Any result except `Ok` leaves `tags_` exactly as it was. That is the parent spec §7's "keeps the
    previous selection".
 
 **A new object refuses to save until `load()` has run.** `saveRefused_` starts `true` (A3).
@@ -204,8 +241,10 @@ Status passagesWithTag(study::TagId tag, const study::PassageDoc::Allocators& al
 }  // namespace PreachingPassages
 ```
 
-On the device, T3 passes `PsramJsonAllocator::json()` and `PsramJsonAllocator::passageDoc()`
-(`PsramJsonAllocator.h:18,22`). The host passes `nullptr` and `PassageDoc::Allocators{}`, which
+On the device, T3 **must** pass `PsramJsonAllocator::json()` and `PsramJsonAllocator::passageDoc()`
+(`PsramJsonAllocator.h:18,22`). Nothing in t2 can enforce that, so the header comment says so.
+ArduinoJson's pool blocks are under the 4,096 B PSRAM routing threshold, so a `nullptr` on the
+device would put the parse in internal SRAM. The host passes `nullptr` and `PassageDoc::Allocators{}`, which
 default to malloc (`PassageDoc.h:55-58`, `PassageText.h:22-25`).
 
 **The path** is built as `HomeVerse.cpp:31-34` builds it:
@@ -279,7 +318,7 @@ rename a `.tmp` (`PersistableStore.cpp:184-197`). Neither opens anything for wri
 
 ```
 T3 Mis temas tab opens
-  PreachingTopicsFile topics;  topics.load()          -> tags() (may be empty), saveRefused()
+  PreachingTopicsFile topics;  topics.load()          -> palette(), tags() (may be empty), saveRefused()
   PreachingPassages::countByTag(topics.tags(), PsramJsonAllocator::json(), counts)
       Missing/Unreadable/OutOfMemory -> "no counts" (parent spec §9)
 
@@ -289,7 +328,7 @@ T3 topic opens (tag id)
       not Ok      -> "cannot read the verses"
 
 T5 Elegir temas returns
-  topics.save(picked, palette)
+  topics.save(picked)
       Refused | TooLarge | WriteFailed -> popup; topics.tags() unchanged
       Ok                               -> topics.tags() == picked ∩ active, deduped
 ```
@@ -315,8 +354,24 @@ Each one is a behavioural decision, open to review.
 - **A3. A new object refuses saves until `load()` runs.** Without this, a caller that forgot to load
   would write an empty or partial selection over a file it never read. That is the brief's "unable
   to save over a refused file by accident", widened to "over an unread file".
-- **A4. Counts keep `u` as well as `t`.** `u` is needed to skip rows the store itself drops
-  (`PassageDoc.cpp:311-312`). It costs one short string per row, and no passage text.
+- **A4. Counts use the filtered ArduinoJson document, keeping `u` and `t`, and their peak grows
+  with the number of rows.** `u` is needed to skip rows the store itself drops
+  (`PassageDoc.cpp:311-312`). The document holds no passage text, but it does hold every row's `u`
+  string and `t` array. By estimate that is tens of KB for a file near the ~204 KB cap: about
+  ~650 rows of ~300 B, at ~60 B each in the pool. On the device it sits on the PSRAM allocator and
+  is freed before the pass returns.
+
+  This departs from the brief's "memory bounded by the number of picked tags" and parent spec §9's
+  "one count per picked tag". The departure is accepted for two reasons.
+  - The brief itself offers "an ArduinoJson filter" as the way to meet it.
+  - The alternative is the in-tree SAX parser, `lib/JsonParser/StreamingJsonParser`
+    (`src/network/PubMediaJson.cpp`), which would bound memory to the picked tags. But it would be a
+    second parsing path, with its own row-state machine, for the same file the tag pass reads with
+    ArduinoJson. Its 512-byte token limit also drops long strings silently
+    (`StreamingJsonParser.cpp:227-243`). That is harmless for counts, but it is one more rule to
+    keep in step with `PassageDoc::fromJson`.
+
+  The device check logs PSRAM around this pass, so the owner sees the real peak.
 - **A5. `passagesWithTag` holds every row's text, transiently, in one filtered PSRAM document.**
   ArduinoJson cannot filter by value. The peak is bounded by the file cap (~204 KB). The repo
   already takes this peak once a day, unfiltered, for Home's verse (`StudyPassageScan.cpp:118-119`).
@@ -332,16 +387,19 @@ Each one is a behavioural decision, open to review.
   of rows, not a load of the store. Treating the whole file as unavailable over one legacy row
   would hide every topic. A row with neither `w` nor `x` is kept with an empty text, as `fromJson`
   keeps it. T3 still has its reference and Unit.
-- **A8. "Bible order" is `(documentSpine, start)`.** That is the brief's wording. `documentSpine`
-  is a hint (`TaggedPassage.h:27-30`). For two passages in the same book, a stale hint after an
-  edition change could misorder them. That is a display-order issue only, and `start` breaks the
-  tie.
-- **A9. `save` takes the palette from the caller.** `StudyStore::palette()` is filled only by
-  `openPublication` (`StudyStore.cpp:72`; `StudyStore.h:40`). Opening Predicación from Home may
-  have no publication open, so where the palette comes from is T3's call. The caller must not
-  pass an empty palette produced by a `TagPaletteFile::load` that `Failed`: that would prune every
-  pick. **T3/T5 must check that `Failed` and refuse to save**, as `MigrationRunner.cpp:210-211` does.
-  This is the one hand-check left to the caller. It belongs to `TagPaletteFile`, not to this store.
+- **A8. "Bible order" is the single key `(documentSpine, start)`.** That is the brief's wording.
+  `documentSpine` is a language-specific hint (`TaggedPassage.h:27-30`), and `bible.json` is shared
+  across renderings (`PubKey.h:35-37`). A hint is repaired only when its passage is reopened
+  (`PassageDoc.h:116-120`). So a file that mixes two editions' hints can misorder passages **across
+  books**, not only within one. That is a display-order issue only. Do not "fix" it by ordering
+  verse addresses by `Unit` and everything else by spine: that comparator is not transitive when
+  editions are mixed, and `std::stable_sort` over a cycle is undefined behaviour.
+- **A9. The session object loads and owns the palette it prunes against** (review 0, M1). The
+  caller supplies nothing. `StudyStore::palette()` is filled only by `openPublication`
+  (`StudyStore.cpp:72`; `StudyStore.h:40`). From Home after a boot it is empty, and nothing reports
+  `Failed`, so a palette passed by the caller would prune every pick. Loading `tags.json` here puts
+  both latches in one place, and leaves the caller no hand-check. The cost is one extra read of a
+  file under 2 KB per Predicación entry.
 - **A10. Loop task only.** `loadAdopting` renames, and is safe only single-task
   (`PersistableStore.h:106-114`). That comment's list of files is outside T2's files, so
   `PreachingTopicsFile.h` carries the same constraint in its own header comment.
@@ -358,11 +416,13 @@ Each one is a behavioural decision, open to review.
 - **A13. A missing `bible.json` is `Missing`, which the UI shows as unavailable**, not as zero.
   That is the brief and parent spec §9, owner-settled. `Missing` stays distinct from `Unreadable`
   so a later UI change, or the log, can tell them apart.
-- **A14. The budget is a constructor parameter, defaulting to `SAVE_BYTE_BUDGET`.** No pruned list
-  can exceed 2048 B: at most 200 ids × 6 B + 16 ≈ 1.2 KB. So the refusal path is reachable only
-  with a smaller budget, and the test constructs one. No production caller passes it.
-- **A15. Load refuses a file of more than 200 ids before dedupe.** The brief says "a longer list on
-  load is refused". The store never writes one, so any longer file was written by something else.
+- **A14. The budget is a constructor parameter, defaulting to `SAVE_BYTE_BUDGET`.** Once step 3 has
+  capped the list at 200 ids, it serialises to at most 200 × 6 B + 16 ≈ 1.2 KB. So the **byte**
+  refusal is reachable only with a smaller budget, and the test constructs one. No production caller
+  passes it. The 200-id refusal is reachable on its own (step 3, test 15).
+- **A15. Load refuses a file of more than 200 ids, counted before dedupe.** The brief says "a longer
+  list on load is refused". Save's step 3 means this store never writes one, so any longer file was
+  written by something else.
 
 ## Error handling
 
@@ -370,6 +430,9 @@ Each one is a behavioural decision, open to review.
 |---|---|---|---|
 | `preaching.json` missing | `Empty`, `tags()` empty, saving allowed | no | none |
 | `preaching.json` corrupt, unreadable, `v`>1, >200 ids, bad element | `Failed`, latched | never this session | `LOG_ERR` |
+| `tags.json` `Failed` | `preaching.json`'s own result; latched | never this session | `LOG_ERR` |
+| `tags.json` missing | empty palette; saving allowed (prunes every pick) | on save, `[]` | none |
+| Save with more than 200 active picks | `TooLarge` | no | `LOG_ERR` |
 | Interrupted write left only `.tmp` | `RecoveredFromTemp` (renamed into place) | rename only | `LOG_INF` (`PersistableStore.cpp:188`) |
 | Save while latched or before load | `Refused` | no | `LOG_ERR` |
 | Save over budget | `TooLarge` | no | `LOG_ERR` |
@@ -379,9 +442,19 @@ Each one is a behavioural decision, open to review.
 | Parse or text OOM | `OutOfMemory`, `out` empty | no | `LOG_ERR` |
 | Picked tag in no passage | `Ok`, its count 0 | no | `LOG_INF` timing |
 
-No path aborts. Every allocation is either an ArduinoJson allocation, reported through
-`NoMemory`/`overflowed()`, or a `PassageText::assign`, which reports `false`. No bare `new`, no
-`std::function`.
+The two allocations that grow with the user's data report failure instead of aborting:
+
+- the JSON documents, through `NoMemory`/`overflowed()`;
+- the passage texts, through `PassageText::assign` returning `false`.
+
+The small, bounded containers use the standard allocator, as the rest of `src/study` does, and under
+`-fno-exceptions` an OOM there aborts like everywhere else in the repo. Those are:
+
+- `std::vector::reserve` for at most 200 counts or one tag's passages;
+- `std::string` references of 48 B or less;
+- `unitFromCompact`'s argument (`Unit.cpp:59`).
+
+No bare `new`, no `std::function`.
 
 ## Testing strategy
 
@@ -402,14 +475,21 @@ publisher text. `SetUp` calls `storage_fake::reset()`, as `TagPaletteFileTest.cp
 6. Malformed: a missing `v`, `tags` not an array, an element of `0`, `-1`, `70000` or `"a"` → each
    `Failed`.
 7. Duplicates on load: `[5,5,9]` → `{5,9}`.
-8. Pruning: a palette where 7 is retired and 99 was never allocated. Save `{12,7,12,99}` → the file
-   and `tags()` hold `{12}`.
+8. Pruning: `tags.json` is seeded through `TagPaletteFile::save`, with 7 retired and 99 never
+   allocated. Save `{12,7,12,99}` → the file and `tags()` hold `{12}`, and `palette().isActive(12)`.
 9. Budget: an object built with budget 10 → `TooLarge`, no file, and `tags()` unchanged.
 10. A save failure keeps the selection: `failWritesTo(PATH + ".tmp")` → `WriteFailed`, `tags()`
     still the loaded list, and the old file's bytes are intact.
 11. Save without load → `Refused`.
 12. `.tmp` recovery: only `PATH.tmp` holds a valid document → `RecoveredFromTemp`, and saving is
     allowed.
+13. A corrupt `tags.json` (`{"v":1,"t":[`) with a valid `preaching.json` → `load` returns `Loaded`
+    and `saveRefused()` is true. `save` → `Refused`, and the bytes of both files are unchanged.
+14. A missing `tags.json` → `palette()` empty, and `saveRefused()` false. `save({3})` → `Ok`, writing
+    `"tags":[]`.
+15. Over the id cap on save: `tags.json` with 201 active tags (written as JSON, which
+    `TagPalette::fromJson` accepts), all picked → `TooLarge`, no `preaching.json` written, and
+    `tags()` unchanged.
 
 **`PreachingPassagesTest.cpp`**, each test writing `/.berean/passages/bible.json` with `putFile`:
 
@@ -442,4 +522,25 @@ and the flash delta recorded for A11) and `./bin/clang-format-fix`.
 **On the device (the owner, via T3):**
 
 - the `PREACH` timing lines for both passes on the real `bible.json`;
-- `PsramJsonAllocator::logMemory` around a topic open, where internal SRAM should stay flat.
+- `PsramJsonAllocator::logMemory` around the counts pass and around a topic open.
+  - The texts and both parse documents should show in PSRAM, and be released after the counts pass.
+  - Internal SRAM grows only by the result vector and the references while the topic is held: about
+    50–60 B per passage.
+
+## Hand-off (for the orchestrator at landing)
+
+`lib/Serialization/PersistableStore.h:109-112` lists the files that rely on the loop-task-only
+adopting read. This line is outside t2's files, so it is reported, not edited (data-dev's rule for
+shared files). Apply it at landing, replacing:
+
+```
+// behind PassageFile, TagPaletteFile, BookmarkFile and HighlightFile rely on
+```
+
+with:
+
+```
+// behind PassageFile, TagPaletteFile, PreachingTopicsFile, BookmarkFile and HighlightFile rely on
+```
+
+Line wrapping is left to `./bin/clang-format-fix`.
