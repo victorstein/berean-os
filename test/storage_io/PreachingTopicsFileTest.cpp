@@ -152,4 +152,82 @@ TEST_F(PreachingTopicsFileIo, SavingBeforeLoadingIsRefused) {
   EXPECT_FALSE(storage_fake::fileBytes(PATH).has_value());
 }
 
+TEST_F(PreachingTopicsFileIo, SaveThenLoadRoundTripsThePicks) {
+  seedPalette(40);
+  PreachingTopicsFile topics;
+  ASSERT_EQ(topics.load(), PreachingTopicsFile::LoadResult::Empty);
+  ASSERT_EQ(topics.save(ids({12, 31, 7})), PreachingTopicsFile::SaveResult::Ok);
+  EXPECT_EQ(topics.tags(), ids({12, 31, 7}));
+  EXPECT_EQ(storage_fake::fileBytes(PATH), std::string(R"({"v":1,"tags":[12,31,7]})"));
+  EXPECT_FALSE(storage_fake::fileBytes(TMP_PATH).has_value());
+
+  PreachingTopicsFile reloaded;
+  EXPECT_EQ(reloaded.load(), PreachingTopicsFile::LoadResult::Loaded);
+  EXPECT_EQ(reloaded.tags(), ids({12, 31, 7}));
+}
+
+TEST_F(PreachingTopicsFileIo, SavePrunesRetiredUnknownAndRepeatedIds) {
+  study::TagPalette palette = seedPalette(20);
+  palette.retire(study::toTagId(7));
+  ASSERT_EQ(TagPaletteFile::save(palette), TagPaletteFile::SaveResult::Ok);
+
+  PreachingTopicsFile topics;
+  ASSERT_EQ(topics.load(), PreachingTopicsFile::LoadResult::Empty);
+  ASSERT_EQ(topics.save(ids({12, 7, 12, 99})), PreachingTopicsFile::SaveResult::Ok);
+  EXPECT_EQ(topics.tags(), ids({12}));
+  EXPECT_EQ(storage_fake::fileBytes(PATH), std::string(R"({"v":1,"tags":[12]})"));
+  EXPECT_TRUE(topics.palette().isActive(study::toTagId(12)));
+}
+
+TEST_F(PreachingTopicsFileIo, OverTheByteBudgetIsRefusedAndNothingChanges) {
+  seedPalette(3);
+  storage_fake::putFile(PATH, R"({"v":1,"tags":[1]})");
+  PreachingTopicsFile topics(10);
+  ASSERT_EQ(topics.load(), PreachingTopicsFile::LoadResult::Loaded);
+  EXPECT_EQ(topics.save(ids({1, 2, 3})), PreachingTopicsFile::SaveResult::TooLarge);
+  EXPECT_EQ(topics.tags(), ids({1}));
+  EXPECT_EQ(storage_fake::fileBytes(PATH), std::string(R"({"v":1,"tags":[1]})"));
+  EXPECT_FALSE(storage_fake::fileBytes(TMP_PATH).has_value());
+}
+
+TEST_F(PreachingTopicsFileIo, AFailedWriteKeepsTheSelectionAndTheFile) {
+  seedPalette(3);
+  storage_fake::putFile(PATH, R"({"v":1,"tags":[1]})");
+  PreachingTopicsFile topics;
+  ASSERT_EQ(topics.load(), PreachingTopicsFile::LoadResult::Loaded);
+  storage_fake::failWritesTo(TMP_PATH);
+  EXPECT_EQ(topics.save(ids({2})), PreachingTopicsFile::SaveResult::WriteFailed);
+  EXPECT_EQ(topics.tags(), ids({1}));
+  EXPECT_EQ(storage_fake::fileBytes(PATH), std::string(R"({"v":1,"tags":[1]})"));
+}
+
+TEST_F(PreachingTopicsFileIo, AMissingPaletteAllowsSavingAndPrunesEveryPick) {
+  PreachingTopicsFile topics;
+  ASSERT_EQ(topics.load(), PreachingTopicsFile::LoadResult::Empty);
+  EXPECT_FALSE(topics.saveRefused());
+  EXPECT_EQ(topics.palette().activeCount(), 0u);
+  EXPECT_EQ(topics.save(ids({3})), PreachingTopicsFile::SaveResult::Ok);
+  EXPECT_EQ(storage_fake::fileBytes(PATH), std::string(R"({"v":1,"tags":[]})"));
+}
+
+TEST_F(PreachingTopicsFileIo, MoreActivePicksThanTheCapAreRefusedNotWritten) {
+  const size_t overCap = study::TagPalette::MAX_ACTIVE_TAGS + 1;
+  std::string paletteJson = R"({"v":1,"n":)" + std::to_string(overCap + 1) + R"(,"t":[)";
+  std::vector<study::TagId> picked;
+  picked.reserve(overCap);
+  for (size_t id = 1; id <= overCap; ++id) {
+    if (id > 1) paletteJson += ",";
+    paletteJson += R"({"i":)" + std::to_string(id) + R"(,"n":"t)" + std::to_string(id) + R"("})";
+    picked.push_back(study::toTagId(static_cast<uint16_t>(id)));
+  }
+  storage_fake::putFile(TAGS_PATH, paletteJson + "]}");
+
+  PreachingTopicsFile topics;
+  ASSERT_EQ(topics.load(), PreachingTopicsFile::LoadResult::Empty);
+  ASSERT_EQ(topics.palette().activeCount(), overCap);
+  EXPECT_EQ(topics.save(picked), PreachingTopicsFile::SaveResult::TooLarge);
+  EXPECT_TRUE(topics.tags().empty());
+  EXPECT_FALSE(storage_fake::fileBytes(PATH).has_value());
+}
+
 }  // namespace

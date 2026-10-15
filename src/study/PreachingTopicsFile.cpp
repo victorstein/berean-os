@@ -4,6 +4,7 @@
 #include <FormatVersion.h>
 #include <Logging.h>
 #include <PersistableStore.h>
+#include <SaveBudget.h>
 
 #include <algorithm>
 #include <utility>
@@ -64,5 +65,34 @@ PreachingTopicsFile::SaveResult PreachingTopicsFile::save(const std::vector<stud
     LOG_ERR(MODULE, "Refusing to save %s: it or the tag palette was not read cleanly", PATH);
     return SaveResult::Refused;
   }
-  return SaveResult::WriteFailed;
+
+  std::vector<study::TagId> kept;
+  kept.reserve(picked.size());
+  for (const study::TagId id : picked) {
+    if (palette_.isActive(id)) appendUnique(kept, id);
+  }
+  // TagPalette::fromJson does not cap active tags, so more can be picked than load() accepts back.
+  if (kept.size() > study::TagPalette::MAX_ACTIVE_TAGS) {
+    LOG_ERR(MODULE, "Refusing to save %u topics: over the %u-tag cap", static_cast<unsigned>(kept.size()),
+            static_cast<unsigned>(study::TagPalette::MAX_ACTIVE_TAGS));
+    return SaveResult::TooLarge;
+  }
+
+  JsonDocument json;
+  json["v"] = FORMAT_VERSION;
+  const JsonArray storedIds = json["tags"].to<JsonArray>();
+  for (const study::TagId id : kept) storedIds.add(study::toRaw(id));
+  // ArduinoJson drops what it cannot allocate; the shorter document would pass the budget and be written.
+  if (json.overflowed()) {
+    LOG_ERR(MODULE, "Out of memory serialising %s; not written", PATH);
+    return SaveResult::WriteFailed;
+  }
+  if (!persist::fitsBudget(measureJson(json), saveBudget_)) {
+    LOG_ERR(MODULE, "%s exceeds its save budget; not written", PATH);
+    return SaveResult::TooLarge;
+  }
+  if (!PersistableStoreBase::writeDocToFileAtomic(PATH, json)) return SaveResult::WriteFailed;
+
+  tags_ = std::move(kept);
+  return SaveResult::Ok;
 }
