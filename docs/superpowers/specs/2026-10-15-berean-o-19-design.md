@@ -177,8 +177,10 @@ The cover path is unaffected. `thumbHeightFor(464, h)` stays 773 for any `h ≤ 
   vocabulary). The repo's generated list icons are already stock Lucide
   (`src/components/icons/listIcons.manifest:8-10`).
 - **A9 — The icon is converted once, by a throwaway script, and only the header is committed.**
-  No repo tool emits `drawIcon`'s rotated layout. `gen_icons.py` writes a different layout and
-  needs Pillow, which is absent (research §3.3–3.4). The path: `rsvg-convert -w 32 -h 32 -b white`
+  `scripts/convert_icon.py` does emit `drawIcon`'s rotated layout (`img.rotate(90, expand=True)`,
+  `:32`), but it imports `cairosvg` and Pillow (`:9,17`), neither installed, and it flattens alpha
+  onto white only for raster input (`:24-30`), not for an SVG. `gen_icons.py` writes a different
+  layout and also needs Pillow (research §3.3–3.4). The path: `rsvg-convert -w 32 -h 32 -b white`
   to PNG, then macOS `sips -s format bmp` to an uncompressed BMP, which plain Python can read. The
   `-b white` composite matters: without it `sips` writes transparent pixels as RGB 0,0,0 and every
   pixel thresholds to ink (spec review 0, MAJOR 1). `gen_icons.py` composites on white for the
@@ -258,5 +260,8 @@ Firmware: `~/.platformio/penv/bin/pio run -e x4pro` with no new warnings. The ne
   `compute` already declares `textWidth` for the meetings card (Layout).
 - **MINOR, the guard's thumbnail height:** the guard asserts the 773-row thumbnail before cropping
   and passes the constant to `crop` (Testing).
+- **Plan review 0, MINOR:** A9 no longer claims no repo tool emits the rotated layout;
+  `scripts/convert_icon.py` does, and A9 now says why it is not used. The plan's guard check also
+  proves the first-row bound fails when the card grows.
 - **MINOR, stale names:** `TheHeroKeepsItsArtAboveThePlate` is renamed to
   `ThePlateSitsAtTheHerosFoot`, and the `LauncherActivity.h:16-18` section list gains the card.

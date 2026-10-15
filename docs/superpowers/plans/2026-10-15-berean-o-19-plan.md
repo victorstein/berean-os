@@ -262,13 +262,20 @@ Run the host suite. Expected: `[  PASSED  ] 44 tests.` The windows are rows 154�
 
 ### Step 2.2 — Prove the guard bites
 
-The guard passes against today's layout, so show that it can go red:
+The guard passes against today's layout, so show that each of its two bounds can go red. The
+first-row bound is the one a taller card trips (Lyra past +26 px, spec Testing), so prove it with
+the card itself:
 
-1. Temporarily change `constexpr int TITLE_LAST_ROW = 214;` to `= 240;`.
-2. Run the suite. Expected: `TheCoverStillShowsTheBibleTitle` **fails** for Lyra, whose window
-   ends at 231.
-3. Restore `214`.
-4. Run the suite again. Expected: `[  PASSED  ] 44 tests.`
+1. Temporarily change `constexpr int TITLE_LAST_ROW = 214;` to `= 240;`. Run the suite.
+   Expected: `TheCoverStillShowsTheBibleTitle` **fails** on the `TITLE_LAST_ROW` check for Lyra,
+   whose window ends at 231. Restore `214`.
+2. Temporarily change `preachingHeight` in `src/activities/launcher/HomeLayout.h` to return
+   `PAD + std::max(ICON, lines.ui10 + lines.small) + PAD + 30;`. Run the suite. Expected:
+   `TheCoverStillShowsTheBibleTitle` **fails** on the `TITLE_FIRST_ROW` check for Lyra (visible
+   48 px, window starts at 169). Base passes that check (visible 67 px, window starts at 160).
+   Other tests that pin the exact heights fail too, which is expected. Restore the `+ 30`-free line.
+3. Run the suite again. Expected: `[  PASSED  ] 44 tests.` `git diff` shows only the Step 2.1
+   test additions.
 
 ### Step 2.3 — Commit
 

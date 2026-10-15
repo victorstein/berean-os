@@ -124,8 +124,9 @@ hero is just a miss on first paint and needs fewer bytes than the 16,240 B it is
    `python3` and `~/.platformio/penv/bin/python`: `ModuleNotFoundError: No module named 'PIL'`).
    Lucide SVGs are in `freeink-sdk/libs/assets/Icons/lucide/icons/`; candidates that fit
    "preaching": `megaphone`, `messages-square`, `speech`, `message-circle`, `book-open-text`. The spec
-   names no icon; pick one in the spec phase. A one-off conversion (rsvg-convert → threshold →
-   rotate into the `drawIcon` layout) needs a throwaway script, not a repo tool.
+   names no icon; pick one in the spec phase. `scripts/convert_icon.py` targets the `drawIcon` layout (it
+   rotates 90°, `:32`) but needs `cairosvg` and Pillow (`:9,17`), and only flattens alpha for raster
+   input (`:24-30`); a one-off conversion (rsvg-convert on white → threshold → rotate) avoids both.
 5. **Subtitle fits and renders.** Text column = `left + PAD + ICON + PAD` to `left + width − PAD`
    → 464 − 56 = 408 px wide at `SMALL_FONT_ID`; `drawTextIn` truncates anyway. `·` (U+00B7) is in
    `notosans_8_regular`'s `0xA0–0x17F` interval (`lib/EpdFont/builtinFonts/notosans_8_regular.h:2481`).
