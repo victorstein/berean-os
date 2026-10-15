@@ -67,12 +67,14 @@ the meetings boxes (`HomeLayout.h:74-80`). In `compute`:
 - After the meetings block (`:164`, `y += meetingsHeight(lines) + gap`):
   - `preaching = {left, y, width, preachingHeight(lines)}`
   - `preachingIcon = {left + PAD, y + PAD, ICON, ICON}`
-  - `textX = left + PAD + ICON + PAD` and `textWidth = left + width - PAD - textX`
-  - `preachingTitle = {textX, y + PAD, textWidth, lines.ui10}`
-  - `preachingSubtitle = {textX, bottomOf(preachingTitle), textWidth, lines.small}`
+  - `const int preachingTextWidth = left + width - PAD - textX;`
+  - `preachingTitle = {textX, y + PAD, preachingTextWidth, lines.ui10}`
+  - `preachingSubtitle = {textX, bottomOf(preachingTitle), preachingTextWidth, lines.small}`
   - `y += preachingHeight(lines) + gap`, then the icon tiles as today.
 
-The existing `textX` local (`:159`) is reused, not redeclared.
+The existing `textX` local (`:159`, `left + PAD + ICON + PAD`) is reused, not redeclared. The
+existing `textWidth` local (`:160`) is the meetings card's width beside the strip (162 px), so the
+preaching card's full-row width needs its own name, `preachingTextWidth`.
 
 Numbers under the host suite's inputs (`HomeLayoutTest.cpp:15-23`; gaps from `LyraTheme.h:14`,
 `BaseTheme.h:137`):
@@ -109,6 +111,8 @@ Numbers under the host suite's inputs (`HomeLayoutTest.cpp:15-23`; gaps from `Ly
     true)`, as the meetings percent line (`:323`). `drawTextIn` truncates to the box (`:61-66`).
 - `render` (`:360-369`): `drawPreaching()` after `drawMeetings()`.
 - Header include: `#include "components/icons/preaching.h"` beside the other icons (`:33-37`).
+- The class comment listing Home's sections (`LauncherActivity.h:16-18`) gains the Predicación card
+  after this week's meetings.
 
 ### The icon (`src/components/icons/preaching.h`)
 
@@ -174,9 +178,12 @@ The cover path is unaffected. `thumbHeightFor(464, h)` stays 773 for any `h ≤ 
   (`src/components/icons/listIcons.manifest:8-10`).
 - **A9 — The icon is converted once, by a throwaway script, and only the header is committed.**
   No repo tool emits `drawIcon`'s rotated layout. `gen_icons.py` writes a different layout and
-  needs Pillow, which is absent (research §3.3–3.4). The path: `rsvg-convert -w 32 -h 32` to PNG,
-  then macOS `sips -s format bmp` to an uncompressed BMP, which plain Python can read. Pixels with
-  luminance below 110 count as ink (`gen_icons.py`'s `THRESHOLD`). The bits are packed into the
+  needs Pillow, which is absent (research §3.3–3.4). The path: `rsvg-convert -w 32 -h 32 -b white`
+  to PNG, then macOS `sips -s format bmp` to an uncompressed BMP, which plain Python can read. The
+  `-b white` composite matters: without it `sips` writes transparent pixels as RGB 0,0,0 and every
+  pixel thresholds to ink (spec review 0, MAJOR 1). `gen_icons.py` composites on white for the
+  same reason (`rasterize`, `bg.paste(img, mask=…)`). Pixels with luminance below 110 count as ink
+  (`gen_icons.py`'s `THRESHOLD`). The bits are packed into the
   rotated layout. Success is a round trip: the bytes, decoded through `drawIcon`'s mapping, print
   the upright icon. The script stays in the scratchpad.
 
@@ -203,13 +210,19 @@ The cover path is unaffected. `thumbHeightFor(464, h)` stays 773 for any `h ≤ 
   - `preachingTitle.width == 408`.
   - `bottomOf(preachingSubtitle) + PAD <= bottomOf(preaching)`.
   - `bottomOf(preachingIcon) + PAD <= bottomOf(preaching)`.
-- `TheHeroKeepsItsArtAboveThePlate` keeps only `bottomOf(plate) == bottomOf(hero)` (A5).
+- `TheHeroKeepsItsArtAboveThePlate` becomes `ThePlateSitsAtTheHerosFoot` and keeps only
+  `bottomOf(plate) == bottomOf(hero)` (A5): with the floor gone, the old name no longer says what
+  it tests.
 - New **`TheCoverStillShowsTheBibleTitle`**, run for both themes:
   - `visible = hero.height - plate.height`.
-  - `crop = CoverBandGeometry::crop(535, thumbHeightFor(hero.width, hero.height), hero.width,
-    hero.height, visible, BOOK_TITLE_BAND)`.
+  - `ASSERT_EQ(thumbHeightFor(hero.width, hero.height), NWT_THUMB_H)` with `NWT_THUMB_H = 773`: the
+    title rows were measured on the 773-row thumbnail, so a sizing change must fail here rather
+    than crop a differently scaled cover against stale rows.
+  - `crop = CoverBandGeometry::crop(NWT_THUMB_W, NWT_THUMB_H, hero.width, hero.height, visible,
+    BOOK_TITLE_BAND)`.
   - Expect `crop.fits`, `crop.yOffset <= 167` and `crop.yOffset + visible - 1 >= 214`.
-  - Constants: `NWT_THUMB_W = 535`, `TITLE_FIRST_ROW = 167`, `TITLE_LAST_ROW = 214`.
+  - Constants: `NWT_THUMB_W = 535`, `NWT_THUMB_H = 773`, `TITLE_FIRST_ROW = 167`,
+    `TITLE_LAST_ROW = 214`.
   - Expected windows: Lyra 154–231, Base 145–241.
   - The title fits only while `visible >= 52`. From `193 − ⌊v/2⌋ ≤ 167`, `v ≥ 52`; from
     `193 − ⌊v/2⌋ + v − 1 ≥ 214`, `v ≥ 43`. So the guard trips if the Lyra card grows past 26 px
@@ -236,3 +249,14 @@ Firmware: `~/.platformio/penv/bin/pio run -e x4pro` with no new warnings. The ne
 - The card shows its icon, title and subtitle, untruncated in Spanish.
 - A tap on the card opens Predicación, and so does Confirm with the card selected.
 - With no Bible, the card opens the Bible download.
+
+## Changes after spec review 0 (CLEAR)
+
+- **MAJOR 1, the icon recipe:** `rsvg-convert` now takes `-b white`. Without it, `sips` turns the
+  transparent background black and the threshold makes a solid square (A9).
+- **MINOR, the `textWidth` clash:** the card's text width is a new `preachingTextWidth`, because
+  `compute` already declares `textWidth` for the meetings card (Layout).
+- **MINOR, the guard's thumbnail height:** the guard asserts the 773-row thumbnail before cropping
+  and passes the constant to `crop` (Testing).
+- **MINOR, stale names:** `TheHeroKeepsItsArtAboveThePlate` is renamed to
+  `ThePlateSitsAtTheHerosFoot`, and the `LauncherActivity.h:16-18` section list gains the card.
