@@ -2,14 +2,16 @@
 
 #include <cstdint>
 
-// Where in Predicación a screen, or the reader, came from: a question or a tag topic, and the
-// Verse card within it. RAM only, and free of Arduino and StudyStore so test/ui_layout builds it.
+// Where in Predicación a screen, or the reader, came from: a question, a tag topic or a handout,
+// and the Verse card within it. RAM only, and free of Arduino and StudyStore so test/ui_layout
+// builds it.
 struct PreachingOrigin {
-  enum class Kind : uint8_t { None, Question, Tag };
+  enum class Kind : uint8_t { None, Question, Tag, Handout };
 
   Kind kind = Kind::None;
   uint8_t question = 0;  // 1..IntroSection::QUESTION_COUNT when kind == Question
   uint16_t tag = 0;      // the raw study::TagId when kind == Tag
+  uint8_t handout = 0;   // index in /preaching-cards.json when kind == Handout
   uint16_t verse = 0;    // ordinal among the topic's Verse cards
 
   static constexpr PreachingOrigin ofQuestion(const int question, const int verse) {
@@ -24,6 +26,14 @@ struct PreachingOrigin {
     PreachingOrigin origin;
     origin.kind = Kind::Tag;
     origin.tag = tag;
+    origin.verse = static_cast<uint16_t>(verse < 0 ? 0 : verse);
+    return origin;
+  }
+
+  static constexpr PreachingOrigin ofHandout(const int handout, const int verse) {
+    PreachingOrigin origin;
+    origin.kind = Kind::Handout;
+    origin.handout = static_cast<uint8_t>(handout);
     origin.verse = static_cast<uint16_t>(verse < 0 ? 0 : verse);
     return origin;
   }
