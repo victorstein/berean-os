@@ -96,7 +96,8 @@ TEST(ReaderEntryIntent, HandoutOriginsKeepTheirIndexAndVerse) {
 
 TEST(ReaderEntryIntent, OpenHrefCarriesAHandoutOrigin) {
   ReaderEntryIntent intent;
-  ASSERT_TRUE(ReaderEntryIntent::openHref("bi12_S_19.xhtml#chapter23_verse4", PreachingOrigin::ofHandout(5, 76), intent));
+  ASSERT_TRUE(
+      ReaderEntryIntent::openHref("bi12_S_19.xhtml#chapter23_verse4", PreachingOrigin::ofHandout(5, 76), intent));
   EXPECT_EQ(intent.kind, Kind::OpenHref);
   EXPECT_EQ(intent.origin.kind, PreachingOrigin::Kind::Handout);
   EXPECT_EQ(intent.origin.handout, 5);
