@@ -356,8 +356,9 @@ A question or a topic opens as cards, a page at a time. The header names it, suc
 or the tag's name, and shows the page. A question starts with its title, then its verses, with its
 own headings and text between them. A verse card is the quote, with its reference below it on the
 right, marked **›**. A tag topic is every Bible passage carrying that tag, whole and in Bible order;
-when there is none, the screen says **No Bible verses have this tag**. A card shows every verse its
-article cites, in article order, under the article's headings when it has more than one.
+when there is none, the screen says **No Bible verses have this tag**. A card from **Cards** is
+headed by its title and shows every verse its article cites, in article order, under the article's
+headings when it has more than one.
 
 - **Left** / **Right** select the previous or next verse card, and turn the page past the first or
   last one on it. A vertical swipe turns the page.
