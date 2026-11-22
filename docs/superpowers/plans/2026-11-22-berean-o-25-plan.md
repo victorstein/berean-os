@@ -199,15 +199,20 @@ TEST_F(PreachingHandoutsIo, ATextThatCannotBeAllocatedIsOutOfMemory) {
 
   study::PassageDoc::Allocators noText;
   noText.text = {failAllocation, releaseNothing};
+  ASSERT_EQ(PreachingHandouts::load(0, {}, handout), Status::Ok);
   EXPECT_EQ(PreachingHandouts::load(0, noText, handout), Status::OutOfMemory);
+  EXPECT_TRUE(handout.title.empty());
+  EXPECT_TRUE(handout.headings.empty());
   EXPECT_TRUE(handout.verses.empty());
 
   ExhaustedJsonAllocator exhausted;
   study::PassageDoc::Allocators noJson;
   noJson.json = &exhausted;
+  ASSERT_EQ(PreachingHandouts::load(0, {}, handout), Status::Ok);
   EXPECT_EQ(PreachingHandouts::load(0, noJson, handout), Status::OutOfMemory);
-  EXPECT_TRUE(handout.verses.empty());
+  EXPECT_TRUE(handout.title.empty());
   EXPECT_TRUE(handout.headings.empty());
+  EXPECT_TRUE(handout.verses.empty());
 }
 
 }  // namespace
@@ -507,8 +512,20 @@ Status load(const size_t index, const study::PassageDoc::Allocators& allocators,
 - [ ] **Step 4: Prove the tests bite.** Temporarily change `bytes <= MAX_HREF_BYTES` in
   `hrefOpens` to `bytes < MAX_HREF_BYTES`, rebuild, and run
   `ctest --test-dir build/test -R PreachingHandouts`. Expected: `AVerseWhoseHrefCannotOpenIsSkipped`
-  fails. Revert the change, rebuild, and confirm all 9 pass again. `git diff src/study` must show
-  no trace of the mutation.
+  fails. Revert the change.
+
+  Then delete the line `out = Handout{};` inside the `if (!entry.text.assign(...))` block of
+  `load()`, the one before `return Status::OutOfMemory;`, not the one at the top of `load()`.
+  Rebuild and run the same ctest. Expected: `ATextThatCannotBeAllocatedIsOutOfMemory` fails,
+  because the title and heading survive the failure. Restore the line.
+
+  Rebuild and confirm all 9 pass again. The files are untracked, so `git diff` cannot show a
+  leftover mutation. Check the source instead:
+
+  ```bash
+  grep -c 'bytes <= MAX_HREF_BYTES' src/study/PreachingHandouts.cpp   # 1
+  grep -c 'out = Handout{};' src/study/PreachingHandouts.cpp          # 2
+  ```
 
 - [ ] **Step 5: Run the whole suite.** Do **not** use `ctest -R StorageIo`: it matches no test and
   exits 0.
@@ -645,7 +662,7 @@ Steps 3, 5 and 6, and commit as `fix(preaching): <what>`.
 | Check | Command | Expected |
 |---|---|---|
 | New tests | `ctest --test-dir build/test -R PreachingHandouts` | 9 / 9 pass |
-| Mutation | Task 2 Step 4 | `AVerseWhoseHrefCannotOpenIsSkipped` fails, then passes once reverted |
+| Mutations | Task 2 Step 4 | `AVerseWhoseHrefCannotOpenIsSkipped` and `ATextThatCannotBeAllocatedIsOutOfMemory` each fail under their mutation, then pass once restored |
 | Whole suite | `./build/test/storage_io/StorageIoTest` | N + 9 pass |
 | Format | `./bin/clang-format-fix` after staging | no diff |
 | Firmware | `pio run -e x4pro` | SUCCESS, 0 warnings in `src/` or `lib/` |
