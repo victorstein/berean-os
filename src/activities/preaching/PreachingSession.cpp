@@ -151,3 +151,9 @@ void PreachingSession::ensureCounts() {
   }
   countsStatus = PreachingPassages::countByTag(activeTopics, PsramJsonAllocator::json(), counts);
 }
+
+void PreachingSession::ensureHandouts() {
+  if (handoutsLoaded) return;
+  handoutsLoaded = true;
+  handoutStatus = PreachingHandouts::summaries(PsramJsonAllocator::json(), handoutSummaries);
+}

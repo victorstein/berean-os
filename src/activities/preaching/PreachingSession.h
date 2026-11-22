@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "activities/reader/ParkedBook.h"
+#include "study/PreachingHandouts.h"
 #include "study/PreachingPassages.h"
 #include "study/PreachingTopicsFile.h"
 
@@ -16,7 +17,7 @@ class GfxRenderer;
 
 // What Predicación's screens share while it is open: the Bible, taken from ParkedBook and parked
 // again on close; where the twenty questions sit in its spine and how their rows read; the picked
-// topics; and the Mis temas counts once made. Owned by PreachingActivity. PreachingTopicActivity
+// topics; the handouts; and the Mis temas counts once made. Owned by PreachingActivity. PreachingTopicActivity
 // holds a reference: it is only ever pushed over its own PreachingActivity, and the activity
 // manager destroys it first. Loop task only.
 class PreachingSession {
@@ -53,6 +54,11 @@ class PreachingSession {
   // Passages carrying topics()[row]; only meaningful while hasCounts().
   uint16_t count(size_t row) const { return row < counts.size() ? counts[row].passages : 0; }
 
+  // Read the first time Tarjetas shows; held until Predicación exits.
+  void ensureHandouts();
+  PreachingHandouts::Status handoutsStatus() const { return handoutStatus; }
+  const std::vector<PreachingHandouts::Summary>& handouts() const { return handoutSummaries; }
+
  private:
   std::string path;
   ParkedBook::Held bible;
@@ -67,6 +73,10 @@ class PreachingSession {
   bool countsLoaded = false;
   PreachingPassages::Status countsStatus = PreachingPassages::Status::Missing;
   std::vector<PreachingPassages::TagCount> counts;
+
+  bool handoutsLoaded = false;
+  PreachingHandouts::Status handoutStatus = PreachingHandouts::Status::Missing;
+  std::vector<PreachingHandouts::Summary> handoutSummaries;
 
   bool takeOrOpenBible(GfxRenderer& renderer);
   void resolveSection();

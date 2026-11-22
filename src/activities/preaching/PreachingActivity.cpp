@@ -44,7 +44,10 @@ void PreachingActivity::onEnter() {
     // bible.json once, for the topic.
     session.ensureTopics();
     tab = Tab::Topics;
+  } else if (origin.kind == PreachingOrigin::Kind::Question) {
+    tab = Tab::Questions;
   }
+  if (tab == Tab::Handouts) session.ensureHandouts();
   {
     RenderLock lock(*this);
     rebuildRows();
@@ -54,6 +57,8 @@ void PreachingActivity::onEnter() {
 
   if (origin.kind == PreachingOrigin::Kind::Question) {
     openQuestion(origin.question, origin.verse);
+  } else if (origin.kind == PreachingOrigin::Kind::Handout) {
+    openHandout(origin.handout, origin.verse);
   } else if (origin.kind == PreachingOrigin::Kind::Tag && !openTag(study::toTagId(origin.tag), origin.verse)) {
     // No topic result will come to run the deferred counts.
     session.ensureCounts();
@@ -70,7 +75,14 @@ void PreachingActivity::onExit() {
 const char* PreachingActivity::headerTitle() const { return tr(STR_PREACHING); }
 
 const char* PreachingActivity::tabLabel(const int index) const {
-  return static_cast<Tab>(index) == Tab::Questions ? tr(STR_PREACHING_QUESTIONS) : tr(STR_PREACHING_MY_TOPICS);
+  switch (static_cast<Tab>(index)) {
+    case Tab::Handouts:
+      return tr(STR_PREACHING_CARDS);
+    case Tab::Questions:
+      return tr(STR_PREACHING_QUESTIONS);
+    default:
+      return tr(STR_PREACHING_MY_TOPICS);
+  }
 }
 
 int PreachingActivity::listCount() const { return static_cast<int>(rowItems.size()); }
@@ -78,6 +90,20 @@ int PreachingActivity::listCount() const { return static_cast<int>(rowItems.size
 void PreachingActivity::rebuildRows() {
   rowItems.clear();
   rowValues.clear();
+  if (tab == Tab::Handouts) {
+    const auto& handouts = session.handouts();
+    rowValues.reserve(handouts.size());
+    rowItems.reserve(handouts.size());
+    for (const auto& handout : handouts) rowValues.push_back(std::to_string(handout.verses));
+    for (size_t row = 0; row < handouts.size(); ++row) {
+      fui::ListItem item;
+      item.label = handouts[row].title.c_str();
+      item.value = rowValues[row].c_str();
+      item.actionValue = static_cast<int16_t>(row);
+      rowItems.push_back(item);
+    }
+    return;
+  }
   if (tab == Tab::Questions) {
     if (!session.sectionFound()) return;
     rowItems.reserve(QUESTION_COUNT);
@@ -116,6 +142,8 @@ void PreachingActivity::seedSelection() {
   } else if (origin.kind == PreachingOrigin::Kind::Tag) {
     const int tagRow = session.topicRow(study::toTagId(origin.tag));
     row = tagRow >= 0 ? tagRow : 0;
+  } else if (origin.kind == PreachingOrigin::Kind::Handout) {
+    row = origin.handout;
   }
   auto& nav = activeNav();
   nav.selected = listCount() > row ? row + 1 : 0;
@@ -123,6 +151,7 @@ void PreachingActivity::seedSelection() {
 }
 
 void PreachingActivity::showTab(const Tab next) {
+  if (next == Tab::Handouts) session.ensureHandouts();
   if (next == Tab::Topics) session.ensureCounts();
   RenderLock lock(*this);
   tab = next;
@@ -138,9 +167,11 @@ void PreachingActivity::onTabAction(const int index) {
   requestUpdate();
 }
 
-void PreachingActivity::stepTab(int) {
+void PreachingActivity::stepTab(const int direction) {
   const bool onTabBar = ringPos() == 0;
-  showTab(tab == Tab::Questions ? Tab::Topics : Tab::Questions);
+  constexpr int TAB_COUNT = static_cast<int>(Tab::Count);
+  const int step = direction < 0 ? TAB_COUNT - 1 : 1;
+  showTab(static_cast<Tab>((static_cast<int>(tab) + step) % TAB_COUNT));
   auto& nav = activeNav();
   nav.selected = onTabBar || listCount() == 0 ? 0 : 1;
   nav.followOnBuild = true;
@@ -168,6 +199,19 @@ void PreachingActivity::buildScreen(UiScreen& screen) {
   screen.setContentMargin(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                       static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   buildTabBar(screen);
+
+  if (tab == Tab::Handouts && session.handouts().empty()) {
+    const PreachingHandouts::Status status = session.handoutsStatus();
+    const bool absent = status == PreachingHandouts::Status::Missing || status == PreachingHandouts::Status::Ok;
+    fui::TextStyle style = screen.theme().bodyText;
+    style.align = fui::TextAlign::Center;
+    style.maxLines = 3;
+    const int lineHeight = screen.target().lineHeight(style.font);
+    const fui::Rect notice =
+        screen.takeTop(static_cast<int16_t>(3 * lineHeight), static_cast<int16_t>(metrics.verticalSpacing));
+    screen.target().text(notice, absent ? tr(STR_PREACHING_NO_CARDS) : tr(STR_PREACHING_CARDS_UNREADABLE), style);
+    return;
+  }
 
   if (tab == Tab::Questions && !session.sectionFound()) {
     screen.centeredText(tr(STR_PREACHING_NO_SECTION), screen.theme().bodyText);
@@ -197,6 +241,10 @@ void PreachingActivity::buildScreen(UiScreen& screen) {
 
 void PreachingActivity::activateIndex(const int index) {
   app.clearTapFlash();
+  if (tab == Tab::Handouts) {
+    openHandout(index, NO_VERSE);
+    return;
+  }
   if (tab == Tab::Questions) {
     openQuestion(index + 1, NO_VERSE);
     return;
@@ -297,6 +345,21 @@ bool PreachingActivity::openTag(const study::TagId tag, const int verse) {
   return pushTopic(std::move(cards), verse);
 }
 
+bool PreachingActivity::openHandout(const int handout, const int verse) {
+  auto cards = makeUniqueNoThrow<TopicCards>();
+  if (!cards) {
+    LOG_ERR(MODULE, "OOM: handout %d", handout);
+    reportOpenFailure(tr(STR_PREACHING_OPEN_FAILED));
+    return false;
+  }
+  const auto result = PreachingContent::loadHandout(handout, *cards);
+  if (result != PreachingContent::LoadResult::Ok) {
+    reportOpenFailure(PreachingContent::failureMessage(result));
+    return false;
+  }
+  return pushTopic(std::move(cards), verse);
+}
+
 bool PreachingActivity::pushTopic(std::unique_ptr<TopicCards> cards, const int verse) {
   auto topic = makeUniqueNoThrow<PreachingTopicActivity>(renderer, mappedInput, session, std::move(cards), verse);
   if (!topic) {
@@ -320,5 +383,8 @@ void PreachingActivity::onTopicResult(const ActivityResult& result) {
     showTab(Tab::Topics);
     const int row = session.topicRow(study::toTagId(at.tag));
     moveRingTo(row >= 0 ? row + 1 : (listCount() > 0 ? 1 : 0));
+  } else if (at.kind == PreachingOrigin::Kind::Handout) {
+    showTab(Tab::Handouts);
+    moveRingTo(at.handout < listCount() ? at.handout + 1 : (listCount() > 0 ? 1 : 0));
   }
 }
