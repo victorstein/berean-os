@@ -129,7 +129,7 @@ screen's `selectVerse` places the cursor (`PreachingCardNav.h:40-45`). The reade
 | OOM reading summaries | same unreadable notice | `OutOfMemory` (A7) |
 | Open fails: file changed, gone, unreadable | toast `STR_PREACHING_CARDS_UNREADABLE`; list stays | `LoadResult::HandoutsUnavailable` |
 | Open fails: OOM | toast `STR_PREACHING_OPEN_FAILED` | `makeUniqueNoThrow` null or `LoadResult::OutOfMemory`; `LOG_ERR` |
-| Handout with zero verses | card screen says `STR_PREACHING_TOPIC_EMPTY` | existing branch, `PreachingTopicActivity.cpp:275-276` |
+| Handout with zero verses | card screen says `STR_PREACHING_TOPIC_EMPTY`, "No Bible verses have this tag" (`english.yaml:493`) — wrong noun for a card, accepted: `cards_json.py` refuses an empty card, so only a hand-edited file reaches it | existing branch, `PreachingTopicActivity.cpp:275-276` |
 | Reference not in this Bible | toast `STR_PREACHING_VERSE_NOT_FOUND`; stays on the card | existing question code, `:217-222` |
 | Return to a handout index past the end | list on Tarjetas with the unreadable toast | `load` returns `Unreadable` for a past-the-end index (`PreachingHandouts.cpp:129-131`) |
 | Return to a verse past the end | first Verse card | `selectVerse` clamps (`PreachingCardNav.h:42-43`) |
@@ -164,13 +164,17 @@ Nothing in this change writes to SD; the storage rules for stores do not apply.
   the reader builds a new activity and so reads them again, then `load`s the handout — two filtered
   parses of a file capped at 128 KiB.
 - **A10 — Stepping.** `+1` forwards, any negative direction backwards, both wrapping. Confirm on
-  the tab bar keeps stepping forwards.
+  the tab bar keeps stepping forwards. `stepTab` runs on a **held** Left/Right (the continuous
+  callbacks, `UiTabListActivity.cpp:70-71`), from anywhere in the list; a short press moves along
+  the ring of tab bar plus rows (`:67-69`). The device checklist says "hold Left/Right".
 - **A11 — Headings.** A Heading card is emitted on each change of section and only for a non-empty
   heading; a single-article handout (one empty heading) gets none. No Title card: the handout title
   is the screen header (`out.header = handout.title`), as a tag's name is (`PreachingContent.cpp:94`).
 - **A12 — USER_GUIDE.** `USER_GUIDE.md:335` says Predicación opens "with two tabs"; this change
-  makes that false, so §11 gets a Tarjetas bullet and "three tabs" in the same change. The plan
-  omits it; the doc edit is the smallest way to keep the shipped guide true.
+  makes that false, so §11 gets a Tarjetas bullet and "three tabs" in the same change, and its
+  "A topic" subsection (`USER_GUIDE.md:349-354`), which describes only questions and tags, gains one
+  sentence: a card opens as its article headings, if any, then its verses. The plan omits it; the
+  doc edit is the smallest way to keep the shipped guide true.
 - **A13 — Strings in this change.** `.claude/agents/ui-dev.md` lists the translation YAMLs as
   report-don't-edit shared files, but the brief assigns the three keys to this task and no sibling
   in the batch adds `STR_PREACHING_*` keys; the edit stays here. Spanish uses File Transfer's own
@@ -193,7 +197,16 @@ Nothing in this change writes to SD; the storage rules for stores do not apply.
   `pio run -e x4pro-gh_release` build with no new warnings in touched files (beware cached objects,
   memory note "pio build cache hides warnings"); `pio check` adds no defects in touched files;
   `./bin/clang-format-fix` leaves the tree clean.
-- **Device (owner):** plan's checklist items 2–7 — default tab and notices, three-way stepping,
+- **Device (owner):** plan's checklist items 2–7 — default tab and notices, three-way stepping
+  (hold Left/Right; a short press only moves the selection),
   eight rows with counts, headings on the magazine handouts, show mode, reference tap and swipe
   back to the same card, the `Handouts:` / `Handout I:` timing lines, free heap equal across
   Tarjetas → Bible → back, a `"v":2` file showing the unreadable notice.
+
+## Changes after spec review 0
+
+Review `docs/superpowers/reviews/berean-o-26-spec-review-0.md`: CLEAR, three MINORs, all applied.
+
+1. Tab stepping is a held Left/Right — A10 and the device step now say so.
+2. A12 also covers the USER_GUIDE "A topic" subsection.
+3. The error table names the tag-worded empty message for a zero-verse card and why it is accepted.
