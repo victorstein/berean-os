@@ -3,7 +3,9 @@
 #include <Epub/VerseAnchors.h>
 #include <StudyStore/Unit.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <iterator>
 
 #include "BibleEntryPosition.h"
 
@@ -18,9 +20,7 @@ constexpr int CAPACITY = 176;
 
 class Bits {
  public:
-  void clear() {
-    for (auto& byte : bytes) byte = 0;
-  }
+  void clear() { std::fill(std::begin(bytes), std::end(bytes), uint8_t{0}); }
   void set(const int index) {
     if (index < 0 || index >= CAPACITY) return;
     bytes[index / 8] = static_cast<uint8_t>(bytes[index / 8] | (1U << (index % 8)));

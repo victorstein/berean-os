@@ -9,6 +9,7 @@
 #include <esp_heap_caps.h>
 
 #include <algorithm>
+#include <iterator>
 
 #include "CatalogSearchActivity.h"
 #include "RecentBooksStore.h"
@@ -96,10 +97,12 @@ void PublicationsActivity::refresh() {
 
   std::vector<std::string> recentPaths;
   recentPaths.reserve(recents.size());
-  for (const RecentBook& book : recents) recentPaths.push_back(book.path);
+  std::transform(recents.begin(), recents.end(), std::back_inserter(recentPaths),
+                 [](const RecentBook& book) { return book.path; });
   std::vector<std::string> listedPaths;
   listedPaths.reserve(entries_.size());
-  for (const Entry& entry : entries_) listedPaths.push_back(entry.path);
+  std::transform(entries_.begin(), entries_.end(), std::back_inserter(listedPaths),
+                 [](const Entry& entry) { return entry.path; });
   const std::vector<std::string> coverCandidates =
       MastheadLayout::coverCandidates(recentPaths, listedPaths, MAX_MASTHEAD_CANDIDATES);
 
