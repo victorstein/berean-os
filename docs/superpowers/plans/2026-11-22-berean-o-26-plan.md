@@ -234,7 +234,6 @@ LoadResult loadHandout(int handout, TopicCards& out);
 
 ```cpp
 LoadResult loadHandout(const int handout, TopicCards& out) {
-  if (handout < 0) return LoadResult::Unreadable;
   const PreachingHandouts::Status status =
       PreachingHandouts::load(static_cast<size_t>(handout), PsramJsonAllocator::passageDoc(), out.handout);
   switch (status) {
@@ -719,10 +718,15 @@ predates this branch is not new; report it instead of fixing it.
 git status --short
 ```
 
-Expected: exits 0. If it changed files:
+Expected: exits 0. If it changed files this plan owns, stage only those (a file outside the
+`FILES:` lines is not this task's: restore it with `git checkout -- <file>` and report it):
 
 ```bash
-git add -u
+git add test/ui_layout/ReaderEntryIntentTest.cpp src/activities/preaching/PreachingOrigin.h \
+  src/activities/preaching/PreachingContent.h src/activities/preaching/PreachingContent.cpp \
+  src/activities/preaching/PreachingTopicActivity.cpp src/activities/preaching/PreachingSession.h \
+  src/activities/preaching/PreachingSession.cpp src/activities/preaching/PreachingActivity.h \
+  src/activities/preaching/PreachingActivity.cpp
 git commit -m "style: format the Tarjetas tab change"
 ```
 
@@ -753,3 +757,12 @@ Expected: `SUCCESS`; note the firmware size against the 6,553,600 B app partitio
 6. Serial: `Handouts: N, X ms` and `Handout I: N verses, X ms`; free heap equal across
    Tarjetas → Bible → back.
 7. A copy with `"v":2` → Tarjetas shows "Can't read preaching-cards.json"; the other tabs work.
+
+## Changes after plan review 0
+
+Review `docs/superpowers/reviews/berean-o-26-plan-review-0.md`: CLEAR, two MINORs, both applied.
+
+1. `loadHandout` drops its silent `handout < 0` guard: no caller passes a negative index, and if one
+   did, the `size_t` cast lands past the end, which `PreachingHandouts::load` logs and reports as
+   `Unreadable` (mapped to `HandoutsUnavailable`).
+2. The format step stages only the plan's own files, not `git add -u`.
