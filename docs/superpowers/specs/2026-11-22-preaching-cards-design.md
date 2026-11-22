@@ -20,7 +20,8 @@ just handed over.
    show mode, and a tap on the reference opens the Bible at the verse.
 3. A card whose link is a whole magazine issue (Salud mental, Biblia útil) holds every reference
    in the issue, under a heading per article.
-4. Adding a card needs no firmware release: the list is a file on the SD card.
+4. Adding a card needs no firmware release: the list is a file on the SD card, uploaded through
+   File Transfer.
 
 ## Non-goals
 
@@ -33,7 +34,7 @@ just handed over.
 
 | | Decision | Why |
 |---|---|---|
-| D1 | The list is **`/.berean/preaching-cards.json`** on the SD card | Owner's choice: cards keep being added (Dormir, 2026-11-22) |
+| D1 | The list is **`/preaching-cards.json`**, at the SD root | Owner's choice: cards keep being added (Dormir, 2026-11-22). Not under `/.berean/`: File Transfer refuses every dot-directory path (`src/network/FileRoutes.cpp:124`), and uploading is how a new card arrives |
 | D2 | A Mac script writes the file with the **verse text already in it** (approach A) | The device loads a card the way it loads a tag topic; no chapter parsing at open time. The file is the owner's, on their card, so NWT text never enters this public repo |
 | D3 | The device only **reads** the file | No atomic write, save budget or owning writer task to build; the store rules that remain are the version refusal and the size cap (§2) |
 | D4 | Tarjetas is a **new first tab**, open by default; Preguntas and Mis temas keep their content | Owner's choice |
@@ -48,8 +49,9 @@ language.
 
 ## Measured facts
 
-**The cards.** `rfid-cards/src/build.py:56-67` holds each card's URL in `TOPICS`; the titles are
-in the `photo_card(...)` calls. `rfid-cards` is not a git repository.
+**The cards.** Each printed card is a folder `rfid-cards/final/NN-slug/` whose `README.txt` holds
+the title on line 1 and `QR / NFC: <url>` on line 2. `build.py` also has the URLs (`TOPICS`,
+`:56-67`), but importing it runs `qrencode` for every design. `rfid-cards` is not a git repository.
 
 **The articles** (fetched 2026-11-22). A scripture link is
 `<a class="jsBibleLink" data-targetverses="BBCCCVVV[-BBCCCVVV]" …>`: book, chapter, verse, and an
@@ -68,7 +70,8 @@ Traps the script must handle:
 
 ## 1. The generator — `rfid-cards/src/cards_json.py`
 
-Lives beside `build.py` and imports its card list, so a card is declared once. For each card:
+Lives beside `build.py`. It reads the cards from `final/*/README.txt` in folder order, so a card is
+declared once, by the folder that holds its print files. For each card:
 
 1. Fetch the URL, following redirects. If it is an issue page, fetch each of its articles in page
    order and make one section per article, the heading being the article's `<h1>`; otherwise one
@@ -86,7 +89,7 @@ Lives beside `build.py` and imports its card list, so a card is declared once. F
 A self-check runs against a small fixture: one single-article page, one issue page and one
 range, asserting the labels and the unresolved-range failure. It needs no network.
 
-## 2. The file — `/.berean/preaching-cards.json`
+## 2. The file — `/preaching-cards.json`
 
 ```json
 { "v": 1,
@@ -100,26 +103,29 @@ range, asserting the labels and the unresolved-range failure. It needs no networ
               "text": "…" } ] } ] } ] }
 ```
 
-- Not under `/.berean/passages/`: the passage scan reads every `*.json` there as a publication
-  (`lib/Serialization/SdPaths.h:26`). Add `PREACHING_CARDS_FILE` with the same
-  `isUnder` asserts `PREACHING_FILE` has (`SdPaths.h:56-57`).
+- At the SD root, as `PreachingHandouts::FILE_PATH`. Not in `SdPaths.h`, which holds only paths
+  under the firmware's two roots.
 - `v` greater than 1 is refused, not reinterpreted.
 - A file over **128 KB** is refused before parsing, with nothing partial. The eight cards come to
   about 50 KB.
 - `href` over the intent's fixed `char href[64]` is rejected by the script, and logged and
   skipped by the device.
 
-## 3. Device — `PreachingCards` (`src/study/PreachingCards.{h,cpp}`)
+## 3. Device — `PreachingHandouts` (`src/study/PreachingHandouts.{h,cpp}`)
+
+In code a printed card is a **handout**: "card" already names a layout card
+(`PreachingCardLayout.h`), and one `TopicCards` holding a card's cards would not read.
 
 Read-only, shaped like `PreachingPassages` (`src/study/PreachingPassages.h`): a stream through
 ArduinoJson with `PsramJsonAllocator`, statuses `Ok | Missing | Unreadable | TooNew | OutOfMemory`.
+At most 200 handouts are read, so an index fits `PreachingOrigin`'s `uint8_t`.
 
 - `titles(out)`: each card's title and verse count, for the list. Held by `PreachingSession`
   until Predicación exits, read the first time the tab shows.
 - `load(index, out)`: one card's sections and verses. Strings go through the passage-text
   allocator, as a tag topic's do.
 
-Host test (`test/preaching_cards/`, against `HalStorageFake`): round trip of a short fixture with
+Host test (`test/storage_io/PreachingHandoutsTest.cpp`, against `HalStorageFake`): round trip of a short fixture with
 made-up text, an empty heading, `v: 2` refused, an over-cap file refused, a malformed file
 `Unreadable`, a missing file `Missing`.
 
@@ -127,19 +133,19 @@ made-up text, an empty heading, `v: 2` refused, an over-cap file refused, a malf
 
 `src/activities/preaching/`.
 
-- `PreachingActivity::Tab` gains `Cards` as the first value, the default. `stepTab`
+- `PreachingActivity::Tab` gains `Handouts` as the first value, the default. `stepTab`
   (`PreachingActivity.cpp:141-143`) cycles three tabs instead of toggling two; `tabLabel`
   (`:73`) gains `tr(STR_PREACHING_CARDS)`.
 - Rows: the card's title, its verse count as the value. No file → one line,
   `tr(STR_PREACHING_NO_CARDS)` (it names the path). `Unreadable` / `TooNew` →
   `tr(STR_PREACHING_CARDS_UNREADABLE)`. The other tabs work either way.
-- `PreachingContent::loadCard(session, index, out)` builds `TopicCards` like `loadTag`
+- `PreachingContent::loadHandout(index, out)` builds `TopicCards` like `loadTag`
   (`PreachingContent.cpp:80-104`): a `Heading` card for each non-empty section heading, then a
-  `Verse` card per verse. `TopicCards` gains the card index and holds the loaded verses.
-- `PreachingOrigin::Kind::Card` with a `uint8_t card` index, and `ofCard`. Every place that
+  `Verse` card per verse. `TopicCards` gains the handout index and holds the loaded handout.
+- `PreachingOrigin::Kind::Handout` with a `uint8_t handout` index, and `ofHandout`. Every place that
   switches on the kind gains the case: `PreachingActivity.cpp:42-57,114-118,314-320`,
   `PreachingTopicActivity.cpp:163-165`. A card index past the end on return (the file changed
-  under it) opens the list instead.
+  under it) leaves the list showing, with the unreadable-cards toast.
 - `PreachingTopicActivity::openBible` (`:202`): a card verse builds its intent with
   `ReaderEntryIntent::openHref` and checks `resolveHrefToSpineIndex`, the question branch's code,
   which takes the href from the card instead of a parsed block.
@@ -165,6 +171,6 @@ Nothing stays resident after Predicación exits.
 
 - Host: the `PreachingCards` suite (§3) and the script's self-check (§1).
 - Build: `pio run`, `pio check`, `./bin/clang-format-fix`.
-- On the device (the owner): copy the generated file over File Transfer; Tarjetas opens first; each
+- On the device (the owner): upload the generated file to the SD root over File Transfer; Tarjetas opens first; each
   card opens; Salud mental shows its article headings; a reference opens the Bible and the
   left-edge swipe comes back to the card; free heap equal across Tarjetas → Bible → back.
