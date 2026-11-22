@@ -44,7 +44,7 @@ struct Verse {
 
 struct Handout {
   std::string title;
-  std::vector<std::string> headings;  // one per section; empty for a single-article handout
+  std::vector<std::string> headings;  // one per section; a single-article handout has one, empty
   std::vector<Verse> verses;
 };
 

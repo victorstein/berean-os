@@ -593,8 +593,8 @@ on the loop task.
 
 - `cards` — in display order; at most 200 are read.
 - `title` — the card's title, cut at 96 bytes.
-- `sections` — one per article; `heading` is the article's title, empty for a card that links a
-  single article.
+- `sections` — one per article; `heading` is the article's title, cut at 96 bytes, empty for a
+  card that links a single article.
 - `ref` — the label, cut at 48 bytes. A whole-chapter citation is labelled with the chapter alone
   (`Salmo 51`). `text` — the verse text, whole. `href` — the NWT EPUB's own
   `<file>#chapterC_verseV` link, opened as Preguntas opens its references. A verse with an empty
