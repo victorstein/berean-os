@@ -9,6 +9,7 @@
 #include <Preaching/IntroSection.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <string_view>
 #include <utility>
@@ -18,11 +19,15 @@
 #include "PreachingSession.h"
 #include "PreachingShowActivity.h"
 #include "activities/PostedMessage.h"
+#include "activities/reader/ReaderEntryIntent.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
+
+static_assert(PreachingHandouts::MAX_HREF_BYTES < ReaderEntryIntent::HREF_BYTES, "a handout href fits the intent");
+static_assert(PreachingHandouts::MAX_HANDOUTS - 1 <= UINT8_MAX, "a handout index fits PreachingOrigin");
 
 namespace {
 
@@ -163,6 +168,7 @@ void PreachingTopicActivity::moveTo(const preaching::CardCursor& next) {
 PreachingOrigin PreachingTopicActivity::originAt(const int verse) const {
   if (topic->kind == PreachingOrigin::Kind::Question) return PreachingOrigin::ofQuestion(topic->question, verse);
   if (topic->kind == PreachingOrigin::Kind::Tag) return PreachingOrigin::ofTag(study::toRaw(topic->tag), verse);
+  if (topic->kind == PreachingOrigin::Kind::Handout) return PreachingOrigin::ofHandout(topic->handoutIndex, verse);
   return {};
 }
 
@@ -209,14 +215,16 @@ void PreachingTopicActivity::openBible(const int verse) {
   }
 
   ReaderEntryIntent intent;
-  if (topic->kind == PreachingOrigin::Kind::Question) {
-    const std::string& href = topic->parsed.blocks[source].href;
+  const std::string* href = nullptr;
+  if (topic->kind == PreachingOrigin::Kind::Question) href = &topic->parsed.blocks[source].href;
+  if (topic->kind == PreachingOrigin::Kind::Handout) href = &topic->handout.verses[source].href;
+  if (href) {
     [[maybe_unused]] const unsigned long started = millis();
-    const bool resolves = ReaderEntryIntent::openHref(href, originAt(verse), intent) &&
-                          session.book()->resolveHrefToSpineIndex(href) >= 0;
+    const bool resolves = ReaderEntryIntent::openHref(*href, originAt(verse), intent) &&
+                          session.book()->resolveHrefToSpineIndex(*href) >= 0;
     LOG_DBG(MODULE, "Reference check: %lu ms", millis() - started);
     if (!resolves) {
-      LOG_ERR(MODULE, "Reference not opened: \"%s\"", href.c_str());
+      LOG_ERR(MODULE, "Reference not opened: \"%s\"", href->c_str());
       reportFailure(tr(STR_PREACHING_VERSE_NOT_FOUND));
       return;
     }

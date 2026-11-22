@@ -574,6 +574,34 @@ Each save keeps only the ids still active in `tags.json`, so a retired tag is pr
 save, and a list over 200 is refused. The save budget, 2,048 bytes, is checked before writing; 200
 five-digit ids fit in about 1.3 KB.
 
+## `/preaching-cards.json`
+
+The owner's printed preaching cards (Predicación's Tarjetas), each with every verse its jw.org
+article cites. Written on a Mac by `rfid-cards/src/cards_json.py` and uploaded through File
+Transfer, which refuses dot-directories: hence the SD root. Read-only on the device, by
+`src/study/PreachingHandouts.{h,cpp}` (host-tested in `test/storage_io/PreachingHandoutsTest.cpp`),
+on the loop task.
+
+### Version 1
+
+- `v` — format version. An absent, zero or negative `v` is unreadable; a newer one is refused.
+
+```json
+{"v":1,"cards":[{"title":"Menos estrés","sections":[{"heading":"","verses":[
+  {"ref":"Mateo 6:34","href":"1001061144-split6.xhtml#chapter6_verse34","text":"…"}]}]}]}
+```
+
+- `cards` — in display order; at most 200 are read.
+- `title` — the card's title, cut at 96 bytes.
+- `sections` — one per article; `heading` is the article's title, cut at 96 bytes, empty for a
+  card that links a single article.
+- `ref` — the label, cut at 48 bytes. A whole-chapter citation is labelled with the chapter alone
+  (`Salmo 51`). `text` — the verse text, whole. `href` — the NWT EPUB's own
+  `<file>#chapterC_verseV` link, opened as Preguntas opens its references. A verse with an empty
+  href or one over 63 bytes is skipped.
+
+A file over 128 KB is refused before parsing. The eight cards of 2026-11-22 come to about 65 KB.
+
 ## `/.berean/passages/<pubkey>.json`
 
 One publication's tagged passages. Owned by `lib/StudyStore/StudyStore/PassageDoc.{h,cpp}` (format,

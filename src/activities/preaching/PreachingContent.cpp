@@ -102,8 +102,49 @@ LoadResult loadTag(const PreachingSession& session, const study::TagId tag, Topi
   return LoadResult::Ok;
 }
 
+LoadResult loadHandout(const int handout, TopicCards& out) {
+  const PreachingHandouts::Status status =
+      PreachingHandouts::load(static_cast<size_t>(handout), PsramJsonAllocator::passageDoc(), out.handout);
+  switch (status) {
+    case PreachingHandouts::Status::Ok:
+      break;
+    case PreachingHandouts::Status::OutOfMemory:
+      return LoadResult::OutOfMemory;
+    case PreachingHandouts::Status::Missing:
+    case PreachingHandouts::Status::Unreadable:
+    case PreachingHandouts::Status::TooNew:
+      return LoadResult::HandoutsUnavailable;
+  }
+
+  out.kind = PreachingOrigin::Kind::Handout;
+  out.handoutIndex = handout;
+  out.header = out.handout.title;
+  const auto& verses = out.handout.verses;
+  out.cards.reserve(verses.size() + out.handout.headings.size());
+  out.verseSource.reserve(verses.size());
+  int section = -1;
+  for (size_t index = 0; index < verses.size(); ++index) {
+    const PreachingHandouts::Verse& verse = verses[index];
+    if (static_cast<int>(verse.section) != section) {
+      section = verse.section;
+      const std::string& heading = out.handout.headings[verse.section];
+      if (!heading.empty()) out.cards.push_back({preaching::CardKind::Heading, heading, {}});
+    }
+    out.cards.push_back({preaching::CardKind::Verse, verse.text.view(), verse.reference});
+    out.verseSource.push_back(static_cast<uint16_t>(index));
+  }
+  return LoadResult::Ok;
+}
+
 const char* failureMessage(const LoadResult result) {
-  return result == LoadResult::VersesUnavailable ? tr(STR_PREACHING_VERSES_UNREADABLE) : tr(STR_PREACHING_OPEN_FAILED);
+  switch (result) {
+    case LoadResult::VersesUnavailable:
+      return tr(STR_PREACHING_VERSES_UNREADABLE);
+    case LoadResult::HandoutsUnavailable:
+      return tr(STR_PREACHING_CARDS_UNREADABLE);
+    default:
+      return tr(STR_PREACHING_OPEN_FAILED);
+  }
 }
 
 }  // namespace PreachingContent

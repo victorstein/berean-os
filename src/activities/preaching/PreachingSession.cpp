@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <iterator>
 #include <optional>
 #include <utility>
 
@@ -122,9 +123,9 @@ void PreachingSession::ensureTopics() {
   const std::vector<study::TagId>& picked = topicsFile.tags();
   activeTopics.clear();
   activeTopics.reserve(picked.size());
-  for (const study::TagId id : byName) {
-    if (std::find(picked.begin(), picked.end(), id) != picked.end()) activeTopics.push_back(id);
-  }
+  std::copy_if(byName.begin(), byName.end(), std::back_inserter(activeTopics), [&picked](const study::TagId id) {
+    return std::find(picked.begin(), picked.end(), id) != picked.end();
+  });
 }
 
 void PreachingSession::reloadTopics() {
@@ -149,4 +150,10 @@ void PreachingSession::ensureCounts() {
     return;
   }
   countsStatus = PreachingPassages::countByTag(activeTopics, PsramJsonAllocator::json(), counts);
+}
+
+void PreachingSession::ensureHandouts() {
+  if (handoutsLoaded) return;
+  handoutsLoaded = true;
+  handoutStatus = PreachingHandouts::summaries(PsramJsonAllocator::json(), handoutSummaries);
 }

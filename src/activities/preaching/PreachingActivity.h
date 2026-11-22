@@ -10,9 +10,10 @@
 
 struct TopicCards;
 
-// Predicación: the Bible's twenty preaching questions (Preguntas) and the owner's picked tags
-// (Mis temas). Opening one pushes PreachingTopicActivity. Opened from Home with no origin, or
-// rebuilt from the reader's origin with the topic pushed again at its card.
+// Predicación: the owner's printed cards (Tarjetas), the Bible's twenty preaching questions
+// (Preguntas) and the owner's picked tags (Mis temas). Opening one pushes PreachingTopicActivity.
+// Opened from Home with no origin, or rebuilt from the reader's origin with the topic pushed again
+// at its card.
 class PreachingActivity final : public UiTabListActivity {
  public:
   PreachingActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const PreachingOrigin& origin = {});
@@ -21,7 +22,7 @@ class PreachingActivity final : public UiTabListActivity {
   void onExit() override;
 
  private:
-  enum class Tab : uint8_t { Questions, Topics, Count };
+  enum class Tab : uint8_t { Handouts, Questions, Topics, Count };
 
   int listCount() const override;
   int tabCount() const override { return static_cast<int>(Tab::Count); }
@@ -51,13 +52,14 @@ class PreachingActivity final : public UiTabListActivity {
   // opens the topic on its first page.
   bool openQuestion(int question, int verse);
   bool openTag(study::TagId tag, int verse);
+  bool openHandout(int handout, int verse);
   bool pushTopic(std::unique_ptr<TopicCards> cards, int verse);
   void reportOpenFailure(const char* message);
   void onTopicResult(const ActivityResult& result);
 
   PreachingOrigin origin;
   PreachingSession session;
-  Tab tab = Tab::Questions;
+  Tab tab = Tab::Handouts;
   std::string chooseTopicsLabel;
   std::vector<std::string> rowValues;
   std::vector<freeink::ui::ListItem> rowItems;

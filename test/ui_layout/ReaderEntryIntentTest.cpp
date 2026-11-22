@@ -84,3 +84,22 @@ TEST(ReaderEntryIntent, OriginsKeepTheirTopicAndVerse) {
   EXPECT_EQ(tag.verse, 2);
   EXPECT_EQ(PreachingOrigin::ofQuestion(5, -1).verse, 0);
 }
+
+TEST(ReaderEntryIntent, HandoutOriginsKeepTheirIndexAndVerse) {
+  const PreachingOrigin handout = PreachingOrigin::ofHandout(7, 4);
+  EXPECT_EQ(handout.kind, PreachingOrigin::Kind::Handout);
+  EXPECT_EQ(handout.handout, 7);
+  EXPECT_EQ(handout.verse, 4);
+  EXPECT_TRUE(handout.isSet());
+  EXPECT_EQ(PreachingOrigin::ofHandout(0, -1).verse, 0);
+}
+
+TEST(ReaderEntryIntent, OpenHrefCarriesAHandoutOrigin) {
+  ReaderEntryIntent intent;
+  ASSERT_TRUE(
+      ReaderEntryIntent::openHref("bi12_S_19.xhtml#chapter23_verse4", PreachingOrigin::ofHandout(5, 76), intent));
+  EXPECT_EQ(intent.kind, Kind::OpenHref);
+  EXPECT_EQ(intent.origin.kind, PreachingOrigin::Kind::Handout);
+  EXPECT_EQ(intent.origin.handout, 5);
+  EXPECT_EQ(intent.origin.verse, 76);
+}
