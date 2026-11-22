@@ -6,8 +6,8 @@ Research: `docs/superpowers/research/2026-11-22-berean-o-27-research.md`.
 
 The CI `cppcheck` job runs `pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high`
 (`.github/workflows/ci.yml:76`) and now fails on `main` with five low-severity style findings. The local
-cppcheck, `tool-cppcheck 2.11.0+230717`, reports the same five, so a local run reproduces CI exactly (research note,
-"Tool versions"). The batch PR cannot go green until those five findings are gone.
+cppcheck is the same `tool-cppcheck 2.11.0+230717`, and it reports the same five only when the project includes
+do not resolve (research note, "Why CI fails now"). The batch PR cannot go green until those five findings are gone.
 
 ## Goal
 
@@ -73,8 +73,22 @@ There is no new failure path. No allocation is added (A3), and no I/O or parsing
 
 ## Testing strategy
 
-- **Red → green:** `pio check -e x4pro --fail-on-defect low --fail-on-defect medium --fail-on-defect high`
-  exits 1 with `Total 0 0 5` before the change (research note) and must exit 0 after it. This is the test that fails first.
+- **Red → green, reproducing CI.** Run the bundled cppcheck without pio's `--includes-file`, using the
+  `check_flags` from `platformio.ini:24`:
+
+      ~/.platformio/packages/tool-cppcheck/cppcheck --enable=all --language=c++ --std=c++20 --inline-suppr \
+        --suppress=missingIncludeSystem --suppress=missingInclude --suppress=unusedFunction \
+        --suppress=unmatchedSuppression --error-exitcode=3 --quiet \
+        --template='{file}:{line}: [{severity}] {message} [{id}]' \
+        src/activities/catalog/PublicationsActivity.cpp src/activities/launcher/HomeVerseDoc.cpp \
+        src/activities/preaching/PreachingSession.cpp src/activities/reader/GridMarks.h
+
+  On the base it prints exactly CI's five lines, with rc 3. I ran it at `8f8fd9a8`. After the change it must print nothing, with rc 0.
+- **Regression guard:** `pio check -e x4pro --fail-on-defect low --fail-on-defect medium --fail-on-defect high`
+  must still exit 0. With libdeps installed it resolves includes, so it already passes on the base
+  (`No defects found`, exit 0, re-run at `8f8fd9a8`). It is not the red test.
+- **Final gate:** the CI `cppcheck` job on the batch PR. As the brief requires, the PR notes say that local `pio check`
+  does not reproduce these findings once `.pio/libdeps` exists.
 - **Behaviour guards:** the existing host tests stay green. `test/number_grid/GridMarksTest.cpp:62` exercises `Bits::clear()`, and
   `test/home_layout/HomeVerseDocTest.cpp` exercises `fromJson`, the function that contains site 3. Run the full host suite.
 - **No new host tests.** `PublicationsActivity` and `PreachingSession` depend on Arduino and FreeInkUI types (research
@@ -82,3 +96,10 @@ There is no new failure path. No allocation is added (A3), and no I/O or parsing
   them would be more code than the change itself.
 - **Build:** `pio run -e x4pro`. **Format:** `./bin/clang-format-fix`, the whole tree.
 - **Device:** nothing to test on hardware. Behaviour is unchanged by construction.
+
+## Changes after review pass 0
+
+- **M1 (accepted).** The original red step, local `pio check` exiting 1, does not go red once `.pio/libdeps` exists.
+  It passed on the unchanged base when I re-ran it. The red→green test is now the include-less cppcheck command above,
+  and `pio check` is demoted to a regression guard. The Problem section no longer claims a local run reproduces CI exactly.
+- **m1 (accepted).** The research note now records include resolution as the cause.

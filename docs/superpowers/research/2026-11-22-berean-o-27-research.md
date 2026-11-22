@@ -18,14 +18,20 @@
 **The brief's guess that "the runner's cppcheck changed" is not supported.** The cppcheck package is
 the same 2.11.0+230717 locally and in the failing run. The code did not change either:
 `git diff --stat 1c2b6445 6fb52ff5` touches only two docs files. What did change is the runner image
-(ubuntu-24.04 → ubuntu-26.04). Why the 24.04 run reported nothing is not established. The 2.11 package
-reports all five findings on both macOS and ubuntu-26.04, so it does not matter for this fix.
+(ubuntu-24.04 → ubuntu-26.04).
 
-**The local check reproduces CI exactly.** Running
-`pio check -e x4pro --fail-on-defect low --fail-on-defect medium --fail-on-defect high` on this
-branch's base (`6fb52ff5`) exits 1 and prints the same five lines as CI, with `Total 0 0 5`. Local
-`pio check` is therefore a valid red→green test for this change. No note about an older local cppcheck
-is needed.
+### Why CI fails now: include resolution (corrected after spec review 0)
+
+The findings appear only when cppcheck cannot resolve the project includes. With the types resolved
+(ArduinoJson's `JsonVariantConst::operator|` and the element types of the vectors), cppcheck stays quiet.
+- In a fresh worktree, before `.pio/libdeps` existed, my first `pio check` exited 1 with the same five lines as CI.
+- After that run installed the libdeps, the same command on the unchanged tree prints `No defects found` and exits 0
+  (re-run at `8f8fd9a8`).
+- The bundled cppcheck run directly, with the `check_flags` and no includes file, prints exactly CI's five lines with rc 3.
+  The command is in the spec's Testing section.
+
+The CI cppcheck job evidently analyses with includes unresolved; `platformio.ini:21-23` already notes that on a fresh
+checkout. The image change is the likely trigger. So local `pio check` is **not** a red test here, only a regression guard.
 
 ## The five sites (all under `src/activities`, surface `ui`)
 
