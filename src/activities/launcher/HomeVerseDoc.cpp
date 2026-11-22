@@ -130,6 +130,8 @@ void toJson(const home_verse::Entry& entry, const char* const buildId, JsonDocum
 Restore fromJson(const JsonVariantConst doc, const char* const buildId, const uint8_t rungCount,
                  home_verse::Entry& out) {
   out.valid = false;
+  // ArduinoJson's `|` returns the value or a default; cppcheck reads it as a bitmask.
+  // cppcheck-suppress badBitmaskCheck
   if (!persist::isKnownFormatVersion(doc["v"] | 0, FORMAT_VERSION)) return Restore::UnknownFormat;
   if (!doc["b"].is<const char*>() || strcmp(doc["b"].as<const char*>(), buildId) != 0) return Restore::OtherBuild;
 
