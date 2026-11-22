@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.32.0](https://github.com/victorstein/berean-os/compare/v1.31.0...v1.32.0) (2026-11-22)
+
+
+### Features
+
+* **preaching:** add the Tarjetas tab of printed preaching cards ([be2543c](https://github.com/victorstein/berean-os/commit/be2543ca819863bf0ba5cd0585d878cc8f748f7e))
+* **preaching:** read the preaching cards file ([be2543c](https://github.com/victorstein/berean-os/commit/be2543ca819863bf0ba5cd0585d878cc8f748f7e))
+
+
+### Bug Fixes
+
+* **ci:** clear cppcheck style findings ([be2543c](https://github.com/victorstein/berean-os/commit/be2543ca819863bf0ba5cd0585d878cc8f748f7e))
+
 ## [1.31.0](https://github.com/victorstein/berean-os/compare/v1.30.0...v1.31.0) (2026-10-15)
 
 
