@@ -124,6 +124,14 @@ Both passes allocate only inside the call; nothing is held after return beyond `
 - **Output.** One handout's texts through `allocators.text`: PSRAM on the device via
   `PsramJsonAllocator::passageDoc()` (`:22`). The largest card, 77 verses, includes the
   9,153-byte Levítico 13 text.
+- **Internal SRAM, while a handout is open.** Only `Verse::text` goes through the allocator.
+  `title`, `headings`, and each verse's `reference` and `href` are `std::string` on the default
+  heap. An href such as `1001061144-split6.xhtml#chapter6_verse34` (40 B) is past the small-string
+  buffer, so that is one internal-SRAM allocation per verse: about 77 for the largest card, a few
+  KB, held until the caller drops the handout. This is deliberate, and the same trade the model
+  makes with `Passage::reference` (`src/study/PreachingPassages.h:35`). These are short, bounded
+  strings (≤ 63, 48 and 96 bytes), and the follow-up copies the href into
+  `ReaderEntryIntent::href`.
 - **Stack.** The largest local is the `BufferedFileReader` object; its 512-byte buffer is
   heap-allocated with `makeUniqueNoThrow` (`BufferedFile.h:77`). Locals stay under 256 B.
 - **Limits.** ArduinoJson 7.4.2 holds strings up to 65,535 bytes on a 32-bit target
@@ -218,6 +226,18 @@ No path writes, renames or deletes anything on the card.
 2. **Whole-suite command.** Plan Task 4 Step 4 runs `ctest --test-dir build/test -R StorageIo`,
    which matches no test and exits 0 (research, "Trap in the plan's verification command"). Run
    `./build/test/storage_io/StorageIoTest` instead.
+3. **Whole-chapter labels in the docs.** The `ref` bullet of the `docs/file-formats.md` section
+   (plan `:980`) adds: a whole-chapter citation is labelled with the chapter alone, e.g.
+   `Salmo 51` (brief). The reader treats it like any other ref.
+4. **Two boundaries the plan's tests leave unproved** (spec review 0, MINOR 1). These extend
+   existing tests, so the count stays at 9:
+   - `AVerseWhoseHrefCannotOpenIsSkipped` adds a verse whose href is exactly `MAX_HREF_BYTES`
+     (63) bytes and expects it kept. The summary count becomes 2, and `load()` returns that verse
+     and `C`. This pins the `<=` in `hrefOpens`, which an off-by-one would otherwise pass.
+   - `ATextThatCannotBeAllocatedIsOutOfMemory` adds a parse-OOM case: a JSON allocator that fails
+     every allocation, the model's `CountdownJsonAllocator` with `remaining = 0`
+     (`test/storage_io/PreachingPassagesTest.cpp:29-42,185-189`), expects `OutOfMemory` and an
+     empty handout.
 
 Everything else in Tasks 3–5 is taken as written.
 
@@ -240,18 +260,20 @@ text goes in a fixture.
 | `ANewerFormatIsRefusedAsTooNew` | A3 |
 | `UnreadableFilesAreUnreadable` | 0 bytes, `v` 0, `v` absent, `cards` absent, truncated JSON, `MAX_FILE_BYTES + 1` |
 | `AnIndexPastTheEndIsUnreadable` | A7 |
-| `AVerseWhoseHrefCannotOpenIsSkipped` | A6 in both passes, empty and 64-byte hrefs |
-| `ATextThatCannotBeAllocatedIsOutOfMemory` | failed `assign` leaves nothing partial |
+| `AVerseWhoseHrefCannotOpenIsSkipped` | A6 in both passes: empty and 64-byte hrefs skipped, a 63-byte href kept |
+| `ATextThatCannotBeAllocatedIsOutOfMemory` | a failed `assign`, and a failed parse allocation, each leave nothing partial |
 
-The OOM test injects a failing `TextAllocator`, the model's mechanism
-(`test/storage_io/PreachingPassagesTest.cpp:191-193`).
+The OOM test injects a failing `TextAllocator` and a failing `ArduinoJson::Allocator`, the
+model's mechanisms (`test/storage_io/PreachingPassagesTest.cpp:185-193`). Releasing the earlier
+verses on a later failure is not tested separately: `out = Handout{}` destroys the vector, and
+each `PassageText` frees itself (`lib/StudyStore/StudyStore/PassageText.h:33,72-76`).
 
 Commands:
 
 ```
 cmake --build build/test --target StorageIoTest -j
 ctest --test-dir build/test -R PreachingHandouts --output-on-failure   # 9 pass
-./build/test/storage_io/StorageIoTest                                   # 98 + 9 = 107 pass
+./build/test/storage_io/StorageIoTest                                   # all pass: the base's count + 9
 pio run -e x4pro                                                        # grep output for PreachingHandouts: no warnings
 ./bin/clang-format-fix                                                  # whole tree, after staging the new files
 ```
